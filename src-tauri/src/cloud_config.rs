@@ -6,6 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
+
+/// Serializes concurrent writes to the cloud config file
+static CONFIG_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Cloud sync configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,22 +185,30 @@ pub fn load_cloud_config() -> CloudConfig {
     CloudConfig::default()
 }
 
-/// Save cloud configuration to disk
+/// Save cloud configuration to disk (serialized via write lock, atomic temp+rename)
 pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
+    let _lock = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Config write lock poisoned".to_string())?;
+
     let config_path = get_config_path();
-    
+
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
-    
+
     let content = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    
-    fs::write(&config_path, content)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
-    
+
+    // Atomic write: temp file + rename to prevent corruption on crash
+    let tmp_path = config_path.with_extension("tmp");
+    fs::write(&tmp_path, content)
+        .map_err(|e| format!("Failed to write temp config: {}", e))?;
+    fs::rename(&tmp_path, &config_path)
+        .map_err(|e| format!("Failed to rename temp config: {}", e))?;
+
     tracing::info!("Cloud config saved to {:?}", config_path);
     Ok(())
 }

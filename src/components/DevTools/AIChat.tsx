@@ -288,7 +288,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, [startNewChatBase]);
 
     // BUG-008: Wrap switchConversation — await async base, clear pending tools first
+    // A6-06: Abort any ongoing streaming before switching conversation
     const switchConversation = useCallback(async (conv: Conversation) => {
+        if (streamUnlistenRef.current) {
+            streamUnlistenRef.current();
+            streamUnlistenRef.current = null;
+        }
+        streamingMsgIdRef.current = null;
+        setIsLoading(false);
         setPendingToolCalls([]);
         await switchConversationBase(conv);
     }, [switchConversationBase]);
@@ -353,6 +360,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
+    const streamUnlistenRef = useRef<(() => void) | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const ragIndexRef = useRef<Record<string, unknown> | null>(null);
@@ -989,6 +997,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     ) => {
         let stepCount = 1;
         let lastToolResult = initialToolResult;
+        let consecutiveErrors = 0;
+        const MAX_CONSECUTIVE_ERRORS = 3; // A1-05: Circuit breaker for Extreme Mode
         setIsAutoExecuting(true);
         setAutoStepCount(1);
         autoStopRef.current = false;
@@ -1109,6 +1119,25 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const results = await executePipeline(levels, executeTool);
                 const combinedResult = results.filter(Boolean).join('\n---\n');
                 if (!combinedResult) break;
+
+                // A1-05: Circuit breaker — pause after consecutive errors to prevent runaway destruction
+                const hasError = combinedResult.toLowerCase().includes('error') || combinedResult.toLowerCase().includes('failed');
+                if (hasError) {
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                        const breakerMsg: Message = {
+                            id: crypto.randomUUID(),
+                            role: 'assistant',
+                            content: `Circuit breaker triggered: ${MAX_CONSECUTIVE_ERRORS} consecutive errors detected. Auto-execution paused for safety.`,
+                            timestamp: new Date(),
+                            modelInfo,
+                        };
+                        setMessages(prev => [...prev, breakerMsg]);
+                        break;
+                    }
+                } else {
+                    consecutiveErrors = 0;
+                }
 
                 lastToolResult = combinedResult;
             }
@@ -1454,6 +1483,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     }
                 });
 
+                // Store unlisten ref for cancellation on conversation switch
+                streamUnlistenRef.current = () => { unlisten(); resolveStream(); };
+
                 // Fire the stream command (don't await its completion for unlisten)
                 invoke('ai_chat_stream', { request: aiRequest, streamId }).catch((err: unknown) => {
                     const rawErr = err instanceof Error ? err.message : String(err);
@@ -1479,6 +1511,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     ));
                 }
                 unlisten();
+                streamUnlistenRef.current = null;
 
                 // Calculate cost
                 const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);

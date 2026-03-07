@@ -557,6 +557,14 @@ impl StorageProvider for WebDavProvider {
     }
     
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // A3-03: Warn when using unencrypted HTTP — credentials and data sent in plaintext
+        if self.config.url.starts_with("http://") {
+            tracing::warn!(
+                "[WEBDAV] Connection uses unencrypted HTTP ({}). Credentials and data will be sent in plaintext.",
+                self.config.url
+            );
+        }
+
         let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>

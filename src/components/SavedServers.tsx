@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, X, Check, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -243,6 +243,31 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
     const handleEdit = (server: ServerProfile) => {
         onEdit(server);
+    };
+
+    const handleDuplicate = async (server: ServerProfile) => {
+        const newId = generateId();
+        const cloned: ServerProfile = {
+            ...server,
+            id: newId,
+            name: `${server.name} (${t('common.copy')})`,
+            lastConnected: undefined,
+        };
+        // Copy credential from vault if stored
+        if (server.hasStoredCredential) {
+            try {
+                const password = await getCredentialWithRetry(`server_${server.id}`);
+                if (password) {
+                    await invoke('store_credential', { account: `server_${newId}`, password });
+                    cloned.hasStoredCredential = true;
+                }
+            } catch { /* Password will need to be re-entered */ }
+        }
+        const updated = [...servers, cloned];
+        setServers(updated);
+        saveServers(updated);
+        // Open in edit mode so user can change name/host
+        onEdit(cloned);
     };
 
     const handleConnect = async (server: ServerProfile) => {
@@ -613,6 +638,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 title={t('connection.editServer')}
                             >
                                 <Edit2 size={14} />
+                            </button>
+                            <button
+                                onClick={() => handleDuplicate(server)}
+                                className="p-2 text-gray-500 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
+                                title={t('connection.duplicateServer')}
+                            >
+                                <Copy size={14} />
                             </button>
                             <button
                                 onClick={() => handleDelete(server.id)}

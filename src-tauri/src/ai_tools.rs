@@ -45,6 +45,20 @@ const ALLOWED_TOOLS: &[&str] = &[
     "server_list_saved", "server_exec",
 ];
 
+/// Validate a remote path argument — reject null bytes and leading dash (argument injection)
+fn validate_remote_path(path: &str, param: &str) -> Result<(), String> {
+    if path.contains('\0') {
+        return Err(format!("{}: path contains null bytes", param));
+    }
+    if path.starts_with('-') {
+        return Err(format!("{}: path must not start with '-' (argument injection risk)", param));
+    }
+    if path.len() > 4096 {
+        return Err(format!("{}: path exceeds 4096 characters", param));
+    }
+    Ok(())
+}
+
 /// Validate a path argument — reject null bytes, traversal, excessive length
 fn validate_path(path: &str, param: &str) -> Result<(), String> {
     if path.len() > 4096 {
@@ -503,6 +517,8 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> = std::sy
         r"\bwget\b.*\|",                                 // wget piped to shell
         r"^\s*eval\s",                                   // eval (arbitrary execution)
         r"^\s*base64\s+(-d|--decode)\b",                 // base64 decode (obfuscation bypass)
+        r"^\s*truncate\b",                               // truncate (destroy file contents)
+        r"^\s*shred\b",                                  // shred (secure delete)
     ]
     .iter()
     .filter_map(|p| regex::Regex::new(p).ok())
@@ -829,7 +845,7 @@ async fn create_temp_provider(
     let host = if parsed_host.is_empty() { server.host.clone() } else { parsed_host };
     let port = embedded_port.or(if server.port > 0 { Some(server.port) } else { None });
 
-    let provider_config = crate::providers::ProviderConfig {
+    let mut provider_config = crate::providers::ProviderConfig {
         name: server.name.clone(),
         provider_type,
         host,
@@ -842,6 +858,8 @@ async fn create_temp_provider(
 
     let mut provider = crate::providers::ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
+    // A3-05: Zeroize password after it has been consumed by the provider
+    provider_config.zeroize_password();
 
     provider.connect().await
         .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
@@ -3073,6 +3091,17 @@ pub async fn execute_ai_tool(
                     "Invalid operation '{}'. Supported: {}",
                     operation, valid_ops.join(", ")
                 ));
+            }
+
+            // Validate all path arguments for remote operations
+            if let Some(p) = args.get("path").and_then(|v| v.as_str()) {
+                validate_remote_path(p, "path")?;
+            }
+            if let Some(p) = args.get("destination").and_then(|v| v.as_str()) {
+                validate_remote_path(p, "destination")?;
+            }
+            if let Some(p) = args.get("pattern").and_then(|v| v.as_str()) {
+                validate_remote_path(p, "pattern")?;
             }
 
             let servers = load_saved_servers()?;

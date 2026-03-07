@@ -11,7 +11,7 @@
 //! - `list_trash_items`: List items in system trash (FreeDesktop spec / macOS)
 //! - `restore_trash_item`: Restore a trash item to its original location
 //! - `empty_trash`: Permanently delete all items in system trash
-//! - `find_duplicate_files`: Scan directory for duplicate files (MD5 hash)
+//! - `find_duplicate_files`: Scan directory for duplicate files (BLAKE3 hash)
 //! - `scan_disk_usage`: Disk usage tree for treemap visualization
 //! - `volumes_changed`: Fast change detection for mounted volumes (hash-based)
 
@@ -29,6 +29,10 @@ use tracing::{info, warn};
 
 /// Validate a filesystem path. Rejects null bytes, `..` traversal, and excessive length.
 pub fn validate_path(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if !p.is_absolute() {
+        return Err("Path must be absolute".into());
+    }
     if path.len() > 4096 {
         return Err("Path exceeds 4096 character limit".to_string());
     }
@@ -1401,7 +1405,7 @@ pub async fn empty_trash() -> Result<u64, String> {
 
 // ─── Structs (Duplicate Finder) ─────────────────────────────────────────────
 
-/// A group of files that are exact duplicates (same MD5 hash and size).
+/// A group of files that are exact duplicates (same BLAKE3 hash and size).
 #[derive(Serialize, Clone)]
 pub struct DuplicateGroup {
     pub hash: String,
@@ -1412,7 +1416,7 @@ pub struct DuplicateGroup {
 // ─── Command 11: find_duplicate_files ───────────────────────────────────────
 
 /// Scans a directory recursively for duplicate files. Groups by size first,
-/// then computes MD5 hash only for size-matched candidates for performance.
+/// then computes BLAKE3 hash only for size-matched candidates for performance.
 /// Returns groups sorted by wasted space descending.
 #[tauri::command]
 pub async fn find_duplicate_files(
@@ -1470,7 +1474,7 @@ pub async fn find_duplicate_files(
                 budget_exceeded = true;
                 break;
             }
-            match compute_md5(file_path) {
+            match compute_file_hash(file_path) {
                 Ok(hash) => {
                     let entry = hash_groups.entry(hash).or_insert_with(|| (size, Vec::new()));
                     entry.1.push(file_path.to_string_lossy().to_string());
@@ -1496,20 +1500,18 @@ pub async fn find_duplicate_files(
     Ok(result)
 }
 
-/// Compute MD5 hash of a file using buffered reading.
-fn compute_md5(path: &Path) -> Result<String, std::io::Error> {
-    use md5::Md5;
-    use md5::Digest;
+/// Compute BLAKE3 hash of a file using buffered reading (A4-07: replaced MD5).
+fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;
-    let mut hasher = Md5::new();
+    let mut hasher = blake3::Hasher::new();
     let mut buffer = [0u8; 65536];
     loop {
         let n = file.read(&mut buffer)?;
         if n == 0 { break; }
         hasher.update(&buffer[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 // ─── Structs (Disk Usage) ───────────────────────────────────────────────────

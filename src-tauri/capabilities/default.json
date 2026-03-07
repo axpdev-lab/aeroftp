@@ -35,8 +35,7 @@
         { "path": "$APPCONFIG/**" },
         { "path": "$APPDATA/**" },
         { "path": "$APPLOCALDATA/**" },
-        { "path": "$TEMP/**" },
-        { "path": "**" }
+        { "path": "$TEMP/**" }
       ]
     },
     "log:default",

@@ -77,6 +77,10 @@ pub struct PluginHook {
     /// Optional glob filter (e.g., "*.csv")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
+    /// SEC A1-02: SHA-256 hash of the hook script, computed at install time.
+    /// If present, verified before each execution to detect tampering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub integrity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -381,6 +385,22 @@ pub async fn install_plugin(
         }
     }
 
+    // SEC A1-02: Compute integrity hashes for all hook scripts at install time
+    for hook in &mut manifest.hooks {
+        let hook_path = dir.join(&hook.command);
+        if hook_path.exists() {
+            match compute_file_sha256(&hook_path) {
+                Ok(hash) => {
+                    info!("Plugin {}: hook '{}' integrity hash = {}...", manifest.id, hook.event, hash_prefix(&hash));
+                    hook.integrity = Some(hash);
+                }
+                Err(e) => {
+                    warn!("Plugin {}: failed to compute integrity for hook '{}': {}", manifest.id, hook.event, e);
+                }
+            }
+        }
+    }
+
     let manifest_path = dir.join("plugin.json");
     std::fs::write(
         &manifest_path,
@@ -460,6 +480,22 @@ pub async fn trigger_plugin_hooks(
 
     for (plugin_id, hook) in tasks {
         let plugin_dir = dir.join(&plugin_id);
+
+        // SEC A1-03: Reject shell metacharacters in hook command (same check as execute_plugin_tool)
+        const SHELL_METACHARACTERS: &[char] = &[
+            '|', '&', ';', '`', '$', '(', ')', '>', '<', '{', '}', '\n', '\r', '!', '#',
+        ];
+        if hook.command.chars().any(|c| SHELL_METACHARACTERS.contains(&c)) {
+            warn!("Hook {}:{} command contains forbidden shell metacharacters — skipping", plugin_id, event);
+            results.push(HookResult {
+                plugin_id: plugin_id.clone(),
+                hook_event: event.clone(),
+                success: false,
+                output: "Hook command contains forbidden shell metacharacters".into(),
+            });
+            continue;
+        }
+
         let cmd_path = plugin_dir.join(&hook.command);
 
         // Verify path safety
@@ -484,6 +520,47 @@ pub async fn trigger_plugin_hooks(
                 output: "Hook path escape detected".into(),
             });
             continue;
+        }
+
+        // SEC A1-02: Verify hook script integrity if SHA-256 hash is present
+        if let Some(ref expected_hash) = hook.integrity {
+            if !is_valid_sha256_hex(expected_hash) {
+                warn!("Hook {}:{} has malformed integrity hash — skipping", plugin_id, event);
+                results.push(HookResult {
+                    plugin_id: plugin_id.clone(),
+                    hook_event: event.clone(),
+                    success: false,
+                    output: "Hook has malformed integrity hash".into(),
+                });
+                continue;
+            }
+            match compute_file_sha256(&canonical) {
+                Ok(actual_hash) => {
+                    if actual_hash != *expected_hash {
+                        warn!(
+                            "SEC: Hook {}:{} integrity check failed (expected {}, got {})",
+                            plugin_id, event, hash_prefix(expected_hash), hash_prefix(&actual_hash)
+                        );
+                        results.push(HookResult {
+                            plugin_id: plugin_id.clone(),
+                            hook_event: event.clone(),
+                            success: false,
+                            output: "Hook script integrity check failed — file modified after install".into(),
+                        });
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    warn!("Hook {}:{} integrity hash computation failed: {}", plugin_id, event, e);
+                    results.push(HookResult {
+                        plugin_id: plugin_id.clone(),
+                        hook_event: event.clone(),
+                        success: false,
+                        output: format!("Failed to verify hook integrity: {}", e),
+                    });
+                    continue;
+                }
+            }
         }
 
         // Execute hook with context as stdin

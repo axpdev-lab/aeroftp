@@ -195,6 +195,20 @@ impl ProviderConfig {
     }
 }
 
+impl ProviderConfig {
+    /// A3-05: Explicitly zeroize the password field to reduce credential exposure in memory.
+    /// Call this after the password has been consumed (e.g., converted to SecretString).
+    /// Cannot use `impl Drop` because ProviderConfig derives Clone and uses partial moves
+    /// across 20+ provider modules — Drop trait would break `..config.clone()` patterns.
+    /// TODO: migrate `password: Option<String>` to `Option<SecretString>` for automatic zeroization.
+    pub fn zeroize_password(&mut self) {
+        use zeroize::Zeroize;
+        if let Some(ref mut pwd) = self.password {
+            pwd.zeroize();
+        }
+    }
+}
+
 /// TLS mode for FTP connections
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

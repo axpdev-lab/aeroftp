@@ -108,6 +108,10 @@ pub fn export_keystore(
     password: &str,
     file_path: &Path,
 ) -> Result<KeystoreMetadata, KeystoreExportError> {
+    // A2-05: Backend password minimum length check
+    if password.len() < 8 {
+        return Err(KeystoreExportError::Encryption("Password must be at least 8 characters".into()));
+    }
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
 
@@ -133,9 +137,9 @@ pub fn export_keystore(
     // Serialize entries to JSON
     let payload_json = serde_json::to_vec(&entries)?;
 
-    // Encrypt with Argon2id + AES-256-GCM
+    // A2-06: Encrypt with Argon2id (128 MiB, same strength as vault) + AES-256-GCM
     let salt = crate::crypto::random_bytes(32);
-    let key = crate::crypto::derive_key(password, &salt)
+    let key = crate::crypto::derive_key_strong(password, &salt)
         .map_err(KeystoreExportError::Encryption)?;
     let nonce = crate::crypto::random_bytes(12);
     let encrypted = crate::crypto::encrypt_aes_gcm(&key, &nonce, &payload_json)
@@ -150,7 +154,15 @@ pub fn export_keystore(
     };
 
     let file_data = serde_json::to_vec_pretty(&export_file)?;
-    std::fs::write(file_path, file_data)?;
+    // A2-08: Atomic write (temp+rename) + secure permissions
+    let tmp_path = file_path.with_extension("tmp");
+    std::fs::write(&tmp_path, file_data)?;
+    std::fs::rename(&tmp_path, file_path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(file_path, std::fs::Permissions::from_mode(0o600));
+    }
 
     tracing::info!("Keystore exported: {} entries to {:?}", entries.len(), file_path);
     Ok(metadata)
@@ -173,11 +185,19 @@ pub fn import_keystore(
         return Err(KeystoreExportError::UnsupportedVersion(export_file.version));
     }
 
-    // Decrypt
-    let key = crate::crypto::derive_key(password, &export_file.salt)
+    // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
+    let key_strong = crate::crypto::derive_key_strong(password, &export_file.salt)
         .map_err(KeystoreExportError::Encryption)?;
-    let payload_json = crate::crypto::decrypt_aes_gcm(&key, &export_file.nonce, &export_file.encrypted_payload)
-        .map_err(|_| KeystoreExportError::InvalidPassword)?;
+    let payload_json = match crate::crypto::decrypt_aes_gcm(&key_strong, &export_file.nonce, &export_file.encrypted_payload) {
+        Ok(data) => data,
+        Err(_) => {
+            // Legacy fallback: file was exported with derive_key (64 MiB)
+            let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
+                .map_err(KeystoreExportError::Encryption)?;
+            crate::crypto::decrypt_aes_gcm(&key_legacy, &export_file.nonce, &export_file.encrypted_payload)
+                .map_err(|_| KeystoreExportError::InvalidPassword)?
+        }
+    };
 
     let entries: HashMap<String, String> = serde_json::from_slice(&payload_json)?;
 

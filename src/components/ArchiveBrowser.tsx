@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { Archive, File, Folder, Lock, Download, Eye, X, ChevronRight, ChevronDown, EyeOff, Loader2 } from 'lucide-react';
@@ -118,6 +118,16 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const [showPassword, setShowPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(isEncrypted);
     const [extracting, setExtracting] = useState<string | null>(null);
+    const tempPreviewPathsRef = useRef<string[]>([]);
+
+    // Cleanup temp preview files on unmount (A7-03)
+    useEffect(() => {
+        return () => {
+            for (const tempPath of tempPreviewPathsRef.current) {
+                invoke('delete_local_file', { path: tempPath }).catch(() => {});
+            }
+        };
+    }, []);
 
     const tree = useMemo(() => buildTree(entries), [entries]);
     const archiveName = archivePath.split('/').pop() || archivePath.split('\\').pop() || archivePath;
@@ -213,6 +223,8 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             };
             if (password) args.password = password;
             await invoke(cmd, args);
+            // Track temp file for cleanup on unmount (A7-03)
+            tempPreviewPathsRef.current.push(tempPath);
             // The file is extracted — frontend can use UniversalPreview to display it
             // For now we just extract it; integration with preview system is handled by the parent
         } catch (e) {

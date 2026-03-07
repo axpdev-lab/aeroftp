@@ -90,8 +90,9 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
 
   /** Calculate exponential backoff delay for a given attempt (1-indexed) */
   const getRetryDelay = useCallback((attempt: number): number => {
-    const delay = config.baseRetryDelay * Math.pow(config.backoffMultiplier, Math.max(0, attempt - 1));
-    return Math.min(delay, config.maxRetryDelay);
+    const rawDelay = config.baseRetryDelay * Math.pow(config.backoffMultiplier, Math.max(0, attempt - 1));
+    const delay = Number.isFinite(rawDelay) ? Math.min(rawDelay, config.maxRetryDelay) : config.maxRetryDelay;
+    return delay;
   }, [config.baseRetryDelay, config.backoffMultiplier, config.maxRetryDelay]);
 
   /** Whether to retry a file based on attempt count and error kind */

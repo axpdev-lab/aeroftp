@@ -270,11 +270,13 @@ pub async fn provider_connect(
 ) -> Result<String, String> {
     info!("Connecting to {} provider: {}", params.protocol, params.server);
 
-    let config = params.to_provider_config()?;
-    
+    let mut config = params.to_provider_config()?;
+
     // Create provider using factory
     let mut provider = ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
+    // A3-05: Zeroize password after it has been consumed by the provider
+    config.zeroize_password();
     
     // Connect
     provider.connect().await

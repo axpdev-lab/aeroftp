@@ -320,7 +320,9 @@ impl StorageProvider for FtpProvider {
                     .map_err(|e| ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e)))?
             }
             FtpTlsMode::ExplicitIfAvailable => {
-                // Try explicit TLS, fall back to plain
+                // A3-02: Try explicit TLS, but NEVER fall back to plaintext silently.
+                // Sending credentials over an unencrypted connection without user consent
+                // is a security risk. If TLS fails, return an error instead.
                 let stream = AsyncNativeTlsFtpStream::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -331,16 +333,16 @@ impl StorageProvider for FtpProvider {
                         secure
                     }
                     Err(e) => {
-                        // TLS not supported — fall back to plain with security warning
                         tracing::warn!(
-                            "SECURITY: TLS upgrade failed for {}:{} ({}), falling back to PLAINTEXT FTP. \
-                             Credentials will be sent unencrypted.",
+                            "SECURITY: TLS upgrade failed for {}:{} ({}). \
+                             Refusing to send credentials over plaintext.",
                             self.config.host, self.config.port, e
                         );
-                        self.tls_downgraded = true;
-                        AsyncNativeTlsFtpStream::connect(&addr)
-                            .await
-                            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                        return Err(ProviderError::ConnectionFailed(format!(
+                            "TLS upgrade failed: {}. Connection would be unencrypted. \
+                             Use 'None' encryption mode explicitly to connect without TLS.",
+                            e
+                        )));
                     }
                 }
             }

@@ -2,6 +2,11 @@ import { Message } from './aiChatTypes';
 import { TaskType } from '../../types/ai';
 import { computeResponseBuffer } from './aiChatTokenInfo';
 
+/** Escape markdown special characters in user-controlled strings (filenames, paths, etc.) */
+export function escapeMarkdown(text: string): string {
+    return text.replace(/([#*_~`\[\]()>+\-!|\\])/g, '\\$1');
+}
+
 // Rate limiter: tracks request timestamps per provider
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_RPM = 20; // max requests per minute per provider
@@ -287,15 +292,15 @@ export function formatToolResult(_toolName: string, result: unknown): string {
                 const sizeDiff = r.size_different as Array<{ name: string; local_size: number; remote_size: number }>;
                 if (onlyLocal?.length) {
                     lines.push(`\n**Only local** (${onlyLocal.length}):`);
-                    onlyLocal.forEach(f => lines.push(`  + ${f.name} (${f.size} bytes)`));
+                    onlyLocal.forEach(f => lines.push(`  + ${escapeMarkdown(f.name)} (${f.size} bytes)`));
                 }
                 if (onlyRemote?.length) {
                     lines.push(`\n**Only remote** (${onlyRemote.length}):`);
-                    onlyRemote.forEach(f => lines.push(`  - ${f.name} (${f.size} bytes)`));
+                    onlyRemote.forEach(f => lines.push(`  - ${escapeMarkdown(f.name)} (${f.size} bytes)`));
                 }
                 if (sizeDiff?.length) {
                     lines.push(`\n**Size differs** (${sizeDiff.length}):`);
-                    sizeDiff.forEach(f => lines.push(`  ~ ${f.name} (local: ${f.local_size}, remote: ${f.remote_size})`));
+                    sizeDiff.forEach(f => lines.push(`  ~ ${escapeMarkdown(f.name)} (local: ${f.local_size}, remote: ${f.remote_size})`));
                 }
             }
             return lines.join('\n');
@@ -308,10 +313,10 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const errors = r.errors as Array<{ file: string; error: string }> | undefined;
             const lines: string[] = [];
             lines.push(`**${action} ${count} file(s)**`);
-            if (files?.length) lines.push(files.map(f => `  + ${f}`).join('\n'));
+            if (files?.length) lines.push(files.map(f => `  + ${escapeMarkdown(f)}`).join('\n'));
             if (errors?.length) {
                 lines.push(`\n**Failed (${errors.length}):**`);
-                errors.forEach(e => lines.push(`  - ${e.file}: ${e.error}`));
+                errors.forEach(e => lines.push(`  - ${escapeMarkdown(e.file)}: ${escapeMarkdown(e.error)}`));
             }
             return lines.join('\n');
         }
@@ -329,10 +334,10 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const errors = r.errors as Array<{ file: string; error: string }> | undefined;
             const lines: string[] = [];
             lines.push(`**${action} ${count}/${r.total} file(s)**`);
-            if (files?.length) lines.push(files.map(f => `  + ${f}`).join('\n'));
+            if (files?.length) lines.push(files.map(f => `  + ${escapeMarkdown(f)}`).join('\n'));
             if (errors?.length) {
                 lines.push(`\n**Failed (${errors.length}):**`);
-                errors.forEach(e => lines.push(`  - ${e.file}: ${e.error}`));
+                errors.forEach(e => lines.push(`  - ${escapeMarkdown(e.file)}: ${escapeMarkdown(e.error)}`));
             }
             return lines.join('\n');
         }
@@ -342,17 +347,17 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const errors = r.errors as Array<{ file: string; error: string }> | undefined;
             const lines: string[] = [];
             lines.push(`**Renamed ${r.renamed}/${r.total} file(s)**`);
-            if (renames.length) lines.push(renames.map(re => `  ${re.from} → ${re.to}`).join('\n'));
+            if (renames.length) lines.push(renames.map(re => `  ${escapeMarkdown(re.from)} → ${escapeMarkdown(re.to)}`).join('\n'));
             if (errors?.length) {
                 lines.push(`\n**Failed (${errors.length}):**`);
-                errors.forEach(e => lines.push(`  - ${e.file}: ${e.error}`));
+                errors.forEach(e => lines.push(`  - ${escapeMarkdown(e.file)}: ${escapeMarkdown(e.error)}`));
             }
             return lines.join('\n');
         }
         // File info results
         if (r.is_file !== undefined && r.name) {
             const lines: string[] = [];
-            lines.push(`**${r.name}** — ${r.is_dir ? 'Directory' : `${r.size} bytes`}`);
+            lines.push(`**${escapeMarkdown(String(r.name))}** — ${r.is_dir ? 'Directory' : `${r.size} bytes`}`);
             if (r.mime_type) lines.push(`Type: ${r.mime_type}`);
             if (r.permissions_octal) lines.push(`Permissions: ${r.permissions_octal}`);
             if (r.readonly) lines.push('Read-only');
@@ -370,7 +375,7 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             lines.push(`**${r.groups} duplicate group(s)** — ${r.total_wasted_human} wasted`);
             for (const g of dupes.slice(0, 10)) {
                 lines.push(`\n${g.count}x (${g.size} bytes):`);
-                g.files.forEach(f => lines.push(`  - ${f}`));
+                g.files.forEach(f => lines.push(`  - ${escapeMarkdown(f)}`));
             }
             return lines.join('\n');
         }

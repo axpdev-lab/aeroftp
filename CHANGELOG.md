@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.7] - 2026-03-07
+
+### Security Audit Grade A- & Server Duplication
+
+Comprehensive cross-audit reaching grade A- with 45+ security fixes, updater integrity hardening, CSP tightening, and a new server duplication feature for faster multi-account setup.
+
+#### Added
+
+- **Server duplication**: Clone saved servers with one click — duplicate button in server list, "Save as New" in edit mode (ConnectionScreen + Settings). Credentials copied from vault, auto-rename with "(Copy)" suffix
+- **Updater URL whitelist**: `download_update()` restricted to official GitHub releases domain. Path validation ensures install files are in Downloads/temp only — closes XSS-to-root-RCE attack chain
+- **CSP connect-src hardened**: Removed wildcard `https:` and `wss:` from production CSP. Frontend can only communicate via Tauri IPC — no direct external HTTP connections possible
+- **Updater path validation**: `validate_update_path()` canonicalizes and verifies downloaded files are in expected directories before `pkexec` execution
+
+#### Fixed
+
+- **AeroAgent paste bug**: Text paste in chat was blocked by unconditional `e.preventDefault()` in clipboard image fallback. Now skips arboard when clipboard contains text
+- **AeroAgent paste latency**: Arboard X11 clipboard read caused ~7s timeout on text paste. Added early return when `text/plain` detected — instant paste
+- **KDF upgrade for exports**: Profile and keystore exports now use `derive_key_strong` (Argon2id 128 MiB) with backward-compatible fallback for legacy files
+- **Atomic file writes**: Export files use temp+rename pattern to prevent corruption on crash
+- **File permissions**: Export files set to `0600` on Unix for credential protection
+- **Credential zeroization**: `zeroize_password()` called after `ProviderFactory::create()` at all 3 call sites (provider_commands, ai_tools, cloud_provider_factory)
+- **OAuth1 secret zeroization**: `OAuth1Credentials` implements `Drop` with zeroize for `consumer_secret`, `token`, `token_secret`
+- **GitHub Actions SHA pin**: `winget-releaser` action pinned to full SHA instead of mutable tag
+- **Extreme Mode circuit breaker**: Consecutive error counter (max 3) prevents runaway autonomous tool execution
+- **2 new i18n keys**: `connection.duplicateServer` and `connection.saveAsNew` translated in all 47 languages
+
+#### Removed
+
+- **License system**: Removed Ed25519 license verification, NagBanner, LicenseTab, useLicense hook, and Supabase Edge Functions. AeroFTP desktop is fully open source (GPL-3.0) with no Pro/freemium restrictions. Mobile app will be the paid product
+
+#### Security
+
+- **Cross-audit grade**: B+ → A- (Claude Opus 4.6 8-area audit + GPT-5.4 counter-audit, 45+ findings resolved)
+- **39 audit fixes** across 8 security areas: trust boundaries, cryptographic primitives, credential lifecycle, input validation, error handling, dependency supply chain, configuration hardening, transport security
+- **Accepted risks**: CSP `script-src 'unsafe-inline'` (required by Monaco/xterm), CloudService architectural dedup (deferred to v2.9.0)
+
+---
+
 ## [2.8.6] - 2026-03-05
 
 ### Cloud Provider Audit & Security Hardening

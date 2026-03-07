@@ -386,6 +386,39 @@ pub async fn file_tags_get_files_by_label(
     }).collect())
 }
 
+/// Update file path in all tags when a file is renamed/moved (prevents orphan tags)
+#[tauri::command]
+pub async fn file_tags_update_path(
+    app: AppHandle,
+    old_path: String,
+    new_path: String,
+) -> Result<usize, String> {
+    let db = app.state::<FileTagsDb>();
+    let conn = acquire_lock(&db);
+
+    conn.execute(
+        "UPDATE file_tags SET file_path = ?1 WHERE file_path = ?2",
+        params![new_path, old_path],
+    )
+    .map_err(|e| format!("Update file path: {e}"))
+}
+
+/// Delete all tags for a file (cleanup on file deletion)
+#[tauri::command]
+pub async fn file_tags_delete_all_for_file(
+    app: AppHandle,
+    file_path: String,
+) -> Result<usize, String> {
+    let db = app.state::<FileTagsDb>();
+    let conn = acquire_lock(&db);
+
+    conn.execute(
+        "DELETE FROM file_tags WHERE file_path = ?1",
+        params![file_path],
+    )
+    .map_err(|e| format!("Delete file tags: {e}"))
+}
+
 /// Get label usage counts (how many files each label is applied to)
 #[tauri::command]
 pub async fn file_tags_get_label_counts(

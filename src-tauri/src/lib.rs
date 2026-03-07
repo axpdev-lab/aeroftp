@@ -54,7 +54,6 @@ mod totp;
 mod chat_history;
 mod file_tags;
 mod image_edit;
-mod license;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -418,10 +417,47 @@ fn log_update_detection(version: String) {
     info!("New version detected: v{}", version);
 }
 
+/// A8-03: Validate that update file path is in Downloads or temp directory (not arbitrary path)
+fn validate_update_path(path: &str) -> Result<(), String> {
+    let canonical = std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|e| format!("Invalid update path: {}", e))?;
+    let canonical_str = canonical.to_string_lossy();
+
+    let allowed_dirs: Vec<std::path::PathBuf> = vec![
+        dirs::download_dir().unwrap_or_default(),
+        dirs::home_dir().map(|h| h.join("Downloads")).unwrap_or_default(),
+        std::env::temp_dir(),
+    ];
+
+    let in_allowed = allowed_dirs.iter().any(|dir| {
+        if dir.as_os_str().is_empty() { return false; }
+        if let Ok(canon_dir) = dir.canonicalize() {
+            canonical_str.starts_with(canon_dir.to_string_lossy().as_ref())
+        } else {
+            false
+        }
+    });
+
+    if !in_allowed {
+        return Err("Update path rejected: must be in Downloads or temp directory".to_string());
+    }
+    Ok(())
+}
+
 /// Download an update file with progress events
 #[tauri::command]
 async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
     use tokio::io::AsyncWriteExt;
+
+    // A8-03: Whitelist update URLs to prevent XSS → arbitrary download → root RCE chain
+    const ALLOWED_URL_PREFIXES: &[&str] = &[
+        "https://github.com/AXP-OS/AeroFTP/releases/",
+        "https://objects.githubusercontent.com/",
+    ];
+    if !ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix)) {
+        return Err("Update URL rejected: must be from official GitHub releases".to_string());
+    }
 
     info!("Downloading update from: {}", url);
 
@@ -498,13 +534,15 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
 
 /// Spawn a fully detached relaunch process using setsid.
 /// The child runs in its own session so it survives when the parent exits.
+/// Uses direct exec (no shell) to prevent shell injection via exe_path.
 #[cfg(unix)]
 fn spawn_detached_relaunch(exe_path: &str) {
     use std::os::unix::process::CommandExt;
-    let mut cmd = std::process::Command::new("sh");
-    cmd.arg("-c")
-        .arg(format!("sleep 2 && exec '{}'", exe_path))
-        .stdin(std::process::Stdio::null())
+
+    // First spawn a sleep process, then the actual binary — both without shell
+    let exe_owned = exe_path.to_string();
+    let mut cmd = std::process::Command::new(&exe_owned);
+    cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     // SAFETY: setsid() creates a new session, detaching from parent's process group.
@@ -512,6 +550,8 @@ fn spawn_detached_relaunch(exe_path: &str) {
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
+            // Brief pause to let parent exit cleanly
+            std::thread::sleep(std::time::Duration::from_secs(2));
             Ok(())
         });
     }
@@ -524,6 +564,9 @@ fn spawn_detached_relaunch(exe_path: &str) {
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
 async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    // A8-03: Validate downloaded file is in expected directory
+    validate_update_path(&downloaded_path)?;
+
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Cannot find current exe: {}", e))?;
 
@@ -580,6 +623,9 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 /// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
 async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    // A8-03: Validate downloaded file is in expected directory
+    validate_update_path(&downloaded_path)?;
+
     let downloaded = std::path::Path::new(&downloaded_path);
     if !downloaded.exists() {
         return Err("Downloaded file not found".to_string());
@@ -627,6 +673,9 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
 /// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
 async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+    // A8-03: Validate downloaded file is in expected directory
+    validate_update_path(&downloaded_path)?;
+
     let downloaded = std::path::Path::new(&downloaded_path);
     if !downloaded.exists() {
         return Err("Downloaded file not found".to_string());
@@ -3062,7 +3111,14 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
                 let relative_path = entry_path.strip_prefix(path.parent().unwrap_or(path))
                     .map_err(|e| format!("Path error: {}", e))?;
 
-                if entry_path.is_file() {
+                // Use symlink_metadata to avoid following symlinks (A7-06)
+                let metadata = std::fs::symlink_metadata(entry_path)
+                    .map_err(|e| format!("Cannot read metadata: {}", e))?;
+                if metadata.file_type().is_symlink() {
+                    continue; // Skip symlinks
+                }
+
+                if metadata.is_file() {
                     if let Some(ref pwd) = secret_password {
                         zip.start_file(relative_path.to_string_lossy().to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
                             .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
@@ -3079,7 +3135,7 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
                     zip.write_all(&buffer)
                         .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
 
-                } else if entry_path.is_dir() && entry_path != path {
+                } else if metadata.is_dir() && entry_path != path {
                     let dir_path = format!("{}/", relative_path.to_string_lossy());
                     if let Some(ref pwd) = secret_password {
                         zip.add_directory(&dir_path, base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
@@ -3102,6 +3158,9 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 /// Extract a ZIP archive
 #[tauri::command]
 async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
+    validate_path(&archive_path)?;
+    validate_path(&output_dir)?;
+
     use std::fs::{self, File};
     use zip::ZipArchive;
 
@@ -7755,15 +7814,11 @@ pub fn run() {
             file_tags::file_tags_remove_tag,
             file_tags::file_tags_get_tags_for_files,
             file_tags::file_tags_get_files_by_label,
+            file_tags::file_tags_update_path,
+            file_tags::file_tags_delete_all_for_file,
             file_tags::file_tags_get_label_counts,
             // AeroImage
             image_edit::process_image,
-            // License System
-            license::license_activate,
-            license::license_check,
-            license::license_deactivate,
-            license::license_get_device_fingerprint,
-            license::license_get_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

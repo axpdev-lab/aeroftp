@@ -12,12 +12,22 @@ use std::collections::BTreeMap;
 type HmacSha1 = Hmac<Sha1>;
 
 /// OAuth 1.0 credentials (consumer + token pair)
-#[derive(Debug, Clone)]
+/// A3-06: Implements Drop to zeroize secrets when the struct goes out of scope
+#[derive(Debug)]
 pub struct OAuth1Credentials {
     pub consumer_key: String,
     pub consumer_secret: String,
     pub token: String,
     pub token_secret: String,
+}
+
+impl Drop for OAuth1Credentials {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.consumer_secret.zeroize();
+        self.token.zeroize();
+        self.token_secret.zeroize();
+    }
 }
 
 /// RFC 5849 percent-encoding (uppercase, unreserved chars only)

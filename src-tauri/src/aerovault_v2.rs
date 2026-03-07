@@ -567,6 +567,10 @@ pub async fn vault_v2_create(
     description: Option<String>,
     cascade_mode: bool,
 ) -> Result<String, String> {
+    // A2-05: Backend password minimum length check
+    if password.len() < 8 {
+        return Err("Password must be at least 8 characters".into());
+    }
     let pwd = SecretString::from(password);
 
     // Generate random keys
@@ -1134,6 +1138,10 @@ pub async fn vault_v2_change_password(
     old_password: String,
     new_password: String,
 ) -> Result<String, String> {
+    // A2-05: Backend password minimum length check
+    if new_password.len() < 8 {
+        return Err("Password must be at least 8 characters".into());
+    }
     let old_pwd = SecretString::from(old_password);
     let new_pwd = SecretString::from(new_password);
 

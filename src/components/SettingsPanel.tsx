@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Sparkles, Copy } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Copy } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -23,8 +23,6 @@ import { TotpSetup } from './TotpSetup';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
-import { useLicense } from '../hooks/useLicense';
-import LicenseTab from './LicenseTab';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -194,7 +192,7 @@ const defaultSettings: AppSettings = {
     launchOnStartup: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy' | 'license';
+type TabId = 'general' | 'connection' | 'servers' | 'transfers' | 'filehandling' | 'cloudproviders' | 'ui' | 'security' | 'backup' | 'privacy';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -560,7 +558,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'security', label: t('settings.security'), icon: <Lock size={16} /> },
         { id: 'backup', label: t('settings.backup'), icon: <Key size={16} /> },
         { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
-        ...(import.meta.env.DEV ? [{ id: 'license' as TabId, label: t('license.title'), icon: <Sparkles size={16} /> }] : []),
     ];
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
@@ -1537,6 +1534,57 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         >
                                                             {t('common.cancel')}
                                                         </button>
+                                                        {servers.some(s => s.id === editingServer.id) && (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                                                                    // Auto-rename if name unchanged
+                                                                    const original = servers.find(s => s.id === editingServer.id);
+                                                                    const finalName = (original && editingServer.name === original.name)
+                                                                        ? `${editingServer.name} (${t('common.copy')})`
+                                                                        : editingServer.name;
+
+                                                                    let hasStoredCredential = false;
+                                                                    if (editingServer.password) {
+                                                                        try {
+                                                                            await invoke('store_credential', { account: `server_${newId}`, password: editingServer.password });
+                                                                            hasStoredCredential = true;
+                                                                        } catch { /* re-enter later */ }
+                                                                    } else if (original?.hasStoredCredential) {
+                                                                        // Copy credential from vault
+                                                                        try {
+                                                                            const pwd = await invoke<string>('get_credential', { account: `server_${original.id}` });
+                                                                            if (pwd) {
+                                                                                await invoke('store_credential', { account: `server_${newId}`, password: pwd });
+                                                                                hasStoredCredential = true;
+                                                                            }
+                                                                        } catch { /* re-enter later */ }
+                                                                    }
+
+                                                                    const newServer = {
+                                                                        ...editingServer,
+                                                                        id: newId,
+                                                                        name: finalName,
+                                                                        password: undefined,
+                                                                        hasStoredCredential,
+                                                                        lastConnected: undefined,
+                                                                    };
+                                                                    const updatedServers = [...servers, newServer];
+                                                                    setServers(updatedServers);
+                                                                    localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
+                                                                    secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => { });
+                                                                    setEditingServer(null);
+                                                                    setShowEditPassword(false);
+                                                                    setHasChanges(true);
+                                                                    onServersChanged?.();
+                                                                }}
+                                                                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-1.5"
+                                                                title={t('connection.saveAsNew')}
+                                                            >
+                                                                <Copy size={14} />
+                                                                {t('connection.saveAsNew')}
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={async () => {
                                                                 const exists = servers.some(s => s.id === editingServer.id);
@@ -3311,9 +3359,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 </div>
                             )}
 
-                            {activeTab === 'license' && (
-                                <LicenseTab />
-                            )}
                         </div>
                     </div>
 

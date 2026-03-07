@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -723,6 +723,60 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             // Connect mode: just connect without saving
             onConnect();
         }
+    };
+
+    const handleSaveAsNew = async () => {
+        if (!protocol || !editingProfileId) return;
+        // Validate name is different
+        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+        const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
+        const newName = connectionName || connectionParams.server || protocol;
+        if (originalServer && newName === originalServer.name) {
+            // Auto-append "(Copy)" if user didn't change the name
+            setConnectionName(`${newName} (${t('common.copy')})`);
+        }
+        const finalName = (originalServer && newName === originalServer.name)
+            ? `${newName} (${t('common.copy')})`
+            : newName;
+
+        const normalizedParams = protocol === 'filelu'
+            ? { ...connectionParams, server: connectionParams.server || 'filelu.com', username: connectionParams.username || 'api-key', port: connectionParams.port || 443 }
+            : connectionParams;
+
+        const optionsToSave = { ...connectionParams.options };
+        if (protocol === 'mega') {
+            optionsToSave.session_expires_at = Date.now() + 24 * 60 * 60 * 1000;
+        }
+
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+        const newServer: ServerProfile = {
+            id: newId,
+            name: finalName,
+            host: normalizedParams.server,
+            port: normalizedParams.port || getDefaultPort(protocol),
+            username: normalizedParams.username,
+            hasStoredCredential: credentialStored,
+            protocol: protocol as ProviderType,
+            initialPath: quickConnectDirs.remoteDir,
+            localInitialPath: quickConnectDirs.localDir,
+            options: optionsToSave,
+            providerId: selectedProviderId || undefined,
+            customIconUrl: customIconForSave,
+        };
+
+        const newServers = [...existingServers, newServer];
+        localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(newServers));
+        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+        setSavedServersUpdate(Date.now());
+
+        // Reset form
+        setEditingProfileId(null);
+        editingProfileIdRef.current = null;
+        setConnectionName('');
+        setSaveConnection(false);
+        onConnectionParamsChange({ server: '', username: '', password: '' });
+        onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
     };
 
     const handleEdit = async (profile: ServerProfile) => {
@@ -2415,6 +2469,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     title={t('connection.cancelEditing')}
                                                 >
                                                     <X size={20} />
+                                                </button>
+                                            )}
+                                            {editingProfileId && (
+                                                <button
+                                                    onClick={handleSaveAsNew}
+                                                    className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2"
+                                                    title={t('connection.saveAsNew')}
+                                                >
+                                                    <Copy size={18} />
                                                 </button>
                                             )}
                                             <button

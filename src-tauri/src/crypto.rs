@@ -7,13 +7,15 @@
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use aes_gcm::aead::generic_array::GenericArray;
 use argon2::Argon2;
+use secrecy::zeroize::Zeroizing;
 
 pub const ARGON2_MEM_COST: u32 = 65536; // 64MB
 pub const ARGON2_TIME_COST: u32 = 3;
 pub const ARGON2_PARALLELISM: u32 = 4;
 
 /// Derive a 256-bit key from password + salt using Argon2id
-pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+/// A2-02: Returns Zeroizing wrapper for automatic key zeroization on drop
+pub fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
     let params = argon2::Params::new(
         ARGON2_MEM_COST,
         ARGON2_TIME_COST,
@@ -26,7 +28,7 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     let mut key = [0u8; 32];
     argon2.hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| format!("Argon2 derive: {}", e))?;
-    Ok(key)
+    Ok(Zeroizing::new(key))
 }
 
 /// Encrypt plaintext using AES-256-GCM
@@ -58,7 +60,8 @@ pub fn derive_from_passphrase(passphrase: &[u8]) -> [u8; 32] {
 
 /// Derive master key from user password using Argon2id with strong parameters (128 MiB)
 /// Used for master password mode where human password has low entropy
-pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+/// A2-02: Returns Zeroizing wrapper for automatic key zeroization on drop
+pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
     let params = argon2::Params::new(
         131072, // 128 MiB
         4,      // t=4
@@ -70,7 +73,7 @@ pub fn derive_key_strong(password: &str, salt: &[u8]) -> Result<[u8; 32], String
     let mut key = [0u8; 32];
     argon2.hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| format!("Argon2 derive: {}", e))?;
-    Ok(key)
+    Ok(Zeroizing::new(key))
 }
 
 /// Generate cryptographically secure random bytes using OS entropy

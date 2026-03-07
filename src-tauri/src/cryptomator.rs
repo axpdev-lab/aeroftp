@@ -537,10 +537,13 @@ fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) ->
 pub async fn cryptomator_unlock(
     state: tauri::State<'_, CryptomatorState>,
     vault_path: String,
-    password: String,
+    mut password: String,
 ) -> Result<CryptomatorVaultInfo, String> {
+    crate::filesystem::validate_path(&vault_path)?;
     let path = Path::new(&vault_path);
-    let (vault, config) = unlock_vault_inner(path, &password)?;
+    let result = unlock_vault_inner(path, &password);
+    password.zeroize();
+    let (vault, config) = result?;
 
     let vault_id = uuid::Uuid::new_v4().to_string();
     let name = path.file_name()
@@ -590,6 +593,7 @@ pub async fn cryptomator_decrypt_file(
     filename: String,
     output_path: String,
 ) -> Result<String, String> {
+    crate::filesystem::validate_path(&output_path)?;
     let vaults = state.vaults.lock().await;
     let vault = vaults.get(&vault_id)
         .ok_or("Vault not unlocked")?;
@@ -604,6 +608,7 @@ pub async fn cryptomator_encrypt_file(
     dir_id: String,
     input_path: String,
 ) -> Result<String, String> {
+    crate::filesystem::validate_path(&input_path)?;
     let vaults = state.vaults.lock().await;
     let vault = vaults.get(&vault_id)
         .ok_or("Vault not unlocked")?;
@@ -611,7 +616,7 @@ pub async fn cryptomator_encrypt_file(
 }
 
 #[tauri::command]
-pub async fn cryptomator_create(vault_path: String, password: String) -> Result<String, String> {
+pub async fn cryptomator_create(vault_path: String, mut password: String) -> Result<String, String> {
     use base64::Engine;
     use hmac::{Hmac, Mac};
     use rand::RngCore;
@@ -619,13 +624,8 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
 
     let b64 = base64::engine::general_purpose::STANDARD;
 
-    // Validate path: reject traversal components
-    use std::path::Component;
-    for component in std::path::Path::new(&vault_path).components() {
-        if matches!(component, Component::ParentDir) {
-            return Err("Path traversal not allowed".to_string());
-        }
-    }
+    // Validate path with centralized validator (includes traversal, null bytes, length)
+    crate::filesystem::validate_path(&vault_path)?;
 
     // Validate password minimum length
     if password.len() < 8 {
@@ -736,12 +736,13 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
     fs::create_dir_all(&root_dir_path)
         .map_err(|e| format!("Failed to create root directory: {}", e))?;
 
-    // Zeroize all key material before returning
+    // Zeroize all key material and password before returning
     enc_key.zeroize();
     mac_key.zeroize();
     kek.zeroize();
     salt.zeroize();
     jwt_signing_key.zeroize();
+    password.zeroize();
 
     Ok("Vault created successfully".to_string())
 }

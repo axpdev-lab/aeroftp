@@ -214,7 +214,10 @@ impl VaultKeyFile {
     fn write(&self) -> Result<(), CredentialError> {
         let path = Self::path()?;
         let data = self.to_bytes();
-        std::fs::write(&path, &data)?;
+        // A2-01: Atomic write via temp+rename to prevent corruption on crash
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &data)?;
+        std::fs::rename(&tmp_path, &path)?;
         ensure_secure_permissions(&path)?;
         Ok(())
     }
@@ -291,9 +294,11 @@ impl CredentialStore {
         let dir = config_dir()?;
 
         // Generate 64-byte random passphrase (512 bits of entropy)
-        let passphrase_bytes = crate::crypto::random_bytes(PASSPHRASE_LEN);
+        let mut passphrase_bytes = crate::crypto::random_bytes(PASSPHRASE_LEN);
         let mut passphrase = [0u8; PASSPHRASE_LEN];
         passphrase.copy_from_slice(&passphrase_bytes);
+        // A2-03: Zeroize intermediate buffer immediately
+        passphrase_bytes.zeroize();
 
         // Write vault.key in auto mode
         let key_file = VaultKeyFile {
@@ -305,6 +310,9 @@ impl CredentialStore {
         let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
         let vault_path = dir.join(VAULT_FILENAME);
         Self::create_empty_vault(&vault_path, &vault_key)?;
+
+        // A2-03: Zeroize passphrase after use
+        passphrase.zeroize();
 
         // Cache vault key in memory
         Self::open_and_cache(vault_path, vault_key)?;
@@ -499,8 +507,15 @@ impl CredentialStore {
 
     // ---- CRUD Operations ----
 
+    // A2-07: Reserved account names that must not be overwritten by external callers
+    const RESERVED_KEYS: &[&str] = &["totp_secret", "master_password_hash", "vault_key"];
+
     /// Store a credential
     pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        // A2-07: Prevent overwriting system-reserved keys
+        if Self::RESERVED_KEYS.contains(&account) {
+            return Err(CredentialError::Encryption("Reserved account name".to_string()));
+        }
         let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         let nonce = crate::crypto::random_bytes(12);
@@ -555,7 +570,10 @@ impl CredentialStore {
     fn write_vault(path: &Path, vault: &VaultFile) -> Result<(), CredentialError> {
         let data = serde_json::to_vec_pretty(vault)
             .map_err(|e| CredentialError::Serialization(e.to_string()))?;
-        std::fs::write(path, &data)?;
+        // A2-01: Atomic write via temp+rename to prevent corruption on crash
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &data)?;
+        std::fs::rename(&tmp_path, path)?;
         ensure_secure_permissions(path)?;
         Ok(())
     }

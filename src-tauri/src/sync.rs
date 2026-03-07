@@ -1368,12 +1368,12 @@ pub fn load_multi_path_config() -> MultiPathConfig {
     }
 }
 
-/// Save multi-path config to disk
+/// Save multi-path config to disk (atomic temp+rename)
 pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
     let dir = dirs::config_dir().unwrap_or_default().join("aeroftp");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("multi_path.json"), data).map_err(|e| e.to_string())
+    atomic_write(&dir.join("multi_path.json"), data.as_bytes())
 }
 
 // =============================

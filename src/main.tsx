@@ -4,7 +4,6 @@ import App from './App';
 import { I18nProvider } from './i18n';
 import { ActivityLogProvider } from './hooks/useActivityLog';
 import { IconThemeProvider } from './hooks/useIconTheme';
-import { LicenseProvider } from './hooks/useLicense';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loader } from '@monaco-editor/react';
 import './styles.css';
@@ -24,13 +23,11 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <I18nProvider>
       <ErrorBoundary>
-        <LicenseProvider>
-          <ActivityLogProvider>
-            <IconThemeProvider>
-              <App />
-            </IconThemeProvider>
-          </ActivityLogProvider>
-        </LicenseProvider>
+        <ActivityLogProvider>
+          <IconThemeProvider>
+            <App />
+          </IconThemeProvider>
+        </ActivityLogProvider>
       </ErrorBoundary>
     </I18nProvider>
   </React.StrictMode>

@@ -74,8 +74,9 @@ pub fn export_profiles(
     password: &str,
     file_path: &Path,
 ) -> Result<ExportMetadata, ExportError> {
+    // A2-06: Use strong KDF (128 MiB) — same strength as vault
     let salt = crate::crypto::random_bytes(32);
-    let key = crate::crypto::derive_key(password, &salt)
+    let key = crate::crypto::derive_key_strong(password, &salt)
         .map_err(ExportError::Encryption)?;
 
     let metadata = ExportMetadata {
@@ -101,7 +102,15 @@ pub fn export_profiles(
     };
 
     let file_data = serde_json::to_vec_pretty(&export_file)?;
-    std::fs::write(file_path, file_data)?;
+    // A2-08: Atomic write (temp+rename) + secure permissions
+    let tmp_path = file_path.with_extension("tmp");
+    std::fs::write(&tmp_path, &file_data)?;
+    std::fs::rename(&tmp_path, file_path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(file_path, std::fs::Permissions::from_mode(0o600));
+    }
 
     Ok(metadata)
 }
@@ -117,10 +126,18 @@ pub fn import_profiles(
         return Err(ExportError::UnsupportedVersion(export_file.version));
     }
 
-    let key = crate::crypto::derive_key(password, &export_file.salt)
+    // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
+    let key_strong = crate::crypto::derive_key_strong(password, &export_file.salt)
         .map_err(ExportError::Encryption)?;
-    let payload_json = crate::crypto::decrypt_aes_gcm(&key, &export_file.nonce, &export_file.encrypted_payload)
-        .map_err(|_| ExportError::InvalidPassword)?;
+    let payload_json = match crate::crypto::decrypt_aes_gcm(&key_strong, &export_file.nonce, &export_file.encrypted_payload) {
+        Ok(data) => data,
+        Err(_) => {
+            let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
+                .map_err(ExportError::Encryption)?;
+            crate::crypto::decrypt_aes_gcm(&key_legacy, &export_file.nonce, &export_file.encrypted_payload)
+                .map_err(|_| ExportError::InvalidPassword)?
+        }
+    };
 
     let payload: ExportPayload = serde_json::from_slice(&payload_json)?;
 

@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use secrecy::{ExposeSecret, SecretString};
+use secrecy::zeroize::Zeroize;
 use std::fs::File;
 use std::io::{Read, Write};
 use zip::write::SimpleFileOptions;
@@ -135,7 +136,12 @@ pub async fn vault_add_files(
     let meta = update_meta_count(&existing);
 
     // Rebuild vault
-    write_vault(&vault_path, &pwd, &existing, &meta)
+    let result = write_vault(&vault_path, &pwd, &existing, &meta);
+    // A2-04: Zeroize decrypted entry buffers after re-encryption
+    for (_, data) in &mut existing {
+        data.zeroize();
+    }
+    result
 }
 
 /// Remove a file from an AeroVault (rebuilds the archive)
@@ -156,7 +162,12 @@ pub async fn vault_remove_file(
     }
 
     let meta = update_meta_count(&existing);
-    write_vault(&vault_path, &pwd, &existing, &meta)
+    let result = write_vault(&vault_path, &pwd, &existing, &meta);
+    // A2-04: Zeroize decrypted entry buffers after re-encryption
+    for (_, data) in &mut existing {
+        data.zeroize();
+    }
+    result
 }
 
 /// Extract a single file from vault
@@ -180,9 +191,14 @@ pub async fn vault_change_password(
     let old_pwd = SecretString::from(old_password);
     let new_pwd = SecretString::from(new_password);
 
-    let existing = read_all_entries(&vault_path, &old_pwd)?;
+    let mut existing = read_all_entries(&vault_path, &old_pwd)?;
     let meta = update_meta_count(&existing);
-    write_vault(&vault_path, &new_pwd, &existing, &meta)
+    let result = write_vault(&vault_path, &new_pwd, &existing, &meta);
+    // A2-04: Zeroize decrypted entry buffers after re-encryption
+    for (_, data) in &mut existing {
+        data.zeroize();
+    }
+    result
 }
 
 // ─── Internal helpers ──────────────────────────────────────────────────────────

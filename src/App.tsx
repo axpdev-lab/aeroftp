@@ -109,7 +109,6 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import NagBanner from './components/NagBanner';
 import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
@@ -196,6 +195,11 @@ const App: React.FC = () => {
   );
 
   const [isConnected, setIsConnected] = useState(false);
+  // A6-01: Refs for menu-event listener to avoid stale closures
+  const isConnectedRef = useRef(false);
+  const currentLocalPathRef = useRef('');
+  const themeRef = useRef<Theme>('dark');
+  const debugModeRef = useRef(false);
   const [showRemotePanel, setShowRemotePanel] = useState(true);
   const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
   const previewResizing = useRef(false);
@@ -1496,7 +1500,13 @@ const App: React.FC = () => {
     }
   }, [updateAvailable, activityLog]);
 
-  // Menu events from native menu
+  // A6-01: Keep refs in sync for menu-event listener (avoids stale closures)
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+  useEffect(() => { currentLocalPathRef.current = currentLocalPath; }, [currentLocalPath]);
+  useEffect(() => { themeRef.current = theme; }, [theme]);
+  useEffect(() => { debugModeRef.current = debugMode; }, [debugMode]);
+
+  // Menu events from native menu — registered once, reads from refs to avoid stale closures
   useEffect(() => {
     const unlisten = listen<string>('menu-event', (event) => {
       const id = event.payload;
@@ -1506,25 +1516,25 @@ const App: React.FC = () => {
         case 'shortcuts': setShowShortcutsDialog(true); break;
         case 'settings': setShowSettingsPanel(true); break;
         case 'refresh':
-          if (isConnected) loadRemoteFiles();
-          loadLocalFiles(currentLocalPath);
+          if (isConnectedRef.current) loadRemoteFiles();
+          loadLocalFiles(currentLocalPathRef.current);
           break;
         case 'toggle_theme': {
           const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
-          const nextTheme = order[(order.indexOf(theme) + 1) % order.length];
+          const nextTheme = order[(order.indexOf(themeRef.current) + 1) % order.length];
           setTheme(nextTheme);
           // Icon theme auto-syncs via useEffect above
           break;
         }
         case 'new_folder':
-          if (isConnected) createFolder(true);
+          if (isConnectedRef.current) createFolder(true);
           break;
         case 'toggle_devtools':
           setDevToolsOpen(prev => !prev);
           break;
         case 'toggle_debug_mode':
           // L53: In production, debug mode is only auto-enabled by Cyber theme
-          if (import.meta.env.DEV) setDebugMode(!debugMode);
+          if (import.meta.env.DEV) setDebugMode(prev => !prev);
           break;
         case 'show_dependencies':
           setShowDependenciesPanel(true);
@@ -1544,7 +1554,8 @@ const App: React.FC = () => {
       }
     });
     return () => { unlisten.then(fn => fn()); };
-  }, [isConnected, currentLocalPath, theme, debugMode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // AeroAgent app tool events — theme switching + sync control
   useEffect(() => {
@@ -7810,9 +7821,6 @@ const App: React.FC = () => {
           isVisible={showDependenciesPanel}
           onClose={() => setShowDependenciesPanel(false)}
         />
-
-        {/* License nag banner for free users (dev-only until license system goes live) */}
-        {import.meta.env.DEV && <NagBanner />}
       </div>
     </>
   );

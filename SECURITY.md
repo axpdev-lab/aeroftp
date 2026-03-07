@@ -121,7 +121,7 @@ The v2.0.8 cycle closes key remediation items from the GPT-5.3 security review w
 | **SFTP trust model** | Host-key verification follows fail-closed behavior — mismatch/verification errors abort connection instead of allowing insecure continuation |
 | **Plugin execution safety** | Plugin shell execution path hardened to reduce shell-injection surface and keep command execution constrained to validated plugin context |
 | **Terminal guardrails** | Destructive-command denylist enforced in terminal tool execution path to reduce accidental high-risk operations |
-| **CSP baseline** | Explicit `csp` and `devCsp` profiles introduced with compatibility-first posture (`dangerousDisableAssetCspModification: true`) to avoid WebKit regressions while enabling staged tightening |
+| **CSP baseline** | Explicit `csp` and `devCsp` profiles with `dangerousDisableAssetCspModification: true` (required by Monaco/xterm). `connect-src` hardened to `'self' ipc: blob:` only — no wildcard `https:` (v2.8.7). `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'` |
 | **Release evidence** | Security change evidence tracked in `docs/security-evidence/` for auditable release-by-release verification |
 
 ### Keystore Backup and Restore (v1.9.0)
@@ -131,7 +131,7 @@ AeroFTP v1.9.0 introduces full vault export/import for disaster recovery and dev
 | Feature | Details |
 | ------- | ------- |
 | **Export format** | `.aeroftp-keystore` binary file |
-| **Encryption** | Argon2id (64 MB, t=3, p=4) + AES-256-GCM with user-chosen backup password |
+| **Encryption** | Argon2id (128 MiB, t=4, p=4) + AES-256-GCM with user-chosen backup password |
 | **Contents** | Complete vault snapshot: server credentials, connection profiles, AI API keys, OAuth tokens, config entries |
 | **Category tracking** | Export summary shows count per category (e.g., "12 server credentials, 3 AI keys, 5 OAuth tokens") |
 | **Import merge strategies** | **Skip existing**: only import entries not already in the vault. **Overwrite all**: replace all entries with backup data |
@@ -248,7 +248,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 ### AI Tool Security (v1.6.0+)
 
-- **Tool name whitelist**: 48 allowed tool names accepted by the backend (47 built-in + `agent_memory_write`). TOTP verification uses single `Mutex<TotpInner>` with rate limiting (5 attempts → exponential lockout 30s-15min)
+- **Tool name whitelist**: 48 allowed tool names accepted by the backend (47 built-in + `agent_memory_write`). Extreme Mode circuit breaker: 3 consecutive errors halt autonomous execution (v2.8.7). TOTP verification uses single `Mutex<TotpInner>` with rate limiting (5 attempts → exponential lockout 30s-15min)
 - **Path validation**: Null byte rejection, path traversal prevention (component-level `..` detection via `std::path::Component::ParentDir`), 4096-char length limit. Applied in both `ai_tools.rs` (`validate_path`) and `context_intelligence.rs` (`validate_context_path`)
 - **Tool argument validation** (v2.0.x): Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits before tool execution
 - **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries, agent memory 50KB, config files 5MB
@@ -276,14 +276,16 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 - Tokens refreshed automatically on tab switching with proper PKCE re-authentication
 - Stale quota/connection state cleared before reconnection
 
-### Auto-Update Security (v2.4.0)
+### Auto-Update Security (v2.4.0+)
 
-AeroFTP's in-app update for .deb/.rpm uses a branded Polkit authentication dialog:
+AeroFTP's in-app update for .deb/.rpm uses a branded Polkit authentication dialog with defense-in-depth hardening:
 
+- **URL whitelist** (v2.8.7): `download_update()` only accepts URLs from `https://github.com/AXP-OS/AeroFTP/releases/` and `https://objects.githubusercontent.com/`. Blocks XSS-to-download-to-root-RCE attack chain
+- **Path validation** (v2.8.7): `validate_update_path()` canonicalizes the downloaded file path and verifies it resides in `~/Downloads/` or system temp directory before `pkexec` execution
 - **Custom Polkit policy** (`com.aeroftp.update.install`): Shows AeroFTP icon, vendor info, and localized description instead of generic "authenticate to run dpkg" prompt
 - **Helper script** (`/usr/lib/aeroftp/aeroftp-update-helper`): Path-validated wrapper that only accepts packages from `~/Downloads/`, `/tmp/`, or `/var/tmp/`. Rejects all other paths. Only `.deb` and `.rpm` extensions accepted
 - **Fallback**: If the Polkit helper is not installed (e.g., manual build), falls back to generic `pkexec dpkg -i`
-- **Restart isolation**: Post-install relaunch uses a detached shell process (`sh -c "sleep 1 && exec /usr/bin/aeroftp"`) to ensure the old process fully exits before the new one starts, preventing resource conflicts
+- **Restart isolation**: Post-install relaunch uses `setsid` via `pre_exec` to create an independent session surviving parent exit
 - **Snap/AppImage**: These formats do not use pkexec — Snap auto-updates via snapd, AppImage self-replaces user-owned file
 
 ---
@@ -360,6 +362,7 @@ An independent security audit report is available, generated by [Aikido Security
 | **TOTP 2FA for Vault** | Optional RFC 6238 TOTP second factor with rate limiting (exponential backoff), `setup_verified` gate, zeroized secret bytes, single Mutex atomic state |
 | **Remote Vault Security** | Null byte validation, path traversal rejection, symlink detection, `canonicalize()` verification, Unix 0o600 permissions, error propagation on all writes |
 | **Chat History SQLite** | SQLite WAL + FTS5 full-text search with XSS-safe snippet rendering, FTS query injection prevention, retention auto-apply, dedicated clear-all, in-memory fallback |
+| **Security Audit (v2.8.7)** | Cross-audit reaching grade A- (Claude Opus 4.6 8-area audit + GPT-5.4 counter-audit). 45+ findings resolved: updater URL whitelist, CSP connect-src hardened, KDF upgrade (128 MiB), credential zeroization at all call sites, OAuth1 Drop+zeroize, atomic writes, Extreme Mode circuit breaker, GitHub Actions SHA pinning |
 | **Security Audit (v2.4.0)** | 12-auditor 4-phase provider integration audit (Capabilities, Security GPT-5.3, Integration Claude Opus, Bugs Terminator Counter-Audit). Grade: A-. Streaming upload OOM fix, SecretString for all 19 providers, quick-xml migration, FTP TLS downgrade detection |
 | **Security Audit (v2.3.0)** | 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — SQL injection prevention, XSS in FTS snippets, WAL mode hardening, retention enforcement |
 | **Security Audit (v2.2.4)** | 13 findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — TOTP, Remote Vault, modals, provider configs |
@@ -422,4 +425,4 @@ We gratefully acknowledge security researchers who help improve AeroFTP:
 
 *No reports yet — be the first!*
 
-*AeroFTP v2.8.0 - 4 March 2026*
+*AeroFTP v2.8.7 - 7 March 2026*

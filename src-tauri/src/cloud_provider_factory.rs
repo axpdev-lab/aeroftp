@@ -26,6 +26,20 @@ use tracing::info;
 /// - `"hostname/webdav/path:80"` → `("hostname/webdav/path", Some(80))` (CloudPanel bug)
 /// - `"hostname:80/webdav/path"` → `("hostname/webdav/path", Some(80))` (correct format)
 pub(crate) fn parse_server_field(server: &str) -> (String, Option<u16>) {
+    // A3-07: Handle IPv6 addresses in bracket notation: [::1]:22, [2001:db8::1]
+    if server.starts_with('[') {
+        if let Some(bracket_end) = server.find(']') {
+            let host = &server[1..bracket_end];
+            let rest = &server[bracket_end + 1..];
+            let port = if let Some(stripped) = rest.strip_prefix(':') {
+                stripped.split('/').next().and_then(|p| p.parse::<u16>().ok())
+            } else {
+                None
+            };
+            return (host.to_string(), port);
+        }
+    }
+
     // If server contains a path (slash), handle host:port/path vs host/path:port
     if let Some(slash_pos) = server.find('/') {
         let host_part = &server[..slash_pos];
@@ -154,7 +168,7 @@ async fn create_via_factory(
         .and_then(|p| p.parse::<u16>().ok())
         .or(embedded_port);
 
-    let provider_config = ProviderConfig {
+    let mut provider_config = ProviderConfig {
         name: config.cloud_name.clone(),
         provider_type,
         host: parsed_host.clone(),
@@ -167,6 +181,8 @@ async fn create_via_factory(
 
     let mut provider = ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
+    // A3-05: Zeroize password after it has been consumed by the provider
+    provider_config.zeroize_password();
 
     info!("AeroCloud: connecting via {:?} to {}", provider_type, parsed_host);
     provider
@@ -342,5 +358,27 @@ mod tests {
         let (host, port) = parse_server_field("192.168.1.100");
         assert_eq!(host, "192.168.1.100");
         assert_eq!(port, None);
+    }
+
+    // A3-07: IPv6 address support
+    #[test]
+    fn test_parse_server_field_ipv6_with_port() {
+        let (host, port) = parse_server_field("[::1]:22");
+        assert_eq!(host, "::1");
+        assert_eq!(port, Some(22));
+    }
+
+    #[test]
+    fn test_parse_server_field_ipv6_no_port() {
+        let (host, port) = parse_server_field("[2001:db8::1]");
+        assert_eq!(host, "2001:db8::1");
+        assert_eq!(port, None);
+    }
+
+    #[test]
+    fn test_parse_server_field_ipv6_full_with_port() {
+        let (host, port) = parse_server_field("[fe80::1%25eth0]:8080");
+        assert_eq!(host, "fe80::1%25eth0");
+        assert_eq!(port, Some(8080));
     }
 }

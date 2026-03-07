@@ -68,6 +68,9 @@ struct SshShellSession {
     channel_id: ChannelId,
 }
 
+/// Maximum concurrent SSH shell sessions (matches PTY limit)
+const MAX_SSH_SESSIONS: usize = 20;
+
 /// Global state for SSH shell sessions
 pub struct SshShellState {
     sessions: HashMap<String, SshShellSession>,
@@ -145,6 +148,17 @@ pub async fn ssh_shell_open(
 
     if !authenticated {
         return Err("SSH authentication failed".to_string());
+    }
+
+    // Enforce session limit
+    {
+        let mgr = state.lock().await;
+        if mgr.sessions.len() >= MAX_SSH_SESSIONS {
+            return Err(format!(
+                "SSH session limit reached ({} max). Close existing sessions first.",
+                MAX_SSH_SESSIONS
+            ));
+        }
     }
 
     // Open shell channel with PTY

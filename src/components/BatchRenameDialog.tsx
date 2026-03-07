@@ -11,6 +11,11 @@ import { useState, useMemo, useEffect } from 'react';
 import { Replace, Plus, Hash, AlertTriangle, X, Check, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
+/** A4-10: Validate filename — reject path separators, null bytes, and dot-only names */
+function isValidFilename(name: string): boolean {
+  return !/[/\\\0]/.test(name) && name !== '.' && name !== '..' && name.trim().length > 0;
+}
+
 export type RenameMode = 'findReplace' | 'addPrefix' | 'addSuffix' | 'sequential';
 
 export interface BatchRenameFile {
@@ -119,12 +124,42 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
           break;
       }
 
-      if (newName !== file.name && newName.trim()) {
+      if (newName !== file.name && newName.trim() && isValidFilename(newName)) {
         result.set(file.path, newName);
       }
     });
 
     return result;
+  }, [files, mode, findText, replaceText, prefix, suffix, baseName, startNumber, padding, caseSensitive]);
+
+  // A4-10: Detect invalid filenames (path separators, null bytes, dot-only names)
+  const invalidNames = useMemo(() => {
+    const invalid = new Map<string, string>();
+    files.forEach((file, index) => {
+      const [nameNoExt, ext] = splitNameExt(file.name, file.isDir);
+      let newName = file.name;
+      switch (mode) {
+        case 'findReplace':
+          if (findText) {
+            const escapedFind = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = caseSensitive ? new RegExp(escapedFind, 'g') : new RegExp(escapedFind, 'gi');
+            newName = file.name.replace(regex, replaceText);
+          }
+          break;
+        case 'addPrefix': if (prefix) newName = prefix + file.name; break;
+        case 'addSuffix': if (suffix) newName = nameNoExt + suffix + ext; break;
+        case 'sequential':
+          if (baseName) {
+            const num = (startNumber + index).toString().padStart(padding, '0');
+            newName = `${baseName}_${num}${ext}`;
+          }
+          break;
+      }
+      if (newName !== file.name && !isValidFilename(newName)) {
+        invalid.set(file.path, newName);
+      }
+    });
+    return invalid;
   }, [files, mode, findText, replaceText, prefix, suffix, baseName, startNumber, padding, caseSensitive]);
 
   // Detect naming conflicts
@@ -144,10 +179,11 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
   }, [renames]);
 
   const hasConflicts = conflicts.size > 0;
+  const hasInvalidNames = invalidNames.size > 0;
   const hasChanges = renames.size > 0;
 
   const handleConfirm = async () => {
-    if (hasConflicts || !hasChanges) return;
+    if (hasConflicts || hasInvalidNames || !hasChanges) return;
     setIsProcessing(true);
     try {
       await onConfirm(renames);
@@ -356,29 +392,33 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                 <tbody>
                   {files.map(file => {
                     const newName = renames.get(file.path);
+                    const invalidName = invalidNames.get(file.path);
                     const isConflict = newName && conflicts.has(newName);
+                    const isInvalid = !!invalidName;
                     const hasChange = !!newName;
 
                     return (
                       <tr
                         key={file.path}
                         className={`border-t border-gray-100 dark:border-gray-700 ${
-                          isConflict ? 'bg-red-50 dark:bg-red-900/20' : ''
+                          isConflict || isInvalid ? 'bg-red-50 dark:bg-red-900/20' : ''
                         }`}
                       >
                         <td className="px-2 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={file.name}>
                           {file.name}
                         </td>
                         <td className={`px-2 py-1 truncate max-w-[200px] ${
-                          isConflict
+                          isConflict || isInvalid
                             ? 'text-red-600 dark:text-red-400'
                             : hasChange
                               ? 'text-green-600 dark:text-green-400'
                               : 'text-gray-400'
-                        }`} title={newName || file.name}>
+                        }`} title={invalidName || newName || file.name}>
                           <span className="flex items-center gap-1">
-                            {isConflict && <AlertTriangle size={12} />}
-                            {newName || <span className="italic">{t('batchRename.noChange') || '(no change)'}</span>}
+                            {(isConflict || isInvalid) && <AlertTriangle size={12} />}
+                            {isInvalid
+                              ? <span className="italic">{invalidName} (invalid)</span>
+                              : newName || <span className="italic">{t('batchRename.noChange') || '(no change)'}</span>}
                           </span>
                         </td>
                       </tr>
@@ -408,7 +448,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={hasConflicts || !hasChanges || isProcessing}
+            disabled={hasConflicts || hasInvalidNames || !hasChanges || isProcessing}
             className="flex items-center gap-2 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
           >
             {isProcessing ? (

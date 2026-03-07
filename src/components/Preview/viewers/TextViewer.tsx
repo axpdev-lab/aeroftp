@@ -498,6 +498,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         <iframe
                             ref={iframeRef}
                             sandbox="allow-same-origin"
+                            referrerPolicy="no-referrer"
                             src={htmlBlobUrl || undefined}
                             srcDoc={!htmlBlobUrl ? (processedHtml || content) : undefined}
                             className="w-full h-full bg-white border border-gray-700 rounded"

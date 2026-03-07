@@ -7,7 +7,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use rand::Rng;
 use sha2::Digest;
-use secrecy::zeroize::Zeroize;
+// A2-02: Zeroize import removed — derive_key now returns Zeroizing<> wrapper
 
 use crate::filesystem::validate_path;
 
@@ -156,8 +156,8 @@ pub async fn crypto_encrypt_text(
     let mut nonce_bytes = [0u8; 12];
     rand::thread_rng().fill(&mut nonce_bytes);
 
-    // Derive 256-bit key from password via Argon2id
-    let mut key = crate::crypto::derive_key(&password, &salt)?;
+    // Derive 256-bit key from password via Argon2id (A2-02: auto-zeroized via Zeroizing wrapper)
+    let key = crate::crypto::derive_key(&password, &salt)?;
 
     // Encrypt
     let ciphertext = match algo.as_str() {
@@ -165,13 +165,11 @@ pub async fn crypto_encrypt_text(
             crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, plaintext.as_bytes())?
         }
         "chacha20-poly1305" => {
-            encrypt_chacha20(key, &nonce_bytes, plaintext.as_bytes())?
+            encrypt_chacha20(*key, &nonce_bytes, plaintext.as_bytes())?
         }
         _ => unreachable!(),
     };
-
-    // Zeroize key material
-    key.zeroize();
+    // key auto-zeroized on drop via Zeroizing wrapper
 
     // Format: $algo$base64(salt)$base64(nonce)$base64(ciphertext)
     Ok(format!(
@@ -211,8 +209,8 @@ pub async fn crypto_decrypt_text(
         return Err("Invalid nonce length".into());
     }
 
-    // Derive key
-    let mut key = crate::crypto::derive_key(&password, &salt)?;
+    // Derive key (A2-02: auto-zeroized via Zeroizing wrapper)
+    let key = crate::crypto::derive_key(&password, &salt)?;
 
     // Decrypt
     let plaintext = match algo {
@@ -220,15 +218,13 @@ pub async fn crypto_decrypt_text(
             crate::crypto::decrypt_aes_gcm(&key, &nonce_bytes, &ciphertext)?
         }
         "chacha20-poly1305" => {
-            decrypt_chacha20(key, &nonce_bytes, &ciphertext)?
+            decrypt_chacha20(*key, &nonce_bytes, &ciphertext)?
         }
         _ => {
-            key.zeroize();
             return Err(format!("Unknown algorithm: {}", algo));
         }
     };
-
-    key.zeroize();
+    // key auto-zeroized on drop via Zeroizing wrapper
 
     String::from_utf8(plaintext).map_err(|_| "Decrypted data is not valid UTF-8".into())
 }

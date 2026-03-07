@@ -102,6 +102,7 @@ export function useAIChatImages() {
     const handlePaste = useCallback((e: React.ClipboardEvent) => {
         const items = e.clipboardData?.items;
         if (items) {
+            let hasText = false;
             for (const item of Array.from(items)) {
                 if (item.type.startsWith('image/') && SUPPORTED_IMAGE_TYPES.includes(item.type)) {
                     e.preventDefault();
@@ -115,11 +116,13 @@ export function useAIChatImages() {
                     reader.readAsDataURL(blob);
                     return; // Only handle first image
                 }
+                if (item.type === 'text/plain') hasText = true;
             }
+            // Text in clipboard — let browser handle paste, skip arboard (avoids X11 timeout)
+            if (hasText) return;
         }
 
         // Fallback: read image from native clipboard via arboard (WebKitGTK support)
-        e.preventDefault();
         invoke<string | null>('clipboard_read_image').then(async (result) => {
             if (!result) return;
             const [wStr, hStr, ...rest] = result.split(':');

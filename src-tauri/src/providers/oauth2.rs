@@ -704,15 +704,26 @@ pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), 
 /// Returns (code, state) extracted from the callback request.
 pub async fn wait_for_callback(listener: tokio::net::TcpListener) -> Result<(String, String), ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    
-    let (mut socket, _): (tokio::net::TcpStream, _) = listener.accept()
-        .await
-        .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
-    
+    use tokio::time::{timeout, Duration};
+
+    // A3-01: Timeout on accept to prevent indefinite blocking if no callback arrives
+    let (mut socket, _): (tokio::net::TcpStream, _) = timeout(
+        Duration::from_secs(120),
+        listener.accept()
+    )
+    .await
+    .map_err(|_| ProviderError::Timeout)?
+    .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
+
     let mut buffer = vec![0u8; 4096];
-    let n: usize = socket.read(&mut buffer)
-        .await
-        .map_err(|e| ProviderError::Other(format!("Failed to read request: {}", e)))?;
+    // A3-01: Timeout on read to prevent slow-loris style attacks on the callback socket
+    let n: usize = timeout(
+        Duration::from_secs(30),
+        socket.read(&mut buffer)
+    )
+    .await
+    .map_err(|_| ProviderError::Other("OAuth callback read timed out after 30s".to_string()))?
+    .map_err(|e| ProviderError::Other(format!("Failed to read request: {}", e)))?;
     
     let request = String::from_utf8_lossy(&buffer[..n]);
     

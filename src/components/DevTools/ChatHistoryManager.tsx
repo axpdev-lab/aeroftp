@@ -3,6 +3,18 @@ import { Trash2, Database, Search, Calendar, X, AlertTriangle } from 'lucide-rea
 import { getChatStats, clearAllHistory, cleanupHistory, searchHistory, type ChatStats, type SearchResult } from '../../utils/chatHistory';
 import { useTranslation } from '../../i18n';
 
+/** Parse FTS snippet HTML with <mark> tags into safe React elements */
+function renderFtsSnippet(html: string): React.ReactNode[] {
+    const parts = html.split(/(<mark>.*?<\/mark>)/g);
+    return parts.map((part, i) => {
+        if (part.startsWith('<mark>') && part.endsWith('</mark>')) {
+            const text = part.slice(6, -7);
+            return <mark key={i} className="bg-purple-500/30 text-inherit rounded-sm">{text}</mark>;
+        }
+        return <span key={i}>{part}</span>;
+    });
+}
+
 interface ChatHistoryManagerProps {
     visible: boolean;
     onClose: () => void;
@@ -170,11 +182,10 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                                         {new Date(result.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
-                                {/* SEC-001/UX-001: Snippet is pre-sanitized by Rust backend */}
-                                <p
-                                    className="text-[11px] text-gray-900 dark:text-gray-100 line-clamp-2 [&_mark]:bg-purple-500/30 [&_mark]:text-inherit [&_mark]:rounded-sm"
-                                    dangerouslySetInnerHTML={{ __html: result.snippet }}
-                                />
+                                {/* SEC-001/UX-001: Safe React rendering — no dangerouslySetInnerHTML */}
+                                <p className="text-[11px] text-gray-900 dark:text-gray-100 line-clamp-2">
+                                    {renderFtsSnippet(result.snippet)}
+                                </p>
                             </button>
                         ))}
                     </div>

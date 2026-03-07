@@ -123,8 +123,9 @@ jobs:
           APPIMAGETOOL_SHA256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
           wget -q "$APPIMAGETOOL_URL" -O appimagetool
           echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c - || {
-            echo "::warning::appimagetool checksum mismatch — upstream may have updated the continuous build. Verify and update APPIMAGETOOL_SHA256 in build.yml."
+            echo "::error::appimagetool checksum mismatch — possible supply chain compromise. Update APPIMAGETOOL_SHA256 in build.yml after verification."
             echo "Actual checksum: $(sha256sum appimagetool | cut -d' ' -f1)"
+            exit 1
           }
           chmod +x appimagetool
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE"
@@ -215,7 +216,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Publish to WinGet
-        uses: vedantmgoyal9/winget-releaser@main
+        # A8-06: Pinned to SHA (v2 tag as of 2026-03-07)
+        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
         with:
           identifier: axpnet.AeroFTP
           installers-regex: '\.exe$|\.msi$'

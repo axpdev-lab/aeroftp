@@ -91,6 +91,7 @@ const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
 
 // Generate a signing key from a stored random secret + sync path pair (tamper detection)
 //
+// SECURITY: HMAC key in localStorage is tamper-detectable only, not tamper-proof.
 // M18 SECURITY TRADE-OFF: The journal signing secret is stored in localStorage, which means:
 // 1. It is accessible to any JS running in the WebView context (XSS risk if CSP is bypassed)
 // 2. It persists across sessions but is NOT encrypted at rest
