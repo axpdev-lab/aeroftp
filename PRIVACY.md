@@ -66,9 +66,9 @@ Updates to this privacy policy will be reflected in this document with an update
 ## Contact
 
 For privacy-related questions or concerns:
-- **Email**: dev@axp.net
+- **Email**: aeroftp@axpdev.it
 - **GitHub Issues**: https://github.com/axpnet/aeroftp/issues
 
 ---
 
-*AeroFTP v2.8.8 — An open source project by AXP.net*
+*AeroFTP v2.8.8 — An open source project by axpdev*
