@@ -9,17 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.8.9] - 2026-03-07
+## [2.9.0] - 2026-03-07
 
-### AeroVault Crate Extraction
+### Cloud Provider Audit & Security Hardening
 
-AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io, replacing 2100+ lines of inline crypto code with a single dependency.
+Comprehensive security audit closure with 6 GPT-5.4 residual findings resolved, AeroCloud multi-protocol rebrand, and AeroVault crate extraction to crates.io.
 
 #### Changed
 
 - **AeroVault crate dependency**: Replaced inline `aerovault_v2.rs` crypto implementation (562 → 14 lines of wrapper code) with `aerovault = "0.3"` from crates.io
 - **Removed direct crypto dependencies**: `aes-gcm-siv` and `subtle` crates removed from direct dependencies (now transitive via aerovault crate)
-- **AeroCloud description rebrand**: Removed "FTP-based" from all AeroCloud descriptions across code and 47 languages — AeroCloud now correctly reflects support for all 20 protocols
+- **AeroCloud multi-protocol rebrand**: Removed "FTP-based" from all AeroCloud descriptions across code and 47 languages — AeroCloud now correctly reflects support for all 20 protocols
 
 #### Added
 
@@ -36,6 +36,23 @@ AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https:/
 #### Security
 
 - **GPT-5.4 residual audit closure**: 6 of 11 remaining partial findings resolved (A5-06, A3-03, A3-05, A7-07, A1-07 fixed; A8-01 risk-accepted with documentation). Score: 29 fixed → 34 fixed, 5 partial, 1 open
+
+---
+
+## [2.8.9] - 2026-03-07
+
+### AeroVault Crate Extraction
+
+AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io, replacing 2100+ lines of inline crypto code with a single dependency.
+
+#### Changed
+
+- **AeroVault crate dependency**: Replaced inline `aerovault_v2.rs` crypto implementation (562 → 14 lines of wrapper code) with `aerovault = "0.3"` from crates.io
+- **Removed direct crypto dependencies**: `aes-gcm-siv` and `subtle` crates removed from direct dependencies (now transitive via aerovault crate)
+
+#### Added
+
+- **README AeroVault badges**: crates.io version and docs.rs badges added to AeroVault section with link to standalone crate
 
 ---
 
