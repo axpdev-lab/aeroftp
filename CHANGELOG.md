@@ -19,10 +19,23 @@ AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https:/
 
 - **AeroVault crate dependency**: Replaced inline `aerovault_v2.rs` crypto implementation (562 → 14 lines of wrapper code) with `aerovault = "0.3"` from crates.io
 - **Removed direct crypto dependencies**: `aes-gcm-siv` and `subtle` crates removed from direct dependencies (now transitive via aerovault crate)
+- **AeroCloud description rebrand**: Removed "FTP-based" from all AeroCloud descriptions across code and 47 languages — AeroCloud now correctly reflects support for all 20 protocols
 
 #### Added
 
 - **README AeroVault badges**: crates.io version and docs.rs badges added to AeroVault section with link to standalone crate
+
+#### Fixed
+
+- **A5-06 journal signing key**: Signing key for sync journal moved from `localStorage` to Tauri process-side storage (`~/.config/aeroftp/sync-journal/signing.key`). Derived per-path-pair via HMAC-SHA256. Eliminates XSS exfiltration risk
+- **A3-05 provider password zeroization**: `config.zeroize_password()` called after `ProviderFactory::create()` in session commands — password no longer persists in session config struct
+- **A7-07 Cryptomator SecretString**: `cryptomator_unlock` and `cryptomator_create` wrap password in `secrecy::SecretString` for automatic zeroization on drop
+- **A3-03 WebDAV insecure detection**: `connectionSecurity` in App.tsx now detects `http://` WebDAV servers and shows "Insecure" badge
+- **A1-07 shell denylist expanded**: `DENIED_COMMAND_PATTERNS` extended from 18 to 35 patterns — added crontab, nohup, systemctl, service, mount, umount, fdisk, parted, iptables, useradd, userdel, passwd, sudo, pkill, killall
+
+#### Security
+
+- **GPT-5.4 residual audit closure**: 6 of 11 remaining partial findings resolved (A5-06, A3-03, A3-05, A7-07, A1-07 fixed; A8-01 risk-accepted with documentation). Score: 29 fixed → 34 fixed, 5 partial, 1 open
 
 ---
 

@@ -7700,6 +7700,11 @@ const App: React.FC = () => {
               if (protocol === 'ftps') {
                 return verifyCert ? 'secure' as const : 'warning' as const;
               }
+              // A3-03: WebDAV over HTTP is insecure — credentials sent in plaintext
+              if (protocol === 'webdav') {
+                const server = connectionParams.server || activeSession?.connectionParams?.server || '';
+                if (server.startsWith('http://')) return 'insecure' as const;
+              }
               return 'secure' as const;
             })() : undefined}
             secureProtocol={isConnected ? (() => {

@@ -537,12 +537,13 @@ fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) ->
 pub async fn cryptomator_unlock(
     state: tauri::State<'_, CryptomatorState>,
     vault_path: String,
-    mut password: String,
+    password: String,
 ) -> Result<CryptomatorVaultInfo, String> {
     crate::filesystem::validate_path(&vault_path)?;
+    // A7-07: Wrap password in SecretString for automatic zeroization on drop
+    let secret_pwd = secrecy::SecretString::from(password);
     let path = Path::new(&vault_path);
-    let result = unlock_vault_inner(path, &password);
-    password.zeroize();
+    let result = unlock_vault_inner(path, secrecy::ExposeSecret::expose_secret(&secret_pwd));
     let (vault, config) = result?;
 
     let vault_id = uuid::Uuid::new_v4().to_string();
@@ -616,7 +617,7 @@ pub async fn cryptomator_encrypt_file(
 }
 
 #[tauri::command]
-pub async fn cryptomator_create(vault_path: String, mut password: String) -> Result<String, String> {
+pub async fn cryptomator_create(vault_path: String, password: String) -> Result<String, String> {
     use base64::Engine;
     use hmac::{Hmac, Mac};
     use rand::RngCore;
@@ -626,6 +627,10 @@ pub async fn cryptomator_create(vault_path: String, mut password: String) -> Res
 
     // Validate path with centralized validator (includes traversal, null bytes, length)
     crate::filesystem::validate_path(&vault_path)?;
+
+    // A7-07: Wrap password in SecretString for automatic zeroization on drop
+    let secret_pwd = secrecy::SecretString::from(password);
+    let password = secrecy::ExposeSecret::expose_secret(&secret_pwd);
 
     // Validate password minimum length
     if password.len() < 8 {
@@ -655,7 +660,7 @@ pub async fn cryptomator_create(vault_path: String, mut password: String) -> Res
     rng.fill_bytes(&mut salt);
 
     // Step 4: Derive KEK via scrypt (N=32768, r=8, p=1)
-    let mut kek = derive_kek(&password, &salt, 32768, 8)?;
+    let mut kek = derive_kek(password, &salt, 32768, 8)?;
 
     // Step 5: Wrap both keys with AES-KW
     let wrapped_enc = wrap_key(&kek, &enc_key)?;
@@ -736,13 +741,12 @@ pub async fn cryptomator_create(vault_path: String, mut password: String) -> Res
     fs::create_dir_all(&root_dir_path)
         .map_err(|e| format!("Failed to create root directory: {}", e))?;
 
-    // Zeroize all key material and password before returning
+    // Zeroize all key material before returning (password is auto-zeroized via SecretString drop)
     enc_key.zeroize();
     mac_key.zeroize();
     kek.zeroize();
     salt.zeroize();
     jwt_signing_key.zeroize();
-    password.zeroize();
 
     Ok("Vault created successfully".to_string())
 }

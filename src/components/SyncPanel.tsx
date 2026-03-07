@@ -89,31 +89,11 @@ const ERROR_KIND_ICONS: Record<SyncErrorKind, typeof WifiOff> = {
 
 // Constants imported from ./Sync/syncConstants
 
-// Generate a signing key from a stored random secret + sync path pair (tamper detection)
-//
-// SECURITY: HMAC key in localStorage is tamper-detectable only, not tamper-proof.
-// M18 SECURITY TRADE-OFF: The journal signing secret is stored in localStorage, which means:
-// 1. It is accessible to any JS running in the WebView context (XSS risk if CSP is bypassed)
-// 2. It persists across sessions but is NOT encrypted at rest
-// 3. It provides tamper-detection (not tamper-proof) for sync journals
-// The alternative would be storing it in the vault (credential_store), but that would require
-// the vault to be unlocked before any sync journal integrity check, which would break the UX
-// for auto-mode users who never set a master password. This is an acceptable trade-off because
-// the signing key only protects journal integrity, not confidentiality of user data.
+// A5-06 FIX: Journal signing key is now generated and stored process-side in
+// the Tauri backend (~/.config/aeroftp/sync-journal/signing.key), not in
+// localStorage. This prevents XSS from accessing the signing secret.
 async function getJournalSigningKey(localPath: string, remotePath: string): Promise<string> {
-    // Use a stored random secret + paths to derive the signing key
-    const STORAGE_KEY = 'aeroftp_journal_signing_secret';
-    let secret = localStorage.getItem(STORAGE_KEY);
-    if (!secret) {
-        // Generate a random 256-bit secret on first use
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
-        secret = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        localStorage.setItem(STORAGE_KEY, secret);
-    }
-    const data = new TextEncoder().encode(`${secret}|${localPath}|${remotePath}|aeroftp-journal-signing`);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return invoke<string>('get_journal_signing_key', { localPath, remotePath });
 }
 
 // Integrity status for a journal entry in the history list

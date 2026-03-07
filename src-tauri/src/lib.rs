@@ -5280,6 +5280,61 @@ async fn sync_canary_approve() -> Result<String, String> {
 // Signed Audit Log Commands
 // =============================
 
+/// Generate or retrieve a process-side journal signing key (A5-06 fix).
+/// The key is stored in the app config directory, NOT in localStorage.
+/// This prevents XSS from accessing the signing secret.
+#[tauri::command]
+async fn get_journal_signing_key(
+    local_path: String,
+    remote_path: String,
+) -> Result<String, String> {
+    validate_path(&local_path)?;
+    if remote_path.contains('\0') {
+        return Err("Remote path contains null bytes".to_string());
+    }
+
+    let key_dir = dirs::config_dir()
+        .ok_or_else(|| "Cannot determine config directory".to_string())?
+        .join("aeroftp")
+        .join("sync-journal");
+    tokio::fs::create_dir_all(&key_dir).await
+        .map_err(|e| format!("Failed to create journal dir: {}", e))?;
+
+    let key_file = key_dir.join("signing.key");
+
+    // Load existing key or generate a new one
+    let secret = if key_file.exists() {
+        tokio::fs::read_to_string(&key_file).await
+            .map_err(|e| format!("Failed to read signing key: {}", e))?
+    } else {
+        use rand::RngCore;
+        let mut bytes = [0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
+        let hex_key = hex::encode(bytes);
+        tokio::fs::write(&key_file, &hex_key).await
+            .map_err(|e| format!("Failed to write signing key: {}", e))?;
+        // Restrict permissions on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&key_file, perms).ok();
+        }
+        hex_key
+    };
+
+    // Derive per-path-pair key via HMAC-SHA256(secret, local|remote|salt)
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
+    let key_bytes = hex::decode(secret.trim())
+        .map_err(|e| format!("Invalid signing key: {}", e))?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key_bytes)
+        .map_err(|e| format!("HMAC key error: {}", e))?;
+    mac.update(data.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
 /// Sign an existing sync journal with HMAC-SHA256.
 /// Saves the hex-encoded signature as a .sig file alongside the journal.
 #[tauri::command]
@@ -7453,6 +7508,7 @@ pub fn run() {
             delta_sync_analyze,
             sync_canary_run,
             sync_canary_approve,
+            get_journal_signing_key,
             sign_sync_journal,
             verify_journal_signature,
             get_default_retry_policy,

@@ -1,4 +1,4 @@
-// AeroCloud Panel - Personal FTP-Based Cloud Sync
+// AeroCloud Panel - Personal Multi-Protocol Cloud Sync
 // Setup wizard, cloud dashboard, and sync controls
 
 import React, { useState, useEffect, useCallback } from 'react';

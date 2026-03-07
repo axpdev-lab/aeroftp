@@ -119,7 +119,7 @@ pub async fn session_connect(
         }
     }
 
-    let config = ProviderConfig {
+    let mut config = ProviderConfig {
         name: params.display_name.clone()
             .unwrap_or_else(|| format!("{}@{}", params.username, params.server)),
         provider_type,
@@ -134,11 +134,14 @@ pub async fn session_connect(
     // Create and connect provider
     let mut provider = ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
-    
+
+    // A3-05: Zeroize password from config after provider creation (password is now in provider internals)
+    config.zeroize_password();
+
     provider.connect().await
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    // Create session
+    // Create session (config no longer contains plaintext password)
     let session_info = state.create_session(
         params.session_id.clone(),
         provider,

@@ -21,7 +21,7 @@ pub enum ProviderType {
     WebDav,
     /// Amazon S3 and S3-compatible storage
     S3,
-    /// AeroCloud - Personal FTP-based cloud sync
+    /// AeroCloud - Personal multi-protocol cloud sync
     AeroCloud,
     /// Google Drive (OAuth2)
     GoogleDrive,
