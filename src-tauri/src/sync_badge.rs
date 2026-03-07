@@ -55,6 +55,7 @@ impl SyncBadgeState {
     }
 
     /// Convert to GIO emblem name
+    #[cfg(target_os = "linux")]
     pub fn to_emblem_name(self) -> &'static str {
         match self {
             SyncBadgeState::Synced => "emblem-aerocloud-synced",
@@ -963,37 +964,43 @@ fn uninstall_emblems(home_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Emblem SVG content (minimal 16x16 icons)
+// Emblem SVG content (minimal 16x16 icons) — Linux GIO only
+#[cfg(target_os = "linux")]
 const EMBLEM_SYNCED_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#10b981"/>
   <path d="M5 8 L7 10 L11 6" stroke="white" stroke-width="2" fill="none"/>
 </svg>"##;
 
+#[cfg(target_os = "linux")]
 const EMBLEM_SYNCING_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#3b82f6"/>
   <path d="M8 4 L8 8 L11 8" stroke="white" stroke-width="2" fill="none"/>
 </svg>"##;
 
+#[cfg(target_os = "linux")]
 const EMBLEM_ERROR_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#ef4444"/>
   <path d="M6 6 L10 10 M10 6 L6 10" stroke="white" stroke-width="2"/>
 </svg>"##;
 
+#[cfg(target_os = "linux")]
 const EMBLEM_IGNORED_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#6b7280"/>
   <path d="M6 8 L10 8" stroke="white" stroke-width="2"/>
 </svg>"##;
 
+#[cfg(target_os = "linux")]
 const EMBLEM_CONFLICT_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#f59e0b"/>
   <path d="M8 5 L8 9 M8 11 L8 12" stroke="white" stroke-width="2"/>
 </svg>"##;
 
+#[cfg(target_os = "linux")]
 const EMBLEM_NEW_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <circle cx="8" cy="8" r="6" fill="#8b5cf6"/>

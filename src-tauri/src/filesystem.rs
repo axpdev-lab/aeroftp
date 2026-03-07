@@ -165,7 +165,7 @@ const PSEUDO_FS_TYPES: &[&str] = &[
 ];
 
 /// Network filesystem types.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 const NETWORK_FS_TYPES: &[&str] = &["nfs", "nfs4", "cifs", "smbfs", "fuse.sshfs"];
 
 #[cfg(target_os = "linux")]
@@ -349,7 +349,7 @@ fn should_skip_mount_point(mount_point: &str) -> bool {
 }
 
 /// Classify a volume as internal, removable, or network.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn classify_volume(mount_point: &str, fs_type: &str) -> String {
     // Network filesystems
     if NETWORK_FS_TYPES.contains(&fs_type) {
@@ -1650,9 +1650,11 @@ fn build_usage_tree(
 
 /// Cached hash of last known mount state. Used by `volumes_changed` to detect
 /// changes without spawning subprocesses or querying disk space.
+#[cfg(target_os = "linux")]
 static LAST_MOUNTS_HASH: LazyLock<Mutex<u64>> = LazyLock::new(|| Mutex::new(0));
 
 /// DJB2 hash function — fast, deterministic, no crypto needed.
+#[cfg(target_os = "linux")]
 fn djb2_hash(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 5381;
     for &b in bytes {
