@@ -7,6 +7,163 @@ This document contains all public security and quality audit reports for AeroFTP
 
 ---
 
+## v2.8.6 / v2.8.7 — Dual-Engine Parallel Independent Audit (6-7 March 2026)
+
+> **Subject**: AeroFTP Desktop File Transfer Client v2.8.6 — Full Codebase
+> **Methodology**: Parallel Independent Audit with cross-comparison (PIA)
+> **Auditors**: Claude Opus 4.6 (autonomous, 8-area) + GPT-5.4 (autonomous, 8-area)
+> **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
+> **Scope**: Full codebase — ~110,000+ lines across ~150 files (Rust backend + React/TypeScript frontend)
+> **Documentation**: 22 documents total (11 per engine + schema + cross-comparison)
+
+### Executive Summary
+
+AeroFTP v2.8.6 underwent a **parallel independent audit** by two separate AI engines (Claude Opus 4.6 and GPT-5.4) operating without cross-visibility. Both engines followed the same 8-area audit schema but produced findings autonomously. After completion, a cross-comparison document was produced to evaluate convergence, divergence, and cumulative coverage.
+
+The dual-engine approach identified **~82 unique findings** after deduplication (86 raw from Claude + 32 from GPT-5.4). **21 findings were independently discovered by both engines**, confirming them as high-confidence issues. Claude produced 57 unique findings; GPT-5.4 contributed 10 additional valid findings that Claude missed, demonstrating the value of parallel independent review.
+
+### Audit Areas (8 domains)
+
+| # | Area | Claude Grade | Claude Findings | GPT-5.4 Findings | Convergent |
+|---|------|-------------|-----------------|-------------------|------------|
+| 1 | Trust boundaries & execution | B- | 8 | 4 (+2 obs) | 3 |
+| 2 | Vault, keystore & credentials | B+ | 9 | 4 | 3 |
+| 3 | Provider, network & auth | B+ | 12 | 4 (+2 obs) | 2 |
+| 4 | AeroFile & local filesystem | B | 11 | 3 (+1 obs) | 2 |
+| 5 | Sync & transfers | B- | 11 | 4 (+1 obs) | 3 |
+| 6 | Frontend, state & UI | B+ | 12 | 4 (+1 obs) | 2 |
+| 7 | Media, archives & preview | B+ | 12 | 5 (+1 obs) | 2 |
+| 8 | Runtime hardening & packaging | C+ | 10 | 4 (+2 obs) | 4 |
+| | **Total** | **B-** | **85** | **32** | **21** |
+
+### Findings Summary (Cumulative)
+
+| Severity | Claude | GPT-5.4 | Cumulative (deduplicated) |
+|----------|--------|---------|--------------------------|
+| Critical | 1 | 0 | 1 |
+| High | 4 | 5 | 5 |
+| Medium | 27 | 18 | 31 |
+| Low | 30 | 9 | 33 |
+| Info | 5 | 0 | 5 |
+| **Total** | **67 (81 raw)** | **32** | **~82 unique** |
+
+### Critical & High Findings
+
+| ID | Finding | Engines | Severity |
+|----|---------|---------|----------|
+| A8-03 | Updater downloads/installs without integrity or provenance verification — RCE chain via XSS→download→pkexec | Both (GPT=HIGH, Claude=CRITICAL) | **CRITICAL** |
+| A8-01/A1-01 | `fs:scope` wildcard `**` nullifies least-privilege principle | Both | HIGH |
+| A8-02 | `dangerousDisableAssetCspModification` neutralizes CSP | Claude | HIGH |
+| A2-01 | Vault.db/vault.key writes not atomic — crash = total credential loss | Both (GPT=MEDIUM) | HIGH |
+| A3-02 | FTP TLS downgrade silent — credentials sent in cleartext without user consent | Both (GPT=HIGH) | HIGH |
+
+### Architectural Clusters (7 identified by Claude)
+
+| Cluster | Findings | Pattern | Blast Radius |
+|---------|----------|---------|--------------|
+| Non-atomic writes | 9 | `std::fs::write()` without temp+rename | High — data corruption on crash |
+| Missing zeroization | 7 | Keys/passwords as plain `String` without `Zeroize` on drop | Medium — defense-in-depth |
+| Inconsistent validate_path | 6 | `validate_path()` not applied uniformly across modules | High — path traversal class |
+| CSP & runtime trust boundary | 4 | fs:scope + CSP disabled + fixed port + connect-src wildcard | Maximum — XSS→RCE distance |
+| Sync engine duplication | 3 | Two engines (frontend-driven vs backend CloudService) with feature gap | Medium — behavioral divergence |
+| Plugin hooks security | 3 | Hooks lack integrity verification and meta-char filtering vs plugin tools | Medium — unguarded execution |
+| Stale closures & effect deps | 4 | `eslint-disable` on critical effects, uncancelled streaming | Low — intermittent UX bugs |
+
+### Cross-Engine Agreement (21 Findings)
+
+Both engines independently identified these issues, providing high confidence:
+
+1. Updater without integrity verification (CRITICAL/HIGH)
+2. Filesystem scope wildcard `**` (HIGH)
+3. Vault.db non-atomic writes (HIGH/MEDIUM)
+4. FTP TLS silent downgrade (HIGH/MEDIUM)
+5. SSH shell without session limits (MEDIUM)
+6. Plugin containment/hooks without integrity (MEDIUM)
+7. Preview temp file leak in ArchiveBrowser (MEDIUM)
+8. HTML preview iframe CSS/fetch injection (MEDIUM)
+9. Stale closure in loadRemoteFiles / menu-event (MEDIUM)
+10. AI streaming not cancelled on conversation switch (MEDIUM)
+11. Mount partition udisksctl fragile parsing (MEDIUM/LOW)
+12. Snapshot save not atomic (LOW)
+13. Password policy weak / no backend check (MEDIUM/LOW)
+14. Export without restrictive permissions (MEDIUM/LOW)
+15. Watcher discards events without recovery (MEDIUM/LOW)
+16. navigateUp POSIX-centric (LOW)
+17. parse_server_field IPv6 not handled (MEDIUM)
+18. trigger_cloud_sync FTP-only (MEDIUM)
+19. Localhost fixed port (MEDIUM/LOW)
+20. Asset protocol scope too broad (MEDIUM)
+21. Capability set too permissive + CSP neutralized (HIGH)
+
+### Severity Divergences (Resolved)
+
+| Finding | GPT-5.4 | Claude | Final Decision |
+|---------|---------|--------|----------------|
+| Updater (A8-03) | HIGH | CRITICAL | **CRITICAL** — XSS→download→pkexec root = RCE with privilege escalation |
+| Vault.db atomic (A2-01) | MEDIUM | HIGH | **HIGH** — corruption = loss of ALL credentials |
+| FTP TLS downgrade (A3-02) | HIGH | MEDIUM | **HIGH** — credentials in cleartext, MITM-forceable |
+| Localhost port (A8-05) | LOW | MEDIUM | **MEDIUM** — SSRF/DNS rebinding on predictable port |
+
+### Unique Contributions by Engine
+
+**GPT-5.4 found 10 valid findings Claude missed:**
+- `server_exec cat` loads entire file into memory (DoS)
+- TOTP UI persistence not atomic (store_credential without await)
+- OAuth loopback localhost vs 127.0.0.1 (fails on IPv6-first)
+- OAuth legacy commands with lost PKCE verifier
+- restore_trash_item misleading API contract
+- Snapshot rollback global, not filtered per sync pair
+- Folder size remote progress/cancel global without request_id
+- Refresh post-transfer tied to current path, not operation path
+- Remote vault upload without effective confinement check
+- process_image() saves directly without atomicity
+
+**Claude found 57 unique findings** across: zeroization (6), validate_path consistency (5), XSS/rendering (3), plugin security (3), CI/CD supply chain (3), sync engine (4), Cryptomator (4), frontend deps/stale (4), filesystem (5), and more.
+
+### Fix Prioritization
+
+Both engines produced fix roadmaps organized by architectural leverage:
+
+| Priority | Claude (P0-P3) | GPT-5.4 (Wave 1-4) |
+|----------|---------------|---------------------|
+| Immediate | Updater verification, fs:scope removal, vault atomic write, CI pinning | Updater trust chain, capability reduction, CSP review |
+| High | Plugin hooks integrity, password backend check, FTS XSS, TLS downgrade, validate_path | Tool execution boundary, FTPS downgrade, shell_execute policy |
+| Structural | Zeroization sweep, AeroVault v1 deprecation, frontend stale fixes, temp cleanup | Atomic writes for vault/config/snapshot, sync engine convergence |
+| Backlog | Sync engine unification, remaining atomic writes, misc LOW/INFO | Compatibility, parsing edge-cases, UX polish |
+
+### Grading
+
+| Engine | Grade | Quality Score |
+|--------|-------|--------------|
+| Claude Opus 4.6 | **B-** (pre-remediation) | 8.5/10 audit quality |
+| GPT-5.4 | N/A (no grades assigned) | 4.7/10 audit quality |
+| **Cumulative project assessment** | **B-** | — |
+
+### Gap Analysis (Claude)
+
+7 areas not fully covered by either engine:
+1. Filen encryption layer (AES-256-GCM client-side key derivation)
+2. MEGA encryption (AES-128-ECB key derivation + AES-128-CTR)
+3. AI streaming parser (SSE/NDJSON in `ai_stream.rs`)
+4. Chat history SQLite (WAL mode correctness, retention logic)
+5. AeroPlayer WebGL shaders (GPU DoS)
+6. License verification (`license.rs` — removed in v2.8.7)
+7. Supabase Edge Functions (server-side, out of scope)
+
+### Recommendations for Future Audits
+
+1. **Dedicated cryptographic audit**: Filen, MEGA, and full key derivation flow
+2. **Parser fuzzing**: `ai_stream.rs`, `delta_sync.rs`, `cryptomator.rs`, `archive_browse.rs` with `cargo-fuzz`
+3. **Runtime penetration test**: XSS→IPC→filesystem chain given current CSP/capability configuration
+4. **Dependency auditing**: `cargo audit` + `npm audit` integrated in CI
+5. **Property-based testing**: `validate_path()`, `parse_server_field()`, `is_safe_archive_entry()` with proptest
+
+Full audit documentation: `docs/dev/audit/CLAUDE-OPUS-4.6/` (11 files) + `docs/dev/audit/GPT5.4/` (11 files)
+Cross-comparison: `docs/dev/audit/CLAUDE-OPUS-4.6/10-confronto-cumulativo-GPT5.4.md`
+GPT-5.4 counter-review: `docs/dev/audit/GPT5.4/10-verifica-confronto-claude-opus-4.6.md`
+
+---
+
 ## v2.6.4 — Dual-Engine Comprehensive Security Audit (24 February 2026)
 
 > **Subject**: AeroFTP Desktop File Transfer Client v2.6.4 — Full Codebase
@@ -435,8 +592,7 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Version | Date | Auditors | Grade |
 |---------|------|----------|-------|
-| v2.8.7 | 7 Mar 2026 | 8-area Opus 4.6 + GPT-5.4 counter-audit | **A-** (45+ findings, all fixed) |
-| v2.8.6 | 5 Mar 2026 | 13-provider audit | **All fixed** (upload/delete/CSP) |
+| v2.8.6/v2.8.7 | 6-7 Mar 2026 | Claude Opus 4.6 + GPT-5.4 (PIA, 8-area parallel independent) | **B-** pre-rem (~82 unique findings, 21 cross-engine confirmed) |
 | v2.6.4 | 24 Feb 2026 | 8x Opus 4.6 + GPT-5.3-Codex (DEIA) | **A-** (148 findings, 94 fixed) |
 | v2.6.0 | 22 Feb 2026 | 8x Claude Opus 4.6 (per-provider) | **147/147 remediated** |
 | v2.5.0 | 20 Feb 2026 | 6x Claude Opus 4.6 (PIMDR) | **A-** (post-remediation) |
