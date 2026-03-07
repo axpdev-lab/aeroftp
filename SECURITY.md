@@ -280,7 +280,7 @@ When the user selects plain FTP (no TLS), AeroFTP displays:
 
 AeroFTP's in-app update for .deb/.rpm uses a branded Polkit authentication dialog with defense-in-depth hardening:
 
-- **URL whitelist** (v2.8.7): `download_update()` only accepts URLs from `https://github.com/AXP-OS/AeroFTP/releases/` and `https://objects.githubusercontent.com/`. Blocks XSS-to-download-to-root-RCE attack chain
+- **URL whitelist** (v2.8.7): `download_update()` only accepts URLs from `https://github.com/axpnet/aeroftp/releases/` and `https://objects.githubusercontent.com/`. Blocks XSS-to-download-to-root-RCE attack chain
 - **Path validation** (v2.8.7): `validate_update_path()` canonicalizes the downloaded file path and verifies it resides in `~/Downloads/` or system temp directory before `pkexec` execution
 - **Custom Polkit policy** (`com.aeroftp.update.install`): Shows AeroFTP icon, vendor info, and localized description instead of generic "authenticate to run dpkg" prompt
 - **Helper script** (`/usr/lib/aeroftp/aeroftp-update-helper`): Path-validated wrapper that only accepts packages from `~/Downloads/`, `/tmp/`, or `/var/tmp/`. Rejects all other paths. Only `.deb` and `.rpm` extensions accepted
@@ -425,4 +425,4 @@ We gratefully acknowledge security researchers who help improve AeroFTP:
 
 *No reports yet — be the first!*
 
-*AeroFTP v2.8.7 - 7 March 2026*
+*AeroFTP v2.8.8 - 7 March 2026*

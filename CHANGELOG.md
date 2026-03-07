@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.8] - 2026-03-07
+
+### Updater Hotfix & Privacy Policy
+
+#### Fixed
+
+- **Updater URL whitelist**: Corrected GitHub repository URL in `ALLOWED_URL_PREFIXES` from `AXP-OS/AeroFTP` to `axpnet/aeroftp` — without this fix, auto-update would reject all legitimate release downloads
+
+#### Added
+
+- **Privacy Policy**: `PRIVACY.md` added to repository — required for SignPath OSS code signing application. Documents zero-telemetry, local-only storage, and explicit-connection-only external access
+
+---
+
 ## [2.8.7] - 2026-03-07
 
 ### Security Audit Grade A- & Server Duplication
