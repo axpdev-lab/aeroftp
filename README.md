@@ -153,7 +153,10 @@ Enterprise-grade file synchronization with operational reliability features buil
 
 ### AeroVault — Military-Grade Encryption
 
-Create, manage, and browse encrypted containers that protect your files with a security stack that exceeds industry standards.
+[![Crates.io](https://img.shields.io/crates/v/aerovault)](https://crates.io/crates/aerovault)
+[![docs.rs](https://docs.rs/aerovault/badge.svg)](https://docs.rs/aerovault)
+
+Create, manage, and browse encrypted containers that protect your files with a security stack that exceeds industry standards. The encryption engine is published as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io for use in any Rust project.
 
 **AeroVault v2 (.aerovault containers)**
 

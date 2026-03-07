@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.9] - 2026-03-07
+
+### AeroVault Crate Extraction
+
+AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io, replacing 2100+ lines of inline crypto code with a single dependency.
+
+#### Changed
+
+- **AeroVault crate dependency**: Replaced inline `aerovault_v2.rs` crypto implementation (562 → 14 lines of wrapper code) with `aerovault = "0.3"` from crates.io
+- **Removed direct crypto dependencies**: `aes-gcm-siv` and `subtle` crates removed from direct dependencies (now transitive via aerovault crate)
+
+#### Added
+
+- **README AeroVault badges**: crates.io version and docs.rs badges added to AeroVault section with link to standalone crate
+
+---
+
 ## [2.8.8] - 2026-03-07
 
 ### Updater Hotfix & Privacy Policy

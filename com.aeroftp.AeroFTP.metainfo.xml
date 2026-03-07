@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.8.9" date="2026-03-07">
+      <description>
+        <p>AeroVault Crate Extraction: AeroVault v2 encryption engine extracted to standalone aerovault crate on crates.io. Inline crypto code replaced with crate dependency, eliminating 2100 lines. Full backward compatibility with existing vaults verified. README updated with crates.io and docs.rs badges.</p>
+      </description>
+    </release>
     <release version="2.8.8" date="2026-03-07">
       <description>
         <p>Updater Hotfix: Corrected GitHub repository URL in updater whitelist. Added Privacy Policy document.</p>
