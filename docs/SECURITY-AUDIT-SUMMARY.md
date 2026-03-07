@@ -158,9 +158,7 @@ Both engines produced fix roadmaps organized by architectural leverage:
 4. **Dependency auditing**: `cargo audit` + `npm audit` integrated in CI
 5. **Property-based testing**: `validate_path()`, `parse_server_field()`, `is_safe_archive_entry()` with proptest
 
-Full audit documentation: `docs/dev/audit/CLAUDE-OPUS-4.6/` (11 files) + `docs/dev/audit/GPT5.4/` (11 files)
-Cross-comparison: `docs/dev/audit/CLAUDE-OPUS-4.6/10-confronto-cumulativo-GPT5.4.md`
-GPT-5.4 counter-review: `docs/dev/audit/GPT5.4/10-verifica-confronto-claude-opus-4.6.md`
+Evidence pack & remediation details: [SECURITY-EVIDENCE-v2.8.7.md](https://github.com/axpnet/aeroftp/blob/main/docs/security-evidence/SECURITY-EVIDENCE-v2.8.7.md)
 
 ---
 
