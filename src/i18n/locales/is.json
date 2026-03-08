@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} skrá(r) bætt við",
       "itemDeleted": "Eytt {name}",
       "itemsDeleted": "{count} atriði eytt",
-      "titleFull": "AeroVault - Hernaðarflokks dulkóðun",
+      "titleFull": "AeroVault - Sterk dulkóðun",
       "totalItems": "samtals",
       "remote": {
         "cleanup": "Loka fjarhólfi",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Ekki tókst að hlaða upp breytingum á hólfi",
         "uploading": "Hleð upp breytingum á hólfi..."
       },
-      "dropFiles": "Slepptu skrám til að bæta við hvelfingunni"
+      "dropFiles": "Slepptu skrám til að bæta við hvelfingunni",
+      "save": "Vista"
     },
     "cryptomator": {
       "title": "Cryptomator Hvelfing",

@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} soubor(ů) přidáno",
       "itemDeleted": "{name} smazáno",
       "itemsDeleted": "{count} položek smazáno",
-      "titleFull": "AeroVault — šifrování vojenské úrovně",
+      "titleFull": "AeroVault - Silné šifrování",
       "totalItems": "celkem",
       "remote": {
         "cleanup": "Zavřít vzdálený vault",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Nahrání změn vault selhalo",
         "uploading": "Nahrávání změn vault..."
       },
-      "dropFiles": "Přetáhněte soubory pro přidání do trezoru"
+      "dropFiles": "Přetáhněte soubory pro přidání do trezoru",
+      "save": "Uložit"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

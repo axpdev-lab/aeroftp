@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fail(i) lisatud",
       "itemDeleted": "{name} kustutatud",
       "itemsDeleted": "{count} üksus(t) kustutatud",
-      "titleFull": "AeroVault - Sõjaväetaseme krüpteering",
+      "titleFull": "AeroVault - Tugev krüpteerimine",
       "totalItems": "kokku",
       "remote": {
         "cleanup": "Sulge kaugseif",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Seifi muudatuste üleslaadimine ebaõnnestus",
         "uploading": "Seifi muudatuste üleslaadimine..."
       },
-      "dropFiles": "Lohistage failid hoidlasse lisamiseks"
+      "dropFiles": "Lohistage failid hoidlasse lisamiseks",
+      "save": "Salvesta"
     },
     "cryptomator": {
       "title": "Cryptomator hoidla",

@@ -2295,7 +2295,7 @@
       "filesAdded": "Đã thêm {count} tệp",
       "itemDeleted": "Đã xóa {name}",
       "itemsDeleted": "Đã xóa {count} mục",
-      "titleFull": "AeroVault - Mã hóa cấp quân sự",
+      "titleFull": "AeroVault - Mã hóa mạnh",
       "totalItems": "tổng cộng",
       "remote": {
         "cleanup": "Đóng kho từ xa",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Không thể tải lên các thay đổi của kho",
         "uploading": "Đang tải lên các thay đổi của kho..."
       },
-      "dropFiles": "Kéo thả tệp để thêm vào vault"
+      "dropFiles": "Kéo thả tệp để thêm vào vault",
+      "save": "Lưu"
     },
     "cryptomator": {
       "title": "Kho Cryptomator",

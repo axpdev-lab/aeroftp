@@ -2295,7 +2295,7 @@
       "filesAdded": "{count}개 파일 추가됨",
       "itemDeleted": "{name} 삭제됨",
       "itemsDeleted": "{count}개 항목 삭제됨",
-      "titleFull": "AeroVault - 군사급 암호화",
+      "titleFull": "AeroVault - 강력한 암호화",
       "totalItems": "전체",
       "remote": {
         "cleanup": "원격 vault 닫기",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "vault 변경 사항 업로드 실패",
         "uploading": "vault 변경 사항 업로드 중..."
       },
-      "dropFiles": "파일을 드롭하여 vault에 추가"
+      "dropFiles": "파일을 드롭하여 vault에 추가",
+      "save": "저장"
     },
     "cryptomator": {
       "title": "Cryptomator 저장소",

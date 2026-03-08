@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} फ़ाइल(लें) जोड़ी गईं",
       "itemDeleted": "{name} हटाया गया",
       "itemsDeleted": "{count} आइटम हटाए गए",
-      "titleFull": "AeroVault - सैन्य-ग्रेड एन्क्रिप्शन",
+      "titleFull": "AeroVault - मजबूत एन्क्रिप्शन",
       "totalItems": "कुल",
       "remote": {
         "cleanup": "रिमोट वॉल्ट बंद करें",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "वॉल्ट परिवर्तन अपलोड करने में विफल",
         "uploading": "वॉल्ट परिवर्तन अपलोड हो रहे हैं..."
       },
-      "dropFiles": "वॉल्ट में जोड़ने के लिए फाइलें ड्रॉप करें"
+      "dropFiles": "वॉल्ट में जोड़ने के लिए फाइलें ड्रॉप करें",
+      "save": "सहेजें"
     },
     "cryptomator": {
       "title": "Cryptomator वॉल्ट",

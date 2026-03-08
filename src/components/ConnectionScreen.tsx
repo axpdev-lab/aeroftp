@@ -556,11 +556,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
             : connectionParams;
 
-        // MEGA: Add/Update session expiry (24h)
         const optionsToSave = { ...connectionParams.options };
-        if (protocol === 'mega') {
-            optionsToSave.session_expires_at = Date.now() + 24 * 60 * 60 * 1000;
-        }
 
         // Try vault first, fallback to localStorage
         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
@@ -744,9 +740,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             : connectionParams;
 
         const optionsToSave = { ...connectionParams.options };
-        if (protocol === 'mega') {
-            optionsToSave.session_expires_at = Date.now() + 24 * 60 * 60 * 1000;
-        }
 
         const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);

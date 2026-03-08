@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fil(er) lagt til",
       "itemDeleted": "Slettet {name}",
       "itemsDeleted": "{count} element(er) slettet",
-      "titleFull": "AeroVault — Militær kryptering",
+      "titleFull": "AeroVault - Sterk kryptering",
       "totalItems": "totalt",
       "remote": {
         "cleanup": "Lukk eksternt hvelv",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Kunne ikke laste opp hvelvendringer",
         "uploading": "Laster opp hvelvendringer..."
       },
-      "dropFiles": "Slipp filer her for å legge til i hvelvet"
+      "dropFiles": "Slipp filer her for å legge til i hvelvet",
+      "save": "Lagre"
     },
     "cryptomator": {
       "title": "Cryptomator-hvelv",

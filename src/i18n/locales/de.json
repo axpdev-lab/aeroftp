@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} Datei(en) hinzugefügt",
       "itemDeleted": "{name} gelöscht",
       "itemsDeleted": "{count} Element(e) gelöscht",
-      "titleFull": "AeroVault - Militärische Verschlüsselung",
+      "titleFull": "AeroVault - Starke Verschlüsselung",
       "totalItems": "gesamt",
       "remote": {
         "cleanup": "Remote-Vault schließen",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Fehler beim Hochladen der Vault-Änderungen",
         "uploading": "Vault-Änderungen werden hochgeladen..."
       },
-      "dropFiles": "Dateien hierher ziehen, um sie zum Vault hinzuzufuegen"
+      "dropFiles": "Dateien hierher ziehen, um sie zum Vault hinzuzufuegen",
+      "save": "Speichern"
     },
     "cryptomator": {
       "title": "Cryptomator-Tresor",

@@ -2295,7 +2295,7 @@
       "filesAdded": "Dodano {count} plik(ow)",
       "itemDeleted": "Usunieto {name}",
       "itemsDeleted": "Usunieto {count} element(ow)",
-      "titleFull": "AeroVault - Szyfrowanie klasy wojskowej",
+      "titleFull": "AeroVault - Silne szyfrowanie",
       "totalItems": "lacznie",
       "remote": {
         "cleanup": "Zamknij zdalny vault",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Nie udało się przesłać zmian vault",
         "uploading": "Przesyłanie zmian vault..."
       },
-      "dropFiles": "Upusc pliki, aby dodac je do vault"
+      "dropFiles": "Upusc pliki, aby dodac je do vault",
+      "save": "Zapisz"
     },
     "cryptomator": {
       "title": "Magazyn Cryptomator",

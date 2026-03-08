@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} file ditambahkan",
       "itemDeleted": "Dihapus {name}",
       "itemsDeleted": "{count} item dihapus",
-      "titleFull": "AeroVault - Enkripsi Tingkat Militer",
+      "titleFull": "AeroVault - Enkripsi kuat",
       "totalItems": "total",
       "remote": {
         "cleanup": "Tutup Vault Jarak Jauh",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Gagal mengunggah perubahan vault",
         "uploading": "Mengunggah perubahan vault..."
       },
-      "dropFiles": "Lepaskan file untuk ditambahkan ke brankas"
+      "dropFiles": "Lepaskan file untuk ditambahkan ke brankas",
+      "save": "Simpan"
     },
     "cryptomator": {
       "title": "Vault Cryptomator",

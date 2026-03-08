@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} tiedosto(a) lisätty",
       "itemDeleted": "{name} poistettu",
       "itemsDeleted": "{count} kohdetta poistettu",
-      "titleFull": "AeroVault - Sotilastason salaus",
+      "titleFull": "AeroVault - Vahva salaus",
       "totalItems": "yhteensä",
       "remote": {
         "cleanup": "Sulje etäholvi",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Holvin muutosten lataus epäonnistui",
         "uploading": "Ladataan holvin muutoksia..."
       },
-      "dropFiles": "Pudota tiedostoja lisätäksesi ne holviin"
+      "dropFiles": "Pudota tiedostoja lisätäksesi ne holviin",
+      "save": "Tallenna"
     },
     "cryptomator": {
       "title": "Cryptomator-holvi",

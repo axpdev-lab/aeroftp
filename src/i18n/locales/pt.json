@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} arquivo(s) adicionado(s)",
       "itemDeleted": "Excluido {name}",
       "itemsDeleted": "{count} item(ns) excluido(s)",
-      "titleFull": "AeroVault - Criptografia de nivel militar",
+      "titleFull": "AeroVault - Criptografia forte",
       "totalItems": "total",
       "remote": {
         "cleanup": "Fechar vault remoto",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Falha ao enviar as alterações do vault",
         "uploading": "Enviando alterações do vault..."
       },
-      "dropFiles": "Arraste arquivos para adicionar ao vault"
+      "dropFiles": "Arraste arquivos para adicionar ao vault",
+      "save": "Salvar"
     },
     "cryptomator": {
       "title": "Cofre Cryptomator",

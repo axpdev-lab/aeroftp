@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fisier(e) adaugat(e)",
       "itemDeleted": "Sters {name}",
       "itemsDeleted": "{count} element(e) sters(e)",
-      "titleFull": "AeroVault - Criptare de nivel militar",
+      "titleFull": "AeroVault - Criptare puternică",
       "totalItems": "total",
       "remote": {
         "cleanup": "Închide vault-ul la distanță",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Încărcarea modificărilor vault-ului a eșuat",
         "uploading": "Se încarcă modificările vault-ului..."
       },
-      "dropFiles": "Trageți fișiere pentru a le adăuga în seif"
+      "dropFiles": "Trageți fișiere pentru a le adăuga în seif",
+      "save": "Salvează"
     },
     "cryptomator": {
       "title": "Seif Cryptomator",

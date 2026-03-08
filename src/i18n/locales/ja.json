@@ -2260,7 +2260,7 @@
       "filesAdded": "{count} 個のファイルを追加しました",
       "itemDeleted": "{name} を削除しました",
       "itemsDeleted": "{count} 個のアイテムを削除しました",
-      "titleFull": "AeroVault - 軍事グレード暗号化",
+      "titleFull": "AeroVault - 強力な暗号化",
       "totalItems": "合計",
       "remote": {
         "cleanup": "リモートvaultを閉じる",
@@ -2272,7 +2272,8 @@
         "uploadFailed": "vaultの変更のアップロードに失敗しました",
         "uploading": "vaultの変更をアップロード中..."
       },
-      "dropFiles": "ファイルをドロップしてvaultに追加"
+      "dropFiles": "ファイルをドロップしてvaultに追加",
+      "save": "保存"
     },
     "cryptomator": {
       "title": "Cryptomator保管庫",

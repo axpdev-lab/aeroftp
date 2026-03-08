@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} (mga) file ang naidagdag",
       "itemDeleted": "Nabura ang {name}",
       "itemsDeleted": "{count} (mga) item ang nabura",
-      "titleFull": "AeroVault - Military-Grade Encryption",
+      "titleFull": "AeroVault - Malakas na pag-encrypt",
       "totalItems": "kabuuan",
       "remote": {
         "cleanup": "Isara ang Remote Vault",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Hindi na-upload ang mga pagbabago sa vault",
         "uploading": "Ina-upload ang mga pagbabago sa vault..."
       },
-      "dropFiles": "I-drop ang mga file para idagdag sa vault"
+      "dropFiles": "I-drop ang mga file para idagdag sa vault",
+      "save": "I-save"
     },
     "cryptomator": {
       "title": "Cryptomator Vault",

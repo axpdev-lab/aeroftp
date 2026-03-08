@@ -2295,7 +2295,7 @@
       "filesAdded": "Pridanych suborov: {count}",
       "itemDeleted": "Zmazane {name}",
       "itemsDeleted": "Zmazanych poloziek: {count}",
-      "titleFull": "AeroVault - Sifrovanie vojenskej triedy",
+      "titleFull": "AeroVault - Silné šifrovanie",
       "totalItems": "celkom",
       "remote": {
         "cleanup": "Zatvoriť vzdialený trezor",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Nahrávanie zmien trezoru zlyhalo",
         "uploading": "Nahrávanie zmien trezoru..."
       },
-      "dropFiles": "Pretiahnite súbory na pridanie do trezoru"
+      "dropFiles": "Pretiahnite súbory na pridanie do trezoru",
+      "save": "Uložiť"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

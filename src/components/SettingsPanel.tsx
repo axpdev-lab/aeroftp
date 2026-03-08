@@ -883,7 +883,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             {servers.map(server => {
                                                 const protocol = server.protocol || 'ftp';
                                                 const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-                                                const isExpired = protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at;
 
                                                 return (
                                                     <div
@@ -912,12 +911,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             <div>
                                                                 <div className="font-medium flex items-center gap-2">
                                                                     {server.name || server.host}
-                                                                    {/* MEGA expiry badge */}
-                                                                    {isExpired && (
-                                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1" title={t('ui.sessionExpired')}>
-                                                                            <Clock size={10} /> EXP
-                                                                        </span>
-                                                                    )}
                                                                     {/* Protocol badge */}
                                                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                                                         {protocol}
@@ -1170,15 +1163,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                     />
                                                                 </div>
-                                                                {editingServer.options?.session_expires_at && (
-                                                                    <div className={`p-2 rounded-lg text-xs ${Date.now() > editingServer.options.session_expires_at
-                                                                        ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-700'
-                                                                        : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-300 border border-green-200 dark:border-green-700'
-                                                                        }`}>
-                                                                        <Clock size={12} className="inline mr-1" />
-                                                                        {t('settings.session')} {Date.now() > editingServer.options.session_expires_at ? t('settings.sessionExpired') : t('settings.sessionExpires')}: {new Date(editingServer.options.session_expires_at).toLocaleString()}
-                                                                    </div>
-                                                                )}
                                                             </>
                                                         )}
 

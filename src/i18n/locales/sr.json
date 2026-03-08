@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} датотека додато",
       "itemDeleted": "Обрисано {name}",
       "itemsDeleted": "{count} ставки обрисано",
-      "titleFull": "AeroVault - Војна класа шифровања",
+      "titleFull": "AeroVault - Јака енкрипција",
       "totalItems": "укупно",
       "remote": {
         "cleanup": "Затвори удаљени трезор",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Отпремање промена трезора није успело",
         "uploading": "Отпремање промена трезора..."
       },
-      "dropFiles": "Превуците датотеке за додавање у трезор"
+      "dropFiles": "Превуците датотеке за додавање у трезор",
+      "save": "Сачувај"
     },
     "cryptomator": {
       "title": "Cryptomator trezor",

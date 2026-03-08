@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown, ChevronRight, ArrowLeft, ArrowUpDown } from 'lucide-react';
+import { Shield, Plus, Trash2, Download, Key, FolderPlus, X, Eye, EyeOff, Loader2, Lock, File, Folder, Zap, ShieldCheck, ShieldAlert, ChevronDown, ChevronRight, ArrowLeft, ArrowUpDown, Check } from 'lucide-react';
 import { VaultIcon } from './icons/VaultIcon';
 import VaultSyncDialog from './VaultSyncDialog';
 import { ArchiveEntry, AeroVaultMeta } from '../types';
@@ -176,7 +176,21 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         if (password.length < 8) { setError(t('vault.passwordTooShort')); return; }
         if (password !== confirmPassword) { setError(t('vault.passwordMismatch')); return; }
 
-        const savePath = await save({ defaultPath: 'vault.aerovault', filters: [{ name: 'AeroVault', extensions: ['aerovault'] }] });
+        // Default filename: based on first selected file name or description
+        const defaultName = (() => {
+            if (initialFiles?.length === 1) {
+                const name = initialFiles[0].split('/').pop()?.replace(/\.[^.]+$/, '') || 'vault';
+                return `${name}.aerovault`;
+            }
+            if (initialFiles && initialFiles.length > 1) {
+                const parent = initialFiles[0].split('/').slice(0, -1).pop() || 'archive';
+                return `${parent}.aerovault`;
+            }
+            if (description) return `${description.replace(/[^a-zA-Z0-9_-]/g, '_')}.aerovault`;
+            return 'vault.aerovault';
+        })();
+
+        const savePath = await save({ defaultPath: defaultName, filters: [{ name: 'AeroVault', extensions: ['aerovault'] }] });
         if (!savePath) return;
 
         setLoading(true);
@@ -186,7 +200,6 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
 
         try {
             if (levelConfig.version === 2) {
-                // Create v2 vault
                 await invoke('vault_v2_create', {
                     vaultPath: savePath,
                     password,
@@ -195,18 +208,41 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                 });
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 2, cascadeMode: levelConfig.cascade, level: securityLevel });
-                setSuccess(t('vault.created'));
+
+                // Auto-add selected files into the vault
+                if (initialFiles?.length) {
+                    await invoke('vault_v2_add_files', { vaultPath: savePath, password, filePaths: initialFiles });
+                    const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath: savePath, password });
+                    const fileEntries: ArchiveEntry[] = info.files.map(f => ({
+                        name: f.name,
+                        size: f.size,
+                        compressedSize: f.size,
+                        isDir: f.is_dir,
+                        isEncrypted: true,
+                        modified: f.modified
+                    }));
+                    setEntries(fileEntries);
+                    setSuccess(t('vault.created') + ` — ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
+                    setMeta({
+                        version: info.version,
+                        description: description || null,
+                        created: info.created || new Date().toISOString(),
+                        modified: info.modified || new Date().toISOString(),
+                        fileCount: info.file_count
+                    });
+                } else {
+                    setSuccess(t('vault.created'));
+                    setEntries([]);
+                    setMeta({
+                        version: 2,
+                        description: description || null,
+                        created: new Date().toISOString(),
+                        modified: new Date().toISOString(),
+                        fileCount: 0
+                    });
+                }
                 setMode('browse');
-                setEntries([]);
-                setMeta({
-                    version: 2,
-                    description: description || null,
-                    created: new Date().toISOString(),
-                    modified: new Date().toISOString(),
-                    fileCount: 0
-                });
             } else {
-                // Create v1 vault (legacy)
                 await invoke('vault_create', { vaultPath: savePath, password, description: description || null });
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 1, cascadeMode: false, level: 'standard' });
@@ -684,6 +720,15 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                 {/* Create */}
                 {mode === 'create' && (
                     <div className="p-4 flex flex-col gap-3">
+                        {/* Files to be included */}
+                        {initialFiles && initialFiles.length > 0 && (
+                            <div className="px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded text-xs text-emerald-700 dark:text-emerald-300">
+                                <span className="font-medium">{initialFiles.length} {initialFiles.length === 1 ? 'file' : 'files'}</span>
+                                {': '}
+                                {initialFiles.slice(0, 3).map(f => f.split('/').pop()).join(', ')}
+                                {initialFiles.length > 3 && ` +${initialFiles.length - 3}`}
+                            </div>
+                        )}
                         {/* Security Level Selector */}
                         <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.securityLevel')}</label>
                         <div className="relative">
@@ -1033,9 +1078,18 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                         </div>
 
                         {/* Footer */}
-                        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex justify-between">
+                        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
                             <span>{sortedEntries.length} {t('vault.items')}{currentDir ? ` in /${currentDir}` : ''}</span>
-                            {meta && <span>v{meta.version} | {entries.length} {t('vault.totalItems')}</span>}
+                            <div className="flex items-center gap-3">
+                                {meta && <span>v{meta.version} | {entries.length} {t('vault.totalItems')}</span>}
+                                <button
+                                    onClick={onClose}
+                                    className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition-colors"
+                                >
+                                    <Check size={12} />
+                                    {t('vault.save') || 'Save'}
+                                </button>
+                            </div>
                         </div>
                     </>
                     );

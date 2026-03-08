@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fails(-i) pievienots(-i)",
       "itemDeleted": "Dzēsts {name}",
       "itemsDeleted": "{count} vienums(-i) dzēsts(-i)",
-      "titleFull": "AeroVault — militārā līmeņa šifrēšana",
+      "titleFull": "AeroVault - Spēcīga šifrēšana",
       "totalItems": "kopā",
       "remote": {
         "cleanup": "Aizvērt attālināto glabātuvi",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Neizdevās augšupielādēt glabātuves izmaiņas",
         "uploading": "Augšupielādē glabātuves izmaiņas..."
       },
-      "dropFiles": "Ievelciet failus, lai pievienotu glabātuvei"
+      "dropFiles": "Ievelciet failus, lai pievienotu glabātuvei",
+      "save": "Saglabāt"
     },
     "cryptomator": {
       "title": "Cryptomator glabātuve",

@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} ffeil wedi'u hychwanegu",
       "itemDeleted": "{name} wedi'i ddileu",
       "itemsDeleted": "{count} eitem wedi'u dileu",
-      "titleFull": "AeroVault — Amgryptio gradd filwrol",
+      "titleFull": "AeroVault - Amgryptiad cryf",
       "totalItems": "cyfanswm",
       "remote": {
         "cleanup": "Cau'r seld bell",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Methwyd â llwytho newidiadau'r seld i fyny",
         "uploading": "Yn llwytho newidiadau'r seld i fyny..."
       },
-      "dropFiles": "Gollyngwch ffeiliau i'w hychwanegu at y gell"
+      "dropFiles": "Gollyngwch ffeiliau i'w hychwanegu at y gell",
+      "save": "Cadw"
     },
     "cryptomator": {
       "title": "Coffor Cryptomator",

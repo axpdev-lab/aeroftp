@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fil(er) tillagda",
       "itemDeleted": "Borttaget {name}",
       "itemsDeleted": "{count} objekt borttagna",
-      "titleFull": "AeroVault - Militarklassad kryptering",
+      "titleFull": "AeroVault - Stark kryptering",
       "totalItems": "totalt",
       "remote": {
         "cleanup": "Stäng fjärrvalv",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Misslyckades att ladda upp valvändringar",
         "uploading": "Laddar upp valvändringar..."
       },
-      "dropFiles": "Dra filer här för att lägga till i valvet"
+      "dropFiles": "Dra filer här för att lägga till i valvet",
+      "save": "Spara"
     },
     "cryptomator": {
       "title": "Cryptomator-valv",

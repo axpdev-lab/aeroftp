@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} dosya eklendi",
       "itemDeleted": "{name} silindi",
       "itemsDeleted": "{count} öğe silindi",
-      "titleFull": "AeroVault - Askeri Düzeyde Şifreleme",
+      "titleFull": "AeroVault - Güçlü şifreleme",
       "totalItems": "toplam",
       "remote": {
         "cleanup": "Uzak kasayı kapat",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Kasa değişiklikleri yüklenemedi",
         "uploading": "Kasa değişiklikleri yükleniyor..."
       },
-      "dropFiles": "Vault'a eklemek icin dosyalari surukleyin"
+      "dropFiles": "Vault'a eklemek icin dosyalari surukleyin",
+      "save": "Kaydet"
     },
     "cryptomator": {
       "title": "Cryptomator Kasası",

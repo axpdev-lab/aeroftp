@@ -2295,7 +2295,7 @@
       "filesAdded": "Додано {count} файл(ів)",
       "itemDeleted": "{name} видалено",
       "itemsDeleted": "{count} елемент(ів) видалено",
-      "titleFull": "AeroVault - Шифрування військового рівня",
+      "titleFull": "AeroVault - Надійне шифрування",
       "totalItems": "всього",
       "remote": {
         "cleanup": "Закрити віддалений vault",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Не вдалося завантажити зміни vault",
         "uploading": "Завантаження змін vault..."
       },
-      "dropFiles": "Перетягніть файли для додавання до vault"
+      "dropFiles": "Перетягніть файли для додавання до vault",
+      "save": "Зберегти"
     },
     "cryptomator": {
       "title": "Сховище Cryptomator",

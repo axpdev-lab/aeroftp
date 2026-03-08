@@ -2295,7 +2295,7 @@
       "filesAdded": "Faili {count} zimeongezwa",
       "itemDeleted": "Imefutwa {name}",
       "itemsDeleted": "Vitu {count} vimefutwa",
-      "titleFull": "AeroVault - Usimbaji Fiche wa Kiwango cha Jeshi",
+      "titleFull": "AeroVault - Usimbaji fiche imara",
       "totalItems": "jumla",
       "remote": {
         "cleanup": "Funga kabati la mbali",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Imeshindwa kupakia mabadiliko ya kabati",
         "uploading": "Kupakia mabadiliko ya kabati..."
       },
-      "dropFiles": "Dondosha faili kuongeza kwenye hazina"
+      "dropFiles": "Dondosha faili kuongeza kwenye hazina",
+      "save": "Hifadhi"
     },
     "cryptomator": {
       "title": "Hazina ya Cryptomator",

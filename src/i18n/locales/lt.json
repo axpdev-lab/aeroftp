@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} failų pridėta",
       "itemDeleted": "{name} ištrintas",
       "itemsDeleted": "{count} elementų ištrinta",
-      "titleFull": "AeroVault – karinės klasės šifravimas",
+      "titleFull": "AeroVault - Stiprus šifravimas",
       "totalItems": "iš viso",
       "remote": {
         "cleanup": "Uždaryti nuotolinį seifą",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Nepavyko įkelti seifo pakeitimų",
         "uploading": "Įkeliami seifo pakeitimai..."
       },
-      "dropFiles": "Vilkite failus, kad pridėtumėte į saugyklą"
+      "dropFiles": "Vilkite failus, kad pridėtumėte į saugyklą",
+      "save": "Išsaugoti"
     },
     "cryptomator": {
       "title": "Cryptomator saugykla",

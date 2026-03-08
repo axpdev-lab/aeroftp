@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} archivo(s) añadido(s)",
       "itemDeleted": "{name} eliminado",
       "itemsDeleted": "{count} elemento(s) eliminado(s)",
-      "titleFull": "AeroVault - Cifrado de grado militar",
+      "titleFull": "AeroVault - Cifrado fuerte",
       "totalItems": "total",
       "remote": {
         "cleanup": "Cerrar vault remoto",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Error al subir los cambios del vault",
         "uploading": "Subiendo cambios del vault..."
       },
-      "dropFiles": "Arrastre archivos para agregarlos al vault"
+      "dropFiles": "Arrastre archivos para agregarlos al vault",
+      "save": "Guardar"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

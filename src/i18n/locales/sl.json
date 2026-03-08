@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} datotek(e) dodanih",
       "itemDeleted": "Izbrisano {name}",
       "itemsDeleted": "{count} elementov izbrisanih",
-      "titleFull": "AeroVault - Vojaška stopnja šifriranja",
+      "titleFull": "AeroVault - Močno šifriranje",
       "totalItems": "skupaj",
       "remote": {
         "cleanup": "Zapri oddaljeni trezor",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Nalaganje sprememb trezorja ni uspelo",
         "uploading": "Nalaganje sprememb trezorja..."
       },
-      "dropFiles": "Povlecite datoteke za dodajanje v trezor"
+      "dropFiles": "Povlecite datoteke za dodajanje v trezor",
+      "save": "Shrani"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",

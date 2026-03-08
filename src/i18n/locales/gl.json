@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} ficheiro(s) engadido(s)",
       "itemDeleted": "{name} eliminado",
       "itemsDeleted": "{count} elemento(s) eliminado(s)",
-      "titleFull": "AeroVault - Cifrado de nivel militar",
+      "titleFull": "AeroVault - Cifrado forte",
       "totalItems": "total",
       "remote": {
         "cleanup": "Pechar bóveda remota",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Non se puideron subir os cambios da bóveda",
         "uploading": "Subindo cambios da bóveda..."
       },
-      "dropFiles": "Solte ficheiros para engadir á caixa forte"
+      "dropFiles": "Solte ficheiros para engadir á caixa forte",
+      "save": "Gardar"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",

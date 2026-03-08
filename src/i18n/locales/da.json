@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fil(er) tilføjet",
       "itemDeleted": "{name} slettet",
       "itemsDeleted": "{count} element(er) slettet",
-      "titleFull": "AeroVault - Militærgrad kryptering",
+      "titleFull": "AeroVault - Stærk kryptering",
       "totalItems": "i alt",
       "remote": {
         "cleanup": "Luk fjernboks",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Kunne ikke uploade boksændringer",
         "uploading": "Uploader boksændringer..."
       },
-      "dropFiles": "Træk filer hertil for at tilføje til boksen"
+      "dropFiles": "Træk filer hertil for at tilføje til boksen",
+      "save": "Gem"
     },
     "cryptomator": {
       "title": "Cryptomator-boks",

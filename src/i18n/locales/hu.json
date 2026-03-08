@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fájl hozzáadva",
       "itemDeleted": "Törölve: {name}",
       "itemsDeleted": "{count} elem törölve",
-      "titleFull": "AeroVault - Katonai szintű titkosítás",
+      "titleFull": "AeroVault - Erős titkosítás",
       "totalItems": "összesen",
       "remote": {
         "cleanup": "Távoli vault bezárása",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "A vault módosítások feltöltése sikertelen",
         "uploading": "Vault módosítások feltöltése..."
       },
-      "dropFiles": "Húzza ide a fájlokat a széfhez való hozzáadáshoz"
+      "dropFiles": "Húzza ide a fájlokat a széfhez való hozzáadáshoz",
+      "save": "Mentés"
     },
     "cryptomator": {
       "title": "Cryptomator tároló",

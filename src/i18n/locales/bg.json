@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} файл(а) добавени",
       "itemDeleted": "Изтрито: {name}",
       "itemsDeleted": "{count} елемент(а) изтрити",
-      "titleFull": "AeroVault — криптиране от военен клас",
+      "titleFull": "AeroVault - Силно криптиране",
       "totalItems": "общо",
       "remote": {
         "cleanup": "Затвори отдалечен трезор",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Неуспешно качване на промените в трезора",
         "uploading": "Качване на промените в трезора..."
       },
-      "dropFiles": "Плъзнете файлове, за да ги добавите в трезора"
+      "dropFiles": "Плъзнете файлове, за да ги добавите в трезора",
+      "save": "Запази"
     },
     "cryptomator": {
       "title": "Cryptomator трезор",

@@ -2295,7 +2295,7 @@
       "filesAdded": "เพิ่ม {count} ไฟล์แล้ว",
       "itemDeleted": "ลบ {name} แล้ว",
       "itemsDeleted": "ลบ {count} รายการแล้ว",
-      "titleFull": "AeroVault - การเข้ารหัสระดับทหาร",
+      "titleFull": "AeroVault - การเข้ารหัสที่แข็งแกร่ง",
       "totalItems": "ทั้งหมด",
       "remote": {
         "cleanup": "ปิดห้องนิรภัยระยะไกล",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "ไม่สามารถอัปโหลดการเปลี่ยนแปลงห้องนิรภัย",
         "uploading": "กำลังอัปโหลดการเปลี่ยนแปลงห้องนิรภัย..."
       },
-      "dropFiles": "ลากไฟล์เพื่อเพิ่มลงใน vault"
+      "dropFiles": "ลากไฟล์เพื่อเพิ่มลงใน vault",
+      "save": "บันทึก"
     },
     "cryptomator": {
       "title": "ตู้นิรภัย Cryptomator",

@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} datoteka dodano",
       "itemDeleted": "Obrisano {name}",
       "itemsDeleted": "{count} stavki obrisano",
-      "titleFull": "AeroVault - Vojna razina enkripcije",
+      "titleFull": "AeroVault - Snažna enkripcija",
       "totalItems": "ukupno",
       "remote": {
         "cleanup": "Zatvori udaljeni trezor",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Prijenos promjena trezora nije uspio",
         "uploading": "Prijenos promjena trezora..."
       },
-      "dropFiles": "Povucite datoteke za dodavanje u trezor"
+      "dropFiles": "Povucite datoteke za dodavanje u trezor",
+      "save": "Spremi"
     },
     "cryptomator": {
       "title": "Cryptomator Trezor",

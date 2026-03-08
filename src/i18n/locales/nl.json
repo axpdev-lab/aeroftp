@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} bestand(en) toegevoegd",
       "itemDeleted": "Verwijderd {name}",
       "itemsDeleted": "{count} item(s) verwijderd",
-      "titleFull": "AeroVault — Militaire versleuteling",
+      "titleFull": "AeroVault - Sterke versleuteling",
       "totalItems": "totaal",
       "remote": {
         "cleanup": "Externe vault sluiten",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Uploaden van vault-wijzigingen mislukt",
         "uploading": "Vault-wijzigingen uploaden..."
       },
-      "dropFiles": "Sleep bestanden om ze aan de vault toe te voegen"
+      "dropFiles": "Sleep bestanden om ze aan de vault toe te voegen",
+      "save": "Opslaan"
     },
     "cryptomator": {
       "title": "Cryptomator-kluis",

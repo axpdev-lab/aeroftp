@@ -127,6 +127,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.1" date="2026-03-08">
+      <description>
+        <p>Snap Store fix, MEGA clickable session badge, Jottacloud token persistence, auto-open Activity Log on sync completion, and security audit documentation updates.</p>
+      </description>
+    </release>
     <release version="2.9.0" date="2026-03-07">
       <description>
         <p>Cloud Provider Audit and Security Hardening: 6 GPT-5.4 residual findings resolved (journal signing key moved process-side, provider password zeroization, Cryptomator SecretString, WebDAV insecure detection, shell denylist expanded to 35 patterns). AeroCloud rebranded from FTP-based to multi-protocol (20 protocols). AeroVault v2 extracted to standalone crate on crates.io.</p>

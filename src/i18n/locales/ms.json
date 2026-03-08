@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fail ditambah",
       "itemDeleted": "Dipadam {name}",
       "itemsDeleted": "{count} item dipadam",
-      "titleFull": "AeroVault — Penyulitan Gred Tentera",
+      "titleFull": "AeroVault - Penyulitan kuat",
       "totalItems": "jumlah",
       "remote": {
         "cleanup": "Tutup Vault Jauh",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Gagal memuat naik perubahan vault",
         "uploading": "Memuat naik perubahan vault..."
       },
-      "dropFiles": "Lepaskan fail untuk ditambah ke peti besi"
+      "dropFiles": "Lepaskan fail untuk ditambah ke peti besi",
+      "save": "Simpan"
     },
     "cryptomator": {
       "title": "Peti Besi Cryptomator",

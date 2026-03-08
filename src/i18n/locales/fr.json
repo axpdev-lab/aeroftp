@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fichier(s) ajouté(s)",
       "itemDeleted": "{name} supprimé",
       "itemsDeleted": "{count} élément(s) supprimé(s)",
-      "titleFull": "AeroVault - Chiffrement de niveau militaire",
+      "titleFull": "AeroVault - Chiffrement fort",
       "totalItems": "total",
       "remote": {
         "cleanup": "Fermer le vault distant",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Échec de l'envoi des modifications du vault",
         "uploading": "Envoi des modifications du vault..."
       },
-      "dropFiles": "Deposez les fichiers pour les ajouter au vault"
+      "dropFiles": "Deposez les fichiers pour les ajouter au vault",
+      "save": "Enregistrer"
     },
     "cryptomator": {
       "title": "Coffre-fort Cryptomator",

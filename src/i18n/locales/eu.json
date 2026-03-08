@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} fitxategi gehituta",
       "itemDeleted": "{name} ezabatuta",
       "itemsDeleted": "{count} elementu ezabatuta",
-      "titleFull": "AeroVault - Enkriptazio militar-maila",
+      "titleFull": "AeroVault - Enkriptazio sendoa",
       "totalItems": "guztira",
       "remote": {
         "cleanup": "Itxi urruneko kutxa gotorra",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Ezin izan dira kutxa gotorraren aldaketak igo",
         "uploading": "Kutxa gotorraren aldaketak igotzen..."
       },
-      "dropFiles": "Jaregin fitxategiak kutxara gehitzeko"
+      "dropFiles": "Jaregin fitxategiak kutxara gehitzeko",
+      "save": "Gorde"
     },
     "cryptomator": {
       "title": "Cryptomator Ganga",

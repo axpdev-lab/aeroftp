@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} датотека/и додадени",
       "itemDeleted": "Избришано {name}",
       "itemsDeleted": "{count} елемент/и избришани",
-      "titleFull": "AeroVault — воена енкрипција",
+      "titleFull": "AeroVault - Силна енкрипција",
       "totalItems": "вкупно",
       "remote": {
         "cleanup": "Затвори оддалечен трезор",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "Пренесувањето на промените на трезорот не успеа",
         "uploading": "Пренесување на промените на трезорот..."
       },
-      "dropFiles": "Отпуштете датотеки за додавање во сефот"
+      "dropFiles": "Отпуштете датотеки за додавање во сефот",
+      "save": "Зачувај"
     },
     "cryptomator": {
       "title": "Cryptomator трезор",

@@ -2295,7 +2295,7 @@
       "filesAdded": "已添加 {count} 个文件",
       "itemDeleted": "已删除 {name}",
       "itemsDeleted": "已删除 {count} 个项目",
-      "titleFull": "AeroVault - 军用级加密",
+      "titleFull": "AeroVault - 强加密",
       "totalItems": "总计",
       "remote": {
         "cleanup": "关闭远程 vault",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "上传 vault 更改失败",
         "uploading": "正在上传 vault 更改..."
       },
-      "dropFiles": "拖放文件以添加到 vault"
+      "dropFiles": "拖放文件以添加到 vault",
+      "save": "保存"
     },
     "cryptomator": {
       "title": "Cryptomator 保险库",

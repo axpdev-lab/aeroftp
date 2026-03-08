@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.1] - 2026-03-08
+
+### Snap Store Fix & UX Polish
+
+#### Fixed
+
+- **Snap Store metadata redflag**: Softened description keywords ("Military-grade" -> "Strong", "shell commands" -> "scripting", "Autonomous" -> "Multi-step") to pass automated Snap Store review
+- **MEGA session handling**: Removed confusing EXP badge — backend auto-reauth handles session renewal transparently
+- **Jottacloud token persistence**: OAuth tokens properly saved and restored across sessions
+- **Activity Log auto-open**: Activity Log panel opens automatically on sync completion
+
+#### Changed
+
+- **AeroVault creation flow**: Right-click "Create AeroVault" now auto-includes selected files, uses filename-based default name, and shows file count preview in creation dialog
+- **Security audit documentation**: Updated security-evidence README with all audit reports and AeroVault crate reference
+
+---
+
 ## [2.9.0] - 2026-03-07
 
 ### Cloud Provider Audit & Security Hardening

@@ -2295,7 +2295,7 @@
       "filesAdded": "{count} ფაილი დაემატა",
       "itemDeleted": "{name} წაიშალა",
       "itemsDeleted": "{count} ელემენტი წაიშალა",
-      "titleFull": "AeroVault - სამხედრო დონის დაშიფვრა",
+      "titleFull": "AeroVault - ძლიერი დაშიფვრა",
       "totalItems": "სულ",
       "remote": {
         "cleanup": "დახურე დაშორებული საცავი",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "საცავის ცვლილებების ატვირთვა ვერ მოხერხდა",
         "uploading": "საცავის ცვლილებების ატვირთვა..."
       },
-      "dropFiles": "ჩააგდეთ ფაილები საცავში დასამატებლად"
+      "dropFiles": "ჩააგდეთ ფაილები საცავში დასამატებლად",
+      "save": "შენახვა"
     },
     "cryptomator": {
       "title": "Cryptomator საცავი",

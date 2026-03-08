@@ -2288,7 +2288,7 @@
       "filesAdded": "{count} ֆայլ ավելացվեց",
       "itemDeleted": "Ջնջվեց՝ {name}",
       "itemsDeleted": "{count} տարր ջնջվեց",
-      "titleFull": "AeroVault — Ռազմական մակարդակի գաղտնագրում",
+      "titleFull": "AeroVault - Ուժեղ գաղտնագրման",
       "totalItems": "ընդամենը",
       "remote": {
         "cleanup": "Փակել հեռակա պահոցը",
@@ -2300,7 +2300,8 @@
         "uploadFailed": "Պահոցի փոփոխությունների վերբեռնումը ձախողվեց",
         "uploading": "Պահոցի փոփոխությունները վերբեռնվում են..."
       },
-      "dropFiles": "Գցեք ֆայլերը պահոց ավելացնելու համար"
+      "dropFiles": "Գցեք ֆայլերը պահոց ավելացնելու համար",
+      "save": "Պահել"
     },
     "cryptomator": {
       "title": "Cryptomator Պահոց",

@@ -2415,7 +2415,7 @@
       "dirEmpty": "La directory è vuota",
       "extract": "Estrai",
       "remove": "Rimuovi",
-      "titleFull": "AeroVault - Crittografia di Grado Militare",
+      "titleFull": "AeroVault - Crittografia avanzata",
       "filesAdded": "{count} file aggiunti",
       "directoryCreated": "Directory \"{name}\" creata",
       "itemsDeleted": "{count} elementi eliminati",
@@ -2433,7 +2433,8 @@
         "uploadFailed": "Impossibile caricare le modifiche al vault",
         "uploading": "Caricamento delle modifiche al vault..."
       },
-      "dropFiles": "Trascina i file per aggiungerli al vault"
+      "dropFiles": "Trascina i file per aggiungerli al vault",
+      "save": "Salva"
     },
     "cryptomator": {
       "confirmPassword": "Conferma Password",

@@ -2295,7 +2295,7 @@
       "filesAdded": "{count}টি ফাইল যোগ হয়েছে",
       "itemDeleted": "{name} মুছে ফেলা হয়েছে",
       "itemsDeleted": "{count}টি আইটেম মুছে ফেলা হয়েছে",
-      "titleFull": "AeroVault — সামরিক-মানের এনক্রিপশন",
+      "titleFull": "AeroVault - শক্তিশালী এনক্রিপশন",
       "totalItems": "মোট",
       "remote": {
         "cleanup": "রিমোট ভল্ট বন্ধ করুন",
@@ -2307,7 +2307,8 @@
         "uploadFailed": "ভল্ট পরিবর্তন আপলোড করা যায়নি",
         "uploading": "ভল্ট পরিবর্তন আপলোড হচ্ছে..."
       },
-      "dropFiles": "ভল্টে যোগ করতে ফাইল ড্রপ করুন"
+      "dropFiles": "ভল্টে যোগ করতে ফাইল ড্রপ করুন",
+      "save": "সংরক্ষণ"
     },
     "cryptomator": {
       "title": "Cryptomator ভল্ট",

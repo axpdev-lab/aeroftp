@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, Clock, GripVertical, Search } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -271,17 +271,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     };
 
     const handleConnect = async (serverParam: ServerProfile) => {
-        let server = serverParam;
-        // MEGA session expired — renew session_expires_at (+24h) and continue connecting
-        if (server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at) {
-            const renewedOptions = { ...server.options, session_expires_at: Date.now() + 24 * 60 * 60 * 1000 };
-            const renewedServers = servers.map(s =>
-                s.id === server.id ? { ...s, options: renewedOptions } : s
-            );
-            setServers(renewedServers);
-            saveServers(renewedServers);
-            server = { ...server, options: renewedOptions };
-        }
+        const server = serverParam;
 
         // Clear any previous OAuth error
         setOauthError(null);
@@ -591,15 +581,6 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                         <div className="flex-1 min-w-0">
                                 <div className="font-medium flex items-center gap-2">
                                     {server.name || server.host}
-                                    {server.protocol === 'mega' && server.options?.session_expires_at && Date.now() > server.options.session_expires_at && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleConnect(server); }}
-                                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 font-bold border border-red-200 dark:border-red-800 flex items-center gap-1 cursor-pointer hover:bg-red-200 dark:hover:bg-red-800/60 transition-colors"
-                                            title={t('savedServers.clickToRenew')}
-                                        >
-                                            <Clock size={10} /> {t('savedServers.expBadge')}
-                                        </button>
-                                    )}
                                     {oauthConnecting === server.id && (
                                         <span className="text-xs text-blue-500 animate-pulse">{t('connection.authenticating')}</span>
                                     )}

@@ -4,10 +4,10 @@
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 2.8.x   | Yes (current)       |
-| 2.7.x   | Security fixes only |
-| 2.6.x   | No                  |
-| < 2.6   | No                  |
+| 2.9.x   | Yes (current)       |
+| 2.8.x   | Security fixes only |
+| 2.7.x   | No                  |
+| < 2.7   | No                  |
 
 ## Security Architecture
 
