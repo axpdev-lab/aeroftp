@@ -24,7 +24,7 @@ description: |
   - FileLu (API Key, file passwords, privacy toggle)
 
   Security Features:
-  - AeroVault v2: Military-grade encrypted containers (AES-256-GCM-SIV, Argon2id)
+  - AeroVault v2: Strong encrypted containers (AES-256-GCM-SIV, Argon2id)
   - Master Password: App-wide protection with auto-lock timeout
   - Cryptomator vault support (format 8)
   - OS Keyring integration (libsecret/Keychain/Credential Manager)
@@ -37,8 +37,8 @@ description: |
   - Monaco Editor (VS Code engine) for remote file editing
   - Integrated SSH terminal with theme sync
   - AeroAgent AI assistant (19 providers: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, and 13 more)
-  - 45 AI tools: file ops, code editing, RAG search, shell commands, plugin ecosystem
-  - Autonomous multi-step tool execution with approval controls
+  - 45 AI tools: file operations, code editing, RAG search, scripting, plugins
+  - Multi-step tool execution with user approval controls
 
   AeroSync — Reliable Synchronization:
   - Bidirectional sync with journal checkpoint/resume
