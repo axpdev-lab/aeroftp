@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Na-expire ang session (24 oras)"
+      "sessionExpired": "Na-expire ang session (24 oras)",
+      "clickToRenew": "I-click upang i-renew ang session at kumonekta"
     },
     "cyberTools": {
       "title": "Security Tools",

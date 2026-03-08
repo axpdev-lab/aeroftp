@@ -24,6 +24,8 @@ interface UseTransferEventsOptions {
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
   currentRemotePath: string;
+  /** Called when a transfer starts — used to auto-open Activity Log */
+  onTransferStart?: () => void;
 }
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
@@ -74,6 +76,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
+        // Auto-open activity log on transfer start
+        optRef.current.onTransferStart?.();
         // Clean up completed set and reset speed tracking for this new transfer
         completedTransferIds.current.delete(data.transfer_id);
         lastFileSpeedRef.current = 0;
@@ -320,6 +324,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
       // ========== DELETE EVENTS ==========
       else if (data.event_type === 'delete_start') {
+        optRef.current.onTransferStart?.();
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');

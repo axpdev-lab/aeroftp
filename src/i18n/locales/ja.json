@@ -2894,7 +2894,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "セッション期限切れ (24時間)"
+      "sessionExpired": "セッション期限切れ (24時間)",
+      "clickToRenew": "クリックしてセッションを更新し接続"
     },
     "cyberTools": {
       "title": "セキュリティツール",

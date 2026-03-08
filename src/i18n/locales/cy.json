@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesiwn wedi dod i ben (24a)"
+      "sessionExpired": "Sesiwn wedi dod i ben (24a)",
+      "clickToRenew": "Cliciwch i adnewyddu sesiwn a chysylltu"
     },
     "cyberTools": {
       "title": "Offer diogelwch",

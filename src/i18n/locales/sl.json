@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Seja je potekla (24ur)"
+      "sessionExpired": "Seja je potekla (24ur)",
+      "clickToRenew": "Kliknite za obnovitev seje in povezavo"
     },
     "cyberTools": {
       "title": "Varnostna orodja",

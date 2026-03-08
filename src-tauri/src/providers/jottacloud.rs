@@ -224,11 +224,19 @@ impl JottacloudProvider {
         if let Some(ref at) = token_resp.access_token {
             self.access_token = SecretString::from(at.clone());
         }
+        let mut rt_rotated = false;
         if let Some(ref rt) = token_resp.refresh_token {
+            if rt != self.refresh_token.expose_secret() {
+                rt_rotated = true;
+            }
             self.refresh_token = SecretString::from(rt.clone());
         }
         let expires_in = token_resp.expires_in.unwrap_or(3600);
         self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+        // Re-persist if refresh token was rotated by the server
+        if rt_rotated {
+            self.persist_refresh_token();
+        }
         jotta_log("Access token refreshed");
         Ok(())
     }
@@ -236,6 +244,94 @@ impl JottacloudProvider {
     fn auth_header(&self) -> HeaderValue {
         HeaderValue::from_str(&format!("Bearer {}", self.access_token.expose_secret()))
             .unwrap_or_else(|_| HeaderValue::from_static(""))
+    }
+
+    // ─── Token Persistence ───────────────────────────────────────────────
+
+    /// Persist refresh token + metadata in credential vault for reconnection
+    /// without requiring a new single-use login token.
+    fn persist_refresh_token(&self) {
+        let data = serde_json::json!({
+            "refresh_token": self.refresh_token.expose_secret(),
+            "token_endpoint": self.token_endpoint,
+            "username": self.username,
+        });
+        let json = data.to_string();
+        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+            if store.store("jottacloud_refresh", &json).is_ok() {
+                jotta_log("Refresh token persisted to vault");
+                return;
+            }
+        }
+        // Try auto-init vault
+        if crate::credential_store::CredentialStore::init().is_ok() {
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                let _ = store.store("jottacloud_refresh", &json);
+                jotta_log("Refresh token persisted to auto-initialized vault");
+            }
+        }
+    }
+
+    /// Load persisted refresh token from vault.
+    fn load_persisted_refresh_token() -> Option<(String, String, String)> {
+        let store = crate::credential_store::CredentialStore::from_cache()?;
+        let json = store.get("jottacloud_refresh").ok()?;
+        let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+        let rt = v["refresh_token"].as_str()?.to_string();
+        let te = v["token_endpoint"].as_str()?.to_string();
+        let un = v["username"].as_str()?.to_string();
+        if rt.is_empty() || te.is_empty() || un.is_empty() {
+            return None;
+        }
+        Some((rt, te, un))
+    }
+
+    /// Try to connect using a persisted refresh token (no login token needed).
+    async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
+        let (rt, te, un) = match Self::load_persisted_refresh_token() {
+            Some(data) => data,
+            None => return Ok(false),
+        };
+        jotta_log("Found persisted refresh token, attempting reconnection");
+
+        let form_body = format!(
+            "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
+            urlencoding::encode(&rt),
+        );
+        let resp = self.client.post(&te)
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(form_body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::AuthenticationFailed(
+                format!("Refresh token exchange failed: {}", e)
+            ))?;
+
+        if !resp.status().is_success() {
+            jotta_log("Persisted refresh token is invalid/expired, falling back to login token");
+            // Clear stale persisted token
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                let _ = store.delete("jottacloud_refresh");
+            }
+            return Ok(false);
+        }
+
+        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
+        })?;
+        if token_resp.access_token.is_none() {
+            return Ok(false);
+        }
+
+        self.username = un;
+        self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+        self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
+        self.token_endpoint = te;
+        let expires_in = token_resp.expires_in.unwrap_or(3600);
+        self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+
+        jotta_log("Reconnected using persisted refresh token");
+        Ok(true)
     }
 
     // ─── HTTP Helpers ───────────────────────────────────────────────────
@@ -719,27 +815,44 @@ impl StorageProvider for JottacloudProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         jotta_log("Connecting to Jottacloud");
 
-        // Step 1: Decode login token
-        let login_token = Self::decode_login_token(self.config.login_token.expose_secret())?;
-        let username = login_token.username.unwrap_or_default();
-        let auth_token = login_token.auth_token.unwrap_or_default();
-        let well_known_link = login_token.well_known_link.unwrap_or_default();
+        // Strategy: try persisted refresh token first (avoids consuming the single-use login token).
+        // If that fails, fall back to the login token from config.
+        let used_refresh = self.try_connect_with_refresh().await.unwrap_or(false);
 
-        jotta_log(&format!("Username: {}, discovering OIDC from well-known URL", username));
+        if !used_refresh {
+            // Step 1: Decode login token
+            let login_token = Self::decode_login_token(self.config.login_token.expose_secret())?;
+            let username = login_token.username.unwrap_or_default();
+            let auth_token = login_token.auth_token.unwrap_or_default();
+            let well_known_link = login_token.well_known_link.unwrap_or_default();
 
-        // Step 2: OIDC discovery
-        let token_endpoint = self.discover_oidc(&well_known_link).await?;
-        jotta_log(&format!("Token endpoint discovered: {}", token_endpoint));
+            jotta_log(&format!("Username: {}, discovering OIDC from well-known URL", username));
 
-        // Step 3: Exchange credentials for access token
-        let token_resp = self.exchange_token(&token_endpoint, &username, &auth_token).await?;
+            // Step 2: OIDC discovery
+            let token_endpoint = self.discover_oidc(&well_known_link).await?;
+            jotta_log(&format!("Token endpoint discovered: {}", token_endpoint));
 
-        self.username = username;
-        self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
-        self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or_default());
-        self.token_endpoint = token_endpoint;
-        let expires_in = token_resp.expires_in.unwrap_or(3600);
-        self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+            // Step 3: Exchange credentials for access token
+            // Login tokens are single-use: if already consumed, this returns invalid_grant.
+            let token_resp = self.exchange_token(&token_endpoint, &username, &auth_token).await
+                .map_err(|e| {
+                    let msg = format!("{}", e);
+                    if msg.contains("invalid_grant") || msg.contains("Invalid user credentials") {
+                        ProviderError::AuthenticationFailed(
+                            "Login token expired or already used. Generate a new Personal Login Token at jottacloud.com → Settings → Security.".to_string()
+                        )
+                    } else {
+                        e
+                    }
+                })?;
+
+            self.username = username;
+            self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+            self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or_default());
+            self.token_endpoint = token_endpoint;
+            let expires_in = token_resp.expires_in.unwrap_or(3600);
+            self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+        }
 
         // Step 4: Verify by fetching customer info
         let url = format!("{}/account/v1/customer", API_BASE);
@@ -784,6 +897,10 @@ impl StorageProvider for JottacloudProvider {
         }
 
         self.connected = true;
+
+        // Persist refresh token for future reconnections (login token is single-use)
+        self.persist_refresh_token();
+
         jotta_log(&format!("Connected (device={}, mountpoint={})", self.config.device, self.config.mountpoint));
         Ok(())
     }

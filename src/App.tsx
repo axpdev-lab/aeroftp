@@ -1653,6 +1653,9 @@ const App: React.FC = () => {
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
     currentRemotePath,
+    onTransferStart: () => {
+      if (!showActivityLog) setShowActivityLog(true);
+    },
   });
 
   const handleRemoteSearch = async (query: string) => {

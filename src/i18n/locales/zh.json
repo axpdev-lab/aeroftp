@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "会话已过期 (24小时)"
+      "sessionExpired": "会话已过期 (24小时)",
+      "clickToRenew": "点击续期会话并连接"
     },
     "cyberTools": {
       "title": "安全工具",

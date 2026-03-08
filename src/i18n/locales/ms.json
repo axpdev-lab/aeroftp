@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesi tamat tempoh (24j)"
+      "sessionExpired": "Sesi tamat tempoh (24j)",
+      "clickToRenew": "Klik untuk memperbaharui sesi dan menyambung"
     },
     "cyberTools": {
       "title": "Alatan Keselamatan",

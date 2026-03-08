@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Munkamenet lejárt (24ó)"
+      "sessionExpired": "Munkamenet lejárt (24ó)",
+      "clickToRenew": "Kattintson a munkamenet megújításához és csatlakozáshoz"
     },
     "cyberTools": {
       "title": "Biztonsági eszközök",

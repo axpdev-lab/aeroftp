@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "វគ្គផុតកំណត់ (24ម៉ោង)"
+      "sessionExpired": "វគ្គផុតកំណត់ (24ម៉ោង)",
+      "clickToRenew": "ក្លិកដើម្បីបន្តសេសិន និងតត្លភ្ជាប់"
     },
     "cyberTools": {
       "title": "ឧបករណ៍សុវត្ថិភាព",

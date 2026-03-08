@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Kipindi kimeisha (saa 24)"
+      "sessionExpired": "Kipindi kimeisha (saa 24)",
+      "clickToRenew": "Bofya kuhuisha kipindi na kuunganisha"
     },
     "cyberTools": {
       "title": "Zana za Usalama",

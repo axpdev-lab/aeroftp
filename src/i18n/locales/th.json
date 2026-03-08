@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "เซสชันหมดอายุ (24 ชม.)"
+      "sessionExpired": "เซสชันหมดอายุ (24 ชม.)",
+      "clickToRenew": "คลิกเพื่อต่ออายุเซสชันและเชื่อมต่อ"
     },
     "cyberTools": {
       "title": "เครื่องมือความปลอดภัย",

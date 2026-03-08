@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Relácia vypršala (24 hod.)"
+      "sessionExpired": "Relácia vypršala (24 hod.)",
+      "clickToRenew": "Kliknite pre obnovenie relácie a pripojenie"
     },
     "cyberTools": {
       "title": "Bezpečnostné nástroje",

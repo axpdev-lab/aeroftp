@@ -3022,7 +3022,8 @@
       "oauthConfigError": "Configura le credenziali {provider} in Impostazioni > Provider Cloud.",
       "foursharedConfigError": "Configura le credenziali 4shared in Impostazioni > Provider Cloud.",
       "expBadge": "EXP",
-      "sessionExpired": "Sessione scaduta (24h)"
+      "sessionExpired": "Sessione scaduta (24h)",
+      "clickToRenew": "Clicca per rinnovare la sessione e connetterti"
     },
     "dialog": {
       "deleteFile": "Eliminare \"{name}\"?",

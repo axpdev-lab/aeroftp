@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Saioa iraungi da (24h)"
+      "sessionExpired": "Saioa iraungi da (24h)",
+      "clickToRenew": "Egin klik saioa berritzeko eta konektatzeko"
     },
     "cyberTools": {
       "title": "Segurtasun tresnak",

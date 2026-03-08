@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Istunto vanhentunut (24h)"
+      "sessionExpired": "Istunto vanhentunut (24h)",
+      "clickToRenew": "Napsauta uusiaksesi istunnon ja yhdistääksesi"
     },
     "cyberTools": {
       "title": "Turvallisuustyö­kalut",

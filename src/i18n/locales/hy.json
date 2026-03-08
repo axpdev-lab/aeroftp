@@ -2922,7 +2922,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Նիստը լրացել է (24ժ)"
+      "sessionExpired": "Նիստը լրացել է (24ժ)",
+      "clickToRenew": "Սեղմեք նիստը նորոգելու և միանալու համար"
     },
     "cyberTools": {
       "title": "Անվտանգության գործիքներ",

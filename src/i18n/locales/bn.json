@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "সেশনের মেয়াদ শেষ (২৪ ঘণ্টা)"
+      "sessionExpired": "সেশনের মেয়াদ শেষ (২৪ ঘণ্টা)",
+      "clickToRenew": "সেশন নবায়ন এবং সংযোগ করতে ক্লিক করুন"
     },
     "cyberTools": {
       "title": "নিরাপত্তা সরঞ্জাম",

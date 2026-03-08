@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesija pasibaigė (24val.)"
+      "sessionExpired": "Sesija pasibaigė (24val.)",
+      "clickToRenew": "Spustelėkite, kad atnaujintumėte sesiją ir prisijungtumėte"
     },
     "cyberTools": {
       "title": "Saugumo įrankiai",

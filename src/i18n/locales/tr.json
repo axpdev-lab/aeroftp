@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Oturum süresi doldu (24sa)"
+      "sessionExpired": "Oturum süresi doldu (24sa)",
+      "clickToRenew": "Oturumu yenilemek ve bağlanmak için tıklayın"
     },
     "cyberTools": {
       "title": "Güvenlik Araçları",

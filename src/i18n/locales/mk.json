@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Сесијата истече (24ч)"
+      "sessionExpired": "Сесијата истече (24ч)",
+      "clickToRenew": "Кликнете за обновување на сесијата и поврзување"
     },
     "cyberTools": {
       "title": "Безбедносни алатки",

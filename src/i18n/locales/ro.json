@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesiune expirată (24h)"
+      "sessionExpired": "Sesiune expirată (24h)",
+      "clickToRenew": "Faceți clic pentru a reînnoi sesiunea și a vă conecta"
     },
     "cyberTools": {
       "title": "Instrumente de Securitate",

@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Сеанс закінчився (24год)"
+      "sessionExpired": "Сеанс закінчився (24год)",
+      "clickToRenew": "Натисніть для оновлення сесії та підключення"
     },
     "cyberTools": {
       "title": "Інструменти безпеки",

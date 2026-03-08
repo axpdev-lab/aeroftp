@@ -1957,6 +1957,7 @@
       "oauthError": "OAuth — {username}",
       "s3Provider": "{bucket} — {provider}",
       "sessionExpired": "Session expired (24h)",
+      "clickToRenew": "Click to renew session and connect",
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}"
     },

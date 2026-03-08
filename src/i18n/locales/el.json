@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Η συνεδρία έληξε (24ώ)"
+      "sessionExpired": "Η συνεδρία έληξε (24ώ)",
+      "clickToRenew": "Κάντε κλικ για ανανέωση συνεδρίας και σύνδεση"
     },
     "cyberTools": {
       "title": "Εργαλεία Ασφαλείας",

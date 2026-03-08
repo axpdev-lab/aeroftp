@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Seanss aegunud (24h)"
+      "sessionExpired": "Seanss aegunud (24h)",
+      "clickToRenew": "Klõpsake seansi uuendamiseks ja ühendamiseks"
     },
     "cyberTools": {
       "title": "Turvalisuse tööriistad",

@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesión caducada (24h)"
+      "sessionExpired": "Sesión caducada (24h)",
+      "clickToRenew": "Fai clic para renovar a sesión e conectar"
     },
     "cyberTools": {
       "title": "Ferramentas de seguridade",

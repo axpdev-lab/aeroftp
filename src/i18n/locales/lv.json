@@ -2929,7 +2929,8 @@
       "standardDisplay": "{username}@{host}:{port}",
       "webdavDisplay": "{username}@{host}",
       "expBadge": "EXP",
-      "sessionExpired": "Sesija beigusies (24h)"
+      "sessionExpired": "Sesija beigusies (24h)",
+      "clickToRenew": "Noklikšķiniet, lai atjaunotu sesiju un izveidotu savienojumu"
     },
     "cyberTools": {
       "title": "Drošības rīki",
