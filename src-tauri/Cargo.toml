@@ -131,7 +131,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite 
 # CLI Foundation (v2.3.0)
 clap = { version = "4", features = ["derive"] }                        # CLI argument parser
 indicatif = "0.17"                                                     # Progress bars for CLI
-rpassword = "5"                                                        # Secure password input (no echo)
+rpassword = "7"                                                        # Secure password input (no echo)
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup
 globset = "0.4"                                                        # Glob patterns for batch transfers
 
