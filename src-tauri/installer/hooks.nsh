@@ -1,15 +1,30 @@
 ; AeroFTP NSIS Installer Hooks
 ; Post-install and pre-uninstall actions for Windows.
-;
-; Currently a stub — prepared for future Shell Icon Overlay COM DLL registration
-; if Cloud Filter API proves insufficient for certain Explorer versions.
 
 !macro CUSTOM_POST_INSTALL
-    ; Future: register COM DLL for Shell Icon Overlay
-    ; regsvr32 /s "$INSTDIR\aerocloud_overlay.dll"
+    ; Register .aerovault file association
+    WriteRegStr HKLM "Software\Classes\.aerovault" "" "AeroFTP.AeroVault"
+    WriteRegStr HKLM "Software\Classes\.aerovault" "Content Type" "application/x-aerovault"
+    WriteRegStr HKLM "Software\Classes\.aerovault" "PerceivedType" "document"
+
+    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault" "" "AeroVault Encrypted Container"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
+    ; Register MIME type in Windows MIME database
+    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
+
+    ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
+    System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
 !macroend
 
 !macro CUSTOM_PRE_UNINSTALL
-    ; Future: unregister COM DLL for Shell Icon Overlay
-    ; regsvr32 /u /s "$INSTDIR\aerocloud_overlay.dll"
+    ; Remove .aerovault file association and class registration
+    DeleteRegKey HKLM "Software\Classes\.aerovault"
+    DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
+    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
+
+    ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
+    System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
 !macroend

@@ -8,8 +8,9 @@
 import React from 'react';
 import {
     Archive, Image, Video, Music, FileCode, Code, Globe,
-    FileType, Database, FileSpreadsheet, FileText, Shield, Folder, FolderUp
+    FileType, Database, FileSpreadsheet, FileText, Folder, FolderUp
 } from 'lucide-react';
+import { VaultIcon } from '../../components/icons/VaultIcon';
 import type { IconThemeProvider, FileIconResult } from './types';
 
 export type EffectiveTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
@@ -29,7 +30,6 @@ const THEME_FOLDER_ACCENT: Record<EffectiveTheme, string> = {
 };
 
 const extIconMap: Record<string, React.ElementType> = {
-    'aerovault': Shield,
     // Archives
     'zip': Archive, 'rar': Archive, 'tar': Archive, 'gz': Archive, '7z': Archive,
     // Images
@@ -64,6 +64,9 @@ export const createMinimalTheme = (effectiveTheme: EffectiveTheme): IconThemePro
 
         getFileIcon: (filename: string, size: number = 16): FileIconResult => {
             const ext = filename.split('.').pop()?.toLowerCase() || '';
+            if (ext === 'aerovault') {
+                return { icon: <VaultIcon size={size} />, color: 'text-emerald-500' };
+            }
             const Icon = extIconMap[ext] || FileText;
             return { icon: <Icon size={size} className={accent} />, color: accent };
         },

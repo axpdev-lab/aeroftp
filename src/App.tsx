@@ -87,6 +87,7 @@ import { QuickLookOverlay } from './components/QuickLookOverlay';
 import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
+import { VaultIcon } from './components/icons/VaultIcon';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
 // Utilities
@@ -1577,6 +1578,17 @@ const App: React.FC = () => {
       unlistenTheme.then(fn => fn());
       unlistenSync.then(fn => fn());
     };
+  }, []);
+
+  // OS file association: listen for .aerovault files opened via double-click or single-instance forwarding
+  useEffect(() => {
+    const unlisten = listen<string>('vault-open-file', (event) => {
+      const vaultPath = event.payload;
+      if (vaultPath && vaultPath.endsWith('.aerovault')) {
+        setShowVaultPanel({ mode: 'open', path: vaultPath });
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
   }, []);
 
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
@@ -5223,7 +5235,7 @@ const App: React.FC = () => {
       // .aerovault — Open with AeroVault (right after Upload)
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
-        icon: <Shield size={14} className="text-emerald-500" />,
+        icon: <VaultIcon size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
       // .aerovault — Extract Here / Extract to Folder
@@ -5537,7 +5549,7 @@ const App: React.FC = () => {
     if (!isAeroVaultFile && !isCryptomatorMarker) {
       items.push({
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
-        icon: <Shield size={14} className="text-emerald-500" />,
+        icon: <VaultIcon size={14} />,
         action: () => {
           const paths = filesToUpload.map(name => {
             const f = sortedLocalFiles.find(lf => lf.name === name);

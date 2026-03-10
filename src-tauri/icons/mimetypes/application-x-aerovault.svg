@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Transformed by: SVG Repo Mixer Tools -->
+
+<svg
+   fill="#000000"
+   width="512"
+   height="512"
+   viewBox="0 0 48.000001 48.000001"
+   id="secure"
+   data-name="Line Color"
+   class="icon line-color"
+   version="1.1"
+   sodipodi:docname="secure-svgrepo-com.svg"
+   inkscape:export-filename="../../../../../var/www/html/FTP_CLIENT_GUI/docs/dev/img/aerovault_512.svg"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs949" />
+  <sodipodi:namedview
+     id="namedview947"
+     pagecolor="#ffffff"
+     bordercolor="#999999"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false" />
+  <g
+     id="SVGRepo_iconCarrier"
+     transform="translate(-3.0595837,-2.0000032)">
+    <g
+       id="g4522"
+       transform="matrix(2.4000016,0,0,2.4000016,-1.740435,-2.8000075)">
+      <path
+         id="primary"
+         d="m 12,21 0.88,-0.38 a 11,11 0 0 0 6.63,-9.26 l 0.43,-5.52 a 1,1 0 0 0 -0.76,-1 L 12,3 4.82,4.8 a 1,1 0 0 0 -0.76,1 l 0.43,5.52 a 11,11 0 0 0 6.63,9.26 z"
+         style="fill:#d4fbee;fill-opacity:1;stroke:#10b981;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
+      <path
+         id="secondary"
+         d="M 15.273507,14.570379 V 11.296871 A 0.81837669,0.81837669 0 0 0 14.455131,10.478495 H 9.5448705 a 0.81837669,0.81837669 0 0 0 -0.8183776,0.818376 v 3.273508 a 0.81837669,0.81837669 0 0 0 0.8183776,0.818376 h 4.9102605 a 0.81837669,0.81837669 0 0 0 0.818376,-0.818376 z M 12,7.2049893 v 0 A 1.6367534,1.6367534 0 0 0 10.363247,8.841743 v 1.636752 h 3.273506 V 8.841743 A 1.6367534,1.6367534 0 0 0 12,7.2049893 Z"
+         style="fill:#ffffff;stroke:#10b981;stroke-width:1.63676;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1" />
+    </g>
+  </g>
+</svg>

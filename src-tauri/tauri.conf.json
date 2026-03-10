@@ -59,6 +59,15 @@
         "copyright": "Copyright © 2025-2026 axpdev",
         "license": "GPL-3.0",
         "licenseFile": "../LICENSE",
+        "resources": [
+            "icons/mimetypes/aerovault.ico"
+        ],
+        "fileAssociations": [
+            {
+                "ext": ["aerovault"],
+                "contentTypes": ["application/x-aerovault"]
+            }
+        ],
         "linux": {
             "deb": {
                 "depends": [
@@ -72,8 +81,18 @@
                 ],
                 "files": {
                     "/usr/share/metainfo/com.aeroftp.AeroFTP.metainfo.xml": "../com.aeroftp.AeroFTP.metainfo.xml",
+                    "/usr/share/mime/packages/com.aeroftp.AeroVault.xml": "../com.aeroftp.AeroVault.xml",
                     "/usr/share/polkit-1/actions/com.aeroftp.update.policy": "resources/com.aeroftp.update.policy",
-                    "/usr/lib/aeroftp/aeroftp-update-helper": "resources/aeroftp-update-helper"
+                    "/usr/lib/aeroftp/aeroftp-update-helper": "resources/aeroftp-update-helper",
+                    "/usr/share/icons/hicolor/16x16/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-16.png",
+                    "/usr/share/icons/hicolor/24x24/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-24.png",
+                    "/usr/share/icons/hicolor/32x32/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-32.png",
+                    "/usr/share/icons/hicolor/48x48/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-48.png",
+                    "/usr/share/icons/hicolor/64x64/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-64.png",
+                    "/usr/share/icons/hicolor/128x128/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-128.png",
+                    "/usr/share/icons/hicolor/256x256/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-256.png",
+                    "/usr/share/icons/hicolor/512x512/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-512.png",
+                    "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerovault.svg": "icons/mimetypes/application-x-aerovault.svg"
                 }
             }
         },

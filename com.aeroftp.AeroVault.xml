@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-aerovault">
+    <comment>AeroVault Encrypted Container</comment>
+    <comment xml:lang="it">Contenitore cifrato AeroVault</comment>
+    <glob pattern="*.aerovault"/>
+    <magic priority="60">
+      <match type="string" offset="0" value="AEROVAULT2"/>
+    </magic>
+    <icon name="application-x-aerovault"/>
+  </mime-type>
+</mime-info>

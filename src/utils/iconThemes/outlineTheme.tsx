@@ -6,13 +6,12 @@
 import React from 'react';
 import {
     Archive, Image, Video, Music, FileCode, Code, Globe,
-    FileType, Database, FileSpreadsheet, FileText, Shield, Folder, FolderUp
+    FileType, Database, FileSpreadsheet, FileText, Folder, FolderUp
 } from 'lucide-react';
+import { VaultIcon } from '../../components/icons/VaultIcon';
 import type { IconThemeProvider, FileIconResult } from './types';
 
 const iconMap: Record<string, { Icon: React.ElementType; color: string }> = {
-    // Vaults
-    'aerovault': { Icon: Shield, color: 'text-emerald-400' },
     // Archives
     'zip': { Icon: Archive, color: 'text-yellow-600' },
     'rar': { Icon: Archive, color: 'text-yellow-600' },
@@ -106,6 +105,9 @@ export const outlineTheme: IconThemeProvider = {
 
     getFileIcon: (filename: string, size: number = 16): FileIconResult => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
+        if (ext === 'aerovault') {
+            return { icon: <VaultIcon size={size} />, color: 'text-emerald-500' };
+        }
         const entry = iconMap[ext];
         if (entry) {
             const { Icon, color } = entry;

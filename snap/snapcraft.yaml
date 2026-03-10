@@ -37,8 +37,14 @@ description: |
   - Monaco Editor (VS Code engine) for remote file editing
   - Integrated SSH terminal with theme sync
   - AeroAgent AI assistant (19 providers: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, and 13 more)
-  - 45 AI tools: file operations, code editing, RAG search, scripting, plugins
+  - 47 AI tools: file operations, code editing, RAG search, scripting, plugins
   - Multi-step tool execution with user approval controls
+
+  AeroFTP CLI — Command-Line Client:
+  - 14 commands (connect, ls, get, put, mkdir, rm, mv, cat, find, stat, df, tree, sync, batch)
+  - 12 protocols (FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr)
+  - JSON output, glob pattern transfers, batch scripting with variables
+  - Security hardened with 45-finding audit
 
   AeroSync — Reliable Synchronization:
   - Bidirectional sync with journal checkpoint/resume
@@ -160,13 +166,31 @@ parts:
       [Desktop Entry]
       Name=AeroFTP
       Comment=Multi-Protocol File Client with AI & Encryption (Snap - Limited FS)
-      Exec=aeroftp
+      Exec=aeroftp %f
       Icon=${SNAP}/usr/share/icons/hicolor/256x256/apps/aeroftp.png
       Terminal=false
       Type=Application
       Categories=Network;FileTransfer;Development;
       Keywords=ftp;sftp;file;transfer;upload;download;
+      MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;
       StartupWMClass=AeroFTP
       DESKTOP
       # Remove leading whitespace from desktop file
       sed -i 's/^      //' $SNAPCRAFT_PART_INSTALL/usr/share/applications/aeroftp.desktop
+
+      # Install AeroVault MIME type definition
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/mime/packages
+      cp com.aeroftp.AeroVault.xml $SNAPCRAFT_PART_INSTALL/usr/share/mime/packages/ || \
+        { echo "ERROR: MIME XML not found"; exit 1; }
+
+      # Install AeroVault MIME type icons (8 PNG sizes + scalable SVG)
+      for size in 16 24 32 48 64 128 256 512; do
+        mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes
+        cp src-tauri/icons/mimetypes/application-x-aerovault-${size}.png \
+          $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-aerovault.png || \
+          { echo "ERROR: Missing icon ${size}px"; exit 1; }
+      done
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes
+      cp src-tauri/icons/mimetypes/application-x-aerovault.svg \
+        $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerovault.svg || \
+        { echo "ERROR: Missing SVG icon"; exit 1; }

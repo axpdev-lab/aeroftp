@@ -75,6 +75,41 @@ install_nemo_extension() {
     print_success "Nemo extension installed to $extension_dir"
 }
 
+install_mime_icon() {
+    print_info "Installing AeroVault MIME type icon..."
+
+    local icon_src="$SCRIPT_DIR/../../src-tauri/icons/mimetypes"
+    local icon_base="$HOME/.local/share/icons/hicolor"
+    local installed=0
+
+    for size in 16 24 32 48 64 128 256 512; do
+        local src="$icon_src/application-x-aerovault-${size}.png"
+        local dest="$icon_base/${size}x${size}/mimetypes"
+        if [[ -f "$src" ]]; then
+            mkdir -p "$dest"
+            cp "$src" "$dest/application-x-aerovault.png"
+            installed=$((installed + 1))
+        fi
+    done
+
+    # Scalable SVG
+    local svg_src="$icon_src/application-x-aerovault.svg"
+    if [[ -f "$svg_src" ]]; then
+        mkdir -p "$icon_base/scalable/mimetypes"
+        cp "$svg_src" "$icon_base/scalable/mimetypes/application-x-aerovault.svg"
+        installed=$((installed + 1))
+    fi
+
+    if [[ $installed -gt 0 ]]; then
+        if command -v gtk-update-icon-cache &> /dev/null; then
+            gtk-update-icon-cache -f -t "$icon_base" 2>/dev/null || true
+        fi
+        print_success "Installed AeroVault MIME icon ($installed sizes)"
+    else
+        print_warning "AeroVault MIME icon source files not found"
+    fi
+}
+
 install_emblems() {
     print_info "Installing SVG emblem icons..."
 
@@ -84,7 +119,7 @@ install_emblems() {
     for emblem in "$SCRIPT_DIR/emblems"/*.svg; do
         if [[ -f "$emblem" ]]; then
             cp "$emblem" "$EMBLEM_DIR/"
-            ((emblem_count++))
+            emblem_count=$((emblem_count + 1))
         fi
     done
 
@@ -135,14 +170,14 @@ uninstall_extensions() {
     if [[ -f "$HOME/.local/share/nautilus-python/extensions/aerocloud_nautilus.py" ]]; then
         rm -f "$HOME/.local/share/nautilus-python/extensions/aerocloud_nautilus.py"
         print_success "Removed Nautilus extension"
-        ((uninstalled++))
+        uninstalled=$((uninstalled + 1))
     fi
 
     # Remove Nemo extension
     if [[ -f "$HOME/.local/share/nemo-python/extensions/aerocloud_nemo.py" ]]; then
         rm -f "$HOME/.local/share/nemo-python/extensions/aerocloud_nemo.py"
         print_success "Removed Nemo extension"
-        ((uninstalled++))
+        uninstalled=$((uninstalled + 1))
     fi
 
     # Remove emblems
@@ -150,17 +185,39 @@ uninstall_extensions() {
     for emblem in "$EMBLEM_DIR"/emblem-aerocloud-*.svg; do
         if [[ -f "$emblem" ]]; then
             rm -f "$emblem"
-            ((emblem_count++))
+            emblem_count=$((emblem_count + 1))
         fi
     done
 
     if [[ $emblem_count -gt 0 ]]; then
-        # Update icon cache
-        if command -v gtk-update-icon-cache &> /dev/null; then
-            gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-        fi
         print_success "Removed $emblem_count emblem icons"
-        ((uninstalled++))
+        uninstalled=$((uninstalled + 1))
+    fi
+
+    # Remove AeroVault MIME type icons
+    local mime_icon_count=0
+    local icon_base="$HOME/.local/share/icons/hicolor"
+    for size in 16 24 32 48 64 128 256 512; do
+        local icon="$icon_base/${size}x${size}/mimetypes/application-x-aerovault.png"
+        if [[ -f "$icon" ]]; then
+            rm -f "$icon"
+            mime_icon_count=$((mime_icon_count + 1))
+        fi
+    done
+    local svg_icon="$icon_base/scalable/mimetypes/application-x-aerovault.svg"
+    if [[ -f "$svg_icon" ]]; then
+        rm -f "$svg_icon"
+        mime_icon_count=$((mime_icon_count + 1))
+    fi
+
+    if [[ $mime_icon_count -gt 0 ]]; then
+        print_success "Removed $mime_icon_count AeroVault MIME icons"
+        uninstalled=$((uninstalled + 1))
+    fi
+
+    # Update icon cache after all removals
+    if command -v gtk-update-icon-cache &> /dev/null; then
+        gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
     fi
 
     if [[ $uninstalled -eq 0 ]]; then
@@ -238,6 +295,7 @@ main() {
     done
 
     install_emblems
+    install_mime_icon
 
     # Reload file managers
     if [[ ${#managers[@]} -gt 0 ]]; then

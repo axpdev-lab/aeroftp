@@ -115,9 +115,9 @@ dependencies = [
 
 [[package]]
 name = "aerovault"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5232fd769bf0f6f9939c6dfebbabdd389caa9e0d94b3b6d1fccf8085af029a04"
+checksum = "f1fbf2da19151467fe30a4173ca46c537823b71cedb3c8b7241c6308969b28af"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -3048,7 +3048,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.56.0",
 ]
 
 [[package]]
