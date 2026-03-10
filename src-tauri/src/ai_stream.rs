@@ -3,10 +3,11 @@
 
 use serde::Serialize;
 use reqwest::Client;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use futures_util::StreamExt;
 
 use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, sanitize_error_message, AI_STREAM_CLIENT};
+use crate::ai_core::EventSink;
 
 /// Maximum SSE buffer size (50 MB) to prevent unbounded memory growth
 const MAX_BUFFER_SIZE: usize = 50 * 1024 * 1024;
@@ -33,15 +34,23 @@ pub struct StreamChunk {
     pub cache_read_input_tokens: Option<u32>,
 }
 
-/// Start streaming AI response, emitting chunks via Tauri events
+/// Start streaming AI response, emitting chunks via Tauri events (GUI wrapper)
 #[tauri::command]
 pub async fn ai_chat_stream(
     app: AppHandle,
     request: AIRequest,
     stream_id: String,
 ) -> Result<(), String> {
-    let event_name = format!("ai-stream-{}", stream_id);
+    let sink = crate::ai_core::tauri_impl::TauriEventSink::new(app);
+    ai_chat_stream_with_sink(&sink, request, &stream_id).await
+}
 
+/// Backend-agnostic streaming — works with any EventSink (GUI or CLI).
+pub async fn ai_chat_stream_with_sink(
+    sink: &dyn EventSink,
+    request: AIRequest,
+    stream_id: &str,
+) -> Result<(), String> {
     // Clamp top_p to [0.0, 1.0], top_k to [1, 500], and thinking_budget to [0, 128000]
     let request = AIRequest {
         top_p: request.top_p.map(|v| v.clamp(0.0, 1.0)),
@@ -53,11 +62,11 @@ pub async fn ai_chat_stream(
     let client = &*AI_STREAM_CLIENT;
 
     let result = match request.provider_type {
-        AIProviderType::Google => stream_gemini(client, &request, &app, &event_name).await,
-        AIProviderType::Anthropic => stream_anthropic(client, &request, &app, &event_name).await,
-        AIProviderType::Ollama => stream_ollama(client, &request, &app, &event_name).await,
+        AIProviderType::Google => stream_gemini(client, &request, sink, stream_id).await,
+        AIProviderType::Anthropic => stream_anthropic(client, &request, sink, stream_id).await,
+        AIProviderType::Ollama => stream_ollama(client, &request, sink, stream_id).await,
         // OpenAI, xAI, OpenRouter, Custom all use OpenAI-compatible SSE
-        _ => stream_openai(client, &request, &app, &event_name).await,
+        _ => stream_openai(client, &request, sink, stream_id).await,
     };
 
     match result {
@@ -65,7 +74,7 @@ pub async fn ai_chat_stream(
         Err(e) => {
             // Sanitize error message to prevent API key leakage in streamed error events
             let safe_msg = sanitize_error_message(&e.to_string());
-            let _ = app.emit(&event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: format!("Error: {}", safe_msg),
                 done: true,
                 tool_calls: None,
@@ -85,8 +94,8 @@ pub async fn ai_chat_stream(
 async fn stream_openai(
     client: &Client,
     request: &AIRequest,
-    app: &AppHandle,
-    event_name: &str,
+    sink: &dyn EventSink,
+    stream_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("{}/chat/completions", request.base_url);
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
@@ -269,7 +278,7 @@ async fn stream_openai(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
                 done: true,
                 tool_calls: None,
@@ -291,7 +300,7 @@ async fn stream_openai(
                 if line == "data: [DONE]" {
                     // If reasoning was emitted, signal thinking_done before final done
                     if had_reasoning {
-                        let _ = app.emit(event_name, StreamChunk {
+                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                             content: String::new(),
                             done: false,
                             tool_calls: None,
@@ -312,7 +321,7 @@ async fn stream_openai(
                             arguments: serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({})),
                         }).collect())
                     };
-                    let _ = app.emit(event_name, StreamChunk {
+                    sink.emit_stream_chunk(stream_id, &StreamChunk {
                         content: String::new(),
                         done: true,
                         tool_calls,
@@ -342,7 +351,7 @@ async fn stream_openai(
                     if let Some(delta) = parsed["choices"][0]["delta"].as_object() {
                         // Text content
                         if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                            let _ = app.emit(event_name, StreamChunk {
+                            sink.emit_stream_chunk(stream_id, &StreamChunk {
                                 content: content.to_string(),
                                 done: false,
                                 tool_calls: None,
@@ -361,7 +370,7 @@ async fn stream_openai(
                         {
                             if !reasoning.is_empty() {
                                 had_reasoning = true;
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: String::new(),
                                     done: false,
                                     tool_calls: None,
@@ -407,7 +416,7 @@ async fn stream_openai(
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                 if let Some(delta) = parsed["choices"][0]["delta"].as_object() {
                     if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                        let _ = app.emit(event_name, StreamChunk {
+                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                             content: content.to_string(),
                             done: false,
                             tool_calls: None,
@@ -428,7 +437,7 @@ async fn stream_openai(
     if !done_emitted {
         // If reasoning was emitted, signal thinking_done before final done
         if had_reasoning {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: String::new(),
                 done: false,
                 tool_calls: None,
@@ -440,7 +449,7 @@ async fn stream_openai(
                 cache_read_input_tokens: None,
             });
         }
-        let _ = app.emit(event_name, StreamChunk {
+        sink.emit_stream_chunk(stream_id, &StreamChunk {
             content: String::new(),
             done: true,
             tool_calls: if accumulated_tool_calls.is_empty() {
@@ -452,8 +461,8 @@ async fn stream_openai(
                     arguments: serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({})),
                 }).collect())
             },
-            input_tokens: None,
-            output_tokens: None,
+            input_tokens: stream_input_tokens,
+            output_tokens: stream_output_tokens,
             thinking: None,
             thinking_done: None,
             cache_creation_input_tokens: None,
@@ -468,8 +477,8 @@ async fn stream_openai(
 async fn stream_anthropic(
     client: &Client,
     request: &AIRequest,
-    app: &AppHandle,
-    event_name: &str,
+    sink: &dyn EventSink,
+    stream_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
     let url = format!("{}/messages", request.base_url);
@@ -574,7 +583,7 @@ async fn stream_anthropic(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
                 done: true,
                 tool_calls: None,
@@ -615,7 +624,7 @@ async fn stream_anthropic(
                                 }
                                 _ => {
                                     if is_thinking {
-                                        let _ = app.emit(event_name, StreamChunk {
+                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                                             content: String::new(),
                                             done: false,
                                             tool_calls: None,
@@ -636,7 +645,7 @@ async fn stream_anthropic(
                             match delta["type"].as_str() {
                                 Some("text_delta") => {
                                     if let Some(text) = delta["text"].as_str() {
-                                        let _ = app.emit(event_name, StreamChunk {
+                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                                             content: text.to_string(),
                                             done: false,
                                             tool_calls: None,
@@ -651,7 +660,7 @@ async fn stream_anthropic(
                                 }
                                 Some("thinking_delta") => {
                                     if let Some(thinking_text) = delta["thinking"].as_str() {
-                                        let _ = app.emit(event_name, StreamChunk {
+                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                                             content: String::new(),
                                             done: false,
                                             tool_calls: None,
@@ -676,7 +685,7 @@ async fn stream_anthropic(
                         }
                         "content_block_stop" => {
                             if is_thinking {
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: String::new(),
                                     done: false,
                                     tool_calls: None,
@@ -714,7 +723,7 @@ async fn stream_anthropic(
                                     arguments: serde_json::from_str(&t.arguments).unwrap_or(serde_json::json!({})),
                                 }).collect())
                             };
-                            let _ = app.emit(event_name, StreamChunk {
+                            sink.emit_stream_chunk(stream_id, &StreamChunk {
                                 content: String::new(),
                                 done: true,
                                 tool_calls: tc,
@@ -746,7 +755,7 @@ async fn stream_anthropic(
                 // Emit final text delta if present
                 if event_type == "content_block_delta" {
                     if let Some(text) = event["delta"]["text"].as_str() {
-                        let _ = app.emit(event_name, StreamChunk {
+                        sink.emit_stream_chunk(stream_id, &StreamChunk {
                             content: text.to_string(),
                             done: false,
                             tool_calls: None,
@@ -767,7 +776,7 @@ async fn stream_anthropic(
     if !done_emitted {
         // If thinking was active, signal thinking_done before final done
         if is_thinking {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: String::new(),
                 done: false,
                 tool_calls: None,
@@ -788,7 +797,7 @@ async fn stream_anthropic(
                 arguments: serde_json::from_str(&t.arguments).unwrap_or(serde_json::json!({})),
             }).collect())
         };
-        let _ = app.emit(event_name, StreamChunk {
+        sink.emit_stream_chunk(stream_id, &StreamChunk {
             content: String::new(),
             done: true,
             tool_calls: tc,
@@ -808,8 +817,8 @@ async fn stream_anthropic(
 async fn stream_gemini(
     client: &Client,
     request: &AIRequest,
-    app: &AppHandle,
-    event_name: &str,
+    sink: &dyn EventSink,
+    stream_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
     // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter (`key=`).
@@ -908,7 +917,7 @@ async fn stream_gemini(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
                 done: true,
                 tool_calls: None,
@@ -938,7 +947,7 @@ async fn stream_gemini(
                             if is_thought {
                                 gemini_was_thinking = true;
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    let _ = app.emit(event_name, StreamChunk {
+                                    sink.emit_stream_chunk(stream_id, &StreamChunk {
                                         content: String::new(),
                                         done: false,
                                         tool_calls: None,
@@ -954,7 +963,7 @@ async fn stream_gemini(
                             } else if gemini_was_thinking {
                                 // Transitioned from thinking to non-thinking: emit thinking_done
                                 gemini_was_thinking = false;
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: String::new(),
                                     done: false,
                                     tool_calls: None,
@@ -967,7 +976,7 @@ async fn stream_gemini(
                                 });
                             }
                             if let Some(text) = part["text"].as_str() {
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: text.to_string(),
                                     done: false,
                                     tool_calls: None,
@@ -984,7 +993,7 @@ async fn stream_gemini(
                                 let lang = exec_code["language"].as_str().unwrap_or("python").to_lowercase();
                                 let code = exec_code["code"].as_str().unwrap_or("");
                                 let formatted = format!("\n```{}\n{}\n```\n", lang, code);
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: formatted,
                                     done: false,
                                     tool_calls: None,
@@ -1001,7 +1010,7 @@ async fn stream_gemini(
                                 let outcome = exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
                                 let output = exec_result["output"].as_str().unwrap_or("");
                                 let formatted = format!("\n**Execution Output** ({}):\n```\n{}\n```\n", outcome, output);
-                                let _ = app.emit(event_name, StreamChunk {
+                                sink.emit_stream_chunk(stream_id, &StreamChunk {
                                     content: formatted,
                                     done: false,
                                     tool_calls: None,
@@ -1046,7 +1055,7 @@ async fn stream_gemini(
                         if let Some(thought) = part.get("thought").and_then(|t| t.as_bool()) {
                             if thought {
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    let _ = app.emit(event_name, StreamChunk {
+                                    sink.emit_stream_chunk(stream_id, &StreamChunk {
                                         content: String::new(),
                                         done: false,
                                         tool_calls: None,
@@ -1062,7 +1071,7 @@ async fn stream_gemini(
                             }
                         }
                         if let Some(text) = part["text"].as_str() {
-                            let _ = app.emit(event_name, StreamChunk {
+                            sink.emit_stream_chunk(stream_id, &StreamChunk {
                                 content: text.to_string(),
                                 done: false,
                                 tool_calls: None,
@@ -1079,7 +1088,7 @@ async fn stream_gemini(
                             let lang = exec_code["language"].as_str().unwrap_or("python").to_lowercase();
                             let code = exec_code["code"].as_str().unwrap_or("");
                             let formatted = format!("\n```{}\n{}\n```\n", lang, code);
-                            let _ = app.emit(event_name, StreamChunk {
+                            sink.emit_stream_chunk(stream_id, &StreamChunk {
                                 content: formatted,
                                 done: false,
                                 tool_calls: None,
@@ -1096,7 +1105,7 @@ async fn stream_gemini(
                             let outcome = exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
                             let output = exec_result["output"].as_str().unwrap_or("");
                             let formatted = format!("\n**Execution Output** ({}):\n```\n{}\n```\n", outcome, output);
-                            let _ = app.emit(event_name, StreamChunk {
+                            sink.emit_stream_chunk(stream_id, &StreamChunk {
                                 content: formatted,
                                 done: false,
                                 tool_calls: None,
@@ -1129,7 +1138,7 @@ async fn stream_gemini(
     }
 
     // Final done event (always emitted for Gemini)
-    let _ = app.emit(event_name, StreamChunk {
+    sink.emit_stream_chunk(stream_id, &StreamChunk {
         content: String::new(),
         done: true,
         tool_calls: if final_tool_calls.is_empty() { None } else { Some(final_tool_calls) },
@@ -1148,8 +1157,8 @@ async fn stream_gemini(
 async fn stream_ollama(
     client: &Client,
     request: &AIRequest,
-    app: &AppHandle,
-    event_name: &str,
+    sink: &dyn EventSink,
+    stream_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("{}/api/chat", request.base_url);
 
@@ -1195,7 +1204,7 @@ async fn stream_ollama(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
                 done: true,
                 tool_calls: None,
@@ -1219,7 +1228,7 @@ async fn stream_ollama(
                 let done = parsed["done"].as_bool().unwrap_or(false);
                 let content = parsed["message"]["content"].as_str().unwrap_or("").to_string();
 
-                let _ = app.emit(event_name, StreamChunk {
+                sink.emit_stream_chunk(stream_id, &StreamChunk {
                     content,
                     done,
                     tool_calls: None,
@@ -1244,7 +1253,7 @@ async fn stream_ollama(
             let done = parsed["done"].as_bool().unwrap_or(false);
             let content = parsed["message"]["content"].as_str().unwrap_or("").to_string();
 
-            let _ = app.emit(event_name, StreamChunk {
+            sink.emit_stream_chunk(stream_id, &StreamChunk {
                 content,
                 done,
                 tool_calls: None,
@@ -1263,7 +1272,7 @@ async fn stream_ollama(
 
     // Ensure done is always emitted even if stream closes prematurely
     if !done_emitted {
-        let _ = app.emit(event_name, StreamChunk {
+        sink.emit_stream_chunk(stream_id, &StreamChunk {
             content: String::new(),
             done: true,
             tool_calls: None,

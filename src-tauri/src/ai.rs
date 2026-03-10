@@ -38,10 +38,26 @@ pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
-/// Strip query parameters from URLs in error messages to prevent API key leakage.
+/// Strip API keys, bearer tokens, and sensitive headers from error messages.
 pub(crate) fn sanitize_error_message(msg: &str) -> String {
-    let re = regex::Regex::new(r"[?&]key=[^&\s\)]*").unwrap_or_else(|_| regex::Regex::new(r"$^").unwrap());
-    re.replace_all(msg, "").to_string()
+    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
+        [
+            r"[?&]key=[^&\s\)]*",                   // Google key= query parameter
+            r"sk-ant-[A-Za-z0-9_\-]{20,}",          // Anthropic API keys (check before generic sk-)
+            r"sk-[A-Za-z0-9_\-]{20,}",              // OpenAI API keys
+            r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}",// Bearer tokens in error bodies
+            r"(?i)x-api-key:\s*\S+",                // x-api-key header reflections
+        ]
+        .iter()
+        .filter_map(|p| regex::Regex::new(p).ok())
+        .collect()
+    });
+
+    let mut result = msg.to_string();
+    for re in PATTERNS.iter() {
+        result = re.replace_all(&result, "[REDACTED]").to_string();
+    }
+    result
 }
 
 // Provider types
@@ -924,14 +940,33 @@ mod anthropic {
             .find(|m| m.role == "system")
             .map(|m| m.content.clone());
 
+        let mut anthropic_messages: Vec<AnthropicMessage> = request.messages.iter()
+            .filter(|m| m.role != "system")
+            .map(|m| AnthropicMessage {
+                role: m.role.clone(),
+                content: m.to_anthropic_content(),
+            }).collect();
+
+        // Append tool results as a user message with tool_result content blocks (Anthropic API format)
+        if let Some(ref results) = request.tool_results {
+            if !results.is_empty() {
+                let content_blocks: Vec<serde_json::Value> = results.iter().map(|r| {
+                    serde_json::json!({
+                        "type": "tool_result",
+                        "tool_use_id": r.tool_call_id,
+                        "content": r.content,
+                    })
+                }).collect();
+                anthropic_messages.push(AnthropicMessage {
+                    role: "user".to_string(),
+                    content: serde_json::Value::Array(content_blocks),
+                });
+            }
+        }
+
         let anthropic_request = AnthropicRequest {
             model: request.model.clone(),
-            messages: request.messages.iter()
-                .filter(|m| m.role != "system")
-                .map(|m| AnthropicMessage {
-                    role: m.role.clone(),
-                    content: m.to_anthropic_content(),
-                }).collect(),
+            messages: anthropic_messages,
             max_tokens: request.max_tokens.unwrap_or(4096),
             temperature: request.temperature,
             tools,
