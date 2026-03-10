@@ -10,7 +10,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | -------- | ----------- |
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
-| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (18 protocols) |
+| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (20 protocols) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
@@ -83,14 +83,18 @@ The **Unified Encrypted Keystore** stores all sensitive data in the AES-256-GCM 
 
 AeroVault v2 encrypted containers now support **full directory hierarchies**: create nested folders inside vaults, navigate with breadcrumb UI, add files to specific directories, and recursively delete directories with all contents. Three new backend commands: `vault_v2_create_directory`, `vault_v2_delete_entries` (recursive), `vault_v2_add_files_to_dir`.
 
+## AeroFTP CLI (v2.9.1)
+
+Production command-line client with **14 commands** across **12 protocols** (FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr). Features `--json` structured output, glob pattern transfers, `.aeroftp` batch scripting engine with variables and error policies, and progress bars. See **[CLI-GUIDE.md](./CLI-GUIDE.md)** for complete usage documentation.
+
 ## AeroAgent (v2.6.0)
 
-AeroAgent features **45 tools** across 10 categories, **19 AI providers** (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom), a **Command Palette** (Ctrl+Shift+P), **Plugin Registry** with GitHub-based browser, **plugin hooks**, context menu AI actions, AI status widget, and drag & drop file analysis.
+AeroAgent features **47 tools** across 10 categories, **19 AI providers** (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom), a **Command Palette** (Ctrl+Shift+P), **Plugin Registry** with GitHub-based browser, **plugin hooks**, context menu AI actions, AI status widget, and drag & drop file analysis.
 
 ---
 
-- **Documentation Version**: 2.6.0
-- **Last Update**: 2026-02-22
+- **Documentation Version**: 2.9.1
+- **Last Update**: 2026-03-10
 
 ---
 

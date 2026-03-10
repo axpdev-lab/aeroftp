@@ -41,12 +41,22 @@
       <li>47 languages at 100% coverage — quality-audited translations with native script integrity</li>
       <li>AeroPlayer: Built-in media player with 14 visualizer modes, WebGL GPU shaders, 10-band EQ, and beat detection</li>
     </ul>
+    <p>Command-Line Interface:</p>
+    <ul>
+      <li>AeroFTP CLI: 14 commands across 12 protocols with JSON output, glob transfers, and batch scripting</li>
+      <li>Batch engine: .aeroftp script files with variables, error policies, and 16 commands</li>
+      <li>Security hardened: path traversal prevention, ANSI sanitization, OOM protection, 45-finding audit</li>
+    </ul>
     <p>
       Built with Rust (Tauri 2) and React 18/TypeScript. Open source under GPL-3.0.
     </p>
   </description>
 
   <launchable type="desktop-id">AeroFTP.desktop</launchable>
+
+  <mimetypes>
+    <mimetype>application/x-aerovault</mimetype>
+  </mimetypes>
 
   <screenshots>
     <screenshot type="default">
@@ -127,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.2" date="2026-03-10">
+      <description>
+        <p>CLI Expansion and AeroVault OS Integration: Production CLI with 14 commands, batch scripting engine (.aeroftp scripts with variables and error policies), glob pattern transfers, and tree command. Backend-agnostic AI core abstraction layer (EventSink, CredentialProvider, RemoteBackend traits). Cross-platform .aerovault file association with custom MIME type icon (shield+lock) for Linux, Windows, and macOS. Snap Store description compliance fix. 45-finding CLI security audit resolved.</p>
+      </description>
+    </release>
     <release version="2.9.1" date="2026-03-08">
       <description>
         <p>Snap Store fix, MEGA clickable session badge, Jottacloud token persistence, auto-open Activity Log on sync completion, and security audit documentation updates.</p>

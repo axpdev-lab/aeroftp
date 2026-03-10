@@ -68,8 +68,9 @@ AeroFTP
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
-├── AeroTools    — Code editor + Terminal + AI chat + CLI
+├── AeroTools    — Code editor + Terminal + AI chat
 │   └── AeroAgent    — AI-powered assistant (47 tools, 19 providers)
+├── AeroFTP CLI  — Production command-line client (14 commands, 12 protocols)
 └── AeroPlayer   — Media player with visualizers
 ```
 
@@ -221,6 +222,42 @@ An AI assistant with **47 provider-agnostic tools** that work across all 20 prot
 - **Plugin ecosystem**: GitHub-based registry with SHA-256 integrity, event hooks, browser UI
 - **Context menu AI**: Right-click any file → "Ask AeroAgent" for instant analysis
 - **Drag & drop to chat**: Drop files into AeroAgent for analysis
+
+---
+
+### AeroFTP CLI — Command-Line Client
+
+A production command-line interface sharing the same Rust backend as the GUI. 14 commands across 12 protocols with structured JSON output, glob pattern transfers, and a batch scripting engine.
+
+```bash
+# Connect and list files
+aeroftp ls sftp://user@myserver.com /var/www/ -l
+
+# Download with glob patterns
+aeroftp get sftp://user@host "/data/*.csv"
+
+# Pipe-friendly: data on stdout, messages on stderr
+aeroftp cat sftp://user@host /config.ini | grep DB_HOST
+
+# Batch deployment script
+aeroftp batch deploy.aeroftp
+```
+
+**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `find`, `stat`, `df`, `tree`, `sync`, `batch`
+
+**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr
+
+**Features**:
+- `--json` structured output for all commands
+- Glob pattern transfers (`*.csv`, `*.json`)
+- `.aeroftp` batch scripts with variables, error policies, and 16 commands
+- Progress bars with speed and ETA
+- `NO_COLOR` / `CLICOLOR` compliance
+- Password via stdin, env vars, or interactive prompt
+- SSH key authentication for SFTP
+- 45-finding security audit (grade A-)
+
+See the full **[CLI Guide](docs/CLI-GUIDE.md)** for usage, examples, and batch scripting reference.
 
 ---
 

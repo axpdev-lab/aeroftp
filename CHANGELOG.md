@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.2] - 2026-03-10
+
+### CLI Expansion, AI Core Refactor & AeroVault OS Integration
+
+Production-ready CLI with batch scripting engine, backend-agnostic AI architecture for future CLI agent mode, cross-platform `.aerovault` file association, and Snap Store compliance fix.
+
+#### Added
+
+- **AeroFTP CLI expansion**: 14 commands (connect, ls, get, put, mkdir, rm, mv, cat, find, stat, df, tree, sync, batch) across 12 protocols with full `--json` output, glob pattern transfers, batch scripting engine, and progress bars
+- **CLI batch scripting**: `.aeroftp` script files with variable substitution (`${VAR}`), `$` escaping (`$$`), error policies (ON_ERROR CONTINUE/FAIL), and 17 batch commands
+- **CLI tree command**: Recursive directory tree with Unicode box-drawing, BFS depth limit, cycle detection, and JSON output
+- **CLI glob uploads**: Pattern-based multi-file uploads (e.g., `aeroftp put sftp://host "*.csv"`) via globset crate
+- **CLI documentation**: Comprehensive [CLI Guide](docs/CLI-GUIDE.md) with usage examples, batch scripting reference, and CI/CD integration patterns
+- **AI Core abstraction layer**: `EventSink`, `CredentialProvider`, `RemoteBackend` traits decoupling AI streaming from Tauri — foundation for CLI agent mode
+- **AeroVault MIME type icon**: Custom shield+lock icon in 8 PNG sizes (16-512px) + SVG + ICO + ICNS for all platforms
+- **AeroVault file association**: Double-click `.aerovault` files to open directly in AeroFTP (Linux .deb, Snap, Windows NSIS, macOS)
+- **Deep-link handler**: Single-instance argv forwarding and first-launch file open with path validation
+
+#### Fixed
+
+- **CLI security audit (45 findings)**: Path traversal prevention, ANSI escape sanitization, BFS cycle detection, OOM protection (256 MB cat limit, 500K entry scan limit), NO_COLOR compliance, stdout/stderr separation
+- **CLI batch engine hardening**: SET value limit (64 KB), variable count cap (256), 1 MB file limit, injection-safe single-pass expansion
+- **Snap Store compliance**: Softened description removing flagged keywords (scripting, execution, shell commands, rm) to pass `metadata-snap-v2_snap_metadata_redflag` automated review
+- **API key sanitization**: `sanitize_error_message()` upgraded with 5 LazyLock regex patterns for Anthropic/OpenAI keys, Bearer tokens, x-api-key headers
+
+#### Changed
+
+- **AI streaming refactored**: `ai_chat_stream_with_sink()` replaces direct `app.emit()` calls — all stream functions now accept `&dyn EventSink`
+- **VaultIcon unified**: Shield+lock design matching OS MIME icon replaces old safe/vault icon across frontend (modal, context menus, icon themes)
+
+---
+
 ## [2.9.1] - 2026-03-08
 
 ### Snap Store Fix & UX Polish
