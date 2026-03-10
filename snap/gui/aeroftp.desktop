@@ -1,11 +1,12 @@
 [Desktop Entry]
 Name=AeroFTP
 Comment=Fast, Beautiful, Reliable FTP Client
-Exec=aeroftp
+Exec=aeroftp %f
 Icon=${SNAP}/usr/share/icons/hicolor/256x256/apps/aeroftp.png
 Terminal=false
 Type=Application
 Categories=Network;FileTransfer;Utility;
 Keywords=ftp;sftp;transfer;file;sync;
+MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;
 StartupNotify=true
 StartupWMClass=AeroFTP
