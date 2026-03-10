@@ -3,8 +3,8 @@
 //! Usage:
 //!   aeroftp connect <url>                     Test connection
 //!   aeroftp ls <url> [path] [-l]              List files
-//!   aeroftp get <url> <remote> [local] [-r]   Download file(s)
-//!   aeroftp put <url> <local> [remote] [-r]   Upload file(s)
+//!   aeroftp get <url> <remote> [local] [-r]   Download file(s) (glob: "*.csv")
+//!   aeroftp put <url> <local> [remote] [-r]   Upload file(s) (glob: "*.csv")
 //!   aeroftp mkdir <url> <path>                Create directory
 //!   aeroftp rm <url> <path> [-rf]             Delete file/directory
 //!   aeroftp mv <url> <from> <to>              Rename/move
@@ -12,12 +12,26 @@
 //!   aeroftp stat <url> <path>                 File metadata
 //!   aeroftp find <url> <path> <pattern>       Search files
 //!   aeroftp df <url>                          Storage quota
+//!   aeroftp tree <url> [path] [-d depth]      Directory tree
 //!   aeroftp sync <url> <local> <remote>       Sync directories
 //!   aeroftp batch <file>                      Execute .aeroftp script
 //!
 //! URL format: protocol://user:pass@host:port/path
 //! Add --json for machine-readable output.
+//!
+//! Exit codes:
+//!   0  Success
+//!   1  Connection/network error
+//!   2  Not found
+//!   3  Permission denied
+//!   4  Transfer failed / partial
+//!   5  Invalid config / usage error
+//!   6  Authentication failed
+//!   7  Not supported
+//!   8  Timeout
+//!   99 Unknown error
 
+use base64::Engine as _;
 use clap::{Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
@@ -39,7 +53,7 @@ use std::time::Instant;
     about = "AeroFTP CLI — Multi-protocol file transfer client",
     version,
     long_about = "Supports FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr.\n\nURL format: protocol://user@host:port/path",
-    after_help = "EXAMPLES:\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@myserver.com /backup.tar.gz\n  aeroftp put sftp://user@myserver.com ./deploy.zip /var/www/\n  aeroftp cat sftp://user@myserver.com /etc/config.ini | grep DB_HOST\n  aeroftp sync sftp://user@myserver.com ./local/ /remote/ --dry-run"
+    after_help = "EXAMPLES:\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@myserver.com \"/var/www/*.csv\"\n  aeroftp put sftp://user@myserver.com \"./data/*.json\" /remote/data/\n  aeroftp tree sftp://user@myserver.com /var/www/ -d 2\n  aeroftp cat sftp://user@myserver.com /etc/config.ini | grep DB_HOST\n  aeroftp sync sftp://user@myserver.com ./local/ /remote/ --dry-run\n  aeroftp batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
 )]
 struct Cli {
     /// Output format
@@ -75,7 +89,7 @@ struct Cli {
     container: Option<String>,
 
     /// Bearer/API token (kDrive, Jottacloud, FileLu)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, env = "AEROFTP_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
     /// FTP TLS mode: none, explicit, implicit, explicit_if_available
@@ -91,7 +105,7 @@ struct Cli {
     trust_host_key: bool,
 
     /// 2FA code (Filen, Internxt)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, env = "AEROFTP_2FA", hide_env_values = true)]
     two_factor: Option<String>,
 
     /// Verbose output (-v debug, -vv trace)
@@ -99,12 +113,8 @@ struct Cli {
     verbose: u8,
 
     /// Quiet mode (errors only)
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "verbose")]
     quiet: bool,
-
-    /// Maximum retries on failure (default: 0)
-    #[arg(long, global = true, default_value = "0")]
-    retries: u32,
 
     /// Speed limit (e.g., "1M", "500K")
     #[arg(long, global = true)]
@@ -169,11 +179,11 @@ enum Commands {
         #[arg(short, long)]
         recursive: bool,
     },
-    /// Upload file(s) to remote server
+    /// Upload file(s) to remote server (supports glob patterns like "*.csv")
     Put {
         /// Server URL
         url: String,
-        /// Local file path
+        /// Local file path (supports glob patterns like "*.csv")
         local: String,
         /// Remote destination path
         remote: Option<String>,
@@ -259,10 +269,75 @@ enum Commands {
         #[arg(long, short)]
         exclude: Vec<String>,
     },
+    /// Display remote directory tree
+    Tree {
+        /// Server URL
+        url: String,
+        /// Remote path (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Maximum depth (default: 3)
+        #[arg(short = 'd', long, default_value = "3")]
+        max_depth: usize,
+    },
     /// Execute commands from a batch script (.aeroftp file)
     Batch {
         /// Path to .aeroftp script file
         file: String,
+    },
+    /// AeroAgent — AI-powered interactive agent with tool execution
+    Agent {
+        /// One-shot message (run and exit)
+        #[arg(short, long)]
+        message: Option<String>,
+
+        /// AI provider (anthropic, openai, gemini, ollama, etc.)
+        #[arg(short, long)]
+        provider: Option<String>,
+
+        /// Model override
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Pre-connect to server on startup
+        #[arg(short, long)]
+        connect: Option<String>,
+
+        /// Auto-approve tool calls: safe, medium, high, all
+        #[arg(long, default_value = "safe")]
+        auto_approve: String,
+
+        /// Max autonomous steps (default: 10)
+        #[arg(long, default_value = "10")]
+        max_steps: u32,
+
+        /// Orchestration mode (JSON-RPC 2.0 over stdin/stdout)
+        #[arg(long)]
+        orchestrate: bool,
+
+        /// MCP server mode (Model Context Protocol)
+        #[arg(long)]
+        mcp: bool,
+
+        /// Read message from stdin
+        #[arg(long)]
+        stdin: bool,
+
+        /// Auto-approve all tools (equivalent to --auto-approve all)
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Plan only — show execution plan without running
+        #[arg(long)]
+        plan_only: bool,
+
+        /// Cost limit in USD (stop when exceeded)
+        #[arg(long)]
+        cost_limit: Option<f64>,
+
+        /// Custom system prompt (or @file.txt to load from file)
+        #[arg(long)]
+        system: Option<String>,
     },
 }
 
@@ -358,17 +433,23 @@ struct CliOk {
 // ── Helpers ────────────────────────────────────────────────────────
 
 fn print_json<T: Serialize>(value: &T) {
-    println!("{}", serde_json::to_string_pretty(value).unwrap());
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => println!("{}", json),
+        Err(e) => eprintln!("Error: failed to serialize JSON: {}", e),
+    }
 }
 
 fn print_error(format: OutputFormat, msg: &str, code: i32) {
     match format {
         OutputFormat::Text => eprintln!("Error: {}", msg),
-        OutputFormat::Json => print_json(&CliError {
-            status: "error",
-            error: msg.to_string(),
-            code,
-        }),
+        OutputFormat::Json => {
+            // JSON errors go to stderr so stdout remains clean for piping
+            eprintln!("{}", serde_json::to_string(&CliError {
+                status: "error",
+                error: msg.to_string(),
+                code,
+            }).unwrap());
+        }
     }
 }
 
@@ -440,7 +521,92 @@ fn remote_entry_to_cli(e: &RemoteEntry) -> CliFileEntry {
     }
 }
 
+/// Maximum BFS scan depth for recursive operations (find, get -r, tree).
+const MAX_SCAN_DEPTH: usize = 100;
+/// Maximum entries to collect during BFS scan to prevent OOM.
+const MAX_SCAN_ENTRIES: usize = 500_000;
+
+/// Validate a relative path component is safe (no path traversal).
+/// Returns the sanitized path or None if it contains traversal attempts.
+fn validate_relative_path(relative: &str) -> Option<&str> {
+    // Reject null bytes
+    if relative.contains('\0') {
+        return None;
+    }
+    let trimmed = relative.trim_start_matches('/');
+    // Reject path traversal at component level (allows filenames like "file..backup.txt")
+    for component in trimmed.split('/') {
+        if component == ".." {
+            return None;
+        }
+    }
+    // Also check backslash-separated components for Windows paths
+    for component in trimmed.split('\\') {
+        if component == ".." {
+            return None;
+        }
+    }
+    // Reject absolute Windows paths (drive letters, UNC)
+    if trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':' {
+        return None;
+    }
+    if trimmed.starts_with("\\\\") {
+        return None;
+    }
+    Some(trimmed)
+}
+
+/// Sanitize a filename for terminal display — strip ANSI escape sequences.
+fn sanitize_filename(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    let mut chars = name.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip ESC [ ... (letter) sequence
+            if let Some(next) = chars.next() {
+                if next == '[' {
+                    // CSI sequence — consume until a letter
+                    for c in chars.by_ref() {
+                        if c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                // else: skip single ESC + char
+            }
+        } else if ch.is_control() && ch != '\t' {
+            // Skip control characters (except tab)
+            continue;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+/// Check if we should use color in output (respects NO_COLOR env var and TTY detection).
+fn use_color() -> bool {
+    // NO_COLOR (https://no-color.org/) takes priority
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    // CLICOLOR_FORCE=1 forces color even on non-TTY
+    if std::env::var("CLICOLOR_FORCE").ok().is_some_and(|v| v != "0") {
+        return true;
+    }
+    // CLICOLOR=0 disables color
+    if std::env::var("CLICOLOR").ok().is_some_and(|v| v == "0") {
+        return false;
+    }
+    // Default: color if stderr is a terminal
+    std::io::stderr().is_terminal()
+}
+
 fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
+    if !use_color() {
+        let pb = ProgressBar::hidden();
+        return pb;
+    }
     let pb = ProgressBar::new(total);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -453,6 +619,9 @@ fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
 }
 
 fn create_spinner(msg: &str) -> ProgressBar {
+    if !use_color() {
+        return ProgressBar::hidden();
+    }
     let pb = ProgressBar::new_spinner();
     pb.set_style(
         ProgressStyle::default_spinner()
@@ -476,12 +645,15 @@ fn resolve_password(
         return Ok(token.clone());
     }
 
-    // 2. --password-stdin
+    // 2. --password-stdin (limit to 4 KB to prevent abuse)
     if cli.password_stdin {
         let mut password = String::new();
         io::stdin()
             .read_line(&mut password)
             .map_err(|e| format!("Failed to read password from stdin: {}", e))?;
+        if password.len() > 4096 {
+            return Err("Password too long (max 4 KB)".to_string());
+        }
         return Ok(password.trim().to_string());
     }
 
@@ -501,11 +673,9 @@ fn resolve_password(
 
     // 4. URL-embedded password
     if let Some(pass) = url_obj.password() {
-        if cli.verbose > 0 {
-            eprintln!(
-                "Warning: password in URL is insecure. Use --password-stdin or env var instead."
-            );
-        }
+        eprintln!(
+            "Warning: password in URL is insecure. Use --password-stdin or env var instead."
+        );
         return Ok(urlencoding::decode(pass)
             .map(|s| s.to_string())
             .unwrap_or_else(|_| pass.to_string()));
@@ -745,26 +915,22 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
 
     match format {
         OutputFormat::Text => {
-            println!("Connected to {} ({})", host, pt);
-            println!("  User:     {}", user);
-            println!("  Port:     {}", port);
-            println!("  Protocol: {}", pt);
+            eprintln!("Connected to {} ({})", host, pt);
+            eprintln!("  User:     {}", user);
+            eprintln!("  Port:     {}", port);
+            eprintln!("  Protocol: {}", pt);
             if let Some(ref info) = server_info {
                 if !info.is_empty() {
-                    println!("  Server:   {}", info);
+                    eprintln!("  Server:   {}", info);
                 }
             }
-            println!("  Time:     {:.0}ms", elapsed.as_millis());
+            eprintln!("  Time:     {:.0}ms", elapsed.as_millis());
 
             // Try to show storage info
             if let Ok(storage) = provider.storage_info().await {
                 if storage.total > 0 {
-                    let pct = if storage.total > 0 {
-                        (storage.used as f64 / storage.total as f64) * 100.0
-                    } else {
-                        0.0
-                    };
-                    println!(
+                    let pct = (storage.used as f64 / storage.total as f64) * 100.0;
+                    eprintln!(
                         "  Storage:  {} / {} ({:.1}% used)",
                         format_size(storage.used),
                         format_size(storage.total),
@@ -866,28 +1032,34 @@ async fn cmd_ls(
                         format!("{:>8}", format_size(e.size))
                     };
                     let date = e.modified.as_deref().unwrap_or("-");
-                    // Truncate date to first 16 chars (YYYY-MM-DD HH:MM)
-                    let date_short = if date.len() > 16 { &date[..16] } else { date };
-                    let name = if e.is_dir {
-                        format!("{}/", e.name)
+                    // Truncate date to first 16 chars (YYYY-MM-DD HH:MM), safely on char boundary
+                    let date_short = if date.len() > 16 {
+                        date.get(..16).unwrap_or(date)
                     } else {
-                        e.name.clone()
+                        date
+                    };
+                    let safe_name = sanitize_filename(&e.name);
+                    let name = if e.is_dir {
+                        format!("{}/", safe_name)
+                    } else {
+                        safe_name
                     };
                     println!("{}  {}  {}  {}", perms, size_str, date_short, name);
                 }
             } else {
                 // Short format: just names
                 for e in &entries {
+                    let safe_name = sanitize_filename(&e.name);
                     if e.is_dir {
-                        println!("{}/", e.name);
+                        println!("{}/", safe_name);
                     } else {
-                        println!("{}", e.name);
+                        println!("{}", safe_name);
                     }
                 }
             }
 
             if !cli.quiet {
-                println!(
+                eprintln!(
                     "\n{} items ({} directories, {} files) — {} total",
                     entries.len(),
                     dir_count,
@@ -1040,20 +1212,32 @@ async fn cmd_get_recursive(
         None
     };
 
-    // BFS to collect all files
-    let mut queue = vec![remote_dir.to_string()];
+    // BFS to collect all files (depth-limited to prevent infinite traversal)
+    let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
     let mut files: Vec<(String, u64)> = Vec::new();
     let mut dirs: Vec<String> = Vec::new();
 
-    while let Some(dir) = queue.pop() {
+    while let Some((dir, depth)) = queue.pop() {
         if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        if depth >= MAX_SCAN_DEPTH {
+            if !quiet {
+                eprintln!("Warning: max depth {} reached at {}", MAX_SCAN_DEPTH, dir);
+            }
+            continue;
+        }
+        if files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
+            if !quiet {
+                eprintln!("Warning: max entries {} reached, stopping scan", MAX_SCAN_ENTRIES);
+            }
             break;
         }
         match provider.list(&dir).await {
             Ok(entries) => {
                 for e in entries {
                     if e.is_dir {
-                        queue.push(e.path.clone());
+                        queue.push((e.path.clone(), depth + 1));
                         dirs.push(e.path);
                     } else {
                         files.push((e.path, e.size));
@@ -1084,11 +1268,16 @@ async fn cmd_get_recursive(
         );
     }
 
-    // Create local directories
+    // Create local directories (with path traversal protection)
     for dir in &dirs {
         let relative = dir.strip_prefix(remote_dir).unwrap_or(dir);
-        let relative = relative.trim_start_matches('/');
-        let local_dir = format!("{}/{}", local_base, relative);
+        let Some(relative) = validate_relative_path(relative) else {
+            if !quiet {
+                eprintln!("Warning: skipping unsafe directory path: {}", dir);
+            }
+            continue;
+        };
+        let local_dir = Path::new(local_base).join(relative);
         let _ = std::fs::create_dir_all(&local_dir);
     }
 
@@ -1119,8 +1308,12 @@ async fn cmd_get_recursive(
         let relative = remote_path
             .strip_prefix(remote_dir)
             .unwrap_or(remote_path);
-        let relative = relative.trim_start_matches('/');
-        let local_path = format!("{}/{}", local_base, relative);
+        let Some(relative) = validate_relative_path(relative) else {
+            errors.push(format!("{}: unsafe path (traversal rejected)", remote_path));
+            if let Some(ref pb) = overall_pb { pb.inc(1); }
+            continue;
+        };
+        let local_path = Path::new(local_base).join(relative).to_string_lossy().to_string();
 
         // Ensure parent exists
         if let Some(parent) = Path::new(&local_path).parent() {
@@ -1168,7 +1361,7 @@ async fn cmd_get_recursive(
                 uploaded: 0,
                 downloaded,
                 deleted: 0,
-                skipped: (total_files as u32) - downloaded - (errors.len() as u32),
+                skipped: (total_files as u32).saturating_sub(downloaded).saturating_sub(errors.len() as u32),
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
             });
@@ -1247,6 +1440,10 @@ async fn cmd_get_glob(
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
+        if validate_relative_path(&entry.name).is_none() {
+            errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
+            continue;
+        }
         let local_path = format!("{}/{}", local_base, entry.name);
         match provider.download(&entry.path, &local_path, None).await {
             Ok(()) => {
@@ -1305,6 +1502,11 @@ async fn cmd_put(
 
     if recursive {
         return cmd_put_recursive(&mut *provider, local, remote, cli, format, cancelled).await;
+    }
+
+    // Check for glob patterns in local path
+    if local.contains('*') || local.contains('?') {
+        return cmd_put_glob(&mut *provider, local, remote, cli, format, cancelled).await;
     }
 
     let filename = Path::new(local)
@@ -1529,7 +1731,7 @@ async fn cmd_mkdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        println!("Created directory: {}", path);
+                        eprintln!("Created directory: {}", path);
                     }
                 }
                 OutputFormat::Json => print_json(&CliOk {
@@ -1564,7 +1766,7 @@ async fn cmd_rm(
     // Confirmation for recursive delete (unless --force)
     if recursive && !force && std::io::stdin().is_terminal() {
         eprint!("Recursively delete '{}'? [y/N]: ", path);
-        let _ = io::stdout().flush();
+        let _ = io::stderr().flush();
         let mut input = String::new();
         let _ = io::stdin().read_line(&mut input);
         if !input.trim().eq_ignore_ascii_case("y") {
@@ -1591,7 +1793,7 @@ async fn cmd_rm(
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        println!("Deleted: {}", path);
+                        eprintln!("Deleted: {}", path);
                     }
                 }
                 OutputFormat::Json => print_json(&CliOk {
@@ -1621,7 +1823,7 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        println!("{} → {}", from, to);
+                        eprintln!("{} → {}", from, to);
                     }
                 }
                 OutputFormat::Json => print_json(&CliOk {
@@ -1641,27 +1843,66 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 }
 
 async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    const MAX_CAT_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
+
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
+    // Guard: reject files larger than MAX_CAT_SIZE to prevent OOM
+    if let Ok(size) = provider.size(path).await {
+        if size > MAX_CAT_SIZE {
+            print_error(
+                format,
+                &format!("File too large for cat ({}). Use 'get' instead.", format_size(size)),
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    }
+
     match provider.download_to_bytes(path).await {
         Ok(data) => {
             match format {
                 OutputFormat::Text => {
+                    // Warn if binary content is being sent to a terminal
+                    if io::stdout().is_terminal()
+                        && data
+                            .iter()
+                            .take(8192)
+                            .any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\r' && b != b'\t'))
+                    {
+                        eprintln!("Warning: binary content detected. Pipe to file: aeroftp cat ... > output.bin");
+                    }
                     let stdout = io::stdout();
                     let mut handle = stdout.lock();
                     let _ = handle.write_all(&data);
                     let _ = handle.flush();
                 }
                 OutputFormat::Json => {
-                    // For JSON, encode as UTF-8 string (lossy) or base64 for binary
-                    let text = String::from_utf8_lossy(&data);
-                    print_json(&CliOk {
-                        status: "ok",
-                        message: text.to_string(),
-                    });
+                    // For JSON, encode as UTF-8 string or base64 for binary
+                    if let Ok(text) = String::from_utf8(data.clone()) {
+                        print_json(&CliOk {
+                            status: "ok",
+                            message: text,
+                        });
+                    } else {
+                        #[derive(Serialize)]
+                        struct CatBinaryResult {
+                            status: &'static str,
+                            content: String,
+                            encoding: &'static str,
+                            size: usize,
+                        }
+                        print_json(&CatBinaryResult {
+                            status: "ok",
+                            content: base64::engine::general_purpose::STANDARD.encode(&data),
+                            encoding: "base64",
+                            size: data.len(),
+                        });
+                    }
                 }
             }
             let _ = provider.disconnect().await;
@@ -1756,19 +1997,33 @@ async fn cmd_find(
                 }
             };
 
-            let mut queue = vec![path.to_string()];
+            let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
             let mut found = Vec::new();
+            let mut scanned: usize = 0;
 
-            while let Some(dir) = queue.pop() {
+            while let Some((dir, depth)) = queue.pop() {
+                if depth >= MAX_SCAN_DEPTH {
+                    continue;
+                }
                 if let Ok(entries) = provider.list(&dir).await {
                     for e in entries {
+                        scanned += 1;
+                        if scanned >= MAX_SCAN_ENTRIES {
+                            if !cli.quiet {
+                                eprintln!("Warning: scan limit reached ({} entries), results may be incomplete", MAX_SCAN_ENTRIES);
+                            }
+                            break;
+                        }
                         if e.is_dir {
-                            queue.push(e.path.clone());
+                            queue.push((e.path.clone(), depth + 1));
                         }
                         if matcher.is_match(&e.name) {
                             found.push(e);
                         }
                     }
+                }
+                if scanned >= MAX_SCAN_ENTRIES {
+                    break;
                 }
             }
             found
@@ -1783,10 +2038,10 @@ async fn cmd_find(
     match format {
         OutputFormat::Text => {
             for e in &results {
-                println!("{}", e.path);
+                println!("{}", sanitize_filename(&e.path));
             }
             if !cli.quiet {
-                println!("\n{} matches", results.len());
+                eprintln!("\n{} matches", results.len());
             }
         }
         OutputFormat::Json => {
@@ -1833,9 +2088,9 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                     println!("  Total: {}", format_size(info.total));
 
                     // Visual bar
-                    let bar_width = 40;
-                    let filled = ((pct / 100.0) * bar_width as f64) as usize;
-                    let empty = bar_width - filled;
+                    let bar_width: usize = 40;
+                    let filled = (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
+                    let empty = bar_width.saturating_sub(filled);
                     println!(
                         "  [{}{}] {:.1}%",
                         "━".repeat(filled),
@@ -1890,6 +2145,12 @@ async fn cmd_sync(
         eprintln!("Scanning remote: {}", remote);
     }
 
+    // Pre-compile exclude matchers (avoids O(n*m) recompilation)
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .collect();
+
     // Scan local files
     let local_entries: Vec<(String, u64, Option<String>)> = {
         let walker = walkdir::WalkDir::new(local).follow_links(false);
@@ -1912,13 +2173,12 @@ async fn cmd_sync(
                 continue;
             }
 
-            // Check excludes
-            if exclude.iter().any(|pat| {
-                globset::Glob::new(pat)
-                    .ok()
-                    .map(|g| g.compile_matcher().is_match(&relative) || g.compile_matcher().is_match(entry.file_name().to_string_lossy().to_string()))
-                    .unwrap_or(false)
-            }) {
+            // Check excludes (pre-compiled matchers)
+            let fname = entry.file_name().to_string_lossy();
+            if exclude_matchers
+                .iter()
+                .any(|m| m.is_match(&relative) || m.is_match(fname.as_ref()))
+            {
                 continue;
             }
 
@@ -1935,19 +2195,31 @@ async fn cmd_sync(
         entries
     };
 
-    // Scan remote files (recursive)
+    // Scan remote files (recursive, depth and entry limited)
     let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
     {
-        let mut queue = vec![remote.to_string()];
-        while let Some(dir) = queue.pop() {
+        let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
+        while let Some((dir, depth)) = queue.pop() {
             if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            if depth >= MAX_SCAN_DEPTH {
+                if !quiet {
+                    eprintln!("Warning: max scan depth reached at {}", dir);
+                }
+                continue;
+            }
+            if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                if !quiet {
+                    eprintln!("Warning: max entries reached during remote scan");
+                }
                 break;
             }
             match provider.list(&dir).await {
                 Ok(entries) => {
                     for e in entries {
                         if e.is_dir {
-                            queue.push(e.path.clone());
+                            queue.push((e.path.clone(), depth + 1));
                         } else {
                             let relative = e
                                 .path
@@ -1956,6 +2228,13 @@ async fn cmd_sync(
                                 .trim_start_matches('/')
                                 .to_string();
                             if !relative.is_empty() {
+                                // Apply exclude patterns to remote entries too
+                                if exclude_matchers
+                                    .iter()
+                                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                                {
+                                    continue;
+                                }
                                 remote_entries.push((relative, e.size, e.modified));
                             }
                         }
@@ -2106,7 +2385,12 @@ async fn cmd_sync(
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
-        let local_path = format!("{}/{}", local, path);
+        // Path traversal protection for remote-originated paths
+        if validate_relative_path(path).is_none() {
+            errors.push(format!("download {}: unsafe path (traversal rejected)", path));
+            continue;
+        }
+        let local_path = Path::new(local).join(path).to_string_lossy().to_string();
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
         if let Some(parent) = Path::new(&local_path).parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -2118,6 +2402,10 @@ async fn cmd_sync(
     }
 
     for path in &to_delete_remote {
+        if validate_relative_path(path).is_none() {
+            errors.push(format!("delete remote {}: unsafe path (traversal rejected)", path));
+            continue;
+        }
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
         match provider.delete(&remote_path).await {
             Ok(()) => deleted += 1,
@@ -2126,6 +2414,10 @@ async fn cmd_sync(
     }
 
     for path in &to_delete_local {
+        if validate_relative_path(path).is_none() {
+            errors.push(format!("delete local {}: unsafe path (traversal rejected)", path));
+            continue;
+        }
         let local_path = format!("{}/{}", local, path);
         match std::fs::remove_file(&local_path) {
             Ok(()) => deleted += 1,
@@ -2167,6 +2459,362 @@ async fn cmd_sync(
     if errors.is_empty() { 0 } else { 4 }
 }
 
+async fn cmd_tree(
+    url: &str,
+    path: &str,
+    max_depth: usize,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let effective_path = if path == "/" && url_path != "/" {
+        &url_path
+    } else {
+        path
+    };
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    if !quiet {
+        println!("{}", effective_path);
+    }
+
+    #[derive(Serialize)]
+    struct TreeNode {
+        name: String,
+        path: String,
+        is_dir: bool,
+        size: u64,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        children: Vec<TreeNode>,
+    }
+
+    // BFS with depth tracking
+    struct QueueItem {
+        path: String,
+        name: String,
+        depth: usize,
+        prefix: String,
+    }
+
+    let mut file_count: usize = 0;
+    let mut dir_count: usize = 0;
+
+    // For JSON output, build tree recursively with entry limit
+    async fn build_tree(
+        provider: &mut dyn StorageProvider,
+        path: &str,
+        depth: usize,
+        max_depth: usize,
+        entry_count: &mut usize,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Vec<TreeNode> {
+        if depth >= max_depth || *entry_count >= MAX_SCAN_ENTRIES {
+            return Vec::new();
+        }
+        // Symlink loop detection: skip already-visited paths
+        if !visited.insert(path.to_string()) {
+            return Vec::new();
+        }
+        let entries = match provider.list(path).await {
+            Ok(e) => e,
+            Err(_) => return Vec::new(),
+        };
+        let mut nodes = Vec::new();
+        for e in entries {
+            if *entry_count >= MAX_SCAN_ENTRIES {
+                break;
+            }
+            *entry_count += 1;
+            let children = if e.is_dir {
+                Box::pin(build_tree(provider, &e.path, depth + 1, max_depth, entry_count, visited)).await
+            } else {
+                Vec::new()
+            };
+            nodes.push(TreeNode {
+                name: e.name,
+                path: e.path,
+                is_dir: e.is_dir,
+                size: e.size,
+                children,
+            });
+        }
+        nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+        nodes
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let mut tree_entry_count: usize = 0;
+            let mut tree_visited = std::collections::HashSet::new();
+            let root_children = build_tree(&mut *provider, effective_path, 0, max_depth, &mut tree_entry_count, &mut tree_visited).await;
+            fn count_nodes(nodes: &[TreeNode]) -> (usize, usize) {
+                let mut files = 0;
+                let mut dirs = 0;
+                for n in nodes {
+                    if n.is_dir {
+                        dirs += 1;
+                    } else {
+                        files += 1;
+                    }
+                    let (f, d) = count_nodes(&n.children);
+                    files += f;
+                    dirs += d;
+                }
+                (files, dirs)
+            }
+            let (f, d) = count_nodes(&root_children);
+            file_count = f;
+            dir_count = d;
+
+            #[derive(Serialize)]
+            struct TreeResult {
+                status: &'static str,
+                root: String,
+                tree: Vec<TreeNode>,
+                summary: TreeSummary,
+            }
+            #[derive(Serialize)]
+            struct TreeSummary {
+                directories: usize,
+                files: usize,
+            }
+            print_json(&TreeResult {
+                status: "ok",
+                root: effective_path.to_string(),
+                tree: root_children,
+                summary: TreeSummary {
+                    directories: dir_count,
+                    files: file_count,
+                },
+            });
+        }
+        OutputFormat::Text => {
+            // Iterative DFS with prefix tracking for tree drawing
+            let mut stack: Vec<QueueItem> = Vec::new();
+            let mut tree_entry_count: usize = 0;
+            let mut tree_visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+            // Load root entries
+            let root_entries = match provider.list(effective_path).await {
+                Ok(e) => e,
+                Err(e) => {
+                    print_error(format, &format!("tree failed: {}", e), provider_error_to_exit_code(&e));
+                    let _ = provider.disconnect().await;
+                    return provider_error_to_exit_code(&e);
+                }
+            };
+
+            let mut sorted: Vec<_> = root_entries.into_iter().collect();
+            sorted.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            });
+
+            // Push in reverse so first item is processed first
+            for (i, e) in sorted.iter().enumerate().rev() {
+                let is_last = i == sorted.len() - 1;
+                let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
+                let child_prefix = if is_last { "    " } else { "\u{2502}   " };
+                stack.push(QueueItem {
+                    path: e.path.clone(),
+                    name: format!(
+                        "{}{}{}",
+                        connector,
+                        sanitize_filename(&e.name),
+                        if e.is_dir { "/" } else { "" }
+                    ),
+                    depth: 1,
+                    prefix: child_prefix.to_string(),
+                });
+                if e.is_dir { dir_count += 1; } else { file_count += 1; }
+            }
+
+            while let Some(item) = stack.pop() {
+                if tree_entry_count >= MAX_SCAN_ENTRIES {
+                    eprintln!("Warning: max entries {} reached, tree output truncated", MAX_SCAN_ENTRIES);
+                    break;
+                }
+                tree_entry_count += 1;
+                println!("{}", item.name);
+
+                if item.depth < max_depth {
+                    // Check if this is a directory by checking the trailing /
+                    if item.name.ends_with('/') && tree_visited.insert(item.path.clone()) {
+                        if let Ok(children) = provider.list(&item.path).await {
+                            let mut sorted: Vec<_> = children.into_iter().collect();
+                            sorted.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                                (true, false) => std::cmp::Ordering::Less,
+                                (false, true) => std::cmp::Ordering::Greater,
+                                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                            });
+
+                            for (i, e) in sorted.iter().enumerate().rev() {
+                                let is_last = i == sorted.len() - 1;
+                                let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
+                                let child_prefix = if is_last { "    " } else { "\u{2502}   " };
+                                stack.push(QueueItem {
+                                    path: e.path.clone(),
+                                    name: format!(
+                                        "{}{}{}{}",
+                                        item.prefix,
+                                        connector,
+                                        sanitize_filename(&e.name),
+                                        if e.is_dir { "/" } else { "" }
+                                    ),
+                                    depth: item.depth + 1,
+                                    prefix: format!("{}{}", item.prefix, child_prefix),
+                                });
+                                if e.is_dir { dir_count += 1; } else { file_count += 1; }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !cli.quiet {
+                println!(
+                    "\n{} directories, {} files",
+                    dir_count, file_count
+                );
+            }
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    0
+}
+
+async fn cmd_put_glob(
+    provider: &mut dyn StorageProvider,
+    local_pattern: &str,
+    remote_base: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let remote_base = remote_base.unwrap_or("/");
+
+    // Split pattern into directory + glob
+    let pattern_path = Path::new(local_pattern);
+    let (dir, glob_pattern) = if let Some(parent) = pattern_path.parent() {
+        let parent_str = parent.to_string_lossy();
+        let parent_dir = if parent_str.is_empty() { "." } else { &*parent_str };
+        (
+            parent_dir.to_string(),
+            pattern_path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+        )
+    } else {
+        (".".to_string(), local_pattern.to_string())
+    };
+
+    let matcher = match globset::Glob::new(&glob_pattern) {
+        Ok(g) => g.compile_matcher(),
+        Err(e) => {
+            print_error(format, &format!("Invalid glob pattern: {}", e), 5);
+            return 5;
+        }
+    };
+
+    // Read local directory and match
+    let read_dir = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            print_error(format, &format!("Cannot read directory '{}': {}", dir, e), 2);
+            return 2;
+        }
+    };
+
+    let mut matched: Vec<(String, String, u64)> = Vec::new(); // (local_path, filename, size)
+    for entry in read_dir.flatten() {
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if matcher.is_match(&name) {
+            matched.push((entry.path().to_string_lossy().to_string(), name, meta.len()));
+        }
+    }
+
+    if matched.is_empty() {
+        if !cli.quiet {
+            match format {
+                OutputFormat::Text => eprintln!("No files matching '{}'", glob_pattern),
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: format!("No files matching '{}'", glob_pattern),
+                }),
+            }
+        }
+        let _ = provider.disconnect().await;
+        return 0;
+    }
+
+    matched.sort_by(|a, b| a.1.cmp(&b.1));
+
+    let start = Instant::now();
+    let total = matched.len();
+    let mut uploaded: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (local_path, filename, _size) in &matched {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
+        match provider.upload(local_path, &remote_path, None).await {
+            Ok(()) => {
+                uploaded += 1;
+                if !cli.quiet && matches!(format, OutputFormat::Text) {
+                    println!("  {} \u{2192} {}", local_path, remote_path);
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: {}", filename, e));
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!(
+                    "\n{}/{} files uploaded in {:.1}s",
+                    uploaded, total, elapsed.as_secs_f64()
+                );
+            }
+        }
+        OutputFormat::Json => {
+            print_json(&CliSyncResult {
+                status: if errors.is_empty() { "ok" } else { "partial" },
+                uploaded,
+                downloaded: 0,
+                deleted: 0,
+                skipped: 0,
+                errors,
+                elapsed_secs: elapsed.as_secs_f64(),
+            });
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    if uploaded == total as u32 { 0 } else { 4 }
+}
+
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
     let content = match std::fs::read_to_string(file) {
         Ok(c) => c,
@@ -2176,9 +2824,65 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         }
     };
 
+    // Limit batch file size to 1 MB
+    if content.len() > 1_048_576 {
+        print_error(format, "Batch file exceeds 1 MB limit", 5);
+        return 5;
+    }
+
     let mut variables: HashMap<String, String> = HashMap::new();
     let mut current_url: Option<String> = None;
     let mut exit_code = 0;
+    let mut on_error_continue = false;
+    let mut total_commands: u32 = 0;
+    let mut failed_commands: u32 = 0;
+
+    /// Check exit code and handle ON_ERROR policy.
+    /// Returns Some(exit_code) if batch should abort, None to continue.
+    fn check_exit(
+        code: i32,
+        line_num: usize,
+        cmd: &str,
+        on_error_continue: bool,
+        failed_commands: &mut u32,
+    ) -> Option<i32> {
+        if code != 0 {
+            if on_error_continue {
+                eprintln!(
+                    "Warning: line {} ({}) failed with exit code {} (continuing)",
+                    line_num + 1,
+                    cmd,
+                    code
+                );
+                *failed_commands += 1;
+                None
+            } else {
+                eprintln!(
+                    "Batch failed at line {} ({}): exit code {}",
+                    line_num + 1,
+                    cmd,
+                    code
+                );
+                Some(code)
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Require an active connection URL, or return error.
+    fn require_url(current_url: &Option<String>, line_num: usize) -> Result<String, i32> {
+        match current_url {
+            Some(u) => Ok(u.clone()),
+            None => {
+                eprintln!(
+                    "Line {}: No active connection. Use CONNECT first.",
+                    line_num + 1
+                );
+                Err(5)
+            }
+        }
+    }
 
     for (line_num, raw_line) in content.lines().enumerate() {
         if cancelled.load(Ordering::Relaxed) {
@@ -2187,33 +2891,157 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         }
 
         let line = raw_line.trim();
-        // Skip comments and blank lines
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
-        // Variable substitution
-        let mut expanded = line.to_string();
-        for (key, value) in &variables {
-            expanded = expanded.replace(&format!("${}", key), value);
-            expanded = expanded.replace(&format!("${{{}}}", key), value);
-        }
+        // Single-pass variable substitution (prevents recursive expansion)
+        // Uses char indices for proper UTF-8 handling
+        let expanded = {
+            let mut result = String::with_capacity(line.len());
+            let chars: Vec<(usize, char)> = line.char_indices().collect();
+            let mut ci = 0;
+            while ci < chars.len() {
+                let (byte_idx, ch) = chars[ci];
+                if ch == '$' && ci + 1 < chars.len() {
+                    let (_, next_ch) = chars[ci + 1];
+                    if next_ch == '$' {
+                        // $$ escape → literal $
+                        result.push('$');
+                        ci += 2;
+                        continue;
+                    } else if next_ch == '{' {
+                        // ${VAR} syntax
+                        let start_byte = chars[ci + 2..].first().map(|(b, _)| *b).unwrap_or(line.len());
+                        if let Some(close_pos) = line[start_byte..].find('}') {
+                            let key = &line[start_byte..start_byte + close_pos];
+                            if let Some(val) = variables.get(key) {
+                                result.push_str(val);
+                            } else {
+                                let end_byte = start_byte + close_pos + 1;
+                                result.push_str(&line[byte_idx..end_byte]);
+                            }
+                            // Skip past the closing }
+                            let end_byte = start_byte + close_pos + 1;
+                            ci = chars.iter().position(|(b, _)| *b >= end_byte).unwrap_or(chars.len());
+                            continue;
+                        }
+                    } else if next_ch.is_ascii_alphabetic() || next_ch == '_' {
+                        // $VAR syntax
+                        let start = ci + 1;
+                        let mut end = start;
+                        while end < chars.len() && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_') {
+                            end += 1;
+                        }
+                        let key_start = chars[start].0;
+                        let key_end = if end < chars.len() { chars[end].0 } else { line.len() };
+                        let key = &line[key_start..key_end];
+                        if let Some(val) = variables.get(key) {
+                            result.push_str(val);
+                        } else {
+                            result.push_str(&line[byte_idx..key_end]);
+                        }
+                        ci = end;
+                        continue;
+                    }
+                }
+                result.push(ch);
+                ci += 1;
+            }
+            result
+        };
 
-        let parts: Vec<&str> = expanded.split_whitespace().collect();
-        if parts.is_empty() {
+        // Shell-like splitting that respects double quotes for paths with spaces
+        let parts_owned: Vec<String> = {
+            let mut parts = Vec::new();
+            let mut current = String::new();
+            let mut in_quotes = false;
+            for ch in expanded.chars() {
+                match ch {
+                    '"' => in_quotes = !in_quotes,
+                    ' ' | '\t' if !in_quotes => {
+                        if !current.is_empty() {
+                            parts.push(std::mem::take(&mut current));
+                        }
+                    }
+                    _ => current.push(ch),
+                }
+            }
+            if in_quotes {
+                eprintln!("Warning: line {}: unmatched quote", line_num + 1);
+            }
+            if !current.is_empty() {
+                parts.push(current);
+            }
+            parts
+        };
+        if parts_owned.is_empty() {
             continue;
         }
+        let parts: Vec<&str> = parts_owned.iter().map(|s| s.as_str()).collect();
 
         let cmd = parts[0].to_uppercase();
+        total_commands += 1;
 
         match cmd.as_str() {
             "SET" => {
-                // SET KEY=VALUE
-                let rest = expanded[3..].trim();
-                if let Some(eq_pos) = rest.find('=') {
-                    let key = rest[..eq_pos].trim().to_string();
-                    let value = rest[eq_pos + 1..].trim().to_string();
-                    variables.insert(key, value);
+                if expanded.len() > 3 {
+                    let rest = expanded[3..].trim();
+                    if let Some(eq_pos) = rest.find('=') {
+                        let key = rest[..eq_pos].trim().to_string();
+                        let value = rest[eq_pos + 1..].trim().to_string();
+                        // Limit variable value size to 64 KB
+                        if value.len() > 65_536 {
+                            eprintln!("Line {}: variable value too large (max 64 KB)", line_num + 1);
+                            return 5;
+                        }
+                        // Validate variable name: [A-Za-z_][A-Za-z0-9_]*
+                        if !key.is_empty()
+                            && key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                            && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        {
+                            if variables.len() >= 256 && !variables.contains_key(&key) {
+                                eprintln!("Line {}: too many variables (max 256)", line_num + 1);
+                                return 5;
+                            }
+                            variables.insert(key, value);
+                        } else {
+                            eprintln!("Line {}: invalid variable name '{}' (must match [A-Za-z_][A-Za-z0-9_]*)", line_num + 1, key);
+                            return 5;
+                        }
+                    } else {
+                        eprintln!("Line {}: SET requires KEY=VALUE syntax", line_num + 1);
+                        return 5;
+                    }
+                } else {
+                    eprintln!("Line {}: SET requires KEY=VALUE syntax", line_num + 1);
+                    return 5;
+                }
+            }
+            "ECHO" => {
+                // ECHO <message> — print to stderr for logging
+                let msg = if expanded.len() > 4 {
+                    expanded[4..].trim()
+                } else {
+                    ""
+                };
+                eprintln!("{}", msg);
+            }
+            "ON_ERROR" => {
+                // ON_ERROR CONTINUE | ON_ERROR FAIL
+                if parts.len() >= 2 {
+                    match parts[1].to_uppercase().as_str() {
+                        "CONTINUE" => on_error_continue = true,
+                        "FAIL" => on_error_continue = false,
+                        other => {
+                            eprintln!(
+                                "Line {}: ON_ERROR expects CONTINUE or FAIL, got '{}'",
+                                line_num + 1,
+                                other
+                            );
+                            return 5;
+                        }
+                    }
                 }
             }
             "CONNECT" => {
@@ -2221,23 +3049,20 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: CONNECT requires a URL", line_num + 1);
                     return 5;
                 }
-                current_url = Some(parts[1].to_string());
                 exit_code = cmd_connect(parts[1], cli, format).await;
-                if exit_code != 0 {
-                    eprintln!("Batch failed at line {} (CONNECT): exit code {}", line_num + 1, exit_code);
-                    return exit_code;
+                if exit_code == 0 {
+                    current_url = Some(parts[1].to_string());
+                } else if let Some(code) = check_exit(exit_code, line_num, "CONNECT", on_error_continue, &mut failed_commands) {
+                    return code;
                 }
             }
             "DISCONNECT" => {
                 current_url = None;
             }
             "GET" => {
-                let url = match &current_url {
-                    Some(u) => u.clone(),
-                    None => {
-                        eprintln!("Line {}: No active connection. Use CONNECT first.", line_num + 1);
-                        return 5;
-                    }
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
                 };
                 if parts.len() < 2 {
                     eprintln!("Line {}: GET requires a remote path", line_num + 1);
@@ -2245,18 +3070,14 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
                 let local = if parts.len() > 2 { Some(parts[2]) } else { None };
                 exit_code = cmd_get(&url, parts[1], local, false, cli, format, cancelled.clone()).await;
-                if exit_code != 0 {
-                    eprintln!("Batch failed at line {} (GET): exit code {}", line_num + 1, exit_code);
-                    return exit_code;
+                if let Some(code) = check_exit(exit_code, line_num, "GET", on_error_continue, &mut failed_commands) {
+                    return code;
                 }
             }
             "PUT" => {
-                let url = match &current_url {
-                    Some(u) => u.clone(),
-                    None => {
-                        eprintln!("Line {}: No active connection. Use CONNECT first.", line_num + 1);
-                        return 5;
-                    }
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
                 };
                 if parts.len() < 2 {
                     eprintln!("Line {}: PUT requires a local path", line_num + 1);
@@ -2264,36 +3085,132 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
                 let remote = if parts.len() > 2 { Some(parts[2]) } else { None };
                 exit_code = cmd_put(&url, parts[1], remote, false, cli, format, cancelled.clone()).await;
-                if exit_code != 0 {
-                    eprintln!("Batch failed at line {} (PUT): exit code {}", line_num + 1, exit_code);
-                    return exit_code;
+                if let Some(code) = check_exit(exit_code, line_num, "PUT", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "RM" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                if parts.len() < 2 {
+                    eprintln!("Line {}: RM requires a path", line_num + 1);
+                    return 5;
+                }
+                let recursive = parts.contains(&"-r") || parts.contains(&"-rf");
+                exit_code = cmd_rm(&url, parts[1], recursive, true, cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "RM", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "MV" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                if parts.len() < 3 {
+                    eprintln!("Line {}: MV requires <from> <to>", line_num + 1);
+                    return 5;
+                }
+                exit_code = cmd_mv(&url, parts[1], parts[2], cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "MV", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "LS" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                let path = if parts.len() > 1 { parts[1] } else { "/" };
+                let long = parts.contains(&"-l");
+                exit_code = cmd_ls(&url, path, long, "name", false, true, cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "LS", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "CAT" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                if parts.len() < 2 {
+                    eprintln!("Line {}: CAT requires a path", line_num + 1);
+                    return 5;
+                }
+                exit_code = cmd_cat(&url, parts[1], cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "CAT", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "STAT" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                if parts.len() < 2 {
+                    eprintln!("Line {}: STAT requires a path", line_num + 1);
+                    return 5;
+                }
+                exit_code = cmd_stat(&url, parts[1], cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "STAT", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "FIND" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                if parts.len() < 3 {
+                    eprintln!("Line {}: FIND requires <path> <pattern>", line_num + 1);
+                    return 5;
+                }
+                exit_code = cmd_find(&url, parts[1], parts[2], cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "FIND", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "DF" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                exit_code = cmd_df(&url, cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "DF", on_error_continue, &mut failed_commands) {
+                    return code;
                 }
             }
             "MKDIR" => {
-                let url = match &current_url {
-                    Some(u) => u.clone(),
-                    None => {
-                        eprintln!("Line {}: No active connection. Use CONNECT first.", line_num + 1);
-                        return 5;
-                    }
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
                 };
                 if parts.len() < 2 {
                     eprintln!("Line {}: MKDIR requires a path", line_num + 1);
                     return 5;
                 }
                 exit_code = cmd_mkdir(&url, parts[1], cli, format).await;
-                if exit_code != 0 {
-                    eprintln!("Batch failed at line {} (MKDIR): exit code {}", line_num + 1, exit_code);
-                    return exit_code;
+                if let Some(code) = check_exit(exit_code, line_num, "MKDIR", on_error_continue, &mut failed_commands) {
+                    return code;
+                }
+            }
+            "TREE" => {
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
+                };
+                let path = if parts.len() > 1 { parts[1] } else { "/" };
+                exit_code = cmd_tree(&url, path, 3, cli, format).await;
+                if let Some(code) = check_exit(exit_code, line_num, "TREE", on_error_continue, &mut failed_commands) {
+                    return code;
                 }
             }
             "SYNC" => {
-                let url = match &current_url {
-                    Some(u) => u.clone(),
-                    None => {
-                        eprintln!("Line {}: No active connection. Use CONNECT first.", line_num + 1);
-                        return 5;
-                    }
+                let url = match require_url(&current_url, line_num) {
+                    Ok(u) => u,
+                    Err(code) => return code,
                 };
                 if parts.len() < 3 {
                     eprintln!("Line {}: SYNC requires <local> <remote>", line_num + 1);
@@ -2312,29 +3229,2084 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     cancelled.clone(),
                 )
                 .await;
-                if exit_code != 0 {
-                    eprintln!("Batch failed at line {} (SYNC): exit code {}", line_num + 1, exit_code);
-                    return exit_code;
+                if let Some(code) = check_exit(exit_code, line_num, "SYNC", on_error_continue, &mut failed_commands) {
+                    return code;
                 }
             }
             _ => {
-                eprintln!(
-                    "Line {}: Unknown command '{}'. Supported: SET, CONNECT, DISCONNECT, GET, PUT, MKDIR, SYNC",
-                    line_num + 1,
-                    cmd
+                print_error(
+                    format,
+                    &format!("Line {}: Unknown command '{}'. Supported: SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC", line_num + 1, cmd),
+                    5,
                 );
-                return 5;
+                if !on_error_continue {
+                    return 5;
+                }
+                failed_commands += 1;
             }
         }
     }
 
-    exit_code
+    if failed_commands > 0 {
+        eprintln!(
+            "\nBatch completed: {}/{} commands succeeded, {} failed",
+            total_commands - failed_commands,
+            total_commands,
+            failed_commands
+        );
+        4
+    } else {
+        exit_code
+    }
+}
+
+// ── Agent Command ──────────────────────────────────────────────────
+
+/// Detect AI provider from environment variables
+fn detect_ai_provider() -> Option<(String, String, String)> {
+    // Returns (provider_name, api_key, base_url)
+    let providers = [
+        ("anthropic", "ANTHROPIC_API_KEY", "https://api.anthropic.com"),
+        ("openai", "OPENAI_API_KEY", "https://api.openai.com/v1"),
+        ("gemini", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com"),
+        ("xai", "XAI_API_KEY", "https://api.x.ai/v1"),
+        ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1"),
+        ("mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1"),
+        ("perplexity", "PERPLEXITY_API_KEY", "https://api.perplexity.ai"),
+        ("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com"),
+        ("together", "TOGETHER_API_KEY", "https://api.together.xyz/v1"),
+        ("fireworks", "FIREWORKS_API_KEY", "https://api.fireworks.ai/inference/v1"),
+        ("cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1"),
+        ("sambanova", "SAMBANOVA_API_KEY", "https://api.sambanova.ai/v1"),
+    ];
+    for (name, env_key, base_url) in &providers {
+        if let Ok(key) = std::env::var(env_key) {
+            if !key.is_empty() {
+                return Some((name.to_string(), key, base_url.to_string()));
+            }
+        }
+    }
+    // Check Ollama (no API key needed)
+    if std::env::var("OLLAMA_HOST").is_ok() || std::path::Path::new("/usr/local/bin/ollama").exists() {
+        return Some(("ollama".to_string(), String::new(), "http://localhost:11434".to_string()));
+    }
+    None
+}
+
+/// Get default model for a provider
+fn default_model(provider: &str) -> &'static str {
+    match provider {
+        "anthropic" => "claude-sonnet-4-20250514",
+        "openai" => "gpt-4o",
+        "gemini" => "gemini-2.0-flash",
+        "xai" => "grok-3",
+        "ollama" => "llama3.1",
+        "groq" => "llama-3.3-70b-versatile",
+        "mistral" => "mistral-large-latest",
+        "perplexity" => "sonar-pro",
+        "deepseek" => "deepseek-chat",
+        "together" => "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        "fireworks" => "accounts/fireworks/models/llama-v3p1-70b-instruct",
+        "cerebras" => "llama-3.3-70b",
+        "sambanova" => "Meta-Llama-3.1-70B-Instruct",
+        _ => "gpt-4o",
+    }
+}
+
+/// Map provider name to AIProviderType
+fn provider_type_from_name(name: &str) -> ftp_client_gui_lib::ai::AIProviderType {
+    use ftp_client_gui_lib::ai::AIProviderType;
+    match name {
+        "anthropic" => AIProviderType::Anthropic,
+        "openai" => AIProviderType::OpenAI,
+        "gemini" | "google" => AIProviderType::Google,
+        "xai" => AIProviderType::Xai,
+        "ollama" => AIProviderType::Ollama,
+        "groq" => AIProviderType::Groq,
+        "mistral" => AIProviderType::Mistral,
+        "perplexity" => AIProviderType::Perplexity,
+        "deepseek" => AIProviderType::DeepSeek,
+        "together" => AIProviderType::Together,
+        "fireworks" => AIProviderType::Fireworks,
+        "cerebras" => AIProviderType::Cerebras,
+        "sambanova" => AIProviderType::SambaNova,
+        "cohere" => AIProviderType::Cohere,
+        "kimi" | "moonshot" => AIProviderType::Kimi,
+        "qwen" => AIProviderType::Qwen,
+        "ai21" => AIProviderType::Ai21,
+        "openrouter" => AIProviderType::OpenRouter,
+        _ => AIProviderType::Custom,
+    }
+}
+
+/// Build system prompt with context
+fn build_agent_system_prompt(custom_system: &Option<String>) -> String {
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
+
+    let base = if let Some(ref s) = custom_system {
+        if let Some(file) = s.strip_prefix('@') {
+            std::fs::read_to_string(file).unwrap_or_else(|_| s.clone())
+        } else {
+            s.clone()
+        }
+    } else {
+        "You are AeroAgent, an AI-powered file management assistant in AeroFTP CLI.\n\
+         You have access to tools for local file management, shell execution, archive \
+         handling, code search, and more. Use them to perform actions directly.\n\n\
+         Rules:\n\
+         1. Use tools to perform actions — don't just describe what to do.\n\
+         2. Be concise and direct. Explain briefly what you did after executing tools.\n\
+         3. For destructive operations (delete, overwrite), confirm with the user first.\n\
+         4. Resolve relative paths against the working directory.".to_string()
+    };
+
+    format!("{}\n\n## Current Context\n- Working directory: {}\n- Platform: {}\n- Time: {}",
+        base, cwd, std::env::consts::OS,
+        chrono::Local::now().format("%Y-%m-%d %H:%M"))
+}
+
+/// Parse auto-approve level
+fn parse_approve_level(s: &str) -> u8 {
+    match s.to_lowercase().as_str() {
+        "all" => 3,
+        "high" => 3,
+        "medium" => 2,
+        "safe" | "low" => 1,
+        "none" => 0,
+        _ => 1,
+    }
+}
+
+/// Get tool danger level (0=safe, 1=medium, 2=high)
+fn tool_danger_level(tool: &str) -> u8 {
+    match tool {
+        // Safe — read-only
+        "local_list" | "local_read" | "remote_list" | "remote_read" | "remote_info"
+        | "remote_search" | "local_search" | "local_grep" | "local_head" | "local_tail"
+        | "local_stat_batch" | "local_diff" | "local_tree" | "local_file_info"
+        | "local_disk_usage" | "local_find_duplicates" | "clipboard_read" | "app_info"
+        | "server_list_saved" | "rag_search" | "rag_index" | "preview_edit"
+        | "vault_peek" | "hash_file" => 0,
+        // Medium — local writes
+        "local_write" | "local_mkdir" | "local_edit" | "local_rename" | "local_copy_files"
+        | "local_move_files" | "local_batch_rename" | "remote_upload" | "remote_mkdir"
+        | "remote_rename" | "remote_edit" | "upload_files" | "download_files"
+        | "remote_download" | "archive_compress" | "archive_decompress" | "clipboard_write"
+        | "agent_memory_write" | "sync_preview" | "set_theme" => 1,
+        // High — destructive or remote writes
+        "local_delete" | "local_trash" | "remote_delete" | "shell_execute"
+        | "server_exec" | "sync_control" => 2,
+        _ => 2, // Unknown tools default to high
+    }
+}
+
+/// Build native tool definitions for the AI API (JSON Schema format).
+/// These are sent as `tools` in the AIRequest so the model can generate tool_calls.
+fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
+    use ftp_client_gui_lib::ai::AIToolDefinition;
+    use serde_json::json;
+
+    // Helper to build a tool definition with JSON Schema parameters
+    macro_rules! tool {
+        ($name:expr, $desc:expr, { $($pname:expr => ($ptype:expr, $pdesc:expr, $req:expr)),* $(,)? }) => {
+            {
+                #[allow(unused_mut)]
+                let mut props = serde_json::Map::new();
+                #[allow(unused_mut)]
+                let mut required: Vec<serde_json::Value> = Vec::new();
+                $(
+                    let mut prop = serde_json::Map::new();
+                    if $ptype == "array" {
+                        prop.insert("type".into(), json!("array"));
+                        prop.insert("items".into(), json!({"type": "string"}));
+                    } else {
+                        prop.insert("type".into(), json!($ptype));
+                    }
+                    prop.insert("description".into(), json!($pdesc));
+                    props.insert($pname.into(), serde_json::Value::Object(prop));
+                    if $req {
+                        required.push(json!($pname));
+                    }
+                )*
+                AIToolDefinition {
+                    name: $name.to_string(),
+                    description: $desc.to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": serde_json::Value::Object(props),
+                        "required": required,
+                    }),
+                }
+            }
+        };
+    }
+
+    vec![
+        // === Safe (read-only) ===
+        tool!("local_list", "List files and folders in a local directory", {
+            "path" => ("string", "Local directory path", true)
+        }),
+        tool!("local_read", "Read a local text file (max 5KB)", {
+            "path" => ("string", "Local file path", true)
+        }),
+        tool!("local_search", "Search for files by name pattern in a local directory", {
+            "path" => ("string", "Directory to search", true),
+            "pattern" => ("string", "Search pattern (e.g. \"*.txt\")", true)
+        }),
+        tool!("local_file_info", "Get detailed file properties: size, permissions, timestamps", {
+            "path" => ("string", "File or directory path", true)
+        }),
+        tool!("local_disk_usage", "Calculate total size of a directory (recursive)", {
+            "path" => ("string", "Directory path", true)
+        }),
+        tool!("local_find_duplicates", "Find duplicate files using MD5 hash comparison", {
+            "path" => ("string", "Directory to scan", true),
+            "min_size" => ("number", "Minimum file size in bytes (default: 1024)", false)
+        }),
+        tool!("local_diff", "Compare two local files and show unified diff", {
+            "path_a" => ("string", "First file path", true),
+            "path_b" => ("string", "Second file path", true),
+            "context_lines" => ("number", "Lines of context (default: 3)", false)
+        }),
+        tool!("local_grep", "Search file contents using regex pattern recursively", {
+            "path" => ("string", "Directory to search in", true),
+            "pattern" => ("string", "Regex pattern to search for", true),
+            "glob" => ("string", "File filter pattern (e.g. \"*.ts\")", false),
+            "max_results" => ("number", "Maximum matches (default: 50)", false),
+            "context_lines" => ("number", "Lines of context (default: 2)", false),
+            "case_sensitive" => ("boolean", "Case-sensitive (default: true)", false)
+        }),
+        tool!("local_head", "Read the first N lines of a file (default: 20)", {
+            "path" => ("string", "File path", true),
+            "lines" => ("number", "Number of lines (default: 20, max: 500)", false)
+        }),
+        tool!("local_tail", "Read the last N lines of a file (default: 20)", {
+            "path" => ("string", "File path", true),
+            "lines" => ("number", "Number of lines (default: 20, max: 500)", false)
+        }),
+        tool!("local_stat_batch", "Get file metadata for multiple paths at once", {
+            "paths" => ("array", "Array of file/directory paths to stat (max 100)", true)
+        }),
+        tool!("local_tree", "Display a recursive directory tree with file sizes", {
+            "path" => ("string", "Root directory path", true),
+            "max_depth" => ("number", "Maximum depth (default: 3, max: 10)", false),
+            "show_hidden" => ("boolean", "Show hidden files (default: false)", false),
+            "glob" => ("string", "File filter pattern", false)
+        }),
+        tool!("hash_file", "Compute cryptographic hash (MD5, SHA-1, SHA-256, SHA-512, BLAKE3)", {
+            "path" => ("string", "File path to hash", true),
+            "algorithm" => ("string", "Hash algorithm (default: sha256)", false)
+        }),
+        tool!("app_info", "Get CLI application state: version, platform, working directory", {}),
+        // === Medium (local writes) ===
+        tool!("local_write", "Write content to a local text file", {
+            "path" => ("string", "Local file path", true),
+            "content" => ("string", "File content", true)
+        }),
+        tool!("local_mkdir", "Create a local directory (including parents)", {
+            "path" => ("string", "Directory path to create", true)
+        }),
+        tool!("local_edit", "Find and replace text in a local file", {
+            "path" => ("string", "Local file path", true),
+            "find" => ("string", "Exact text to find", true),
+            "replace" => ("string", "Replacement text", true),
+            "replace_all" => ("boolean", "Replace all occurrences (default: true)", false)
+        }),
+        tool!("local_rename", "Rename/move a local file or folder", {
+            "from" => ("string", "Current path", true),
+            "to" => ("string", "New path", true)
+        }),
+        tool!("local_move_files", "Move multiple local files into a destination directory", {
+            "paths" => ("array", "Array of source file paths", true),
+            "destination" => ("string", "Destination directory path", true)
+        }),
+        tool!("local_copy_files", "Copy multiple local files into a destination directory", {
+            "paths" => ("array", "Array of source file paths", true),
+            "destination" => ("string", "Destination directory path", true)
+        }),
+        tool!("local_batch_rename", "Rename multiple files using patterns", {
+            "paths" => ("array", "Array of file paths to rename", true),
+            "mode" => ("string", "Rename mode: find_replace, add_prefix, add_suffix, sequential", true),
+            "find" => ("string", "Text to find (find_replace only)", false),
+            "replace" => ("string", "Replacement text (find_replace only)", false),
+            "prefix" => ("string", "Prefix to add", false),
+            "suffix" => ("string", "Suffix to add before extension", false),
+            "base_name" => ("string", "Base name for sequential (default: file)", false),
+            "start_number" => ("number", "Start number for sequential (default: 1)", false)
+        }),
+        tool!("archive_compress", "Compress files into an archive (ZIP, 7z, TAR, etc.)", {
+            "paths" => ("array", "Array of file/folder paths to compress", true),
+            "output_path" => ("string", "Output archive file path", true),
+            "format" => ("string", "Archive format: zip, 7z, tar, tar.gz, tar.bz2, tar.xz", false),
+            "password" => ("string", "Encryption password", false),
+            "compression_level" => ("number", "Compression level 0-9 (default: 6)", false)
+        }),
+        tool!("archive_decompress", "Extract an archive", {
+            "archive_path" => ("string", "Path to the archive file", true),
+            "output_dir" => ("string", "Output directory", true),
+            "password" => ("string", "Decryption password", false)
+        }),
+        tool!("clipboard_write", "Write text to the system clipboard", {
+            "content" => ("string", "Text to copy", true)
+        }),
+        tool!("agent_memory_write", "Save a note to persistent project memory", {
+            "entry" => ("string", "Content to remember", true),
+            "category" => ("string", "Category: convention, preference, issue, pattern", false)
+        }),
+        // === High (destructive) ===
+        tool!("local_delete", "Delete a local file or directory", {
+            "path" => ("string", "Path to delete", true)
+        }),
+        tool!("local_trash", "Move files to system trash (safe alternative to delete)", {
+            "paths" => ("array", "Array of file paths to trash", true)
+        }),
+        tool!("shell_execute", "Execute a shell command and capture output", {
+            "command" => ("string", "Shell command to execute", true),
+            "working_dir" => ("string", "Working directory (default: cwd)", false),
+            "timeout_secs" => ("number", "Timeout in seconds (default: 30, max: 120)", false)
+        }),
+    ]
+}
+
+/// Execute a CLI tool locally (no Tauri dependency).
+/// Returns JSON result or error string.
+async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<serde_json::Value, String> {
+    use serde_json::json;
+
+    // Helper to extract string argument
+    let get_str = |key: &str| -> Result<String, String> {
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("Missing required argument: {}", key))
+    };
+
+    let get_str_opt = |key: &str| -> Option<String> {
+        args.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    };
+
+    // Validate local path — deny sensitive paths (mirrors ai_tools.rs::validate_path)
+    let validate_path = |path: &str, param: &str| -> Result<(), String> {
+        if path.len() > 4096 {
+            return Err(format!("{}: path exceeds 4096 characters", param));
+        }
+        if path.contains('\0') {
+            return Err(format!("{}: path contains null bytes", param));
+        }
+        let normalized = path.replace('\\', "/");
+        for component in normalized.split('/') {
+            if component == ".." {
+                return Err(format!("{}: path traversal ('..') not allowed", param));
+            }
+        }
+        let resolved = std::fs::canonicalize(path).or_else(|_| {
+            std::path::Path::new(path)
+                .parent()
+                .map(std::fs::canonicalize)
+                .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+        });
+        if let Ok(canonical) = resolved {
+            let s = canonical.to_string_lossy();
+            let denied = ["/proc", "/sys", "/dev", "/boot", "/root",
+                         "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers"];
+            if denied.iter().any(|d| s.starts_with(d)) {
+                return Err(format!("{}: access to system path denied: {}", param, s));
+            }
+            if let Ok(home) = std::env::var("HOME") {
+                let home_denied = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
+                                  ".docker", ".config/aeroftp", ".vault-token"];
+                for sensitive in &home_denied {
+                    if s.starts_with(&format!("{}/{}", home, sensitive)) {
+                        return Err(format!("{}: access to sensitive path denied: {}", param, s));
+                    }
+                }
+            }
+            if s.starts_with("/run/secrets") {
+                return Err(format!("{}: access to system path denied: {}", param, s));
+            }
+        }
+        Ok(())
+    };
+
+    // Resolve relative path against cwd
+    let resolve_path = |path: &str| -> String {
+        if std::path::Path::new(path).is_absolute() {
+            path.to_string()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path).to_string_lossy().to_string())
+                .unwrap_or_else(|_| path.to_string())
+        }
+    };
+
+    match tool_name {
+        "local_list" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            let entries: Vec<serde_json::Value> = std::fs::read_dir(&path)
+                .map_err(|e| format!("Failed to read directory: {}", e))?
+                .filter_map(|e| e.ok())
+                .take(100)
+                .map(|e| {
+                    let meta = e.metadata().ok();
+                    json!({
+                        "name": e.file_name().to_string_lossy(),
+                        "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+                        "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                    })
+                })
+                .collect();
+            Ok(json!({ "entries": entries }))
+        }
+
+        "local_read" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| format!("Failed to stat file: {}", e))?;
+            if meta.len() > 10_485_760 {
+                return Err(format!("File too large: {:.1} MB (max 10 MB)", meta.len() as f64 / 1_048_576.0));
+            }
+            let max_bytes: usize = 5120;
+            let file_size = meta.len() as usize;
+            let read_size = std::cmp::min(file_size, max_bytes);
+            let mut file = std::fs::File::open(&path)
+                .map_err(|e| format!("Failed to open file: {}", e))?;
+            let mut buf = vec![0u8; read_size];
+            use std::io::Read as _;
+            file.read_exact(&mut buf)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let truncated = file_size > max_bytes;
+            let content = String::from_utf8_lossy(&buf).to_string();
+            Ok(json!({ "content": content, "size": file_size, "truncated": truncated }))
+        }
+
+        "local_search" => {
+            let path = resolve_path(&get_str("path")?);
+            let pattern = get_str("pattern")?;
+            validate_path(&path, "path")?;
+            let pattern_lower = pattern.to_lowercase();
+            let matcher: Box<dyn Fn(&str) -> bool> = if let Some(suffix) = pattern_lower.strip_prefix('*') {
+                let s = suffix.to_string();
+                Box::new(move |name: &str| name.ends_with(&s))
+            } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
+                let p = prefix.to_string();
+                Box::new(move |name: &str| name.starts_with(&p))
+            } else {
+                let pat = pattern_lower.clone();
+                Box::new(move |name: &str| name.contains(&pat))
+            };
+            let results: Vec<serde_json::Value> = std::fs::read_dir(&path)
+                .map_err(|e| format!("Failed to read directory: {}", e))?
+                .filter_map(|e| e.ok())
+                .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
+                .take(100)
+                .map(|e| {
+                    let meta = e.metadata().ok();
+                    json!({
+                        "name": e.file_name().to_string_lossy(),
+                        "is_dir": meta.as_ref().map(|m| m.is_dir()).unwrap_or(false),
+                        "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                    })
+                })
+                .collect();
+            let total = results.len();
+            Ok(json!({ "results": results, "total": total }))
+        }
+
+        "local_write" => {
+            let path = resolve_path(&get_str("path")?);
+            let content = get_str("content")?;
+            validate_path(&path, "path")?;
+            std::fs::write(&path, &content)
+                .map_err(|e| format!("Failed to write file: {}", e))?;
+            Ok(json!({ "success": true, "message": format!("Written {} bytes to {}", content.len(), path) }))
+        }
+
+        "local_mkdir" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            std::fs::create_dir_all(&path)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            Ok(json!({ "success": true, "message": format!("Created directory {}", path) }))
+        }
+
+        "local_delete" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            let home_dir = std::env::var("HOME").unwrap_or_default();
+            let normalized = path.trim_end_matches('/').trim_end_matches('\\');
+            if normalized.is_empty() || normalized == "/" || normalized == "~" || normalized == "." || normalized == ".." || normalized == home_dir {
+                return Err(format!("Refusing to delete dangerous path: {}", path));
+            }
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| format!("Path not found: {}", e))?;
+            if meta.is_dir() {
+                std::fs::remove_dir_all(&path)
+                    .map_err(|e| format!("Failed to delete directory: {}", e))?;
+            } else {
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("Failed to delete file: {}", e))?;
+            }
+            Ok(json!({ "success": true, "message": format!("Deleted {}", path) }))
+        }
+
+        "local_rename" => {
+            let from = resolve_path(&get_str("from")?);
+            let to = resolve_path(&get_str("to")?);
+            validate_path(&from, "from")?;
+            validate_path(&to, "to")?;
+            std::fs::rename(&from, &to)
+                .map_err(|e| format!("Failed to rename: {}", e))?;
+            Ok(json!({ "success": true, "message": format!("Renamed {} to {}", from, to) }))
+        }
+
+        "local_edit" => {
+            let path = resolve_path(&get_str("path")?);
+            let find = get_str("find")?;
+            let replace = get_str("replace")?;
+            let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(true);
+            validate_path(&path, "path")?;
+            if find.is_empty() {
+                return Err("'find' parameter cannot be empty".to_string());
+            }
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let new_content = if replace_all {
+                content.replace(&find, &replace)
+            } else {
+                content.replacen(&find, &replace, 1)
+            };
+            if content == new_content {
+                return Ok(json!({ "success": false, "message": "No matches found" }));
+            }
+            std::fs::write(&path, &new_content)
+                .map_err(|e| format!("Failed to write file: {}", e))?;
+            let count = if replace_all { content.matches(&find).count() } else { 1 };
+            Ok(json!({ "success": true, "message": format!("Replaced {} occurrence(s) in {}", count, path) }))
+        }
+
+        "local_move_files" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let destination = resolve_path(&get_str("destination")?);
+            validate_path(&destination, "destination")?;
+            if paths.is_empty() {
+                return Err("'paths' array is empty".to_string());
+            }
+            std::fs::create_dir_all(&destination)
+                .map_err(|e| format!("Failed to create destination: {}", e))?;
+            let mut moved = 0u32;
+            let mut errors = Vec::new();
+            for source in &paths {
+                if let Err(e) = validate_path(source, "path") {
+                    errors.push(format!("{}: {}", source, e));
+                    continue;
+                }
+                let filename = std::path::Path::new(source)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+                match std::fs::rename(source, &dest_path) {
+                    Ok(_) => moved += 1,
+                    Err(_) => {
+                        match std::fs::copy(source, &dest_path).and_then(|_| std::fs::remove_file(source)) {
+                            Ok(_) => moved += 1,
+                            Err(e) => errors.push(format!("{}: {}", filename, e)),
+                        }
+                    }
+                }
+            }
+            Ok(json!({ "moved": moved, "errors": errors }))
+        }
+
+        "local_copy_files" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let destination = resolve_path(&get_str("destination")?);
+            validate_path(&destination, "destination")?;
+            std::fs::create_dir_all(&destination)
+                .map_err(|e| format!("Failed to create destination: {}", e))?;
+            let mut copied = 0u32;
+            let mut errors = Vec::new();
+            for source in &paths {
+                if let Err(e) = validate_path(source, "path") {
+                    errors.push(format!("{}: {}", source, e));
+                    continue;
+                }
+                let filename = std::path::Path::new(source)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file".to_string());
+                let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+                match std::fs::copy(source, &dest_path) {
+                    Ok(_) => copied += 1,
+                    Err(e) => errors.push(format!("{}: {}", filename, e)),
+                }
+            }
+            Ok(json!({ "copied": copied, "errors": errors }))
+        }
+
+        "local_batch_rename" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let mode = get_str("mode")?;
+            let mut renamed = 0u32;
+            let mut errors = Vec::new();
+            for (idx, source) in paths.iter().enumerate() {
+                let p = std::path::Path::new(source);
+                let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+                let parent = p.parent().map(|pp| pp.to_string_lossy().to_string()).unwrap_or_else(|| ".".to_string());
+                let new_name = match mode.as_str() {
+                    "find_replace" => {
+                        let find = get_str("find").unwrap_or_default();
+                        let replace = get_str("replace").unwrap_or_default();
+                        format!("{}{}", stem.replace(&find, &replace), ext)
+                    }
+                    "add_prefix" => {
+                        let prefix = get_str_opt("prefix").unwrap_or_default();
+                        format!("{}{}{}", prefix, stem, ext)
+                    }
+                    "add_suffix" => {
+                        let suffix = get_str_opt("suffix").unwrap_or_default();
+                        format!("{}{}{}", stem, suffix, ext)
+                    }
+                    "sequential" => {
+                        let base = get_str_opt("base_name").unwrap_or_else(|| "file".to_string());
+                        let start = args.get("start_number").and_then(|v| v.as_u64()).unwrap_or(1);
+                        format!("{}_{:03}{}", base, start + idx as u64, ext)
+                    }
+                    _ => { errors.push(format!("Unknown mode: {}", mode)); continue; }
+                };
+                let dest = format!("{}/{}", parent, new_name);
+                match std::fs::rename(source, &dest) {
+                    Ok(_) => renamed += 1,
+                    Err(e) => errors.push(format!("{}: {}", source, e)),
+                }
+            }
+            Ok(json!({ "renamed": renamed, "errors": errors }))
+        }
+
+        "local_trash" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let mut trashed = 0u32;
+            let mut errors = Vec::new();
+            for source in &paths {
+                match trash::delete(source) {
+                    Ok(_) => trashed += 1,
+                    Err(e) => errors.push(format!("{}: {}", source, e)),
+                }
+            }
+            Ok(json!({ "trashed": trashed, "errors": errors }))
+        }
+
+        "local_file_info" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            let meta = std::fs::metadata(&path)
+                .map_err(|e| format!("Failed to stat: {}", e))?;
+            let mut info = json!({
+                "path": path,
+                "size": meta.len(),
+                "is_dir": meta.is_dir(),
+                "is_file": meta.is_file(),
+                "is_symlink": meta.is_symlink(),
+                "readonly": meta.permissions().readonly(),
+            });
+            if let Ok(modified) = meta.modified() {
+                if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
+                    info["modified_unix"] = json!(dur.as_secs());
+                }
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                info["mode"] = json!(format!("{:o}", meta.permissions().mode()));
+            }
+            Ok(info)
+        }
+
+        "local_disk_usage" => {
+            let path = resolve_path(&get_str("path")?);
+            validate_path(&path, "path")?;
+            fn dir_size(p: &std::path::Path) -> (u64, u64, u64) {
+                let mut total_bytes = 0u64;
+                let mut file_count = 0u64;
+                let mut dir_count = 0u64;
+                if let Ok(entries) = std::fs::read_dir(p) {
+                    for entry in entries.filter_map(|e| e.ok()) {
+                        if let Ok(meta) = entry.metadata() {
+                            if meta.is_dir() {
+                                dir_count += 1;
+                                let (b, f, d) = dir_size(&entry.path());
+                                total_bytes += b;
+                                file_count += f;
+                                dir_count += d;
+                            } else {
+                                file_count += 1;
+                                total_bytes += meta.len();
+                            }
+                        }
+                    }
+                }
+                (total_bytes, file_count, dir_count)
+            }
+            let (bytes, files, dirs) = dir_size(std::path::Path::new(&path));
+            Ok(json!({
+                "total_bytes": bytes,
+                "file_count": files,
+                "directory_count": dirs,
+                "human_readable": format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+            }))
+        }
+
+        "local_find_duplicates" => {
+            let path = resolve_path(&get_str("path")?);
+            let min_size = args.get("min_size").and_then(|v| v.as_u64()).unwrap_or(1024);
+            validate_path(&path, "path")?;
+            use std::collections::HashMap;
+            let mut size_map: HashMap<u64, Vec<String>> = HashMap::new();
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_file() && meta.len() >= min_size {
+                            size_map.entry(meta.len()).or_default()
+                                .push(entry.path().to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+            // Only hash files with same size
+            let mut duplicates = Vec::new();
+            for paths in size_map.values() {
+                if paths.len() < 2 { continue; }
+                let mut hash_map: HashMap<String, Vec<String>> = HashMap::new();
+                for p in paths {
+                    if let Ok(data) = std::fs::read(p) {
+                        let digest = {
+                                        use md5::Digest;
+                                        let mut hasher = md5::Md5::new();
+                                        hasher.update(&data);
+                                        format!("{:x}", hasher.finalize())
+                                    };
+                        hash_map.entry(digest).or_default().push(p.clone());
+                    }
+                }
+                for (hash, files) in hash_map {
+                    if files.len() >= 2 {
+                        duplicates.push(json!({ "hash": hash, "files": files }));
+                    }
+                }
+            }
+            Ok(json!({ "duplicates": duplicates, "groups": duplicates.len() }))
+        }
+
+        "local_grep" => {
+            let path = resolve_path(&get_str("path")?);
+            let pattern = get_str("pattern")?;
+            let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+            let context_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
+            let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(true);
+            let glob_filter = get_str_opt("glob");
+            validate_path(&path, "path")?;
+            let re = if case_sensitive {
+                regex::Regex::new(&pattern).map_err(|e| format!("Invalid regex: {}", e))?
+            } else {
+                regex::RegexBuilder::new(&pattern).case_insensitive(true).build()
+                    .map_err(|e| format!("Invalid regex: {}", e))?
+            };
+            let mut results = Vec::new();
+            fn walk_grep(dir: &std::path::Path, re: &regex::Regex, glob_filter: &Option<String>,
+                        ctx: usize, results: &mut Vec<serde_json::Value>, max: usize) {
+                if results.len() >= max { return; }
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.filter_map(|e| e.ok()) {
+                        if results.len() >= max { return; }
+                        let p = entry.path();
+                        if p.is_dir() {
+                            walk_grep(&p, re, glob_filter, ctx, results, max);
+                        } else if p.is_file() {
+                            if let Some(ref glob) = glob_filter {
+                                let name = p.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                                let pattern = glob.trim_start_matches('*').to_lowercase();
+                                if !name.ends_with(&pattern) { continue; }
+                            }
+                            if let Ok(content) = std::fs::read_to_string(&p) {
+                                let lines: Vec<&str> = content.lines().collect();
+                                for (i, line) in lines.iter().enumerate() {
+                                    if results.len() >= max { return; }
+                                    if re.is_match(line) {
+                                        let start = i.saturating_sub(ctx);
+                                        let end = (i + ctx + 1).min(lines.len());
+                                        let context: Vec<String> = lines[start..end].iter().map(|l| l.to_string()).collect();
+                                        results.push(serde_json::json!({
+                                            "file": p.to_string_lossy(),
+                                            "line": i + 1,
+                                            "match": line,
+                                            "context": context,
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            walk_grep(std::path::Path::new(&path), &re, &glob_filter, context_lines, &mut results, max_results);
+            let total = results.len();
+            Ok(json!({ "results": results, "total": total }))
+        }
+
+        "local_head" => {
+            let path = resolve_path(&get_str("path")?);
+            let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+            validate_path(&path, "path")?;
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let result: String = content.lines().take(lines).collect::<Vec<_>>().join("\n");
+            let total_lines = content.lines().count();
+            Ok(json!({ "content": result, "lines_shown": lines.min(total_lines), "total_lines": total_lines }))
+        }
+
+        "local_tail" => {
+            let path = resolve_path(&get_str("path")?);
+            let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+            validate_path(&path, "path")?;
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let all_lines: Vec<&str> = content.lines().collect();
+            let start = all_lines.len().saturating_sub(lines);
+            let result = all_lines[start..].join("\n");
+            Ok(json!({ "content": result, "lines_shown": all_lines.len() - start, "total_lines": all_lines.len() }))
+        }
+
+        "local_stat_batch" => {
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            if paths.len() > 100 {
+                return Err("Maximum 100 paths allowed".to_string());
+            }
+            let stats: Vec<serde_json::Value> = paths.iter().map(|p| {
+                match std::fs::metadata(p) {
+                    Ok(meta) => json!({
+                        "path": p,
+                        "exists": true,
+                        "size": meta.len(),
+                        "is_dir": meta.is_dir(),
+                        "is_file": meta.is_file(),
+                        "readonly": meta.permissions().readonly(),
+                    }),
+                    Err(e) => json!({ "path": p, "exists": false, "error": e.to_string() }),
+                }
+            }).collect();
+            Ok(json!({ "stats": stats }))
+        }
+
+        "local_tree" => {
+            let path = resolve_path(&get_str("path")?);
+            let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(3).min(10) as usize;
+            let show_hidden = args.get("show_hidden").and_then(|v| v.as_bool()).unwrap_or(false);
+            let glob_filter = get_str_opt("glob");
+            validate_path(&path, "path")?;
+            fn build_tree(dir: &std::path::Path, depth: usize, max_depth: usize,
+                         show_hidden: bool, glob_filter: &Option<String>) -> Vec<serde_json::Value> {
+                if depth >= max_depth { return vec![]; }
+                let mut items = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    let mut sorted: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+                    sorted.sort_by_key(|e| e.file_name());
+                    for entry in sorted {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        if !show_hidden && name.starts_with('.') { continue; }
+                        let meta = entry.metadata().ok();
+                        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                        if !is_dir {
+                            if let Some(ref glob) = glob_filter {
+                                let pattern = glob.trim_start_matches('*').to_lowercase();
+                                if !name.to_lowercase().ends_with(&pattern) { continue; }
+                            }
+                        }
+                        let mut node = serde_json::json!({
+                            "name": name,
+                            "is_dir": is_dir,
+                            "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                        });
+                        if is_dir {
+                            let children = build_tree(&entry.path(), depth + 1, max_depth, show_hidden, glob_filter);
+                            node["children"] = serde_json::json!(children);
+                        }
+                        items.push(node);
+                    }
+                }
+                items
+            }
+            let tree = build_tree(std::path::Path::new(&path), 0, max_depth, show_hidden, &glob_filter);
+            Ok(json!({ "tree": tree }))
+        }
+
+        "local_diff" => {
+            let path_a = resolve_path(&get_str("path_a")?);
+            let path_b = resolve_path(&get_str("path_b")?);
+            validate_path(&path_a, "path_a")?;
+            validate_path(&path_b, "path_b")?;
+            let content_a = std::fs::read_to_string(&path_a)
+                .map_err(|e| format!("Failed to read {}: {}", path_a, e))?;
+            let content_b = std::fs::read_to_string(&path_b)
+                .map_err(|e| format!("Failed to read {}: {}", path_b, e))?;
+            use similar::TextDiff;
+            let diff = TextDiff::from_lines(&content_a, &content_b);
+            let unified = diff.unified_diff().header(&path_a, &path_b).to_string();
+            Ok(json!({ "diff": unified, "has_changes": !unified.is_empty() }))
+        }
+
+        "hash_file" => {
+            let path = resolve_path(&get_str("path")?);
+            let algorithm = get_str_opt("algorithm").unwrap_or_else(|| "sha256".to_string());
+            validate_path(&path, "path")?;
+            let data = std::fs::read(&path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let hash = match algorithm.to_lowercase().as_str() {
+                "md5" => {
+                                        use md5::Digest;
+                                        let mut hasher = md5::Md5::new();
+                                        hasher.update(&data);
+                                        format!("{:x}", hasher.finalize())
+                                    },
+                "sha256" => {
+                    use sha2::Digest;
+                    format!("{:x}", sha2::Sha256::digest(&data))
+                }
+                "sha512" => {
+                    use sha2::Digest;
+                    format!("{:x}", sha2::Sha512::digest(&data))
+                }
+                "blake3" => blake3::hash(&data).to_hex().to_string(),
+                other => return Err(format!("Unsupported algorithm: {}", other)),
+            };
+            Ok(json!({ "path": path, "algorithm": algorithm, "hash": hash }))
+        }
+
+        "shell_execute" => {
+            let command = get_str("command")?;
+            let working_dir = get_str_opt("working_dir");
+            let timeout_secs = args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(30).min(120);
+
+            // Denylist (mirrors ai_tools.rs DENIED_COMMAND_PATTERNS)
+            static DENIED: &[&str] = &[
+                "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "fork bomb",
+                "chmod -R 777 /", "wget|sh", "curl|sh", "curl|bash", "wget|bash",
+                "> /dev/sda", "shutdown", "reboot", "init 0", "init 6",
+                "kill -9 1", "killall", "pkill -9",
+            ];
+            let cmd_lower = command.to_lowercase();
+            for pattern in DENIED {
+                if cmd_lower.contains(pattern) {
+                    return Err(format!("Command denied for safety: contains '{}'", pattern));
+                }
+            }
+
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c").arg(&command)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            if let Some(ref wd) = working_dir {
+                cmd.current_dir(wd);
+            }
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(timeout_secs),
+                cmd.output(),
+            ).await
+                .map_err(|_| format!("Command timed out after {}s", timeout_secs))?
+                .map_err(|e| format!("Failed to execute: {}", e))?;
+
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            // Truncate output to 10KB
+            let max_out = 10240;
+            Ok(json!({
+                "exit_code": result.status.code().unwrap_or(-1),
+                "stdout": if stdout.len() > max_out { &stdout[..max_out] } else { &stdout },
+                "stderr": if stderr.len() > max_out { &stderr[..max_out] } else { &stderr },
+            }))
+        }
+
+        "archive_compress" => {
+            // Delegate to shell — zip/tar/7z
+            let paths: Vec<String> = args.get("paths")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .ok_or("Missing 'paths' array parameter")?;
+            let output_path = resolve_path(&get_str("output_path")?);
+            let format = get_str_opt("format").unwrap_or_else(|| "zip".to_string());
+            validate_path(&output_path, "output_path")?;
+            let cmd = match format.as_str() {
+                "zip" => format!("zip -r '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                "tar.gz" => format!("tar czf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                "tar.bz2" => format!("tar cjf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                "tar.xz" => format!("tar cJf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                "tar" => format!("tar cf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                "7z" => format!("7z a '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+                _ => return Err(format!("Unsupported format: {}", format)),
+            };
+            let output = tokio::process::Command::new("sh").arg("-c").arg(&cmd)
+                .output().await.map_err(|e| format!("Failed: {}", e))?;
+            if output.status.success() {
+                Ok(json!({ "success": true, "output": output_path, "format": format }))
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        }
+
+        "archive_decompress" => {
+            let archive_path = resolve_path(&get_str("archive_path")?);
+            let output_dir = resolve_path(&get_str("output_dir")?);
+            validate_path(&archive_path, "archive_path")?;
+            validate_path(&output_dir, "output_dir")?;
+            std::fs::create_dir_all(&output_dir).ok();
+            let ext = archive_path.to_lowercase();
+            let cmd = if ext.ends_with(".zip") {
+                format!("unzip -o '{}' -d '{}'", archive_path, output_dir)
+            } else if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
+                format!("tar xzf '{}' -C '{}'", archive_path, output_dir)
+            } else if ext.ends_with(".tar.bz2") {
+                format!("tar xjf '{}' -C '{}'", archive_path, output_dir)
+            } else if ext.ends_with(".tar.xz") {
+                format!("tar xJf '{}' -C '{}'", archive_path, output_dir)
+            } else if ext.ends_with(".tar") {
+                format!("tar xf '{}' -C '{}'", archive_path, output_dir)
+            } else if ext.ends_with(".7z") {
+                format!("7z x '{}' -o'{}'", archive_path, output_dir)
+            } else {
+                return Err(format!("Unsupported archive format: {}", archive_path));
+            };
+            let output = tokio::process::Command::new("sh").arg("-c").arg(&cmd)
+                .output().await.map_err(|e| format!("Failed: {}", e))?;
+            if output.status.success() {
+                Ok(json!({ "success": true, "output_dir": output_dir }))
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        }
+
+        "clipboard_write" => {
+            let content = get_str("content")?;
+            // Use xclip/xsel on Linux
+            let mut child = tokio::process::Command::new("xclip")
+                .args(["-selection", "clipboard"])
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|_| "xclip not found. Install: sudo apt install xclip".to_string())?;
+            if let Some(ref mut stdin) = child.stdin {
+                use tokio::io::AsyncWriteExt;
+                stdin.write_all(content.as_bytes()).await
+                    .map_err(|e| format!("Failed to write to clipboard: {}", e))?;
+            }
+            child.wait().await.map_err(|e| format!("xclip failed: {}", e))?;
+            Ok(json!({ "success": true, "message": format!("Copied {} chars to clipboard", content.len()) }))
+        }
+
+        "agent_memory_write" => {
+            let entry = get_str("entry")?;
+            let category = get_str_opt("category").unwrap_or_else(|| "general".to_string());
+            let memory_path = std::env::current_dir()
+                .map(|cwd| cwd.join(".aeroagent"))
+                .unwrap_or_else(|_| std::path::PathBuf::from(".aeroagent"));
+            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M");
+            let line = format!("\n## [{}] {}\n{}\n", category, timestamp, entry);
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true).append(true).open(&memory_path)
+                .map_err(|e| format!("Failed to open memory file: {}", e))?;
+            file.write_all(line.as_bytes())
+                .map_err(|e| format!("Failed to write memory: {}", e))?;
+            Ok(json!({ "success": true, "message": format!("Saved to {}", memory_path.display()) }))
+        }
+
+        "app_info" => {
+            let cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "?".to_string());
+            Ok(json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "platform": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+                "working_directory": cwd,
+                "mode": "cli",
+            }))
+        }
+
+        _ => Err(format!("Tool '{}' is not available in CLI mode", tool_name)),
+    }
+}
+
+/// Ask for interactive tool approval. Returns true if approved.
+fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
+    let danger = tool_danger_level(tool_name);
+    let level_str = match danger {
+        0 => "\x1b[32mSAFE\x1b[0m",
+        1 => "\x1b[33mMEDIUM\x1b[0m",
+        _ => "\x1b[1;31mHIGH\x1b[0m",
+    };
+    eprintln!();
+    eprintln!("  \x1b[1m🔧 Tool Call:\x1b[0m {} [{}]", tool_name, level_str);
+    // Show key arguments
+    if let Some(obj) = args.as_object() {
+        for (key, val) in obj {
+            let display = match val {
+                serde_json::Value::String(s) => {
+                    if s.len() > 80 { format!("{}...", &s[..77]) } else { s.clone() }
+                }
+                other => other.to_string(),
+            };
+            eprintln!("    {}: {}", key, display);
+        }
+    }
+    eprint!("  \x1b[1mApprove? [Y/n]\x1b[0m ");
+    io::stderr().flush().ok();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_ok() {
+        let trimmed = input.trim().to_lowercase();
+        trimmed.is_empty() || trimmed == "y" || trimmed == "yes"
+    } else {
+        false
+    }
+}
+
+/// Check if a tool call should be auto-approved based on approve_level.
+/// approve_level: 0=none(ask all), 1=auto-approve safe, 2=auto-approve safe+medium, 3=auto-approve all
+fn is_auto_approved(tool_name: &str, approve_level: u8) -> bool {
+    let danger = tool_danger_level(tool_name);
+    match approve_level {
+        0 => false,
+        1 => danger == 0,
+        2 => danger <= 1,
+        3 => true,
+        _ => false,
+    }
+}
+
+/// Multi-step agent tool execution loop.
+/// Sends tool definitions to the model, processes tool_calls, executes tools,
+/// re-injects results, and loops until the model responds with text only.
+async fn agent_tool_loop(
+    cfg: &AgentConfig,
+    messages: &mut Vec<ftp_client_gui_lib::ai::ChatMessage>,
+    is_tty: bool,
+) -> Result<String, String> {
+    use ftp_client_gui_lib::ai::{AIRequest, AIResponse, AIToolResult, ChatMessage};
+
+    let tools = cli_tool_definitions();
+    let mut steps = 0u32;
+    // Pending tool results from previous iteration (passed via native tool_results field)
+    let mut pending_tool_results: Option<Vec<AIToolResult>> = None;
+
+    loop {
+        // Build request with tool definitions
+        let mut all_messages = vec![ChatMessage {
+            role: "system".to_string(),
+            content: cfg.system.clone(),
+            images: None,
+        }];
+        all_messages.extend_from_slice(messages);
+
+        let request = AIRequest {
+            provider_type: cfg.provider_type.clone(),
+            model: cfg.model.clone(),
+            api_key: Some(cfg.api_key.clone()),
+            base_url: cfg.base_url.clone(),
+            messages: all_messages,
+            max_tokens: Some(4096),
+            temperature: Some(0.3),
+            tools: Some(tools.clone()),
+            tool_results: pending_tool_results.take(),
+            thinking_budget: None,
+            top_p: None,
+            top_k: None,
+            cached_content: None,
+            web_search: None,
+        };
+
+        let response: AIResponse = ftp_client_gui_lib::ai::call_ai(request)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Check if model wants to call tools
+        let tool_calls = response.tool_calls.as_ref()
+            .filter(|tc| !tc.is_empty());
+
+        match tool_calls {
+            None => {
+                // No tool calls — return the text response
+                return Ok(response.content);
+            }
+            Some(calls) => {
+                steps += 1;
+                if steps > cfg.max_steps {
+                    if !response.content.is_empty() {
+                        messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: response.content.clone(),
+                            images: None,
+                        });
+                    }
+                    return Ok(format!("{}\n\n[Reached max steps limit ({}).]", response.content, cfg.max_steps));
+                }
+
+                // Show assistant text if any
+                if !response.content.is_empty() && is_tty {
+                    eprintln!("\n{}", response.content);
+                }
+
+                // Add assistant message with tool call markers
+                let mut assistant_text = response.content.clone();
+                let tool_call_desc: Vec<String> = calls.iter().map(|tc| {
+                    format!("[Tool call: {} ({})]", tc.name, tc.id)
+                }).collect();
+                if !assistant_text.is_empty() {
+                    assistant_text.push('\n');
+                }
+                assistant_text.push_str(&tool_call_desc.join("\n"));
+
+                messages.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: assistant_text,
+                    images: None,
+                });
+
+                // Execute each tool call and collect native tool results
+                let mut native_results: Vec<AIToolResult> = Vec::new();
+                for tc in calls {
+                    // Check approval
+                    let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
+                        if is_tty {
+                            eprintln!("  \x1b[32m✓\x1b[0m Auto-approved: {} (safe)", tc.name);
+                        }
+                        true
+                    } else if is_tty && io::stdin().is_terminal() {
+                        prompt_tool_approval(&tc.name, &tc.arguments)
+                    } else {
+                        cfg.approve_level >= 3
+                    };
+
+                    let result_content = if approved {
+                        if is_tty {
+                            eprint!("  \x1b[2m⠙ Executing {}...\x1b[0m", tc.name);
+                            io::stderr().flush().ok();
+                        }
+                        match execute_cli_tool(&tc.name, &tc.arguments).await {
+                            Ok(val) => {
+                                if is_tty {
+                                    eprint!("\r                                        \r");
+                                    eprintln!("  \x1b[32m✓\x1b[0m {} completed", tc.name);
+                                }
+                                let s = val.to_string();
+                                if s.len() > 8192 {
+                                    format!("{}... [truncated, {} bytes total]", &s[..8192], s.len())
+                                } else {
+                                    s
+                                }
+                            }
+                            Err(e) => {
+                                if is_tty {
+                                    eprint!("\r                                        \r");
+                                    eprintln!("  \x1b[31m✗\x1b[0m {} failed: {}", tc.name, e);
+                                }
+                                format!("Error: {}", e)
+                            }
+                        }
+                    } else {
+                        if is_tty {
+                            eprintln!("  \x1b[33m⊘\x1b[0m {} denied by user", tc.name);
+                        }
+                        "Tool call denied by user.".to_string()
+                    };
+
+                    native_results.push(AIToolResult {
+                        tool_call_id: tc.id.clone(),
+                        content: result_content,
+                    });
+                }
+
+                // Store native tool results for next iteration
+                pending_tool_results = Some(native_results);
+
+                if is_tty {
+                    eprint!("\n  \x1b[2m⠙ Thinking...\x1b[0m");
+                    io::stderr().flush().ok();
+                }
+            }
+        }
+    }
+}
+
+/// Run the agent in interactive REPL, one-shot, or orchestration mode
+#[allow(clippy::too_many_arguments)]
+async fn cmd_agent(
+    message: Option<String>,
+    provider_name: Option<String>,
+    model_override: Option<String>,
+    connect_url: Option<String>,
+    auto_approve: String,
+    max_steps: u32,
+    orchestrate: bool,
+    mcp: bool,
+    stdin_mode: bool,
+    plan_only: bool,
+    cost_limit: Option<f64>,
+    system_prompt: Option<String>,
+    _cli: &Cli,
+    format: OutputFormat,
+    _cancelled: Arc<AtomicBool>,
+) -> i32 {
+    // Warn about unimplemented flags
+    if connect_url.is_some() {
+        eprintln!("Warning: --connect is not yet implemented in agent mode. Ignoring.");
+    }
+    if plan_only {
+        eprintln!("Warning: --plan-only is not yet implemented. Ignoring.");
+    }
+    if cost_limit.is_some() {
+        eprintln!("Warning: --cost-limit is not yet implemented. Ignoring.");
+    }
+
+    // Detect provider
+    let (prov_name, api_key, base_url) = if let Some(ref name) = provider_name {
+        let env_key = format!("{}_API_KEY", name.to_uppercase());
+        let key = std::env::var(&env_key).unwrap_or_default();
+        let url = match name.as_str() {
+            "anthropic" => "https://api.anthropic.com",
+            "openai" => "https://api.openai.com/v1",
+            "gemini" | "google" => "https://generativelanguage.googleapis.com",
+            "ollama" => "http://localhost:11434",
+            "groq" => "https://api.groq.com/openai/v1",
+            "mistral" => "https://api.mistral.ai/v1",
+            "deepseek" => "https://api.deepseek.com",
+            "xai" => "https://api.x.ai/v1",
+            "openrouter" => "https://openrouter.ai/api/v1",
+            "together" => "https://api.together.xyz/v1",
+            "fireworks" => "https://api.fireworks.ai/inference/v1",
+            "cerebras" => "https://api.cerebras.ai/v1",
+            "sambanova" => "https://api.sambanova.ai/v1",
+            "perplexity" => "https://api.perplexity.ai",
+            "cohere" => "https://api.cohere.com/compatibility",
+            "ai21" => "https://api.ai21.com/studio/v1",
+            "kimi" | "moonshot" => "https://api.moonshot.cn/v1",
+            "qwen" => "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            _ => "https://api.openai.com/v1",
+        };
+        // Ollama doesn't require API key; all others do
+        if key.is_empty() && name != "ollama" {
+            eprintln!("Error: {} is not set or empty.", env_key);
+            eprintln!("Set it: export {}=your-api-key", env_key);
+            return 5;
+        }
+        (name.clone(), key, url.to_string())
+    } else if let Some(detected) = detect_ai_provider() {
+        detected
+    } else {
+        eprintln!("Error: No AI provider configured.");
+        eprintln!("Set an API key environment variable:");
+        eprintln!("  export ANTHROPIC_API_KEY=sk-ant-...");
+        eprintln!("  export OPENAI_API_KEY=sk-...");
+        eprintln!("Or specify: aeroftp agent --provider anthropic");
+        return 5;
+    };
+
+    let model = model_override.unwrap_or_else(|| default_model(&prov_name).to_string());
+    let provider_type = provider_type_from_name(&prov_name);
+    let approve_level = parse_approve_level(&auto_approve);
+    let system = build_agent_system_prompt(&system_prompt);
+
+    let cfg = AgentConfig {
+        provider_name: prov_name,
+        api_key,
+        base_url,
+        model,
+        provider_type,
+        approve_level,
+        max_steps,
+        system,
+    };
+
+    // MCP server mode
+    if mcp {
+        return cmd_agent_mcp(&cfg.provider_name).await;
+    }
+
+    // Orchestration mode (JSON-RPC 2.0 over stdio)
+    if orchestrate {
+        return cmd_agent_orchestrate(&cfg).await;
+    }
+
+    // One-shot mode: -m "message" or --stdin
+    let one_shot_message = if let Some(msg) = message {
+        Some(msg)
+    } else if stdin_mode {
+        let mut buf = String::new();
+        // CL-004: Limit stdin to 1 MB to prevent OOM
+        let mut limited = io::Read::take(io::stdin(), 1_048_576);
+        if let Ok(n) = io::Read::read_to_string(&mut limited, &mut buf) {
+            if n > 0 { Some(buf) } else { None }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(msg) = one_shot_message {
+        return cmd_agent_oneshot(&msg, &cfg, format).await;
+    }
+
+    // Interactive REPL mode
+    cmd_agent_repl(&cfg).await
+}
+
+/// Shared agent configuration — avoids passing too many arguments
+#[allow(dead_code)]
+struct AgentConfig {
+    provider_name: String,
+    api_key: String,
+    base_url: String,
+    model: String,
+    provider_type: ftp_client_gui_lib::ai::AIProviderType,
+    approve_level: u8,
+    max_steps: u32,
+    system: String,
+}
+
+/// One-shot agent mode
+async fn cmd_agent_oneshot(
+    message: &str,
+    cfg: &AgentConfig,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::ai::ChatMessage;
+
+    let mut messages = vec![ChatMessage {
+        role: "user".to_string(),
+        content: message.to_string(),
+        images: None,
+    }];
+
+    let is_tty = io::stdin().is_terminal();
+
+    match agent_tool_loop(cfg, &mut messages, is_tty).await {
+        Ok(response) => {
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::json!({
+                        "status": "ok",
+                        "response": response,
+                    }));
+                }
+                OutputFormat::Text => {
+                    println!("{}", response);
+                }
+            }
+            0
+        }
+        Err(e) => {
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::json!({
+                        "status": "error",
+                        "error": e,
+                    }));
+                }
+                OutputFormat::Text => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+            1
+        }
+    }
+}
+
+/// Interactive REPL agent mode
+async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
+    use ftp_client_gui_lib::ai::ChatMessage;
+    use std::io::BufRead;
+
+    let cli_tool_count = cli_tool_definitions().len();
+
+    // Banner
+    eprintln!();
+    eprintln!("  \x1b[1m╭─────────────────────────────────────────────╮\x1b[0m");
+    eprintln!("  \x1b[1m│           AeroAgent Interactive              │\x1b[0m");
+    eprintln!("  \x1b[1m│       AI-Powered File Operations Shell       │\x1b[0m");
+    eprintln!("  \x1b[1m│                                              │\x1b[0m");
+    eprintln!("  \x1b[1m│  {} tools · 19 AI providers · tool execution  │\x1b[0m", cli_tool_count);
+    eprintln!("  \x1b[1m╰─────────────────────────────────────────────╯\x1b[0m");
+    eprintln!();
+    eprintln!("  \x1b[36mProvider:\x1b[0m  {} ({})", cfg.provider_name, cfg.model);
+    let mode_str = match cfg.approve_level {
+        0 => "Manual (approve all tools)",
+        1 => "Safe (auto-approve safe tools)",
+        2 => "Medium (auto-approve safe + medium)",
+        3 => "Auto (auto-approve all tools)",
+        _ => "Unknown",
+    };
+    eprintln!("  \x1b[36mMode:\x1b[0m      {}", mode_str);
+    eprintln!("  \x1b[36mMax steps:\x1b[0m {}", cfg.max_steps);
+    eprintln!();
+    eprintln!("  Type \x1b[1;32m/help\x1b[0m for commands, or ask anything.");
+    eprintln!("  Press \x1b[1mCtrl+D\x1b[0m to exit.\n");
+
+    let mut conversation: Vec<ChatMessage> = Vec::new();
+    let stdin = io::stdin();
+    let is_tty = stdin.is_terminal();
+
+    loop {
+        // Print prompt
+        if is_tty {
+            eprint!("\x1b[1;37m> \x1b[0m");
+            io::stderr().flush().ok();
+        }
+
+        // Read input
+        let reader = stdin.lock();
+        let input = match reader.lines().next() {
+            Some(Ok(line)) => line,
+            _ => break, // EOF (Ctrl+D)
+        };
+
+        let input = input.trim().to_string();
+        if input.is_empty() {
+            continue;
+        }
+
+        // Handle slash commands
+        if input.starts_with('/') {
+            match input.as_str() {
+                "/help" => {
+                    eprintln!("\n  \x1b[1mAeroAgent Commands:\x1b[0m");
+                    eprintln!("  /help          Show this help");
+                    eprintln!("  /tools         List available tools");
+                    eprintln!("  /context       Show current context");
+                    eprintln!("  /clear         Clear conversation");
+                    eprintln!("  /cost          Show token usage");
+                    eprintln!("  /quit          Exit\n");
+                }
+                "/tools" => {
+                    let tools = cli_tool_definitions();
+                    eprintln!("\n  \x1b[1mAvailable Tools ({}):\x1b[0m\n", tools.len());
+                    for t in &tools {
+                        let danger = tool_danger_level(&t.name);
+                        let label = match danger {
+                            0 => "\x1b[32mSAFE\x1b[0m",
+                            1 => "\x1b[33mMEDIUM\x1b[0m",
+                            _ => "\x1b[1;31mHIGH\x1b[0m",
+                        };
+                        eprintln!("  [{}] \x1b[1m{}\x1b[0m — {}", label, t.name, t.description);
+                    }
+                    eprintln!();
+                }
+                "/context" => {
+                    let cwd = std::env::current_dir()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| "?".to_string());
+                    eprintln!("\n  \x1b[1mContext:\x1b[0m");
+                    eprintln!("  CWD:      {}", cwd);
+                    eprintln!("  Provider: {} ({})", cfg.provider_name, cfg.model);
+                    eprintln!("  Messages: {}\n", conversation.len());
+                }
+                "/clear" => {
+                    conversation.clear();
+                    eprintln!("  Conversation cleared.\n");
+                }
+                "/cost" => {
+                    eprintln!("  Messages: {}", conversation.len());
+                    eprintln!("  (Detailed token tracking coming in next release)\n");
+                }
+                "/quit" | "/exit" | "/q" => break,
+                other => {
+                    eprintln!("  Unknown command: {}", other);
+                    eprintln!("  Type /help for available commands.\n");
+                }
+            }
+            continue;
+        }
+
+        // Add user message
+        conversation.push(ChatMessage {
+            role: "user".to_string(),
+            content: input,
+            images: None,
+        });
+
+        // Show thinking indicator
+        if is_tty {
+            eprint!("\n  \x1b[2m⠙ Thinking...\x1b[0m");
+            io::stderr().flush().ok();
+        }
+
+        // Call AI with tool execution loop
+        match agent_tool_loop(cfg, &mut conversation, is_tty).await {
+            Ok(response) => {
+                if is_tty {
+                    eprint!("\r                    \r"); // Clear "Thinking..."
+                }
+                println!("\n{}\n", response);
+                conversation.push(ChatMessage {
+                    role: "assistant".to_string(),
+                    content: response,
+                    images: None,
+                });
+                // Sliding window: keep last 40 messages to avoid context overflow
+                const MAX_CONVERSATION_MESSAGES: usize = 40;
+                if conversation.len() > MAX_CONVERSATION_MESSAGES {
+                    let drain_count = conversation.len() - MAX_CONVERSATION_MESSAGES;
+                    conversation.drain(..drain_count);
+                }
+            }
+            Err(e) => {
+                if is_tty {
+                    eprint!("\r                    \r");
+                }
+                eprintln!("\n  \x1b[1;31mError:\x1b[0m {}\n", e);
+                // Remove the failed user message
+                conversation.pop();
+            }
+        }
+    }
+
+    if is_tty {
+        eprintln!("\n  Goodbye!\n");
+    }
+    0
+}
+
+/// Orchestration mode — JSON-RPC 2.0 over stdin/stdout
+async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
+    use ftp_client_gui_lib::ai::ChatMessage;
+    use std::io::BufRead;
+
+    let mut conversation: Vec<ChatMessage> = Vec::new();
+
+    // Emit ready notification with actual CLI tool count
+    let cli_tools = cli_tool_definitions();
+    let cli_tool_count = cli_tools.len();
+    println!("{}", serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "agent/ready",
+        "params": {
+            "version": env!("CARGO_PKG_VERSION"),
+            "tools": cli_tool_count,
+        }
+    }));
+
+    const ORCH_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.len() > ORCH_MAX_LINE_BYTES {
+            println!("{}", serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": { "code": -32600, "message": "Line exceeds 1 MB limit" }
+            }));
+            continue;
+        }
+        let line = line.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Parse JSON-RPC request
+        let req: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": { "code": -32700, "message": format!("Parse error: {}", e) }
+                }));
+                continue;
+            }
+        };
+
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
+        let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
+
+        match method {
+            "agent/chat" | "agent.chat" => {
+                let msg = params.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                if msg.is_empty() {
+                    println!("{}", serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32602, "message": "Missing 'message' parameter" }
+                    }));
+                    continue;
+                }
+
+                conversation.push(ChatMessage {
+                    role: "user".to_string(),
+                    content: msg.to_string(),
+                    images: None,
+                });
+
+                // Emit thinking notification
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "stream/thinking",
+                    "params": { "content": "Processing..." }
+                }));
+
+                match agent_tool_loop(cfg, &mut conversation, false).await {
+                    Ok(response) => {
+                        conversation.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: response.clone(),
+                            images: None,
+                        });
+                        // Sliding window: keep last 40 messages
+                        if conversation.len() > 40 {
+                            conversation.drain(..conversation.len() - 40);
+                        }
+                        println!("{}", serde_json::json!({
+                            "jsonrpc": "2.0", "id": id,
+                            "result": {
+                                "status": "ok",
+                                "response": response,
+                                "messages": conversation.len(),
+                            }
+                        }));
+                    }
+                    Err(e) => {
+                        conversation.pop(); // Remove failed user message
+                        println!("{}", serde_json::json!({
+                            "jsonrpc": "2.0", "id": id,
+                            "error": { "code": -32000, "message": e }
+                        }));
+                    }
+                }
+            }
+
+            "session/status" | "agent.status" => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": {
+                        "status": "ok",
+                        "messages": conversation.len(),
+                        "tools": cli_tool_count,
+                    }
+                }));
+            }
+
+            "session/clear" | "agent.clear" => {
+                conversation.clear();
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "status": "ok" }
+                }));
+            }
+
+            "session/close" | "agent.close" => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "status": "ok" }
+                }));
+                break;
+            }
+
+            "tool/list" | "agent.tools" => {
+                // Expose only tools actually implemented in CLI executor
+                let tool_entries: Vec<serde_json::Value> = cli_tools.iter().map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "danger": match tool_danger_level(&t.name) {
+                            0 => "safe",
+                            1 => "medium",
+                            _ => "high",
+                        }
+                    })
+                }).collect();
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "tools": tool_entries }
+                }));
+            }
+
+            _ => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32601, "message": format!("Method not found: {}", method) }
+                }));
+            }
+        }
+    }
+
+    0
+}
+
+/// MCP server mode
+/// Validate that an MCP tool path is safe to access.
+/// Rejects sensitive system paths, traversal, and null bytes.
+fn validate_mcp_path(path: &str) -> Result<(), String> {
+    // Reject null bytes
+    if path.contains('\0') {
+        return Err("Path contains null bytes".into());
+    }
+    // Reject paths starting with dash (option injection)
+    if path.starts_with('-') {
+        return Err("Path must not start with '-'".into());
+    }
+    // Reject .. components (path traversal)
+    for component in std::path::Path::new(path).components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err("Path traversal ('..') is not allowed".into());
+        }
+    }
+    // Sensitive absolute paths — check both raw and canonicalized path
+    let denied_prefixes: &[&str] = &[
+        "/proc", "/sys", "/dev", "/boot", "/root",
+        "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers",
+    ];
+    // Check raw path first
+    for prefix in denied_prefixes {
+        if path == *prefix || path.starts_with(&format!("{}/", prefix)) {
+            return Err(format!("Access denied: {}", prefix));
+        }
+    }
+    // Resolve symlinks and re-check (prevents /tmp/evil -> /etc/shadow bypass)
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        let resolved = canonical.to_string_lossy();
+        for prefix in denied_prefixes {
+            if resolved.as_ref() == *prefix || resolved.starts_with(&format!("{}/", prefix)) {
+                return Err(format!("Access denied (resolved): {}", prefix));
+            }
+        }
+        // Sensitive home-relative paths (resolved)
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = home.to_string_lossy().to_string();
+            let denied_home: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube"];
+            for dir in denied_home {
+                let full = format!("{}/{}", home, dir);
+                if resolved.as_ref() == full.as_str() || resolved.starts_with(&format!("{}/", full)) {
+                    return Err(format!("Access denied: ~/{}", dir));
+                }
+            }
+        }
+    }
+    // Also check raw home-relative paths (for non-existent paths)
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = home.to_string_lossy().to_string();
+        let denied_home: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube"];
+        for dir in denied_home {
+            let full = format!("{}/{}", home, dir);
+            if path == full || path.starts_with(&format!("{}/", full)) {
+                return Err(format!("Access denied: ~/{}", dir));
+            }
+        }
+    }
+    Ok(())
+}
+
+const MCP_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
+
+async fn cmd_agent_mcp(provider_name: &str) -> i32 {
+    use std::io::BufRead;
+
+    // MCP initialization
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.len() > MCP_MAX_LINE_BYTES {
+            println!("{}", serde_json::json!({
+                "jsonrpc": "2.0", "id": null,
+                "error": { "code": -32600, "message": "Line exceeds 1 MB limit" }
+            }));
+            continue;
+        }
+        let line = line.trim().to_string();
+        if line.is_empty() {
+            continue;
+        }
+
+        let req: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": null,
+                    "error": { "code": -32700, "message": format!("Parse error: {}", e) }
+                }));
+                continue;
+            }
+        };
+
+        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
+
+        match method {
+            "initialize" => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": { "listChanged": false },
+                        },
+                        "serverInfo": {
+                            "name": "aeroftp-agent",
+                            "version": env!("CARGO_PKG_VERSION"),
+                        }
+                    }
+                }));
+            }
+
+            "notifications/initialized" => {
+                // Client acknowledged — ready
+            }
+
+            "tools/list" => {
+                let tools: Vec<serde_json::Value> = vec![
+                    serde_json::json!({
+                        "name": "aeroftp_local_list",
+                        "description": "List files in a local directory",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string", "description": "Directory path" }
+                            },
+                            "required": ["path"]
+                        }
+                    }),
+                    serde_json::json!({
+                        "name": "aeroftp_local_read",
+                        "description": "Read a local file's contents",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string", "description": "File path" }
+                            },
+                            "required": ["path"]
+                        }
+                    }),
+                ];
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "tools": tools }
+                }));
+            }
+
+            "tools/call" => {
+                let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
+                let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+
+                // Strip aeroftp_ prefix for internal dispatch
+                let internal_name = tool_name.strip_prefix("aeroftp_").unwrap_or(tool_name);
+
+                // For now, handle basic tools inline
+                let result = match internal_name {
+                    "local_list" => {
+                        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+                        if let Err(e) = validate_mcp_path(path) {
+                            serde_json::json!({ "error": e })
+                        } else {
+                            match std::fs::read_dir(path) {
+                                Ok(entries) => {
+                                    let items: Vec<String> = entries
+                                        .filter_map(|e| e.ok())
+                                        .map(|e| e.file_name().to_string_lossy().to_string())
+                                        .collect();
+                                    serde_json::json!({ "entries": items, "total": items.len() })
+                                }
+                                Err(e) => serde_json::json!({ "error": e.to_string() }),
+                            }
+                        }
+                    }
+                    "local_read" => {
+                        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                        if let Err(e) = validate_mcp_path(path) {
+                            serde_json::json!({ "error": e })
+                        } else if std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) > 1_048_576 {
+                            serde_json::json!({ "error": "File exceeds 1 MB read limit" })
+                        } else {
+                            match std::fs::read_to_string(path) {
+                                Ok(content) => {
+                                    let truncated = content.len() > 5120;
+                                    let display = if truncated {
+                                        // Safe UTF-8 truncation: find last char boundary at or before 5120
+                                        let safe_end = content.char_indices()
+                                            .take_while(|(i, _)| *i <= 5120)
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        &content[..safe_end]
+                                    } else {
+                                        &content
+                                    };
+                                    serde_json::json!({ "content": display, "size": content.len(), "truncated": truncated })
+                                }
+                                Err(e) => serde_json::json!({ "error": e.to_string() }),
+                            }
+                        }
+                    }
+                    _ => {
+                        serde_json::json!({ "error": format!("Tool '{}' not yet implemented in MCP mode", tool_name) })
+                    }
+                };
+
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": {
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string_pretty(&result).unwrap_or_default()
+                        }]
+                    }
+                }));
+            }
+
+            _ => {
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "error": { "code": -32601, "message": format!("Method not found: {}", method) }
+                }));
+            }
+        }
+    }
+
+    let _ = provider_name;
+    0
 }
 
 // ── Main ───────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() {
+    // Reset SIGPIPE to default behavior (exit silently on broken pipe)
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let cli = Cli::parse();
     let format = cli.output_format();
 
@@ -2351,11 +5323,15 @@ async fn main() {
             .init();
     }
 
-    // Setup Ctrl+C handler
+    // Setup Ctrl+C handler (double Ctrl+C forces immediate exit with code 130)
     let cancelled = Arc::new(AtomicBool::new(false));
     let cancelled_clone = cancelled.clone();
     let _ = ctrlc::set_handler(move || {
-        eprintln!("\nInterrupted (Ctrl+C)");
+        if cancelled_clone.load(Ordering::Relaxed) {
+            // Second Ctrl+C — force exit immediately
+            std::process::exit(130);
+        }
+        eprintln!("\nInterrupted (Ctrl+C) — press again to force quit");
         cancelled_clone.store(true, Ordering::Relaxed);
     });
 
@@ -2397,6 +5373,11 @@ async fn main() {
             pattern,
         } => cmd_find(url, path, pattern, &cli, format).await,
         Commands::Df { url } => cmd_df(url, &cli, format).await,
+        Commands::Tree {
+            url,
+            path,
+            max_depth,
+        } => cmd_tree(url, path, *max_depth, &cli, format).await,
         Commands::Sync {
             url,
             local,
@@ -2412,6 +5393,40 @@ async fn main() {
             .await
         }
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
+        Commands::Agent {
+            message,
+            provider,
+            model,
+            connect,
+            auto_approve,
+            max_steps,
+            orchestrate,
+            mcp,
+            stdin,
+            yes,
+            plan_only,
+            cost_limit,
+            system,
+        } => {
+            cmd_agent(
+                message.clone(),
+                provider.clone(),
+                model.clone(),
+                connect.clone(),
+                if *yes { "all".to_string() } else { auto_approve.clone() },
+                *max_steps,
+                *orchestrate,
+                *mcp,
+                *stdin,
+                *plan_only,
+                *cost_limit,
+                system.clone(),
+                &cli,
+                format,
+                cancelled,
+            )
+            .await
+        }
     };
 
     std::process::exit(exit_code);
@@ -2546,5 +5561,75 @@ mod tests {
         let (config, _) = url_to_provider_config("koofr://user@koofr.net", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Koofr);
         assert_eq!(config.host, "app.koofr.net");
+    }
+
+    // ── validate_relative_path tests ──────────────────────────────────
+
+    #[test]
+    fn test_validate_relative_path_normal() {
+        assert_eq!(validate_relative_path("file.txt"), Some("file.txt"));
+        assert_eq!(validate_relative_path("dir/file.txt"), Some("dir/file.txt"));
+        assert_eq!(validate_relative_path("/dir/file.txt"), Some("dir/file.txt"));
+    }
+
+    #[test]
+    fn test_validate_relative_path_traversal() {
+        assert_eq!(validate_relative_path("../etc/passwd"), None);
+        assert_eq!(validate_relative_path("dir/../../etc/passwd"), None);
+        assert_eq!(validate_relative_path("..\\windows\\system32"), None);
+    }
+
+    #[test]
+    fn test_validate_relative_path_null_bytes() {
+        assert_eq!(validate_relative_path("file\0.txt"), None);
+    }
+
+    #[test]
+    fn test_validate_relative_path_windows_drive() {
+        assert_eq!(validate_relative_path("C:\\Windows"), None);
+        assert_eq!(validate_relative_path("\\\\server\\share"), None);
+    }
+
+    #[test]
+    fn test_validate_relative_path_safe_dots() {
+        // Single dot and dotfiles should be fine
+        assert_eq!(validate_relative_path(".hidden"), Some(".hidden"));
+        assert_eq!(validate_relative_path("dir/.file"), Some("dir/.file"));
+        assert_eq!(validate_relative_path("..."), Some("..."));
+    }
+
+    // ── parse_speed_limit edge case tests ─────────────────────────────
+
+    #[test]
+    fn test_parse_speed_limit_invalid() {
+        assert!(parse_speed_limit("abc").is_err());
+        assert!(parse_speed_limit("").is_err());
+        assert!(parse_speed_limit("0M").is_ok()); // 0 is valid (no limit)
+    }
+
+    #[test]
+    fn test_parse_speed_limit_case_insensitive() {
+        assert_eq!(parse_speed_limit("1m").unwrap(), 1024 * 1024);
+        assert_eq!(parse_speed_limit("500k").unwrap(), 500 * 1024);
+    }
+
+    // ── sanitize_filename tests ───────────────────────────────────────
+
+    #[test]
+    fn test_sanitize_filename_normal() {
+        assert_eq!(sanitize_filename("normal.txt"), "normal.txt");
+        assert_eq!(sanitize_filename("file with spaces.doc"), "file with spaces.doc");
+    }
+
+    #[test]
+    fn test_sanitize_filename_ansi_escape() {
+        assert_eq!(sanitize_filename("\x1b[31mred\x1b[0m"), "red");
+        assert_eq!(sanitize_filename("before\x1b[1;32mgreen\x1b[0mafter"), "beforegreenafter");
+    }
+
+    #[test]
+    fn test_sanitize_filename_control_chars() {
+        assert_eq!(sanitize_filename("file\x07name"), "filename");
+        assert_eq!(sanitize_filename("file\ttab"), "file\ttab"); // tab preserved
     }
 }

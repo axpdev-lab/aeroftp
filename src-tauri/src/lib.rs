@@ -15,7 +15,7 @@ use secrecy::{ExposeSecret, SecretString};
 
 mod ftp;
 pub mod sync;
-mod ai;
+pub mod ai;
 mod cloud_config;
 mod file_watcher;
 mod sync_scheduler;
@@ -35,6 +35,7 @@ mod pty;
 mod ssh_shell;
 mod host_key_check;
 mod ai_tools;
+pub mod ai_core;
 mod context_intelligence;
 mod plugins;
 mod plugin_registry;
@@ -7080,12 +7081,23 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // When a second instance is launched, show and focus the existing window
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
+            }
+            // Forward .aerovault file argument to frontend
+            if let Some(vault_arg) = argv.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+                if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
+                    let meta = std::fs::symlink_metadata(&canonical);
+                    if meta.map(|m| m.is_file()).unwrap_or(false) {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("vault-open-file", canonical.to_string_lossy().to_string());
+                        }
+                    }
+                }
             }
         }))
         .setup(move |app| {
@@ -7377,7 +7389,28 @@ pub fn run() {
                 .build(app)?;
             
             info!("System tray icon initialized");
-            
+
+            // Handle .aerovault file passed as CLI argument on first launch
+            {
+                let args: Vec<String> = std::env::args().collect();
+                if let Some(vault_arg) = args.iter().skip(1).find(|a| a.ends_with(".aerovault")) {
+                    if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
+                        let meta = std::fs::symlink_metadata(&canonical);
+                        if meta.map(|m| m.is_file()).unwrap_or(false) {
+                            let vault_path = canonical.to_string_lossy().to_string();
+                            let app_handle = app.handle().clone();
+                            // Emit after a short delay to ensure frontend is ready
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(1500));
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("vault-open-file", vault_path);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .on_menu_event(|app, event| {
