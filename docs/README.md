@@ -13,6 +13,9 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (20 protocols) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
+| **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant — 47 tools, 19 providers, architecture, safety system |
+| **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2 encrypted container format specification |
+| **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI — 14 commands, batch scripting, glob transfers |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 
 ---
