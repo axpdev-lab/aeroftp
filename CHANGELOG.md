@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.3] - 2026-03-11
+
+### AeroVault OS Integration Fix & Security Patch
+
+#### Fixed
+
+- **AeroVault MIME icon on Ubuntu**: Icons now installed in active icon theme (Yaru, Adwaita, Papirus, Breeze, etc.) via deb postinst script — fixes missing icon in Nautilus and other file managers that don't fall back to hicolor
+- **AeroVault "Open with" handler**: Custom `.desktop` template with `MimeType` and `%f` argument replaces Tauri-generated minimal desktop entry — enables right-click "Open with AeroFTP" and double-click association
+- **AeroVault icon in app**: VaultIcon component used for `.aerovault` files in filled icon theme
+- **CVE-2026-31812**: Update quinn-proto 0.11.13 → 0.11.14 fixing unauthenticated remote DoS via panic in QUIC transport parameter parsing
+
+#### Added
+
+- **deb postinst script**: Automatic MIME icon propagation to 9 icon themes with HiDPI @2x support, icon cache rebuild, and default handler registration
+
+---
+
 ## [2.9.2] - 2026-03-10
 
 ### CLI Expansion, AI Core Refactor & AeroVault OS Integration

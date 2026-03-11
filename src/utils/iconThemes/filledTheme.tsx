@@ -11,6 +11,7 @@
 
 import React from 'react';
 import type { IconThemeProvider, FileIconResult } from './types';
+import { VaultIcon } from '../../components/icons/VaultIcon';
 
 // --- SVG Components ---
 
@@ -163,6 +164,9 @@ export const filledTheme: IconThemeProvider = {
 
     getFileIcon: (filename: string, size: number = 16): FileIconResult => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
+        if (ext === 'aerovault') {
+            return { icon: <VaultIcon size={size} />, color: '' };
+        }
         const entry = filledIconMap[ext];
         if (entry) {
             return {

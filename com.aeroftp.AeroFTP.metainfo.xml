@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.3" date="2026-03-11">
+      <description>
+        <p>AeroVault OS integration fix: MIME icons for Yaru/Adwaita/Papirus themes, Open-with handler, CVE-2026-31812 security patch</p>
+      </description>
+    </release>
     <release version="2.9.2" date="2026-03-10">
       <description>
         <p>CLI Expansion and AeroVault OS Integration: Production CLI with 14 commands, batch scripting engine (.aeroftp scripts with variables and error policies), glob pattern transfers, and tree command. Backend-agnostic AI core abstraction layer (EventSink, CredentialProvider, RemoteBackend traits). Cross-platform .aerovault file association with custom MIME type icon (shield+lock) for Linux, Windows, and macOS. Snap Store description compliance fix. 45-finding CLI security audit resolved.</p>

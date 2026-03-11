@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.9.2",
+    "version": "2.9.3",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -93,7 +93,9 @@
                     "/usr/share/icons/hicolor/256x256/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-256.png",
                     "/usr/share/icons/hicolor/512x512/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-512.png",
                     "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerovault.svg": "icons/mimetypes/application-x-aerovault.svg"
-                }
+                },
+                "postInstallScript": "scripts/deb-postinst.sh",
+                "desktopTemplate": "../com.aeroftp.AeroFTP.desktop"
             }
         },
         "macOS": {
