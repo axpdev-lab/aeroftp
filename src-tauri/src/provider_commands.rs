@@ -127,9 +127,8 @@ impl ProviderConnectionParams {
             if let Some(ref endpoint) = self.endpoint {
                 extra.insert("endpoint".to_string(), endpoint.clone());
             }
-            if self.path_style.unwrap_or(false) {
-                extra.insert("path_style".to_string(), "true".to_string());
-            }
+            // Always insert path_style so S3Config doesn't default to true for custom endpoints
+            extra.insert("path_style".to_string(), self.path_style.unwrap_or(false).to_string());
         }
 
         // Add FTP/FTPS-specific options

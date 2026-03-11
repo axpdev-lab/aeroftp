@@ -272,6 +272,8 @@ impl S3Provider {
         }
         
         // URI-encode each path segment individually (H-10: SigV4 requires encoded segments)
+        // parsed.path() returns already-percent-encoded path, so decode first to avoid double-encoding
+        // (e.g. "File%20Name.pdf" → decode → "File Name.pdf" → encode → "File%20Name.pdf")
         let canonical_path = if path.is_empty() || path == "/" {
             "/".to_string()
         } else {
@@ -281,7 +283,9 @@ impl S3Provider {
                     if segment.is_empty() {
                         String::new()
                     } else {
-                        urlencoding::encode(segment).into_owned()
+                        let decoded = urlencoding::decode(segment)
+                            .unwrap_or(std::borrow::Cow::Borrowed(segment));
+                        urlencoding::encode(&decoded).into_owned()
                     }
                 })
                 .collect();
