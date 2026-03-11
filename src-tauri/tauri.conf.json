@@ -94,8 +94,7 @@
                     "/usr/share/icons/hicolor/512x512/mimetypes/application-x-aerovault.png": "icons/mimetypes/application-x-aerovault-512.png",
                     "/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerovault.svg": "icons/mimetypes/application-x-aerovault.svg"
                 },
-                "postInstallScript": "scripts/deb-postinst.sh",
-                "desktopTemplate": "../com.aeroftp.AeroFTP.desktop"
+                "postInstallScript": "scripts/deb-postinst.sh"
             }
         },
         "macOS": {
