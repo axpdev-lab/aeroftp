@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Idealne do przechowywania obiektów w chmurze, kopii zapasowych i hostowania plików na dużą skalę.",
       "webdavInfoLine1": "Wymaga adresu URL serwera, nazwy użytkownika i hasła. Domyślnie port 443 (HTTPS).",
       "webdavInfoLine2": "Idealne do chmur hostowanych samodzielnie, urządzeń NAS i udostępniania plików.",
-      "selectProviderPrompt": "Wybierz dostawcę powyżej lub wybierz \"Custom\"",
       "seafileDesc": "Chmura open-source",
       "seafileTooltip": "Seafile - Samoobslugowa chmura open-source z obsługą WebDAV",
       "fileluDesc": "Wieloprotokołowa pamięć w chmurze",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Brak probkowanych plikow",
       "canaryProjection": "Na podstawie probki {percent}%, pelna synchronizacja przetransferowaloby ok. {files} plikow ({size})",
-      "canaryApproveFullSync": "Zatwierdz pelna synchronizacje"
+      "canaryApproveFullSync": "Zatwierdz pelna synchronizacje",
+      "profilePull": "Pull",
+      "profilePullDesc": "Zdalny → Lokalny, usuń osierocone, weryfikuj rozmiar",
+      "profileRemoteBackup": "Kopia zdalna",
+      "profileRemoteBackupDesc": "Zdalny → Lokalny, weryfikacja checksum, bez usuwania"
     },
     "ui": {
       "syncing": "Synchronizacja...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Szyfrowanie folderu...",
       "errors": {
         "alreadyExists": "Wpis o tej nazwie już istnieje",
-        "corruptedVault": "Plik sejfu jest uszkodzony lub obcięty",
         "diskFull": "Dysk pełny — brak miejsca do zakończenia operacji",
-        "genericError": "Wystąpił nieoczekiwany błąd",
-        "networkError": "Błąd sieci podczas dostępu do zdalnego sejfu",
         "notAVault": "Ten plik nie jest prawidłowym kontenerem AeroVault",
-        "pathNotFound": "Plik sejfu nie został znaleziony — mógł zostać przeniesiony lub usunięty",
         "permissionDenied": "Odmowa dostępu — sprawdź uprawnienia pliku",
-        "vaultLocked": "Sejf jest zablokowany przez inny proces",
-        "wrongPassword": "Nieprawidłowe hasło — spróbuj ponownie"
+        "wrongPassword": "Nieprawidłowe hasło — spróbuj ponownie",
+        "unsupportedVersion": "Nieobslugiwana wersja sejfu",
+        "corrupted": "Plik sejfu jest uszkodzony",
+        "fileNotFound": "Nie znaleziono pliku",
+        "directoryTooLarge": "Katalog przekracza limit rozmiaru",
+        "invalidPath": "Nieprawidlowa sciezka pliku"
       },
       "extract": "Wypakuj",
       "extracted": "Wypakowano {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "lacznie",
       "unlock": "Odblokuj",
       "v1Standard": "AeroVault v1 (Standardowy)",
-      "v2Advanced": "AeroVault v2 (Zaawansowane bezpieczeństwo)"
+      "v2Advanced": "AeroVault v2 (Zaawansowane bezpieczeństwo)",
+      "encryptFolderPreview": "{fileCount} plikow w {dirCount} katalogach ({totalSize})"
     },
     "cryptomator": {
       "title": "Magazyn Cryptomator",
@@ -3256,6 +3260,27 @@
       "noLabels": "Brak dostępnych etykiet. Utwórz etykiety w ustawieniach Zoho WorkDrive.",
       "createLabel": "Utwórz etykietę",
       "labelName": "Nazwa etykiety"
+    },
+    "healthCheck": {
+      "title": "Kontrola stanu serwera",
+      "subtitle": "Diagnostyka sieci w czasie rzeczywistym z Twojej lokalizacji",
+      "checkAll": "Sprawdź wszystkie",
+      "checkOne": "Sprawdź ten serwer",
+      "checking": "Sprawdzanie...",
+      "checked": "sprawdzono",
+      "healthy": "Sprawny",
+      "degraded": "Pogorszony",
+      "unreachable": "Nieosiągalny",
+      "error": "Błąd",
+      "noServers": "Brak zapisanych serwerów do sprawdzenia",
+      "score": "Wynik",
+      "dnsResolution": "Rozwiązywanie DNS",
+      "tcpConnect": "Połączenie TCP",
+      "tlsHandshake": "Uzgadnianie TLS",
+      "httpResponse": "Odpowiedź HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ідеально для хмарного сховища об'єктів, резервних копій та великомасштабного розміщення файлів.",
       "webdavInfoLine1": "Потребує URL сервера, імені користувача та пароля. За замовчуванням порт 443 (HTTPS).",
       "webdavInfoLine2": "Ідеально для самостійно розміщених хмар, пристроїв NAS та обміну файлами.",
-      "selectProviderPrompt": "Виберіть постачальника вище або виберіть \"Custom\"",
       "seafileDesc": "Хмарне сховище з відкритим кодом",
       "seafileTooltip": "Seafile - Саморозміщена хмара з відкритим кодом та підтримкою WebDAV",
       "fileluDesc": "Багатопротокольне хмарне сховище",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Статус",
       "canaryNoResults": "Немає відібраних файлів",
       "canaryProjection": "На основі вибірки {percent}%, повна синхронізація передасть бл. {files} файлів ({size})",
-      "canaryApproveFullSync": "Затвердити повну синхронізацію"
+      "canaryApproveFullSync": "Затвердити повну синхронізацію",
+      "profilePull": "Pull",
+      "profilePullDesc": "Віддалений → Локальний, видалити зайві, перевірка розміру",
+      "profileRemoteBackup": "Віддалений бекап",
+      "profileRemoteBackupDesc": "Віддалений → Локальний, перевірка checksum, без видалень"
     },
     "ui": {
       "syncing": "Синхронізація...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Шифрування теки...",
       "errors": {
         "alreadyExists": "Запис з такою назвою вже існує",
-        "corruptedVault": "Файл сховища пошкоджений або обрізаний",
         "diskFull": "Диск заповнений — недостатньо місця для завершення операції",
-        "genericError": "Сталася неочікувана помилка",
-        "networkError": "Помилка мережі при доступі до віддаленого сховища",
         "notAVault": "Цей файл не є дійсним контейнером AeroVault",
-        "pathNotFound": "Файл сховища не знайдено — можливо, його було переміщено або видалено",
         "permissionDenied": "Доступ заборонено — перевірте права доступу до файлу",
-        "vaultLocked": "Сховище заблоковано іншим процесом",
-        "wrongPassword": "Неправильний пароль — спробуйте ще раз"
+        "wrongPassword": "Неправильний пароль — спробуйте ще раз",
+        "unsupportedVersion": "Непідтримувана версія сховища",
+        "corrupted": "Файл сховища пошкоджений",
+        "fileNotFound": "Файл не знайдено",
+        "directoryTooLarge": "Каталог перевищує обмеження розміру",
+        "invalidPath": "Недійсний шлях до файлу"
       },
       "extract": "Видобути",
       "extracted": "{name} розпаковано",
@@ -2338,7 +2341,8 @@
       "totalItems": "всього",
       "unlock": "Розблокувати",
       "v1Standard": "AeroVault v1 (Стандартний)",
-      "v2Advanced": "AeroVault v2 (Розширена безпека)"
+      "v2Advanced": "AeroVault v2 (Розширена безпека)",
+      "encryptFolderPreview": "{fileCount} файлів у {dirCount} каталогах ({totalSize})"
     },
     "cryptomator": {
       "title": "Сховище Cryptomator",
@@ -3115,9 +3119,6 @@
       "removeTag": "Видалити тег",
       "tags": "Теги"
     },
-    "preconfiguredProviders": "Попередньо налаштовані постачальники",
-    "customConnection": "Користувацька відповідь",
-    "custom": "Користувацький",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "Немає доступних міток. Створіть мітки в налаштуваннях Zoho WorkDrive.",
       "createLabel": "Створити мітку",
       "labelName": "Назва мітки"
+    },
+    "healthCheck": {
+      "title": "Перевірка стану сервера",
+      "subtitle": "Мережева діагностика в реальному часі з вашого розташування",
+      "checkAll": "Перевірити всі",
+      "checkOne": "Перевірити цей сервер",
+      "checking": "Перевірка...",
+      "checked": "перевірено",
+      "healthy": "Справний",
+      "degraded": "Погіршений",
+      "unreachable": "Недоступний",
+      "error": "Помилка",
+      "noServers": "Немає збережених серверів для перевірки",
+      "score": "Оцінка",
+      "dnsResolution": "Розв'язання DNS",
+      "tcpConnect": "З'єднання TCP",
+      "tlsHandshake": "Рукостискання TLS",
+      "httpResponse": "Відповідь HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

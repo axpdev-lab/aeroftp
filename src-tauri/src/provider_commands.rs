@@ -445,27 +445,31 @@ pub async fn provider_download_file(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
+    modified: Option<String>,
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
-    
+
     let provider = provider_lock.as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     let filename = std::path::Path::new(&remote_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
-    
+
     info!("Downloading via provider: {} -> {}", remote_path, local_path);
-    
+
     // Create parent directory if needed
     if let Some(parent) = std::path::Path::new(&local_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    
+
     provider.download(&remote_path, &local_path, None).await
         .map_err(|e| format!("Download failed: {}", e))?;
-    
+
+    // Preserve remote mtime on the local file
+    crate::preserve_remote_mtime(&local_path, modified.as_deref());
+
     info!("Download completed: {}", filename);
     Ok(format!("Downloaded: {}", filename))
 }
@@ -774,6 +778,9 @@ async fn provider_download_folder_inner(
         }
 
         if downloaded {
+            // Preserve remote mtime on the downloaded file
+            crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+
             files_downloaded += 1;
             let _ = app.emit("transfer_event", crate::TransferEvent {
                 event_type: "file_complete".to_string(),

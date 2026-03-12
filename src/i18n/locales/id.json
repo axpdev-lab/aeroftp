@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal untuk penyimpanan objek cloud, cadangan, dan hosting file skala besar.",
       "webdavInfoLine1": "Memerlukan URL server, nama pengguna, dan kata sandi. Port 443 (HTTPS) secara default.",
       "webdavInfoLine2": "Ideal untuk cloud yang di-host sendiri, perangkat NAS, dan berbagi file.",
-      "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\"",
       "seafileDesc": "Penyimpanan Cloud Sumber Terbuka",
       "seafileTooltip": "Seafile - Cloud sumber terbuka yang dihosting sendiri dengan dukungan WebDAV",
       "fileluDesc": "Penyimpanan awan multi-protokol",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Tidak ada file yang disampel",
       "canaryProjection": "Berdasarkan sampel {percent}%, sinkronisasi penuh akan mentransfer ~{files} file ({size})",
-      "canaryApproveFullSync": "Setujui Sinkronisasi Penuh"
+      "canaryApproveFullSync": "Setujui Sinkronisasi Penuh",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remote → Lokal, hapus yatim, verifikasi ukuran",
+      "profileRemoteBackup": "Backup Jarak Jauh",
+      "profileRemoteBackupDesc": "Remote → Lokal, verifikasi checksum, tanpa penghapusan"
     },
     "ui": {
       "syncing": "Menyinkronkan...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Mengenkripsi folder...",
       "errors": {
         "alreadyExists": "Entri dengan nama ini sudah ada",
-        "corruptedVault": "File brankas rusak atau terpotong",
         "diskFull": "Disk penuh — tidak cukup ruang untuk menyelesaikan operasi",
-        "genericError": "Terjadi kesalahan yang tidak terduga",
-        "networkError": "Kesalahan jaringan saat mengakses brankas jarak jauh",
         "notAVault": "File ini bukan kontainer AeroVault yang valid",
-        "pathNotFound": "File brankas tidak ditemukan — mungkin telah dipindahkan atau dihapus",
         "permissionDenied": "Izin ditolak — periksa izin file",
-        "vaultLocked": "Brankas dikunci oleh proses lain",
-        "wrongPassword": "Kata sandi salah — silakan coba lagi"
+        "wrongPassword": "Kata sandi salah — silakan coba lagi",
+        "unsupportedVersion": "Versi brankas tidak didukung",
+        "corrupted": "File brankas rusak",
+        "fileNotFound": "File tidak ditemukan",
+        "directoryTooLarge": "Direktori melebihi batas ukuran",
+        "invalidPath": "Jalur file tidak valid"
       },
       "extract": "Ekstrak",
       "extracted": "Diekstrak {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Buka Kunci",
       "v1Standard": "AeroVault v1 (Standar)",
-      "v2Advanced": "AeroVault v2 (Keamanan Lanjutan)"
+      "v2Advanced": "AeroVault v2 (Keamanan Lanjutan)",
+      "encryptFolderPreview": "{fileCount} file dalam {dirCount} direktori ({totalSize})"
     },
     "cryptomator": {
       "title": "Vault Cryptomator",
@@ -3266,6 +3270,27 @@
       "noLabels": "Tidak ada label yang tersedia. Buat label di pengaturan Zoho WorkDrive.",
       "createLabel": "Buat Label",
       "labelName": "Nama label"
+    },
+    "healthCheck": {
+      "title": "Pemeriksaan Kesehatan Server",
+      "subtitle": "Diagnostik jaringan real-time dari posisi Anda",
+      "checkAll": "Periksa Semua",
+      "checkOne": "Periksa server ini",
+      "checking": "Memeriksa...",
+      "checked": "diperiksa",
+      "healthy": "Sehat",
+      "degraded": "Menurun",
+      "unreachable": "Tidak terjangkau",
+      "error": "Kesalahan",
+      "noServers": "Tidak ada server tersimpan untuk diperiksa",
+      "score": "Skor",
+      "dnsResolution": "Resolusi DNS",
+      "tcpConnect": "Koneksi TCP",
+      "tlsHandshake": "Jabat tangan TLS",
+      "httpResponse": "Respons HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

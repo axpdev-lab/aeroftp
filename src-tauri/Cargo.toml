@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "2.9.3"
+version = "2.9.4"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -21,6 +21,7 @@ path = "src/bin/aeroftp_cli.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+filetime = "0.2"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"

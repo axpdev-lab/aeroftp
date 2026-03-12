@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Sesuai untuk storan objek awan, sandaran dan pengehosan fail berskala besar.",
       "webdavInfoLine1": "Memerlukan URL pelayan, nama pengguna dan kata laluan. Port 443 (HTTPS) adalah lalai.",
       "webdavInfoLine2": "Sesuai untuk awan yang dihos sendiri, peranti NAS dan perkongsian fail.",
-      "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Custom\"",
       "seafileDesc": "Storan Awan Sumber Terbuka",
       "seafileTooltip": "Seafile - Awan sumber terbuka hos sendiri dengan sokongan WebDAV",
       "fileluDesc": "Storan awan pelbagai protokol",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Tiada fail disampel",
       "canaryProjection": "Berdasarkan sampel {percent}%, penyegerakan penuh akan memindahkan ~{files} fail ({size})",
-      "canaryApproveFullSync": "Luluskan Penyegerakan Penuh"
+      "canaryApproveFullSync": "Luluskan Penyegerakan Penuh",
+      "profilePull": "Pull",
+      "profilePullDesc": "Jauh → Tempatan, padam yatim, sahkan saiz",
+      "profileRemoteBackup": "Sandaran Jauh",
+      "profileRemoteBackupDesc": "Jauh → Tempatan, pengesahan checksum, tiada pemadaman"
     },
     "ui": {
       "syncing": "Menyegerak...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Menyulitkan folder...",
       "errors": {
         "alreadyExists": "Entri dengan nama ini sudah wujud",
-        "corruptedVault": "Fail peti besi rosak atau terpotong",
         "diskFull": "Cakera penuh — ruang tidak mencukupi untuk menyelesaikan operasi",
-        "genericError": "Ralat yang tidak dijangka berlaku",
-        "networkError": "Ralat rangkaian semasa mengakses peti besi jauh",
         "notAVault": "Fail ini bukan bekas AeroVault yang sah",
-        "pathNotFound": "Fail peti besi tidak dijumpai — mungkin telah dialihkan atau dipadam",
         "permissionDenied": "Kebenaran ditolak — semak kebenaran fail",
-        "vaultLocked": "Peti besi dikunci oleh proses lain",
-        "wrongPassword": "Kata laluan salah — sila cuba lagi"
+        "wrongPassword": "Kata laluan salah — sila cuba lagi",
+        "unsupportedVersion": "Versi peti besi tidak disokong",
+        "corrupted": "Fail peti besi rosak",
+        "fileNotFound": "Fail tidak ditemui",
+        "directoryTooLarge": "Direktori melebihi had saiz",
+        "invalidPath": "Laluan fail tidak sah"
       },
       "extract": "Ekstrak",
       "extracted": "Diekstrak {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "jumlah",
       "unlock": "Buka Kunci",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Keselamatan Lanjutan)"
+      "v2Advanced": "AeroVault v2 (Keselamatan Lanjutan)",
+      "encryptFolderPreview": "{fileCount} fail dalam {dirCount} direktori ({totalSize})"
     },
     "cryptomator": {
       "title": "Peti Besi Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "Buang Tag",
       "tags": "Tag"
     },
-    "preconfiguredProviders": "Pembekal Pra-konfigurasi",
-    "customConnection": "Sambungan Tersuai",
-    "custom": "Tersuai",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Tiada label tersedia. Buat label dalam tetapan Zoho WorkDrive.",
       "createLabel": "Buat Label",
       "labelName": "Nama label"
+    },
+    "healthCheck": {
+      "title": "Pemeriksaan Kesihatan Pelayan",
+      "subtitle": "Diagnostik rangkaian masa nyata dari kedudukan anda",
+      "checkAll": "Periksa Semua",
+      "checkOne": "Periksa pelayan ini",
+      "checking": "Memeriksa...",
+      "checked": "diperiksa",
+      "healthy": "Sihat",
+      "degraded": "Merosot",
+      "unreachable": "Tidak dapat dicapai",
+      "error": "Ralat",
+      "noServers": "Tiada pelayan tersimpan untuk diperiksa",
+      "score": "Skor",
+      "dnsResolution": "Resolusi DNS",
+      "tcpConnect": "Sambungan TCP",
+      "tlsHandshake": "Jabat tangan TLS",
+      "httpResponse": "Respons HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

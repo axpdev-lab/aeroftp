@@ -1252,9 +1252,56 @@ impl SyncProfile {
         }
     }
 
+    /// Pull: remote → local, delete local orphans, verify size (reverse mirror)
+    pub fn pull() -> Self {
+        Self {
+            id: "pull".to_string(),
+            name: "Pull".to_string(),
+            builtin: true,
+            direction: SyncDirection::RemoteToLocal,
+            compare_timestamp: true,
+            compare_size: true,
+            compare_checksum: false,
+            exclude_patterns: vec![
+                "node_modules".into(), ".git".into(), ".DS_Store".into(),
+                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+            ],
+            retry_policy: RetryPolicy::default(),
+            verify_policy: VerifyPolicy::SizeOnly,
+            delete_orphans: true,
+            parallel_streams: 3,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
+        }
+    }
+
+    /// Remote Backup: remote → local, checksum verify, no deletes
+    pub fn remote_backup() -> Self {
+        Self {
+            id: "remote_backup".to_string(),
+            name: "Remote Backup".to_string(),
+            builtin: true,
+            direction: SyncDirection::RemoteToLocal,
+            compare_timestamp: false,
+            compare_size: true,
+            compare_checksum: true,
+            exclude_patterns: vec![
+                "node_modules".into(), ".git".into(), ".DS_Store".into(),
+                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+            ],
+            retry_policy: RetryPolicy {
+                max_retries: 5,
+                ..RetryPolicy::default()
+            },
+            verify_policy: VerifyPolicy::Full,
+            delete_orphans: false,
+            parallel_streams: 1,
+            compression_mode: crate::transfer_pool::CompressionMode::Off,
+        }
+    }
+
     /// All built-in profiles
     pub fn builtins() -> Vec<Self> {
-        vec![Self::mirror(), Self::two_way(), Self::backup()]
+        vec![Self::mirror(), Self::two_way(), Self::backup(), Self::pull(), Self::remote_backup()]
     }
 }
 

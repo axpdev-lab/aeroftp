@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Perpekto para sa cloud object storage, backup, at large-scale file hosting.",
       "webdavInfoLine1": "Nangangailangan ng server URL, username, at password. Port 443 (HTTPS) bilang default.",
       "webdavInfoLine2": "Perpekto para sa self-hosted clouds, NAS devices, at file sharing.",
-      "selectProviderPrompt": "Pumili ng provider sa itaas o piliin ang \"Custom\"",
       "seafileDesc": "Open-source na cloud storage",
       "seafileTooltip": "Seafile - Self-hosted na open-source cloud na may suporta sa WebDAV",
       "fileluDesc": "Multi-protocol na cloud storage",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Katayuan",
       "canaryNoResults": "Walang sinampol na mga file",
       "canaryProjection": "Batay sa {percent}% na sampol, ang buong pag-sync ay maglilipat ng ~{files} mga file ({size})",
-      "canaryApproveFullSync": "Aprubahan ang Buong Pag-sync"
+      "canaryApproveFullSync": "Aprubahan ang Buong Pag-sync",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remote → Lokal, burahin ang mga orphan, i-verify ang laki",
+      "profileRemoteBackup": "Remote Backup",
+      "profileRemoteBackupDesc": "Remote → Lokal, checksum verification, walang pagbura"
     },
     "ui": {
       "syncing": "Sinsi-sync...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Ini-encrypt ang folder...",
       "errors": {
         "alreadyExists": "Mayroon nang entry na may ganitong pangalan",
-        "corruptedVault": "Ang vault file ay sira o pinutol",
         "diskFull": "Puno ang disk — hindi sapat ang espasyo para makumpleto ang operasyon",
-        "genericError": "May nangyaring hindi inaasahang error",
-        "networkError": "Error sa network habang ina-access ang remote vault",
         "notAVault": "Ang file na ito ay hindi isang valid na AeroVault container",
-        "pathNotFound": "Hindi nahanap ang vault file — maaaring inilipat o tinanggal ito",
         "permissionDenied": "Tinanggihan ang pahintulot — suriin ang mga pahintulot ng file",
-        "vaultLocked": "Naka-lock ang vault ng ibang proseso",
-        "wrongPassword": "Maling password — pakisubukan muli"
+        "wrongPassword": "Maling password — pakisubukan muli",
+        "unsupportedVersion": "Hindi suportadong bersyon ng vault",
+        "corrupted": "Sira ang file ng vault",
+        "fileNotFound": "Hindi natagpuan ang file",
+        "directoryTooLarge": "Lumampas ang direktoryo sa limitasyon ng laki",
+        "invalidPath": "Hindi wastong path ng file"
       },
       "extract": "I-extract",
       "extracted": "Na-extract ang {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "kabuuan",
       "unlock": "I-unlock",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Advanced Security)"
+      "v2Advanced": "AeroVault v2 (Advanced Security)",
+      "encryptFolderPreview": "{fileCount} na file sa {dirCount} na direktoryo ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Vault",
@@ -3125,9 +3129,6 @@
       "removeTag": "Alisin ang Tag",
       "tags": "Mga Tag"
     },
-    "preconfiguredProviders": "Paunang-inayos na Mga Provider",
-    "customConnection": "Pasadyang Koneksyon",
-    "custom": "Pasadya",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3288,6 +3289,27 @@
       "noLabels": "Walang available na mga label. Lumikha ng mga label sa mga setting ng Zoho WorkDrive.",
       "createLabel": "Gumawa ng Label",
       "labelName": "Pangalan ng label"
+    },
+    "healthCheck": {
+      "title": "Pagsusuri ng kalagayan ng server",
+      "subtitle": "Real-time na network diagnostics mula sa iyong lokasyon",
+      "checkAll": "Suriin lahat",
+      "checkOne": "Suriin ang server na ito",
+      "checking": "Sinusuri...",
+      "checked": "nasuri",
+      "healthy": "Maayos",
+      "degraded": "Bumaba ang kalidad",
+      "unreachable": "Hindi maabot",
+      "error": "Error",
+      "noServers": "Walang naka-save na server na susuriin",
+      "score": "Iskor",
+      "dnsResolution": "DNS Resolution",
+      "tcpConnect": "TCP Connect",
+      "tlsHandshake": "TLS Handshake",
+      "httpResponse": "HTTP Response",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

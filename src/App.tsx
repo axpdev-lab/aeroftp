@@ -3163,10 +3163,10 @@ const App: React.FC = () => {
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           let targetName = fileName;
+          const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
 
           if (!_skipConflictCheck) {
             // Check file conflict before downloading (single file transfers only)
-            const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
             const overwriteResult = await checkOverwrite(
               fileName,
               fileSize || remoteFileInfo?.size || 0,
@@ -3186,12 +3186,13 @@ const App: React.FC = () => {
           }
 
           const localFilePath = `${downloadPath}/${targetName}`;
+          const remoteModified = remoteFileInfo?.modified || undefined;
           if (isProvider) {
             // Use provider command for file download
-            await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath });
+            await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath, modified: remoteModified });
           } else {
             // Use FTP command
-            const params: DownloadParams = { remote_path: remoteFilePath, local_path: localFilePath };
+            const params: DownloadParams = { remote_path: remoteFilePath, local_path: localFilePath, modified: remoteModified };
             await invoke('download_file', { params });
           }
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

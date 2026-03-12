@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Lý tưởng cho lưu trữ đối tượng đám mây, sao lưu và lưu trữ tệp quy mô lớn.",
       "webdavInfoLine1": "Yêu cầu URL máy chủ, tên người dùng và mật khẩu. Cổng 443 (HTTPS) theo mặc định.",
       "webdavInfoLine2": "Lý tưởng cho đám mây tự lưu trữ, thiết bị NAS và chia sẻ tệp.",
-      "selectProviderPrompt": "Chọn một nhà cung cấp ở trên hoặc chọn \"Custom\"",
       "seafileDesc": "Lưu trữ đám mây mã nguồn mở",
       "seafileTooltip": "Seafile - Đám mây mã nguồn mở tự lưu trữ với hỗ trợ WebDAV",
       "fileluDesc": "Lưu trữ đám mây đa giao thức",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Trạng thái",
       "canaryNoResults": "Không có tệp mẫu",
       "canaryProjection": "Dựa trên mẫu {percent}%, đồng bộ đầy đủ sẽ truyền tải khoảng {files} tệp ({size})",
-      "canaryApproveFullSync": "Phê duyệt đồng bộ đầy đủ"
+      "canaryApproveFullSync": "Phê duyệt đồng bộ đầy đủ",
+      "profilePull": "Pull",
+      "profilePullDesc": "Từ xa → Cục bộ, xóa tệp thừa, xác minh kích thước",
+      "profileRemoteBackup": "Sao lưu từ xa",
+      "profileRemoteBackupDesc": "Từ xa → Cục bộ, xác minh checksum, không xóa"
     },
     "ui": {
       "syncing": "Đang đồng bộ...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Đang mã hóa thư mục...",
       "errors": {
         "alreadyExists": "Mục nhập với tên này đã tồn tại",
-        "corruptedVault": "Tệp két sắt bị hỏng hoặc bị cắt",
         "diskFull": "Đĩa đầy — không đủ dung lượng để hoàn tất thao tác",
-        "genericError": "Đã xảy ra lỗi không mong muốn",
-        "networkError": "Lỗi mạng khi truy cập két sắt từ xa",
         "notAVault": "Tệp này không phải là bộ chứa AeroVault hợp lệ",
-        "pathNotFound": "Không tìm thấy tệp két sắt — có thể đã bị di chuyển hoặc xóa",
         "permissionDenied": "Quyền truy cập bị từ chối — kiểm tra quyền tệp",
-        "vaultLocked": "Két sắt đang bị khóa bởi tiến trình khác",
-        "wrongPassword": "Sai mật khẩu — vui lòng thử lại"
+        "wrongPassword": "Sai mật khẩu — vui lòng thử lại",
+        "unsupportedVersion": "Phien ban kho luu khong duoc ho tro",
+        "corrupted": "Tep kho luu bi hong",
+        "fileNotFound": "Khong tim thay tep",
+        "directoryTooLarge": "Thu muc vuot qua gioi han kich thuoc",
+        "invalidPath": "Duong dan tep khong hop le"
       },
       "extract": "Giải nén",
       "extracted": "Đã giải nén {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "tổng cộng",
       "unlock": "Mở khóa",
       "v1Standard": "AeroVault v1 (Tiêu chuẩn)",
-      "v2Advanced": "AeroVault v2 (Bảo mật nâng cao)"
+      "v2Advanced": "AeroVault v2 (Bảo mật nâng cao)",
+      "encryptFolderPreview": "{fileCount} tep trong {dirCount} thu muc ({totalSize})"
     },
     "cryptomator": {
       "title": "Kho Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "Xóa nhãn",
       "tags": "Nhãn"
     },
-    "preconfiguredProviders": "Các nhà cung cấp được cấu hình sẵn",
-    "customConnection": "Kết nối tùy chỉnh",
-    "custom": "Tùy chỉnh",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Không có nhãn nào có sẵn. Tạo nhãn trong cài đặt Zoho WorkDrive.",
       "createLabel": "Tạo nhãn",
       "labelName": "Tên nhãn"
+    },
+    "healthCheck": {
+      "title": "Kiểm tra tình trạng máy chủ",
+      "subtitle": "Chẩn đoán mạng theo thời gian thực từ vị trí của bạn",
+      "checkAll": "Kiểm tra tất cả",
+      "checkOne": "Kiểm tra máy chủ này",
+      "checking": "Đang kiểm tra...",
+      "checked": "đã kiểm tra",
+      "healthy": "Hoạt động tốt",
+      "degraded": "Suy giảm",
+      "unreachable": "Không thể truy cập",
+      "error": "Lỗi",
+      "noServers": "Không có máy chủ đã lưu để kiểm tra",
+      "score": "Điểm",
+      "dnsResolution": "Phân giải DNS",
+      "tcpConnect": "Kết nối TCP",
+      "tlsHandshake": "Bắt tay TLS",
+      "httpResponse": "Phản hồi HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -3,7 +3,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { ThemeToggle } from '../hooks/useTheme';
-import { VaultIcon } from './icons/VaultIcon';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -339,7 +338,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                     title={t('vault.titleFull')}
                 >
-                    <VaultIcon size={14} className="text-emerald-500" />
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" className="text-[var(--color-text-secondary)]">
+                        <path d="M12 21l.88-.38a11 11 0 006.63-9.26l.43-5.52a1 1 0 00-.76-1L12 3 4.82 4.8a1 1 0 00-.76 1l.43 5.52a11 11 0 006.63 9.26z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        <rect x="9.25" y="11" width="5.5" height="4" rx="0.75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M10.25 11V9.5a1.75 1.75 0 013.5 0V11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                 </button>
 
                 {/* Cyber Toolkit — cyber theme only, next to Vault */}

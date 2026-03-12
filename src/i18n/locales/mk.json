@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Идеално за складирање на облачни објекти, резервни копии и хостирање на големи датотеки.",
       "webdavInfoLine1": "Бара URL на сервер, корисничко име и лозинка. Портот 443 (HTTPS) е стандардно.",
       "webdavInfoLine2": "Идеално за самохостирани облаци, NAS уреди и споделување датотеки.",
-      "selectProviderPrompt": "Изберете пружател погоре или изберете \"Custom\"",
       "seafileDesc": "Облак со отворен код",
       "seafileTooltip": "Seafile - Самохостиран облак со отворен код со WebDAV поддршка",
       "fileluDesc": "Мулти-протоколно складирање во облак",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Статус",
       "canaryNoResults": "Нема испитани датотеки",
       "canaryProjection": "Врз основа на {percent}% примерок, целата синхронизација би пренела ~{files} датотеки ({size})",
-      "canaryApproveFullSync": "Одобри цела синхронизација"
+      "canaryApproveFullSync": "Одобри цела синхронизација",
+      "profilePull": "Pull",
+      "profilePullDesc": "Далечински → Локално, избриши сираци, провери големина",
+      "profileRemoteBackup": "Далечинска резервна копија",
+      "profileRemoteBackupDesc": "Далечински → Локално, проверка checksum, без бришење"
     },
     "ui": {
       "syncing": "Синхронизирање...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Шифрирање папка...",
       "errors": {
         "alreadyExists": "Запис со ова име веќе постои",
-        "corruptedVault": "Датотеката на сефот е оштетена или скратена",
         "diskFull": "Дискот е полн — нема доволно простор за завршување на операцијата",
-        "genericError": "Настана неочекувана грешка",
-        "networkError": "Мрежна грешка при пристап до далечински сеф",
         "notAVault": "Оваа датотека не е валиден AeroVault контејнер",
-        "pathNotFound": "Датотеката на сефот не е пронајдена — можеби е преместена или избришана",
         "permissionDenied": "Пристапот е одбиен — проверете ги дозволите на датотеката",
-        "vaultLocked": "Сефот е заклучен од друг процес",
-        "wrongPassword": "Погрешна лозинка — обидете се повторно"
+        "wrongPassword": "Погрешна лозинка — обидете се повторно",
+        "unsupportedVersion": "Неподдржана верзија на трезорот",
+        "corrupted": "Датотеката на трезорот е оштетена",
+        "fileNotFound": "Датотеката не е пронајдена",
+        "directoryTooLarge": "Директориумот ја надминува границата на големина",
+        "invalidPath": "Невалидна патека на датотека"
       },
       "extract": "Извлечи",
       "extracted": "Извлечено {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "вкупно",
       "unlock": "Отклучи",
       "v1Standard": "AeroVault v1 (Стандардно)",
-      "v2Advanced": "AeroVault v2 (Напредна безбедност)"
+      "v2Advanced": "AeroVault v2 (Напредна безбедност)",
+      "encryptFolderPreview": "{fileCount} датотеки во {dirCount} директориуми ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator трезор",
@@ -3125,9 +3129,6 @@
       "removeTag": "Отстрани ознака",
       "tags": "Ознаки"
     },
-    "preconfiguredProviders": "Предконфигурирани добавувачи",
-    "customConnection": "Прилагодена врска",
-    "custom": "Прилагодено",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3288,6 +3289,27 @@
       "noLabels": "Нема достапни етикети. Создајте етикети во поставките на Zoho WorkDrive.",
       "createLabel": "Создај етикета",
       "labelName": "Име на етикета"
+    },
+    "healthCheck": {
+      "title": "Проверка на состојба на серверот",
+      "subtitle": "Мрежна дијагностика во реално време од вашата локација",
+      "checkAll": "Провери ги сите",
+      "checkOne": "Провери го овој сервер",
+      "checking": "Проверување...",
+      "checked": "проверено",
+      "healthy": "Исправен",
+      "degraded": "Деградиран",
+      "unreachable": "Недостапен",
+      "error": "Грешка",
+      "noServers": "Нема зачувани сервери за проверка",
+      "score": "Оцена",
+      "dnsResolution": "DNS резолуција",
+      "tcpConnect": "TCP поврзување",
+      "tlsHandshake": "TLS ракување",
+      "httpResponse": "HTTP одговор",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

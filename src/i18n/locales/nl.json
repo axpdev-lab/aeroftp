@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideaal voor cloudopslag, back-ups en hosting van grote bestanden.",
       "webdavInfoLine1": "Vereist server-URL, gebruikersnaam en wachtwoord. Poort 443 (HTTPS) is standaard.",
       "webdavInfoLine2": "Ideaal voor zelf-gehoste clouds, NAS-apparaten en bestandsdeling.",
-      "selectProviderPrompt": "Selecteer een provider hierboven of kies \"Custom\"",
       "seafileDesc": "Opensource cloudopslag",
       "seafileTooltip": "Seafile - Zelfgehoste opensource cloud met WebDAV-ondersteuning",
       "fileluDesc": "Multi-protocol cloudopslag",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Geen bemonsterde bestanden",
       "canaryProjection": "Op basis van een steekproef van {percent}% zou de volledige synchronisatie ca. {files} bestanden ({size}) overdragen",
-      "canaryApproveFullSync": "Volledige synchronisatie goedkeuren"
+      "canaryApproveFullSync": "Volledige synchronisatie goedkeuren",
+      "profilePull": "Pull",
+      "profilePullDesc": "Extern → Lokaal, wezen verwijderen, grootte verifiëren",
+      "profileRemoteBackup": "Externe back-up",
+      "profileRemoteBackupDesc": "Extern → Lokaal, checksum-verificatie, geen verwijderingen"
     },
     "ui": {
       "syncing": "Synchroniseren...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Map versleutelen...",
       "errors": {
         "alreadyExists": "Een item met deze naam bestaat al",
-        "corruptedVault": "Kluisbestand is beschadigd of afgekapt",
         "diskFull": "Schijf vol — onvoldoende ruimte om de bewerking te voltooien",
-        "genericError": "Er is een onverwachte fout opgetreden",
-        "networkError": "Netwerkfout bij toegang tot externe kluis",
         "notAVault": "Dit bestand is geen geldig AeroVault-container",
-        "pathNotFound": "Het kluisbestand is niet gevonden — het is mogelijk verplaatst of verwijderd",
         "permissionDenied": "Toegang geweigerd — controleer bestandsrechten",
-        "vaultLocked": "Kluis is vergrendeld door een ander proces",
-        "wrongPassword": "Onjuist wachtwoord — probeer het opnieuw"
+        "wrongPassword": "Onjuist wachtwoord — probeer het opnieuw",
+        "unsupportedVersion": "Niet-ondersteunde kluisversie",
+        "corrupted": "Kluisbestand is beschadigd",
+        "fileNotFound": "Bestand niet gevonden",
+        "directoryTooLarge": "Map overschrijdt de maximale grootte",
+        "invalidPath": "Ongeldig bestandspad"
       },
       "extract": "Uitpakken",
       "extracted": "Uitgepakt {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "totaal",
       "unlock": "Ontgrendelen",
       "v1Standard": "AeroVault v1 (Standaard)",
-      "v2Advanced": "AeroVault v2 (Geavanceerde beveiliging)"
+      "v2Advanced": "AeroVault v2 (Geavanceerde beveiliging)",
+      "encryptFolderPreview": "{fileCount} bestanden in {dirCount} mappen ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-kluis",
@@ -3115,9 +3119,6 @@
       "removeTag": "Tag verwijderen",
       "tags": "Tags"
     },
-    "preconfiguredProviders": "Vooraf ingestelde providers",
-    "customConnection": "Aangepaste verbinding",
-    "custom": "Aangepast",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "Geen labels beschikbaar. Maak labels aan in de instellingen van Zoho WorkDrive.",
       "createLabel": "Label maken",
       "labelName": "Labelnaam"
+    },
+    "healthCheck": {
+      "title": "Serverstatus controleren",
+      "subtitle": "Realtime netwerkdiagnostiek vanaf uw locatie",
+      "checkAll": "Alles controleren",
+      "checkOne": "Deze server controleren",
+      "checking": "Controleren...",
+      "checked": "gecontroleerd",
+      "healthy": "Gezond",
+      "degraded": "Verslechterd",
+      "unreachable": "Onbereikbaar",
+      "error": "Fout",
+      "noServers": "Geen opgeslagen servers om te controleren",
+      "score": "Score",
+      "dnsResolution": "DNS-resolutie",
+      "tcpConnect": "TCP-verbinding",
+      "tlsHandshake": "TLS-handshake",
+      "httpResponse": "HTTP-respons",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "เหมาะสำหรับการเก็บข้อมูลวัตถุบนคลาউด การสำรองข้อมูล และโฮสติ้งไฟล์ขนาดใหญ่",
       "webdavInfoLine1": "ต้องใช้ URL เซิร์ฟเวอร์ ชื่อผู้ใช้ และรหัสผ่าน พอร์ต 443 (HTTPS) โดยค่าเริ่มต้น",
       "webdavInfoLine2": "เหมาะสำหรับคลาวด์ที่โฮสต์เองอุปกรณ์ NAS และการแชร์ไฟล์",
-      "selectProviderPrompt": "เลือกผู้ให้บริการด้านบนหรือเลือก \"Custom\"",
       "seafileDesc": "ที่เก็บข้อมูลบนคลาวด์โอเพนซอร์ส",
       "seafileTooltip": "Seafile - คลาวด์โอเพนซอร์สที่โฮสต์เองพร้อมรองรับ WebDAV",
       "fileluDesc": "พื้นที่จัดเก็บคลาวด์รองรับหลายโปรโตคอล",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "สถานะ",
       "canaryNoResults": "ไม่มีไฟล์ตัวอย่าง",
       "canaryProjection": "จากตัวอย่าง {percent}% การซิงค์เต็มรูปแบบจะถ่ายโอนประมาณ {files} ไฟล์ ({size})",
-      "canaryApproveFullSync": "อนุมัติการซิงค์เต็มรูปแบบ"
+      "canaryApproveFullSync": "อนุมัติการซิงค์เต็มรูปแบบ",
+      "profilePull": "Pull",
+      "profilePullDesc": "รีโมต → โลคัล, ลบไฟล์กำพร้า, ตรวจสอบขนาด",
+      "profileRemoteBackup": "สำรองข้อมูลระยะไกล",
+      "profileRemoteBackupDesc": "รีโมต → โลคัล, ตรวจสอบ checksum, ไม่มีการลบ"
     },
     "ui": {
       "syncing": "กำลังซิงค์...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "กำลังเข้ารหัสโฟลเดอร์...",
       "errors": {
         "alreadyExists": "รายการที่มีชื่อนี้มีอยู่แล้ว",
-        "corruptedVault": "ไฟล์ตู้เซฟเสียหายหรือถูกตัดทอน",
         "diskFull": "ดิสก์เต็ม — พื้นที่ไม่เพียงพอสำหรับดำเนินการ",
-        "genericError": "เกิดข้อผิดพลาดที่ไม่คาดคิด",
-        "networkError": "ข้อผิดพลาดเครือข่ายขณะเข้าถึงตู้เซฟระยะไกล",
         "notAVault": "ไฟล์นี้ไม่ใช่คอนเทนเนอร์ AeroVault ที่ถูกต้อง",
-        "pathNotFound": "ไม่พบไฟล์ตู้เซฟ — อาจถูกย้ายหรือลบไปแล้ว",
         "permissionDenied": "ไม่ได้รับอนุญาต — ตรวจสอบสิทธิ์ไฟล์",
-        "vaultLocked": "ตู้เซฟถูกล็อคโดยกระบวนการอื่น",
-        "wrongPassword": "รหัสผ่านผิด — กรุณาลองอีกครั้ง"
+        "wrongPassword": "รหัสผ่านผิด — กรุณาลองอีกครั้ง",
+        "unsupportedVersion": "เวอร์ชันของตู้นิรภัยไม่รองรับ",
+        "corrupted": "ไฟล์ตู้นิรภัยเสียหาย",
+        "fileNotFound": "ไม่พบไฟล์",
+        "directoryTooLarge": "ไดเร็กทอรีเกินขีดจำกัดขนาด",
+        "invalidPath": "เส้นทางไฟล์ไม่ถูกต้อง"
       },
       "extract": "แตกไฟล์",
       "extracted": "แตกไฟล์ {name} แล้ว",
@@ -2338,7 +2341,8 @@
       "totalItems": "ทั้งหมด",
       "unlock": "ปลดล็อก",
       "v1Standard": "AeroVault v1 (มาตรฐาน)",
-      "v2Advanced": "AeroVault v2 (ความปลอดภัยขั้นสูง)"
+      "v2Advanced": "AeroVault v2 (ความปลอดภัยขั้นสูง)",
+      "encryptFolderPreview": "{fileCount} ไฟล์ใน {dirCount} ไดเร็กทอรี ({totalSize})"
     },
     "cryptomator": {
       "title": "ตู้นิรภัย Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "ลบแท็ก",
       "tags": "แท็ก"
     },
-    "preconfiguredProviders": "ผู้ให้บริการที่กำหนดค่าไว้ล่วงหน้า",
-    "customConnection": "การเชื่อมต่อแบบกำหนดเอง",
-    "custom": "กำหนดเอง",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "ไม่มีป้ายกำกับที่พร้อมใช้งาน สร้างป้ายกำกับในการตั้งค่า Zoho WorkDrive",
       "createLabel": "สร้างป้ายกำกับ",
       "labelName": "ชื่อป้ายกำกับ"
+    },
+    "healthCheck": {
+      "title": "ตรวจสอบสถานะเซิร์ฟเวอร์",
+      "subtitle": "การวินิจฉัยเครือข่ายแบบเรียลไทม์จากตำแหน่งของคุณ",
+      "checkAll": "ตรวจสอบทั้งหมด",
+      "checkOne": "ตรวจสอบเซิร์ฟเวอร์นี้",
+      "checking": "กำลังตรวจสอบ...",
+      "checked": "ตรวจสอบแล้ว",
+      "healthy": "ปกติ",
+      "degraded": "ลดประสิทธิภาพ",
+      "unreachable": "เข้าถึงไม่ได้",
+      "error": "ข้อผิดพลาด",
+      "noServers": "ไม่มีเซิร์ฟเวอร์ที่บันทึกไว้สำหรับตรวจสอบ",
+      "score": "คะแนน",
+      "dnsResolution": "การแก้ไข DNS",
+      "tcpConnect": "การเชื่อมต่อ TCP",
+      "tlsHandshake": "การจับมือ TLS",
+      "httpResponse": "การตอบกลับ HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

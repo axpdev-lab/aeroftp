@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal per a emmagatzematge d'objectes al núvol, còpies de seguretat i allotjament a gran escala.",
       "webdavInfoLine1": "Requereix URL del servidor, nom d'usuari i contrasenya. Port 443 (HTTPS) per defecte.",
       "webdavInfoLine2": "Ideal per a núvols autogestionats, dispositius NAS i compartició de fitxers.",
-      "selectProviderPrompt": "Selecciona un proveïdor anterior o escull \"Custom\"",
       "seafileDesc": "Emmagatzematge al núvol de codi obert",
       "seafileTooltip": "Seafile - Núvol de codi obert autoallotjat amb compatibilitat WebDAV",
       "fileluDesc": "Emmagatzematge al núvol multiprotocol",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Estat",
       "canaryNoResults": "Cap fitxer mostrejat",
       "canaryProjection": "Basat en la mostra del {percent}%, la sincronització completa transferiria ~{files} fitxers ({size})",
-      "canaryApproveFullSync": "Aprovar sincronització completa"
+      "canaryApproveFullSync": "Aprovar sincronització completa",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remot → Local, elimina orfes, verifica mida",
+      "profileRemoteBackup": "Còpia remota",
+      "profileRemoteBackupDesc": "Remot → Local, verificació checksum, sense eliminacions"
     },
     "ui": {
       "syncing": "Sincronitzant...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Xifrant carpeta...",
       "errors": {
         "alreadyExists": "Ja existeix una entrada amb aquest nom",
-        "corruptedVault": "El fitxer del vault està danyat o truncat",
         "diskFull": "Disc ple — no hi ha prou espai per completar l'operació",
-        "genericError": "S'ha produït un error inesperat",
-        "networkError": "Error de xarxa en accedir al vault remot",
         "notAVault": "Aquest fitxer no és un contenidor AeroVault vàlid",
-        "pathNotFound": "No s'ha trobat el fitxer del vault — pot haver estat mogut o eliminat",
         "permissionDenied": "Permís denegat — comproveu els permisos del fitxer",
-        "vaultLocked": "El vault està bloquejat per un altre procés",
-        "wrongPassword": "Contrasenya incorrecta — torneu a provar"
+        "wrongPassword": "Contrasenya incorrecta — torneu a provar",
+        "unsupportedVersion": "Versio de caixa forta no compatible",
+        "corrupted": "El fitxer de la caixa forta esta corromput",
+        "fileNotFound": "Fitxer no trobat",
+        "directoryTooLarge": "El directori supera el limit de mida",
+        "invalidPath": "Camí de fitxer no valid"
       },
       "extract": "Extreure",
       "extracted": "{name} extret",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Desbloquejar",
       "v1Standard": "AeroVault v1 (Estàndard)",
-      "v2Advanced": "AeroVault v2 (Seguretat avançada)"
+      "v2Advanced": "AeroVault v2 (Seguretat avançada)",
+      "encryptFolderPreview": "{fileCount} fitxers en {dirCount} directoris ({totalSize})"
     },
     "cryptomator": {
       "title": "Caixa forta Cryptomator",
@@ -3285,6 +3289,27 @@
       "noLabels": "No hi ha etiquetes disponibles. Crea'n una a continuació.",
       "createLabel": "Crear etiqueta",
       "labelName": "Nom de l'etiqueta"
+    },
+    "healthCheck": {
+      "title": "Comprovació del servidor",
+      "subtitle": "Diagnòstic de xarxa en temps real des de la vostra posició",
+      "checkAll": "Comprova tots",
+      "checkOne": "Comprova aquest servidor",
+      "checking": "Comprovant...",
+      "checked": "comprovat",
+      "healthy": "Correcte",
+      "degraded": "Degradat",
+      "unreachable": "Inaccessible",
+      "error": "Error",
+      "noServers": "No hi ha servidors desats per comprovar",
+      "score": "Puntuació",
+      "dnsResolution": "Resolució DNS",
+      "tcpConnect": "Connexió TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Resposta HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

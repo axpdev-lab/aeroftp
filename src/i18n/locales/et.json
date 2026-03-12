@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideaalne pilveobjektide salvestamiseks, varukoopiateks ja suuremahulisteks failide majutamiseks.",
       "webdavInfoLine1": "Nõuab serveri URL-i, kasutajanime ja parooli. Vaikimisi port 443 (HTTPS).",
       "webdavInfoLine2": "Ideaalne isehooldatavate pilvede, NAS-seadmete ja failide jagamise jaoks.",
-      "selectProviderPrompt": "Valige ülalpool pakkuja või valige \"Custom\"",
       "seafileDesc": "Avatud lähtekoodiga pilvesalvestus",
       "seafileTooltip": "Seafile - Ise majutatav avatud lähtekoodiga pilv WebDAV toega",
       "fileluDesc": "Mitmeprotokollne pilvsalvestus",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Olek",
       "canaryNoResults": "Valimifaile pole",
       "canaryProjection": "{percent}% valimi põhjal kannaks täis-sünkroniseerimine üle ~{files} faili ({size})",
-      "canaryApproveFullSync": "Kinnita täis-sünkroniseerimine"
+      "canaryApproveFullSync": "Kinnita täis-sünkroniseerimine",
+      "profilePull": "Pull",
+      "profilePullDesc": "Kaug → Kohalik, kustuta orbud, kontrolli suurust",
+      "profileRemoteBackup": "Kaugvarukoopia",
+      "profileRemoteBackupDesc": "Kaug → Kohalik, kontrollsumma, ei kustutamisi"
     },
     "ui": {
       "syncing": "Sünkroniseerimine...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Kausta krüptimine...",
       "errors": {
         "alreadyExists": "Selle nimega kirje on juba olemas",
-        "corruptedVault": "Seifi fail on rikutud või kärbitud",
         "diskFull": "Ketas on täis — toimingu lõpetamiseks pole piisavalt ruumi",
-        "genericError": "Ilmnes ootamatu tõrge",
-        "networkError": "Võrgutõrge kaugseifile juurdepääsul",
         "notAVault": "See fail ei ole kehtiv AeroVault konteiner",
-        "pathNotFound": "Seifi faili ei leitud — see võib olla teisaldatud või kustutatud",
         "permissionDenied": "Juurdepääs keelatud — kontrollige failiõigusi",
-        "vaultLocked": "Seif on lukustatud teise protsessi poolt",
-        "wrongPassword": "Vale parool — proovige uuesti"
+        "wrongPassword": "Vale parool — proovige uuesti",
+        "unsupportedVersion": "Toetamata seifi versioon",
+        "corrupted": "Seififail on rikutud",
+        "fileNotFound": "Faili ei leitud",
+        "directoryTooLarge": "Kataloog ületab suuruse piirangu",
+        "invalidPath": "Vigane failitee"
       },
       "extract": "Paki lahti",
       "extracted": "{name} lahtipakitud",
@@ -2338,7 +2341,8 @@
       "totalItems": "kokku",
       "unlock": "Ava lukk",
       "v1Standard": "AeroVault v1 (standardne)",
-      "v2Advanced": "AeroVault v2 (täiustatud turvalisus)"
+      "v2Advanced": "AeroVault v2 (täiustatud turvalisus)",
+      "encryptFolderPreview": "{fileCount} faili {dirCount} kataloogis ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator hoidla",
@@ -3125,9 +3129,6 @@
       "removeTag": "Eemalda silt",
       "tags": "Sildid"
     },
-    "preconfiguredProviders": "Eelkonfigureeritud Pakkujad",
-    "customConnection": "Kohandatud Ühendus",
-    "custom": "Kohandatud",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Sildeid ei ole saadaval. Looge sildeid Zoho WorkDrive seadetes.",
       "createLabel": "Loo silt",
       "labelName": "Sildi nimi"
+    },
+    "healthCheck": {
+      "title": "Serveri seisundikontroll",
+      "subtitle": "Reaalajas võrgudiagnostika teie asukohast",
+      "checkAll": "Kontrolli kõiki",
+      "checkOne": "Kontrolli seda serverit",
+      "checking": "Kontrollin...",
+      "checked": "kontrollitud",
+      "healthy": "Korras",
+      "degraded": "Halvenenud",
+      "unreachable": "Kättesaamatu",
+      "error": "Viga",
+      "noServers": "Kontrollimiseks pole salvestatud servereid",
+      "score": "Hinne",
+      "dnsResolution": "DNS-lahendus",
+      "tcpConnect": "TCP-ühendus",
+      "tlsHandshake": "TLS-kätepigistus",
+      "httpResponse": "HTTP-vastus",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

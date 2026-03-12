@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal para almacenamiento de objetos en la nube, copias de seguridad y alojamiento de archivos a gran escala.",
       "webdavInfoLine1": "Requiere URL del servidor, nombre de usuario y contraseña. Puerto 443 (HTTPS) de forma predeterminada.",
       "webdavInfoLine2": "Ideal para nubes autogestionadas, dispositivos NAS y uso compartido de archivos.",
-      "selectProviderPrompt": "Selecciona un proveedor anterior o elige \"Custom\"",
       "seafileDesc": "Almacenamiento en la nube de código abierto",
       "seafileTooltip": "Seafile - Nube de código abierto autoalojada con compatibilidad WebDAV",
       "fileluDesc": "Almacenamiento en nube multiprotocolo",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Estado",
       "canaryNoResults": "Sin archivos muestreados",
       "canaryProjection": "Basado en una muestra del {percent}%, la sincronizacion completa transferiria aprox. {files} archivos ({size})",
-      "canaryApproveFullSync": "Aprobar sincronizacion completa"
+      "canaryApproveFullSync": "Aprobar sincronizacion completa",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remoto → Local, eliminar huérfanos, verificar tamaño",
+      "profileRemoteBackup": "Copia remota",
+      "profileRemoteBackupDesc": "Remoto → Local, verificación checksum, sin eliminaciones"
     },
     "ui": {
       "syncing": "Sincronizando...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Cifrando carpeta...",
       "errors": {
         "alreadyExists": "Ya existe una entrada con este nombre",
-        "corruptedVault": "El archivo de la bóveda está dañado o truncado",
         "diskFull": "Disco lleno — no hay suficiente espacio para completar la operación",
-        "genericError": "Se produjo un error inesperado",
-        "networkError": "Error de red al acceder a la bóveda remota",
         "notAVault": "Este archivo no es un contenedor AeroVault válido",
-        "pathNotFound": "No se encontró el archivo de la bóveda — puede haber sido movido o eliminado",
         "permissionDenied": "Permiso denegado — verifique los permisos del archivo",
-        "vaultLocked": "La bóveda está bloqueada por otro proceso",
-        "wrongPassword": "Contraseña incorrecta — inténtelo de nuevo"
+        "wrongPassword": "Contraseña incorrecta — inténtelo de nuevo",
+        "unsupportedVersion": "Versión de bóveda no compatible",
+        "corrupted": "El archivo de bóveda está dañado",
+        "fileNotFound": "Archivo no encontrado",
+        "directoryTooLarge": "El directorio supera el límite de tamaño",
+        "invalidPath": "Ruta de archivo no válida"
       },
       "extract": "Extraer",
       "extracted": "{name} extraído",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Desbloquear",
       "v1Standard": "AeroVault v1 (Estándar)",
-      "v2Advanced": "AeroVault v2 (Seguridad avanzada)"
+      "v2Advanced": "AeroVault v2 (Seguridad avanzada)",
+      "encryptFolderPreview": "{fileCount} archivos en {dirCount} directorios ({totalSize})"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",
@@ -3115,9 +3119,6 @@
       "removeTag": "Eliminar etiqueta",
       "tags": "Etiquetas"
     },
-    "preconfiguredProviders": "Proveedores Preconfigurados",
-    "customConnection": "Conexión Personalizada",
-    "custom": "Personalizado",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "No hay etiquetas disponibles. Crea etiquetas en la configuración de Zoho WorkDrive.",
       "createLabel": "Crear etiqueta",
       "labelName": "Nombre de la etiqueta"
+    },
+    "healthCheck": {
+      "title": "Comprobación de estado del servidor",
+      "subtitle": "Diagnóstico de red en tiempo real desde tu ubicación",
+      "checkAll": "Comprobar todos",
+      "checkOne": "Comprobar este servidor",
+      "checking": "Comprobando...",
+      "checked": "comprobado",
+      "healthy": "Correcto",
+      "degraded": "Degradado",
+      "unreachable": "Inalcanzable",
+      "error": "Error",
+      "noServers": "No hay servidores guardados para comprobar",
+      "score": "Puntuación",
+      "dnsResolution": "Resolución DNS",
+      "tcpConnect": "Conexión TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Respuesta HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

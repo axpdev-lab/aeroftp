@@ -5,7 +5,7 @@
 
 import React from 'react';
 import {
-    ArrowDown, ArrowUp, ArrowLeftRight, Zap, Skull
+    ArrowDown, ArrowUp, ArrowLeftRight, Zap, Skull, ArrowDownToLine, ArrowUpFromLine
 } from 'lucide-react';
 import { SyncProfile } from '../../types';
 import { useTranslation } from '../../i18n';
@@ -25,15 +25,19 @@ interface SyncQuickModeProps {
 
 // Preset card configuration
 const PROFILE_ICONS: Record<string, typeof ArrowDown> = {
-    mirror: ArrowDown,
+    mirror: ArrowUpFromLine,
     two_way: ArrowLeftRight,
     backup: ArrowUp,
+    pull: ArrowDownToLine,
+    remote_backup: ArrowDown,
 };
 
 const PROFILE_COLORS: Record<string, string> = {
     mirror: '#3b82f6',
     two_way: '#10b981',
     backup: '#f59e0b',
+    pull: '#8b5cf6',
+    remote_backup: '#ec4899',
 };
 
 export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
@@ -75,6 +79,8 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                         const label = profile.id === 'mirror' ? t('syncPanel.profileMirror')
                             : profile.id === 'two_way' ? t('syncPanel.profileTwoWay')
                             : profile.id === 'backup' ? t('syncPanel.profileBackup')
+                            : profile.id === 'pull' ? t('syncPanel.profilePull')
+                            : profile.id === 'remote_backup' ? t('syncPanel.profileRemoteBackup')
                             : profile.name;
 
                         return (
@@ -91,6 +97,8 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                                     {profile.id === 'mirror' ? t('syncPanel.profileMirrorDesc')
                                         : profile.id === 'two_way' ? t('syncPanel.profileTwoWayDesc')
                                         : profile.id === 'backup' ? t('syncPanel.profileBackupDesc')
+                                        : profile.id === 'pull' ? t('syncPanel.profilePullDesc')
+                                        : profile.id === 'remote_backup' ? t('syncPanel.profileRemoteBackupDesc')
                                         : ''}
                                 </div>
                             </button>

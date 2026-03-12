@@ -38,7 +38,7 @@ git push origin main --tags
 ### Automated Distribution
 | Platform | Artifacts | Auto-published to |
 |----------|-----------|-------------------|
-| Linux | `.deb`, `.rpm`, `.AppImage`, `.snap` | GitHub Releases + **Snap Store** |
+| Linux | `.deb`, `.rpm`, `.AppImage`, `.snap` | GitHub Releases |
 | Windows | `.msi`, `.exe` | GitHub Releases |
 | macOS | `.dmg` | GitHub Releases |
 
@@ -97,7 +97,7 @@ AeroAgent features **47 tools** across 10 categories, **19 AI providers** (OpenA
 
 ---
 
-- **Documentation Version**: 2.9.3
+- **Documentation Version**: 2.9.4
 - **Last Update**: 2026-03-12
 
 ---

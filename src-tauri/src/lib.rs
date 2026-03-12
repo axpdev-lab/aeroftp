@@ -56,6 +56,7 @@ mod chat_history;
 mod file_tags;
 mod vault_history;
 mod image_edit;
+mod server_health;
 #[cfg(windows)]
 mod cloud_filter_badge;
 
@@ -122,6 +123,9 @@ pub struct ConnectionParams {
 pub struct DownloadParams {
     remote_path: String,
     local_path: String,
+    /// Remote file modification timestamp (ISO 8601) for mtime preservation
+    #[serde(default)]
+    modified: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -940,6 +944,9 @@ async fn download_file(
         }
     ).await {
         Ok(_) => {
+            // Preserve remote mtime on the local file
+            preserve_remote_mtime(&params.local_path, params.modified.as_deref());
+
             // Emit complete event
             let _ = app.emit("transfer_event", TransferEvent {
                 event_type: "complete".to_string(),
@@ -1085,6 +1092,35 @@ async fn upload_file(
             });
             Err(format!("Upload failed: {}", e))
         }
+    }
+}
+
+/// Preserve remote file modification time on a downloaded local file.
+/// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
+/// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
+pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
+    let Some(modified_str) = remote_modified else { return };
+    let ts = chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        .or_else(|_| {
+            // Try parsing full RFC 3339 (with timezone) → strip tz suffix
+            chrono::DateTime::parse_from_rfc3339(modified_str)
+                .map(|dt| dt.naive_utc())
+        })
+        .ok();
+    if let Some(ndt) = ts {
+        let secs = ndt.and_utc().timestamp();
+        let ft = filetime::FileTime::from_unix_time(secs, 0);
+        let _ = filetime::set_file_mtime(local_path, ft);
+    }
+}
+
+/// Preserve remote mtime from a `chrono::DateTime<Utc>`.
+pub fn preserve_remote_mtime_dt(local_path: &std::path::Path, remote_modified: Option<chrono::DateTime<chrono::Utc>>) {
+    if let Some(dt) = remote_modified {
+        let ft = filetime::FileTime::from_unix_time(dt.timestamp(), 0);
+        let _ = filetime::set_file_mtime(local_path, ft);
     }
 }
 
@@ -1461,6 +1497,9 @@ async fn download_folder(
                 }
             ).await {
                 Ok(_) => {
+                    // Preserve remote mtime on the downloaded file
+                    preserve_remote_mtime_dt(&item.local_path, item.modified);
+
                     downloaded_files += 1;
 
                     let percentage = if total_files > 0 {
@@ -6013,6 +6052,7 @@ async fn ai_execute_tool(
             download_file(app, state.clone(), DownloadParams {
                 remote_path: remote_path.to_string(),
                 local_path: local_path.to_string(),
+                modified: None,
             }).await.map_err(|e| e.to_string())?;
             
             Ok(serde_json::json!({ "success": true, "message": format!("Downloaded {} to {}", remote_path, local_path) }))
@@ -7937,6 +7977,9 @@ pub fn run() {
             vault_history::vault_history_list,
             vault_history::vault_history_remove,
             vault_history::vault_history_clear,
+            // Server Health Check
+            server_health::server_health_check,
+            server_health::server_health_check_batch,
             // AeroImage
             image_edit::process_image,
         ])

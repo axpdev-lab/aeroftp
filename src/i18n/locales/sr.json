@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Идеалан за складиштење облачних објеката, резервне копије и хостовање датотека у великој мери.",
       "webdavInfoLine1": "Захтева адресу URL сервера, корисничко име и лозинку. Подразумевано порт 443 (HTTPS).",
       "webdavInfoLine2": "Идеалан за самоприпремљене облаке, NAS уређаје и дељење датотека.",
-      "selectProviderPrompt": "Изаберите пружаоца изнад или изаберите \"Custom\"",
       "seafileDesc": "Отворено облак складиште",
       "seafileTooltip": "Seafile - Самохостовано отворено облак са подршком за WebDAV",
       "fileluDesc": "Вишепротоколна складишта у облаку",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Стање",
       "canaryNoResults": "Нема узоркованих датотека",
       "canaryProjection": "На основу {percent}% узорка, потпуна синхронизација би пренела ~{files} датотека ({size})",
-      "canaryApproveFullSync": "Одобри потпуну синхронизацију"
+      "canaryApproveFullSync": "Одобри потпуну синхронизацију",
+      "profilePull": "Pull",
+      "profilePullDesc": "Удаљено → Локално, обриши сирочад, провери величину",
+      "profileRemoteBackup": "Удаљена резервна копија",
+      "profileRemoteBackupDesc": "Удаљено → Локално, провера checksum, без брисања"
     },
     "ui": {
       "syncing": "Sinhronizacija...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Шифровање фасцикле...",
       "errors": {
         "alreadyExists": "Унос са овим именом већ постоји",
-        "corruptedVault": "Датотека сефа је оштећена или скраћена",
         "diskFull": "Диск је пун — нема довољно простора за завршетак операције",
-        "genericError": "Дошло је до неочекиване грешке",
-        "networkError": "Мрежна грешка при приступу удаљеном сефу",
         "notAVault": "Ова датотека није валидан AeroVault контејнер",
-        "pathNotFound": "Датотека сефа није пронађена — можда је премештена или обрисана",
         "permissionDenied": "Приступ одбијен — проверите дозволе датотеке",
-        "vaultLocked": "Сеф је закључан од стране другог процеса",
-        "wrongPassword": "Погрешна лозинка — покушајте поново"
+        "wrongPassword": "Погрешна лозинка — покушајте поново",
+        "unsupportedVersion": "Неподржана верзија трезора",
+        "corrupted": "Датотека трезора је оштећена",
+        "fileNotFound": "Датотека није пронађена",
+        "directoryTooLarge": "Директоријум прелази ограничење величине",
+        "invalidPath": "Неважећа путања датотеке"
       },
       "extract": "Raspakuj",
       "extracted": "Извучено {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "укупно",
       "unlock": "Otključaj",
       "v1Standard": "AeroVault v1 (Standardni)",
-      "v2Advanced": "AeroVault v2 (Napredna bezbednost)"
+      "v2Advanced": "AeroVault v2 (Napredna bezbednost)",
+      "encryptFolderPreview": "{fileCount} фајлова у {dirCount} директоријума ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator trezor",
@@ -3266,6 +3270,27 @@
       "noLabels": "Нема доступних ознака. Направите ознаке у подешавањима Zoho WorkDrive.",
       "createLabel": "Направи налепницу",
       "labelName": "Назив налепнице"
+    },
+    "healthCheck": {
+      "title": "Provera stanja servera",
+      "subtitle": "Mrežna dijagnostika u realnom vremenu sa vaše lokacije",
+      "checkAll": "Proveri sve",
+      "checkOne": "Proveri ovaj server",
+      "checking": "Provera...",
+      "checked": "provereno",
+      "healthy": "Ispravan",
+      "degraded": "Degradiran",
+      "unreachable": "Nedostupan",
+      "error": "Greška",
+      "noServers": "Nema sačuvanih servera za proveru",
+      "score": "Rezultat",
+      "dnsResolution": "DNS rezolucija",
+      "tcpConnect": "TCP konekcija",
+      "tlsHandshake": "TLS rukovanje",
+      "httpResponse": "HTTP odgovor",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

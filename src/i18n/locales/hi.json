@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "क्लाउड ऑब्जेक्ट स्टोरेज, बैकअप और बड़े पैमाने पर फ़ाइल होस्टिंग के लिए आदर्श।",
       "webdavInfoLine1": "सर्वर URL, उपयोगकर्ता नाम और पासवर्ड की आवश्यकता है। डिफ़ॉल्ट रूप से पोर्ट 443 (HTTPS)।",
       "webdavInfoLine2": "स्व-होस्ट किए गए क्लाउड, NAS डिवाइस और फ़ाइल साझाकरण के लिए आदर्श।",
-      "selectProviderPrompt": "ऊपर एक प्रदाता चुनें या \"Custom\" चुनें",
       "seafileDesc": "ओपन-सोर्स क्लाउड स्टोरेज",
       "seafileTooltip": "Seafile - WebDAV समर्थन के साथ स्व-होस्टेड ओपन-सोर्स क्लाउड",
       "fileluDesc": "मल्टी-प्रोटोकॉल क्लाउड स्टोरेज",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "स्थिति",
       "canaryNoResults": "कोई नमूनाकृत फाइलें नहीं",
       "canaryProjection": "{percent}% नमूने के आधार पर, पूर्ण सिंक ~{files} फाइलें ({size}) स्थानांतरित करेगा",
-      "canaryApproveFullSync": "पूर्ण सिंक स्वीकृत करें"
+      "canaryApproveFullSync": "पूर्ण सिंक स्वीकृत करें",
+      "profilePull": "Pull",
+      "profilePullDesc": "रिमोट → लोकल, अनाथ हटाएं, आकार सत्यापित करें",
+      "profileRemoteBackup": "रिमोट बैकअप",
+      "profileRemoteBackupDesc": "रिमोट → लोकल, चेकसम सत्यापन, कोई हटाव नहीं"
     },
     "ui": {
       "syncing": "सिंक हो रहा है...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "फ़ोल्डर एन्क्रिप्ट हो रहा है...",
       "errors": {
         "alreadyExists": "इस नाम की एक प्रविष्टि पहले से मौजूद है",
-        "corruptedVault": "वॉल्ट फ़ाइल दूषित या अधूरी है",
         "diskFull": "डिस्क भरी हुई है — ऑपरेशन पूरा करने के लिए पर्याप्त स्थान नहीं",
-        "genericError": "एक अप्रत्याशित त्रुटि हुई",
-        "networkError": "दूरस्थ वॉल्ट तक पहुँचने में नेटवर्क त्रुटि",
         "notAVault": "यह फ़ाइल एक वैध AeroVault कंटेनर नहीं है",
-        "pathNotFound": "वॉल्ट फ़ाइल नहीं मिली — हो सकता है इसे स्थानांतरित या हटा दिया गया हो",
         "permissionDenied": "अनुमति अस्वीकृत — फ़ाइल अनुमतियाँ जाँचें",
-        "vaultLocked": "वॉल्ट किसी अन्य प्रक्रिया द्वारा लॉक है",
-        "wrongPassword": "गलत पासवर्ड — कृपया पुनः प्रयास करें"
+        "wrongPassword": "गलत पासवर्ड — कृपया पुनः प्रयास करें",
+        "unsupportedVersion": "असमर्थित वॉल्ट संस्करण",
+        "corrupted": "वॉल्ट फ़ाइल दूषित है",
+        "fileNotFound": "फ़ाइल नहीं मिली",
+        "directoryTooLarge": "निर्देशिका आकार सीमा से अधिक है",
+        "invalidPath": "अमान्य फ़ाइल पथ"
       },
       "extract": "निकालें",
       "extracted": "{name} निकाला गया",
@@ -2338,7 +2341,8 @@
       "totalItems": "कुल",
       "unlock": "अनलॉक करें",
       "v1Standard": "AeroVault v1 (मानक)",
-      "v2Advanced": "AeroVault v2 (उन्नत सुरक्षा)"
+      "v2Advanced": "AeroVault v2 (उन्नत सुरक्षा)",
+      "encryptFolderPreview": "{dirCount} निर्देशिकाओं में {fileCount} फ़ाइलें ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator वॉल्ट",
@@ -3125,9 +3129,6 @@
       "removeTag": "टैग हटाएं",
       "tags": "टैग"
     },
-    "preconfiguredProviders": "पूर्व-कॉन्फ़िगर्ड प्रदाता",
-    "customConnection": "कस्टम कनेक्शन",
-    "custom": "कस्टम",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "कोई लेबल उपलब्ध नहीं। नीचे एक बनाएं।",
       "createLabel": "लेबल बनाएं",
       "labelName": "लेबल का नाम"
+    },
+    "healthCheck": {
+      "title": "सर्वर स्वास्थ्य जाँच",
+      "subtitle": "आपकी स्थिति से रियल-टाइम नेटवर्क डायग्नोस्टिक्स",
+      "checkAll": "सभी जाँचें",
+      "checkOne": "इस सर्वर की जाँच करें",
+      "checking": "जाँच हो रही है...",
+      "checked": "जाँचा गया",
+      "healthy": "स्वस्थ",
+      "degraded": "धीमा",
+      "unreachable": "अगम्य",
+      "error": "त्रुटि",
+      "noServers": "जाँचने के लिए कोई सहेजे गए सर्वर नहीं हैं",
+      "score": "स्कोर",
+      "dnsResolution": "DNS रिज़ॉल्यूशन",
+      "tcpConnect": "TCP कनेक्शन",
+      "tlsHandshake": "TLS हैंडशेक",
+      "httpResponse": "HTTP प्रतिक्रिया",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "ক্লাউড অবজেক্ট স্টোরেজ, ব্যাকআপ এবং বড় আকারের ফাইল হোস্টিংয়ের জন্য আদর্শ।",
       "webdavInfoLine1": "সার্ভার URL, ব্যবহারকারীর নাম এবং পাসওয়ার্ড প্রয়োজন। ডিফল্টরূপে পোর্ট 443 (HTTPS)।",
       "webdavInfoLine2": "স্ব-হোস্টেড ক্লাউড, NAS ডিভাইস এবং ফাইল শেয়ারিংয়ের জন্য আদর্শ।",
-      "selectProviderPrompt": "উপরে একটি প্রদানকারী নির্বাচন করুন বা \"Custom\" চয়ন করুন",
       "seafileDesc": "ওপেন-সোর্স ক্লাউড স্টোরেজ",
       "seafileTooltip": "Seafile - WebDAV সমর্থন সহ স্ব-হোস্টেড ওপেন-সোর্স ক্লাউড",
       "fileluDesc": "মাল্টি-প্রোটোকল ক্লাউড স্টোরেজ",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "অবস্থা",
       "canaryNoResults": "কোনো নমুনাকৃত ফাইল নেই",
       "canaryProjection": "{percent}% নমুনার উপর ভিত্তি করে, সম্পূর্ণ সিঙ্ক ~{files}টি ফাইল ({size}) স্থানান্তর করবে",
-      "canaryApproveFullSync": "সম্পূর্ণ সিঙ্ক অনুমোদন করুন"
+      "canaryApproveFullSync": "সম্পূর্ণ সিঙ্ক অনুমোদন করুন",
+      "profilePull": "Pull",
+      "profilePullDesc": "রিমোট → লোকাল, অনাথ মুছুন, আকার যাচাই করুন",
+      "profileRemoteBackup": "রিমোট ব্যাকআপ",
+      "profileRemoteBackupDesc": "রিমোট → লোকাল, চেকসাম যাচাই, কোনো মুছে ফেলা নেই"
     },
     "ui": {
       "syncing": "সিঙ্ক হচ্ছে...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "ফোল্ডার এনক্রিপ্ট করা হচ্ছে...",
       "errors": {
         "alreadyExists": "এই নামের একটি এন্ট্রি ইতিমধ্যে বিদ্যমান",
-        "corruptedVault": "ভল্ট ফাইলটি দূষিত বা কাটা হয়েছে",
         "diskFull": "ডিস্ক পূর্ণ — অপারেশন সম্পন্ন করার জন্য পর্যাপ্ত জায়গা নেই",
-        "genericError": "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে",
-        "networkError": "দূরবর্তী ভল্ট অ্যাক্সেস করতে নেটওয়ার্ক ত্রুটি",
         "notAVault": "এই ফাইলটি একটি বৈধ AeroVault কন্টেইনার নয়",
-        "pathNotFound": "ভল্ট ফাইলটি পাওয়া যায়নি — এটি সরানো বা মুছে ফেলা হয়ে থাকতে পারে",
         "permissionDenied": "অনুমতি অস্বীকৃত — ফাইল অনুমতি পরীক্ষা করুন",
-        "vaultLocked": "ভল্ট অন্য প্রক্রিয়া দ্বারা লক করা আছে",
-        "wrongPassword": "ভুল পাসওয়ার্ড — আবার চেষ্টা করুন"
+        "wrongPassword": "ভুল পাসওয়ার্ড — আবার চেষ্টা করুন",
+        "unsupportedVersion": "অসমর্থিত ভল্ট সংস্করণ",
+        "corrupted": "ভল্ট ফাইলটি ক্ষতিগ্রস্ত",
+        "fileNotFound": "ফাইল পাওয়া যায়নি",
+        "directoryTooLarge": "ডিরেক্টরি আকার সীমা অতিক্রম করেছে",
+        "invalidPath": "অবৈধ ফাইল পাথ"
       },
       "extract": "এক্সট্রাক্ট",
       "extracted": "{name} এক্সট্র্যাক্ট হয়েছে",
@@ -2338,7 +2341,8 @@
       "totalItems": "মোট",
       "unlock": "আনলক",
       "v1Standard": "AeroVault v1 (স্ট্যান্ডার্ড)",
-      "v2Advanced": "AeroVault v2 (উন্নত নিরাপত্তা)"
+      "v2Advanced": "AeroVault v2 (উন্নত নিরাপত্তা)",
+      "encryptFolderPreview": "{dirCount} ডিরেক্টরিতে {fileCount} ফাইল ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator ভল্ট",
@@ -3266,6 +3270,27 @@
       "noLabels": "কোনো লেবেল উপলব্ধ নেই। Zoho WorkDrive সেটিংসে লেবেল তৈরি করুন।",
       "createLabel": "লেবেল তৈরি করুন",
       "labelName": "লেবেল নাম"
+    },
+    "healthCheck": {
+      "title": "সার্ভার স্বাস্থ্য পরীক্ষা",
+      "subtitle": "আপনার অবস্থান থেকে রিয়েল-টাইম নেটওয়ার্ক ডায়াগনস্টিকস",
+      "checkAll": "সব পরীক্ষা করুন",
+      "checkOne": "এই সার্ভার পরীক্ষা করুন",
+      "checking": "পরীক্ষা করা হচ্ছে...",
+      "checked": "পরীক্ষিত",
+      "healthy": "সুস্থ",
+      "degraded": "মন্থর",
+      "unreachable": "অপ্রাপ্য",
+      "error": "ত্রুটি",
+      "noServers": "পরীক্ষার জন্য কোনো সংরক্ষিত সার্ভার নেই",
+      "score": "স্কোর",
+      "dnsResolution": "DNS রেজল্যুশন",
+      "tcpConnect": "TCP সংযোগ",
+      "tlsHandshake": "TLS হ্যান্ডশেক",
+      "httpResponse": "HTTP প্রতিক্রিয়া",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -1647,7 +1647,11 @@
       "canaryStatus": "Stato",
       "canaryNoResults": "Nessun file campionato",
       "canaryProjection": "In base al campione del {percent}%, la sincronizzazione completa trasferirebbe circa {files} file ({size})",
-      "canaryApproveFullSync": "Approva sincronizzazione completa"
+      "canaryApproveFullSync": "Approva sincronizzazione completa",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remoto → Locale, elimina orfani, verifica dimensione",
+      "profileRemoteBackup": "Backup remoto",
+      "profileRemoteBackupDesc": "Remoto → Locale, verifica checksum, nessuna eliminazione"
     },
     "ui": {
       "syncing": "Sincronizzazione...",
@@ -2401,15 +2405,15 @@
       "encryptFolder": "Cifratura cartella in corso...",
       "errors": {
         "alreadyExists": "Esiste già una voce con questo nome",
-        "corruptedVault": "Il file del vault è corrotto o troncato",
         "diskFull": "Disco pieno — spazio insufficiente per completare l'operazione",
-        "genericError": "Si è verificato un errore imprevisto",
-        "networkError": "Errore di rete durante l'accesso al vault remoto",
         "notAVault": "Questo file non è un contenitore AeroVault valido",
-        "pathNotFound": "Il file del vault non è stato trovato — potrebbe essere stato spostato o eliminato",
         "permissionDenied": "Permesso negato — verifica i permessi del file",
-        "vaultLocked": "Il vault è bloccato da un altro processo",
-        "wrongPassword": "Password errata — riprova"
+        "wrongPassword": "Password errata — riprova",
+        "unsupportedVersion": "Versione del vault non supportata",
+        "corrupted": "Il file del vault è corrotto",
+        "fileNotFound": "File non trovato",
+        "directoryTooLarge": "La cartella supera il limite di dimensione",
+        "invalidPath": "Percorso file non valido"
       },
       "extract": "Estrai",
       "extracted": "Estratto {name}",
@@ -2464,7 +2468,8 @@
       "totalItems": "totale",
       "unlock": "Sblocca",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Sicurezza Avanzata)"
+      "v2Advanced": "AeroVault v2 (Sicurezza Avanzata)",
+      "encryptFolderPreview": "{fileCount} file in {dirCount} cartelle ({totalSize})"
     },
     "cryptomator": {
       "confirmPassword": "Conferma Password",
@@ -3255,6 +3260,27 @@
       "noLabels": "Nessuna etichetta disponibile. Crea etichette nelle impostazioni di Zoho WorkDrive.",
       "createLabel": "Crea etichetta",
       "labelName": "Nome etichetta"
+    },
+    "healthCheck": {
+      "title": "Controllo stato server",
+      "subtitle": "Diagnostica di rete in tempo reale dalla tua posizione",
+      "checkAll": "Controlla tutti",
+      "checkOne": "Controlla questo server",
+      "checking": "Verifica in corso...",
+      "checked": "verificato",
+      "healthy": "Funzionante",
+      "degraded": "Degradato",
+      "unreachable": "Non raggiungibile",
+      "error": "Errore",
+      "noServers": "Nessun server salvato da controllare",
+      "score": "Punteggio",
+      "dnsResolution": "Risoluzione DNS",
+      "tcpConnect": "Connessione TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Risposta HTTP",
+      "copyResults": "Copia risultati",
+      "copied": "Copiato!",
+      "batchChecking": "Verifica di {count} server in corso, attendere..."
     }
   }
 }

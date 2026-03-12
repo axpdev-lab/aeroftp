@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideelt til skybaseret objektlagring, sikkerhedskopier og storskalalet filhosting.",
       "webdavInfoLine1": "Kræver serverens URL, brugernavn og adgangskode. Port 443 (HTTPS) som standard.",
       "webdavInfoLine2": "Ideelt til selvhostede skyer, NAS-enheder og fildeling.",
-      "selectProviderPrompt": "Vælg en udbyder ovenfor eller vælg \"Custom\"",
       "seafileDesc": "Open source-skylagring",
       "seafileTooltip": "Seafile - Selvhostet open source-sky med WebDAV-understøttelse",
       "fileluDesc": "Multi-protokol cloud-lager",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Ingen udtagne filer",
       "canaryProjection": "Baseret på {percent}% stikprøve vil fuld synkronisering overføre ~{files} filer ({size})",
-      "canaryApproveFullSync": "Godkend fuld synkronisering"
+      "canaryApproveFullSync": "Godkend fuld synkronisering",
+      "profilePull": "Pull",
+      "profilePullDesc": "Fjern → Lokal, slet forældreløse, verificer størrelse",
+      "profileRemoteBackup": "Fjernbackup",
+      "profileRemoteBackupDesc": "Fjern → Lokal, checksum-verificering, ingen sletninger"
     },
     "ui": {
       "syncing": "Synkroniserer...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Krypterer mappe...",
       "errors": {
         "alreadyExists": "En post med dette navn findes allerede",
-        "corruptedVault": "Boks-filen er beskadiget eller afkortet",
         "diskFull": "Disk fuld — ikke nok plads til at fuldføre handlingen",
-        "genericError": "Der opstod en uventet fejl",
-        "networkError": "Netværksfejl under adgang til fjernboks",
         "notAVault": "Denne fil er ikke en gyldig AeroVault-beholder",
-        "pathNotFound": "Boks-filen blev ikke fundet — den kan være flyttet eller slettet",
         "permissionDenied": "Adgang nægtet — kontrollér filtilladelser",
-        "vaultLocked": "Boksen er låst af en anden proces",
-        "wrongPassword": "Forkert adgangskode — prøv venligst igen"
+        "wrongPassword": "Forkert adgangskode — prøv venligst igen",
+        "unsupportedVersion": "Ikke-understøttet boksversion",
+        "corrupted": "Boksfilen er beskadiget",
+        "fileNotFound": "Filen blev ikke fundet",
+        "directoryTooLarge": "Mappen overskrider størrelsesgrænsen",
+        "invalidPath": "Ugyldig filsti"
       },
       "extract": "Udpak",
       "extracted": "{name} udpakket",
@@ -2338,7 +2341,8 @@
       "totalItems": "i alt",
       "unlock": "Lås op",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Avanceret sikkerhed)"
+      "v2Advanced": "AeroVault v2 (Avanceret sikkerhed)",
+      "encryptFolderPreview": "{fileCount} filer i {dirCount} mapper ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-boks",
@@ -3266,6 +3270,27 @@
       "noLabels": "Ingen mærker tilgængelige. Opret mærker i Zoho WorkDrive-indstillinger.",
       "createLabel": "Opret etiket",
       "labelName": "Etiketnavne"
+    },
+    "healthCheck": {
+      "title": "Serversundhedstjek",
+      "subtitle": "Netværksdiagnostik i realtid fra din position",
+      "checkAll": "Tjek alle",
+      "checkOne": "Tjek denne server",
+      "checking": "Tjekker...",
+      "checked": "tjekket",
+      "healthy": "Sund",
+      "degraded": "Forringet",
+      "unreachable": "Utilgængelig",
+      "error": "Fejl",
+      "noServers": "Ingen gemte servere at tjekke",
+      "score": "Score",
+      "dnsResolution": "DNS-opløsning",
+      "tcpConnect": "TCP-forbindelse",
+      "tlsHandshake": "TLS-handshake",
+      "httpResponse": "HTTP-svar",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

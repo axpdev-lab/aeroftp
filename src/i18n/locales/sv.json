@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Perfekt för molnobjektlagring, säkerhetskopior och storskalig filhosting.",
       "webdavInfoLine1": "Kräver server-URL, användarnamn och lösenord. Port 443 (HTTPS) som standard.",
       "webdavInfoLine2": "Perfekt för själv-hostade moln, NAS-enheter och fildelning.",
-      "selectProviderPrompt": "Välj en leverantör ovan eller välj \"Custom\"",
       "seafileDesc": "Molnlagring med öppen källkod",
       "seafileTooltip": "Seafile - Självhostat moln med öppen källkod och WebDAV-stöd",
       "fileluDesc": "Flerprotokoll molnlagring",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Inga uttagna filer",
       "canaryProjection": "Baserat på {percent}% urval skulle full synkronisering överföra ~{files} filer ({size})",
-      "canaryApproveFullSync": "Godkänn full synkronisering"
+      "canaryApproveFullSync": "Godkänn full synkronisering",
+      "profilePull": "Pull",
+      "profilePullDesc": "Fjärr → Lokal, radera föräldralösa, verifiera storlek",
+      "profileRemoteBackup": "Fjärrbackup",
+      "profileRemoteBackupDesc": "Fjärr → Lokal, checksum-verifiering, inga raderingar"
     },
     "ui": {
       "syncing": "Synkroniserar...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Krypterar mapp...",
       "errors": {
         "alreadyExists": "En post med detta namn finns redan",
-        "corruptedVault": "Valvfilen är skadad eller trunkerad",
         "diskFull": "Disken är full — inte tillräckligt med utrymme för att slutföra åtgärden",
-        "genericError": "Ett oväntat fel uppstod",
-        "networkError": "Nätverksfel vid åtkomst till fjärrvalv",
         "notAVault": "Den här filen är inte en giltig AeroVault-behållare",
-        "pathNotFound": "Valvfilen hittades inte — den kan ha flyttats eller raderats",
         "permissionDenied": "Åtkomst nekad — kontrollera filbehörigheter",
-        "vaultLocked": "Valvet är låst av en annan process",
-        "wrongPassword": "Fel lösenord — försök igen"
+        "wrongPassword": "Fel lösenord — försök igen",
+        "unsupportedVersion": "Valvversionen stods inte",
+        "corrupted": "Valvfilen ar skadad",
+        "fileNotFound": "Filen hittades inte",
+        "directoryTooLarge": "Katalogen overskrider storleksgransen",
+        "invalidPath": "Ogiltig sokvag"
       },
       "extract": "Extrahera",
       "extracted": "Extraherat {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "totalt",
       "unlock": "Lås upp",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Avancerad säkerhet)"
+      "v2Advanced": "AeroVault v2 (Avancerad säkerhet)",
+      "encryptFolderPreview": "{fileCount} filer i {dirCount} kataloger ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-valv",
@@ -3266,6 +3270,27 @@
       "noLabels": "Inga etiketter tillgängliga. Skapa etiketter i Zoho WorkDrive-inställningar.",
       "createLabel": "Skapa etikett",
       "labelName": "Etikett namn"
+    },
+    "healthCheck": {
+      "title": "Serverhälsokontroll",
+      "subtitle": "Nätverksdiagnostik i realtid från din position",
+      "checkAll": "Kontrollera alla",
+      "checkOne": "Kontrollera denna server",
+      "checking": "Kontrollerar...",
+      "checked": "kontrollerad",
+      "healthy": "Frisk",
+      "degraded": "Försämrad",
+      "unreachable": "Onåbar",
+      "error": "Fel",
+      "noServers": "Inga sparade servrar att kontrollera",
+      "score": "Poäng",
+      "dnsResolution": "DNS-upplösning",
+      "tcpConnect": "TCP-anslutning",
+      "tlsHandshake": "TLS-handskakning",
+      "httpResponse": "HTTP-svar",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

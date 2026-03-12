@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideāls mākoņa objektu glabāšanai, dublējumiem un liela mēroga failu mitināšanai.",
       "webdavInfoLine1": "Nepieciešams servera URL, lietotājvārds un parole. Ports 443 (HTTPS) ir noklusējums.",
       "webdavInfoLine2": "Ideāls pašapkalpojuma mākoņiem, NAS ierīcēm un failu koplietošanai.",
-      "selectProviderPrompt": "Atlasiet pakalpojuma sniedzēju iepriekš vai atlasiet \"Custom\"",
       "seafileDesc": "Atvērtā pirmkoda mākoņkrātuve",
       "seafileTooltip": "Seafile - Pašmitinots atvērtā pirmkoda mākonis ar WebDAV atbalstu",
       "fileluDesc": "Daudzprotokolu mākoņkrātuve",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Statuss",
       "canaryNoResults": "Nav izlasītu failu",
       "canaryProjection": "Pamatojoties uz {percent}% izlasi, pilnā sinhronizācija pārsūtītu ~{files} failus ({size})",
-      "canaryApproveFullSync": "Apstiprināt pilno sinhronizāciju"
+      "canaryApproveFullSync": "Apstiprināt pilno sinhronizāciju",
+      "profilePull": "Pull",
+      "profilePullDesc": "Attālais → Lokālais, dzēst bāreņus, pārbaudīt izmēru",
+      "profileRemoteBackup": "Attālā dublējumkopija",
+      "profileRemoteBackupDesc": "Attālais → Lokālais, checksum pārbaude, bez dzēšanas"
     },
     "ui": {
       "syncing": "Sinhronizē...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Šifrē mapi...",
       "errors": {
         "alreadyExists": "Ieraksts ar šādu nosaukumu jau pastāv",
-        "corruptedVault": "Seifa fails ir bojāts vai apgriezts",
         "diskFull": "Disks ir pilns — nepietiek vietas darbības pabeigšanai",
-        "genericError": "Radās neparedzēta kļūda",
-        "networkError": "Tīkla kļūda, piekļūstot attālinātajam seifam",
         "notAVault": "Šis fails nav derīgs AeroVault konteiners",
-        "pathNotFound": "Seifa fails nav atrasts — iespējams, tas ir pārvietots vai dzēsts",
         "permissionDenied": "Piekļuve liegta — pārbaudiet faila atļaujas",
-        "vaultLocked": "Seifs ir bloķēts cita procesa dēļ",
-        "wrongPassword": "Nepareiza parole — lūdzu, mēģiniet vēlreiz"
+        "wrongPassword": "Nepareiza parole — lūdzu, mēģiniet vēlreiz",
+        "unsupportedVersion": "Neatbalstīta glabātuves versija",
+        "corrupted": "Glabātuves fails ir bojāts",
+        "fileNotFound": "Fails nav atrasts",
+        "directoryTooLarge": "Direktorija pārsniedz izmēra ierobežojumu",
+        "invalidPath": "Nederīgs faila ceļš"
       },
       "extract": "Izvilkt",
       "extracted": "Izvilkts {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "kopā",
       "unlock": "Atbloķēt",
       "v1Standard": "AeroVault v1 (standarta)",
-      "v2Advanced": "AeroVault v2 (paplašināta drošība)"
+      "v2Advanced": "AeroVault v2 (paplašināta drošība)",
+      "encryptFolderPreview": "{fileCount} faili {dirCount} direktorijās ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator glabātuve",
@@ -3125,9 +3129,6 @@
       "removeTag": "Noņemt birku",
       "tags": "Birkas"
     },
-    "preconfiguredProviders": "Iepriekš konfigurēti pakalpojumu sniedzēji",
-    "customConnection": "Pielāgots savienojums",
-    "custom": "Pielāgots",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Nav pieejamu etiķešu. Izveidojiet etiķetes Zoho WorkDrive iestatījumos.",
       "createLabel": "Izveidot etiķeti",
       "labelName": "Etiķetes nosaukums"
+    },
+    "healthCheck": {
+      "title": "Servera veselības pārbaude",
+      "subtitle": "Reāllaika tīkla diagnostika no jūsu atrašanās vietas",
+      "checkAll": "Pārbaudīt visus",
+      "checkOne": "Pārbaudīt šo serveri",
+      "checking": "Pārbauda...",
+      "checked": "pārbaudīts",
+      "healthy": "Darbojas",
+      "degraded": "Pasliktināts",
+      "unreachable": "Nesasniedzams",
+      "error": "Kļūda",
+      "noServers": "Nav saglabātu serveru pārbaudei",
+      "score": "Vērtējums",
+      "dnsResolution": "DNS izšķiršana",
+      "tcpConnect": "TCP savienojums",
+      "tlsHandshake": "TLS rokasspiediens",
+      "httpResponse": "HTTP atbilde",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

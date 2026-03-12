@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Идеален для облачного хранилища объектов, резервных копий и крупномасштабного размещения файлов.",
       "webdavInfoLine1": "Требует URL сервера, имени пользователя и пароля. По умолчанию порт 443 (HTTPS).",
       "webdavInfoLine2": "Идеален для самостоятельно размещенных облаков, устройств NAS и совместного доступа к файлам.",
-      "selectProviderPrompt": "Выберите провайдера выше или выберите \"Custom\"",
       "seafileDesc": "Облачное хранилище с открытым кодом",
       "seafileTooltip": "Seafile - Саморазмещаемое облако с открытым кодом и поддержкой WebDAV",
       "fileluDesc": "Многопротокольное облачное хранилище",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Статус",
       "canaryNoResults": "Нет отобранных файлов",
       "canaryProjection": "На основе выборки {percent}%, полная синхронизация передаст ок. {files} файлов ({size})",
-      "canaryApproveFullSync": "Одобрить полную синхронизацию"
+      "canaryApproveFullSync": "Одобрить полную синхронизацию",
+      "profilePull": "Pull",
+      "profilePullDesc": "Удалённый → Локальный, удалить лишние, проверка размера",
+      "profileRemoteBackup": "Удалённый бэкап",
+      "profileRemoteBackupDesc": "Удалённый → Локальный, проверка checksum, без удалений"
     },
     "ui": {
       "syncing": "Синхронизация...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Шифрование папки...",
       "errors": {
         "alreadyExists": "Запись с таким именем уже существует",
-        "corruptedVault": "Файл хранилища повреждён или обрезан",
         "diskFull": "Диск заполнен — недостаточно места для завершения операции",
-        "genericError": "Произошла непредвиденная ошибка",
-        "networkError": "Ошибка сети при доступе к удалённому хранилищу",
         "notAVault": "Этот файл не является допустимым контейнером AeroVault",
-        "pathNotFound": "Файл хранилища не найден — возможно, он был перемещён или удалён",
         "permissionDenied": "Доступ запрещён — проверьте права доступа к файлу",
-        "vaultLocked": "Хранилище заблокировано другим процессом",
-        "wrongPassword": "Неверный пароль — попробуйте снова"
+        "wrongPassword": "Неверный пароль — попробуйте снова",
+        "unsupportedVersion": "Неподдерживаемая версия хранилища",
+        "corrupted": "Файл хранилища поврежден",
+        "fileNotFound": "Файл не найден",
+        "directoryTooLarge": "Каталог превышает ограничение размера",
+        "invalidPath": "Недопустимый путь к файлу"
       },
       "extract": "Извлечь",
       "extracted": "Извлечено {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "всего",
       "unlock": "Разблокировать",
       "v1Standard": "AeroVault v1 (Стандартный)",
-      "v2Advanced": "AeroVault v2 (Расширенная безопасность)"
+      "v2Advanced": "AeroVault v2 (Расширенная безопасность)",
+      "encryptFolderPreview": "{fileCount} файлов в {dirCount} каталогах ({totalSize})"
     },
     "cryptomator": {
       "title": "Хранилище Cryptomator",
@@ -3256,6 +3260,27 @@
       "noLabels": "Нет доступных меток. Создавайте метки в параметрах Zoho WorkDrive.",
       "createLabel": "Создать метку",
       "labelName": "Название метки"
+    },
+    "healthCheck": {
+      "title": "Проверка состояния сервера",
+      "subtitle": "Сетевая диагностика в реальном времени из вашего расположения",
+      "checkAll": "Проверить все",
+      "checkOne": "Проверить этот сервер",
+      "checking": "Проверка...",
+      "checked": "проверено",
+      "healthy": "Исправен",
+      "degraded": "Ухудшен",
+      "unreachable": "Недоступен",
+      "error": "Ошибка",
+      "noServers": "Нет сохранённых серверов для проверки",
+      "score": "Оценка",
+      "dnsResolution": "Разрешение DNS",
+      "tcpConnect": "Подключение TCP",
+      "tlsHandshake": "Рукопожатие TLS",
+      "httpResponse": "Ответ HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

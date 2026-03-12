@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal für Cloud-Objektspeicher, Sicherungen und großmaßstäbliches Datei-Hosting.",
       "webdavInfoLine1": "Erfordert Server-URL, Benutzername und Passwort. Port 443 (HTTPS) standardmäßig.",
       "webdavInfoLine2": "Ideal für selbstgehostete Clouds, NAS-Geräte und Dateifreigabe.",
-      "selectProviderPrompt": "Wählen Sie oben einen Anbieter aus oder wählen Sie \"Custom\"",
       "seafileDesc": "Open-Source Cloud-Speicher",
       "seafileTooltip": "Seafile - Selbst gehosteter Open-Source-Cloud-Speicher mit WebDAV-Unterstützung",
       "fileluDesc": "Multi-Protokoll Cloud-Speicher",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Keine Stichprobendateien",
       "canaryProjection": "Basierend auf einer {percent}%-Stichprobe wuerde die vollstaendige Synchronisierung ca. {files} Dateien ({size}) uebertragen",
-      "canaryApproveFullSync": "Vollstaendige Synchronisierung genehmigen"
+      "canaryApproveFullSync": "Vollstaendige Synchronisierung genehmigen",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remote → Lokal, Waisen löschen, Größe prüfen",
+      "profileRemoteBackup": "Remote-Sicherung",
+      "profileRemoteBackupDesc": "Remote → Lokal, Checksum-Prüfung, keine Löschungen"
     },
     "ui": {
       "syncing": "Synchronisiere...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Ordner wird verschlüsselt...",
       "errors": {
         "alreadyExists": "Ein Eintrag mit diesem Namen existiert bereits",
-        "corruptedVault": "Tresor-Datei ist beschädigt oder abgeschnitten",
         "diskFull": "Festplatte voll — nicht genügend Speicherplatz für den Vorgang",
-        "genericError": "Ein unerwarteter Fehler ist aufgetreten",
-        "networkError": "Netzwerkfehler beim Zugriff auf entfernten Tresor",
         "notAVault": "Diese Datei ist kein gültiger AeroVault-Container",
-        "pathNotFound": "Die Tresor-Datei wurde nicht gefunden — sie wurde möglicherweise verschoben oder gelöscht",
         "permissionDenied": "Zugriff verweigert — Dateiberechtigungen prüfen",
-        "vaultLocked": "Tresor wird von einem anderen Prozess gesperrt",
-        "wrongPassword": "Falsches Passwort — bitte erneut versuchen"
+        "wrongPassword": "Falsches Passwort — bitte erneut versuchen",
+        "unsupportedVersion": "Nicht unterstützte Tresor-Version",
+        "corrupted": "Tresordatei ist beschädigt",
+        "fileNotFound": "Datei nicht gefunden",
+        "directoryTooLarge": "Verzeichnis überschreitet die Größenbeschränkung",
+        "invalidPath": "Ungültiger Dateipfad"
       },
       "extract": "Entpacken",
       "extracted": "{name} entpackt",
@@ -2338,7 +2341,8 @@
       "totalItems": "gesamt",
       "unlock": "Entsperren",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Erweiterte Sicherheit)"
+      "v2Advanced": "AeroVault v2 (Erweiterte Sicherheit)",
+      "encryptFolderPreview": "{fileCount} Dateien in {dirCount} Verzeichnissen ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-Tresor",
@@ -3256,6 +3260,27 @@
       "noLabels": "Keine Beschriftungen verfügbar. Erstellen Sie Beschriftungen in den Einstellungen von Zoho WorkDrive.",
       "createLabel": "Etikett erstellen",
       "labelName": "Etikettname"
+    },
+    "healthCheck": {
+      "title": "Server-Gesundheitsprüfung",
+      "subtitle": "Echtzeit-Netzwerkdiagnose von Ihrem Standort",
+      "checkAll": "Alle prüfen",
+      "checkOne": "Diesen Server prüfen",
+      "checking": "Prüfe...",
+      "checked": "geprüft",
+      "healthy": "Fehlerfrei",
+      "degraded": "Beeinträchtigt",
+      "unreachable": "Nicht erreichbar",
+      "error": "Fehler",
+      "noServers": "Keine gespeicherten Server zum Prüfen",
+      "score": "Bewertung",
+      "dnsResolution": "DNS-Auflösung",
+      "tcpConnect": "TCP-Verbindung",
+      "tlsHandshake": "TLS-Handshake",
+      "httpResponse": "HTTP-Antwort",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "非常适合云对象存储、备份和大规模文件托管。",
       "webdavInfoLine1": "需要服务器 URL、用户名和密码。默认端口 443（HTTPS）。",
       "webdavInfoLine2": "非常适合自托管云、NAS 设备和文件共享。",
-      "selectProviderPrompt": "选择上方的提供商或选择 \"Custom\"",
       "seafileDesc": "开源云存储",
       "seafileTooltip": "Seafile - 支持WebDAV的自托管开源云存储",
       "fileluDesc": "多协议云存储",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "状态",
       "canaryNoResults": "无采样文件",
       "canaryProjection": "基于 {percent}% 的样本，完整同步将传输约 {files} 个文件（{size}）",
-      "canaryApproveFullSync": "批准完整同步"
+      "canaryApproveFullSync": "批准完整同步",
+      "profilePull": "Pull",
+      "profilePullDesc": "远程 → 本地，删除孤立文件，验证大小",
+      "profileRemoteBackup": "远程备份",
+      "profileRemoteBackupDesc": "远程 → 本地，校验和验证，不删除"
     },
     "ui": {
       "syncing": "正在同步...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "正在加密文件夹...",
       "errors": {
         "alreadyExists": "已存在同名条目",
-        "corruptedVault": "保险库文件已损坏或被截断",
         "diskFull": "磁盘已满 — 没有足够的空间完成操作",
-        "genericError": "发生了意外错误",
-        "networkError": "访问远程保险库时出现网络错误",
         "notAVault": "此文件不是有效的 AeroVault 容器",
-        "pathNotFound": "未找到保险库文件 — 可能已被移动或删除",
         "permissionDenied": "权限被拒绝 — 请检查文件权限",
-        "vaultLocked": "保险库被另一个进程锁定",
-        "wrongPassword": "密码错误 — 请重试"
+        "wrongPassword": "密码错误 — 请重试",
+        "unsupportedVersion": "不支持的保险库版本",
+        "corrupted": "保险库文件已损坏",
+        "fileNotFound": "文件未找到",
+        "directoryTooLarge": "目录超出大小限制",
+        "invalidPath": "文件路径无效"
       },
       "extract": "提取",
       "extracted": "已解压 {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "总计",
       "unlock": "解锁",
       "v1Standard": "AeroVault v1（标准）",
-      "v2Advanced": "AeroVault v2（高级安全）"
+      "v2Advanced": "AeroVault v2（高级安全）",
+      "encryptFolderPreview": "{dirCount} 个目录中的 {fileCount} 个文件 ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator 保险库",
@@ -3115,9 +3119,6 @@
       "removeTag": "移除标签",
       "tags": "标签"
     },
-    "preconfiguredProviders": "预配置的提供商",
-    "customConnection": "自定义连接",
-    "custom": "自定义",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "没有可用的标签。在 Zoho WorkDrive 设置中创建标签。",
       "createLabel": "创建标签",
       "labelName": "标签名称"
+    },
+    "healthCheck": {
+      "title": "服务器健康检查",
+      "subtitle": "从您的位置进行实时网络诊断",
+      "checkAll": "检查全部",
+      "checkOne": "检查此服务器",
+      "checking": "检查中...",
+      "checked": "已检查",
+      "healthy": "正常",
+      "degraded": "性能下降",
+      "unreachable": "无法访问",
+      "error": "错误",
+      "noServers": "没有已保存的服务器可供检查",
+      "score": "评分",
+      "dnsResolution": "DNS 解析",
+      "tcpConnect": "TCP 连接",
+      "tlsHandshake": "TLS 握手",
+      "httpResponse": "HTTP 响应",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

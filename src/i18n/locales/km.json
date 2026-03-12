@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "ល្អបំផុតសម្រាប់ការផ្ទុកវត្ថុក្នុងពពក ការបម្រុងទុក និងការផ្តល់សេវាកម្មឯកសារក្នុងមាត្រដ្ឋានធំ។",
       "webdavInfoLine1": "ត្រូវការ URL ម៉ាស៊ីនបម្រើ ឈ្មោះឈានលើ និងលេខសម្ងាត់។ ច្រក 443 (HTTPS) គឺលំនាំដើម។",
       "webdavInfoLine2": "ល្អបំផុតសម្រាប់ពពកដែលរៀបចំដោយខ្លួនឯង ឧបករណ៍ NAS និងការចែករំលែកឯកសារ។",
-      "selectProviderPrompt": "ជ្រើសរើសក្រុមហ៊ុនផ្តល់ដំណើរការខាងលើ ឬជ្រើសរើស \"Custom\"",
       "seafileDesc": "ការប្រើក្លោដលើប្រភេទបើក",
       "seafileTooltip": "Seafile - ក្លោដប្រភេទបើកស្រោរោស្តដោយខ្លួនឯងដែលគាំទ្រត្រូវ WebDAV",
       "fileluDesc": "ការផ្ទុកទិន្នន័យលើពពកច្រើនពិធីការ",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "ស្ថានភាព",
       "canaryNoResults": "គ្មានឯកសារគំរូ",
       "canaryProjection": "ផ្អែកលើគំរូ {percent}% សមវក្កម្មពេញលេញនឹងផ្ទេរ ~{files} ឯកសារ ({size})",
-      "canaryApproveFullSync": "អនុម័តសមវក្កម្មពេញលេញ"
+      "canaryApproveFullSync": "អនុម័តសមវក្កម្មពេញលេញ",
+      "profilePull": "Pull",
+      "profilePullDesc": "ពីចម្ងាយ → មូលដ្ឋាន, លុបឯកសារកំព្រា, ផ្ទៀងផ្ទាត់ទំហំ",
+      "profileRemoteBackup": "ការបម្រុងទុកពីចម្ងាយ",
+      "profileRemoteBackupDesc": "ពីចម្ងាយ → មូលដ្ឋាន, ផ្ទៀងផ្ទាត់ checksum, គ្មានការលុប"
     },
     "ui": {
       "syncing": "កំពុងធ្វើសមកាលកម្ម...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "កំពុងអ៊ិនគ្រីបថត...",
       "errors": {
         "alreadyExists": "ធាតុដែលមានឈ្មោះនេះមានរួចហើយ",
-        "corruptedVault": "ឯកសារសុវត្ថិភាពខូច ឬត្រូវបានកាត់ខ្លី",
         "diskFull": "ថាសពេញ — គ្មានទំហំគ្រប់គ្រាន់ដើម្បីបញ្ចប់ប្រតិបត្តិការ",
-        "genericError": "មានកំហុសដែលមិនបានរំពឹងទុកកើតឡើង",
-        "networkError": "កំហុសបណ្តាញពេលចូលប្រើសុវត្ថិភាពពីចម្ងាយ",
         "notAVault": "ឯកសារនេះមិនមែនជាកុងតឺន័រ AeroVault ត្រឹមត្រូវទេ",
-        "pathNotFound": "រកមិនឃើញឯកសារសុវត្ថិភាព — វាអាចត្រូវបានផ្លាស់ទី ឬលុបចេញ",
         "permissionDenied": "សិទ្ធិត្រូវបានបដិសេធ — ពិនិត្យមើលសិទ្ធិឯកសារ",
-        "vaultLocked": "សុវត្ថិភាពត្រូវបានចាក់សោដោយដំណើរការផ្សេង",
-        "wrongPassword": "ពាក្យសម្ងាត់ខុស — សូមព្យាយាមម្តងទៀត"
+        "wrongPassword": "ពាក្យសម្ងាត់ខុស — សូមព្យាយាមម្តងទៀត",
+        "unsupportedVersion": "កំណែប្រអាប់ថេមិនត្រូវបានគាំទ្រ",
+        "corrupted": "ហ្វាអិលថេមិនត្រូវបានខូច",
+        "fileNotFound": "រកមិនឃើញហ្វាអិល",
+        "directoryTooLarge": "ថាស់គំនិតវើសកំណត់ទំហំ",
+        "invalidPath": "ផ្លូវហ្វាអិលមិនត្រឹមត្រូវ"
       },
       "extract": "ស្រង់ចេញ",
       "extracted": "បានស្រង់ {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "សរុប",
       "unlock": "ដោះសោ",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Advanced Security)"
+      "v2Advanced": "AeroVault v2 (Advanced Security)",
+      "encryptFolderPreview": "{fileCount} ហ្វាអិល ក្នុង {dirCount} ថាស់គំនិត ({totalSize})"
     },
     "cryptomator": {
       "title": "វ៉ាល់ Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "លុបស្លាក",
       "tags": "ស្លាក"
     },
-    "preconfiguredProviders": "ក្រុមហ៊ុនផ្តល់សេវាកម្មដែលបានកំណត់ទុកជាមុន",
-    "customConnection": "ការតភ្ជាប់ដែលបាន​ប្ដូរ​ប្រែ",
-    "custom": "ប្ដូរ​ប្រែ",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3288,6 +3289,27 @@
       "noLabels": "មិនមានស្លាកទេ។ បង្កើតមួយខាងក្រោម។",
       "createLabel": "បង្កើតស្លាក",
       "labelName": "ឈ្មោះស្លាក"
+    },
+    "healthCheck": {
+      "title": "ការពិនិត្យសុខភាពម៉ាស៊ីន​មែ",
+      "subtitle": "ការដំណើរការ​បញ្ហា​បញ្ហា​ប្រព័ន្ធ​ចំណុច​ពិតប្រាកដ​ពី​ទីតាំង​របស់​អ្នក",
+      "checkAll": "ពិនិត្យ​ទាំង​អស់",
+      "checkOne": "ពិនិត្យ​ម៉ាស៊ីន​មែ​នេះ",
+      "checking": "កំពុង​ពិនិត្យ...",
+      "checked": "បាន​ពិនិត្យ",
+      "healthy": "សុខភាព​ល្អ",
+      "degraded": "ធ្លាក់​ចុះ",
+      "unreachable": "មិន​អាច​ទាក់ទង​បាន",
+      "error": "កំហុស",
+      "noServers": "គ្មាន​ម៉ាស៊ីន​មែ​ដែល​បាន​រក្សា​ទុក​ដើម្បី​ពិនិត្យ",
+      "score": "ពិន្ទុ",
+      "dnsResolution": "ការ​ដោះស្រាយ DNS",
+      "tcpConnect": "ការ​តភ្ជាប់ TCP",
+      "tlsHandshake": "ការ​ចាប់ត្រា TLS",
+      "httpResponse": "ការ​ឆ្លើយតប HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

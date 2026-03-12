@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ιδανικό για αποθήκευση αντικειμένων στο cloud, αντίγραφα ασφαλείας και φιλοξενία αρχείων σε μεγάλη κλίμακα.",
       "webdavInfoLine1": "Απαιτεί URL διακομιστή, όνομα χρήστη και κωδικό πρόσβασης. Θύρα 443 (HTTPS) από προεπιλογή.",
       "webdavInfoLine2": "Ιδανικό για αυτοφιλοξενούμενα clouds, συσκευές NAS και κοινή χρήση αρχείων.",
-      "selectProviderPrompt": "Επιλέξτε έναν πάροχο παραπάνω ή επιλέξτε \"Custom\"",
       "seafileDesc": "Αποθηκευτικός χώρος cloud ανοιχτού κώδικα",
       "seafileTooltip": "Seafile - Αυτο-φιλοξενούμενο cloud ανοιχτού κώδικα με υποστήριξη WebDAV",
       "fileluDesc": "Αποθήκευση νέφους πολλαπλών πρωτοκόλλων",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Κατάσταση",
       "canaryNoResults": "Δεν υπάρχουν δειγματοληπτικά αρχεία",
       "canaryProjection": "Με βάση το {percent}% δείγμα, ο πλήρης συγχρονισμός θα μετέφερε ~{files} αρχεία ({size})",
-      "canaryApproveFullSync": "Έγκριση πλήρους συγχρονισμού"
+      "canaryApproveFullSync": "Έγκριση πλήρους συγχρονισμού",
+      "profilePull": "Pull",
+      "profilePullDesc": "Απομακρυσμένο → Τοπικό, διαγραφή ορφανών, επαλήθευση μεγέθους",
+      "profileRemoteBackup": "Απομακρυσμένο αντίγραφο",
+      "profileRemoteBackupDesc": "Απομακρυσμένο → Τοπικό, επαλήθευση checksum, χωρίς διαγραφές"
     },
     "ui": {
       "syncing": "Συγχρονισμός...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Κρυπτογράφηση φακέλου...",
       "errors": {
         "alreadyExists": "Μια καταχώρηση με αυτό το όνομα υπάρχει ήδη",
-        "corruptedVault": "Το αρχείο θησαυροφυλακίου είναι κατεστραμμένο ή κομμένο",
         "diskFull": "Ο δίσκος είναι γεμάτος — δεν υπάρχει αρκετός χώρος για την ολοκλήρωση",
-        "genericError": "Παρουσιάστηκε ένα μη αναμενόμενο σφάλμα",
-        "networkError": "Σφάλμα δικτύου κατά την πρόσβαση στο απομακρυσμένο θησαυροφυλάκιο",
         "notAVault": "Αυτό το αρχείο δεν είναι έγκυρο δοχείο AeroVault",
-        "pathNotFound": "Το αρχείο θησαυροφυλακίου δεν βρέθηκε — μπορεί να μετακινήθηκε ή διαγράφηκε",
         "permissionDenied": "Η πρόσβαση απορρίφθηκε — ελέγξτε τα δικαιώματα αρχείου",
-        "vaultLocked": "Το θησαυροφυλάκιο είναι κλειδωμένο από άλλη διεργασία",
-        "wrongPassword": "Λάθος κωδικός — παρακαλώ δοκιμάστε ξανά"
+        "wrongPassword": "Λάθος κωδικός — παρακαλώ δοκιμάστε ξανά",
+        "unsupportedVersion": "Μη υποστηριζόμενη έκδοση θησαυροφυλακίου",
+        "corrupted": "Το αρχείο θησαυροφυλακίου είναι κατεστραμμένο",
+        "fileNotFound": "Το αρχείο δεν βρέθηκε",
+        "directoryTooLarge": "Ο κατάλογος υπερβαίνει το όριο μεγέθους",
+        "invalidPath": "Μη έγκυρη διαδρομή αρχείου"
       },
       "extract": "Εξαγωγή",
       "extracted": "Εξήχθη {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "σύνολο",
       "unlock": "Ξεκλείδωμα",
       "v1Standard": "AeroVault v1 (Τυπικό)",
-      "v2Advanced": "AeroVault v2 (Προηγμένη Ασφάλεια)"
+      "v2Advanced": "AeroVault v2 (Προηγμένη Ασφάλεια)",
+      "encryptFolderPreview": "{fileCount} αρχεία σε {dirCount} καταλόγους ({totalSize})"
     },
     "cryptomator": {
       "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "Αφαίρεση ετικέτας",
       "tags": "Ετικέτες"
     },
-    "preconfiguredProviders": "Προρυθμισμένοι Πάροχοι",
-    "customConnection": "Προσαρμοσμένη Σύνδεση",
-    "custom": "Προσαρμοσμένο",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Δεν υπάρχουν διαθέσιμες ετικέτες. Δημιουργήστε ετικέτες στις ρυθμίσεις Zoho WorkDrive.",
       "createLabel": "Δημιουργία ετικέτας",
       "labelName": "Όνομα ετικέτας"
+    },
+    "healthCheck": {
+      "title": "Έλεγχος υγείας διακομιστή",
+      "subtitle": "Διαγνωστικά δικτύου σε πραγματικό χρόνο από τη θέση σας",
+      "checkAll": "Έλεγχος όλων",
+      "checkOne": "Έλεγχος αυτού του διακομιστή",
+      "checking": "Έλεγχος...",
+      "checked": "ελεγμένο",
+      "healthy": "Υγιής",
+      "degraded": "Υποβαθμισμένος",
+      "unreachable": "Μη προσβάσιμος",
+      "error": "Σφάλμα",
+      "noServers": "Δεν υπάρχουν αποθηκευμένοι διακομιστές για έλεγχο",
+      "score": "Βαθμολογία",
+      "dnsResolution": "Επίλυση DNS",
+      "tcpConnect": "Σύνδεση TCP",
+      "tlsHandshake": "TLS handshake",
+      "httpResponse": "Απόκριση HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

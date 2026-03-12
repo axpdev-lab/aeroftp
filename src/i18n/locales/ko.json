@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "클라우드 객체 저장소, 백업 및 대규모 파일 호스팅에 이상적입니다.",
       "webdavInfoLine1": "서버 URL, 사용자 이름 및 암호가 필요합니다. 포트 443(HTTPS)이 기본값입니다.",
       "webdavInfoLine2": "자체 호스팅 클라우드, NAS 장치 및 파일 공유에 이상적입니다.",
-      "selectProviderPrompt": "위의 제공자를 선택하거나 \"Custom\"을 선택하세요",
       "seafileDesc": "오픈 소스 클라우드 스토리지",
       "seafileTooltip": "Seafile - WebDAV 지원 자체 호스팅 오픈 소스 클라우드",
       "fileluDesc": "멀티 프로토콜 클라우드 스토리지",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "상태",
       "canaryNoResults": "샘플된 파일 없음",
       "canaryProjection": "{percent}% 샘플 기준으로, 전체 동기화 시 약 {files}개 파일({size})이 전송됩니다",
-      "canaryApproveFullSync": "전체 동기화 승인"
+      "canaryApproveFullSync": "전체 동기화 승인",
+      "profilePull": "Pull",
+      "profilePullDesc": "원격 → 로컬, 고아 파일 삭제, 크기 검증",
+      "profileRemoteBackup": "원격 백업",
+      "profileRemoteBackupDesc": "원격 → 로컬, 체크섬 검증, 삭제 없음"
     },
     "ui": {
       "syncing": "동기화 중...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "폴더 암호화 중...",
       "errors": {
         "alreadyExists": "이 이름의 항목이 이미 존재합니다",
-        "corruptedVault": "금고 파일이 손상되었거나 잘려 있습니다",
         "diskFull": "디스크가 가득 참 — 작업을 완료할 공간이 부족합니다",
-        "genericError": "예기치 않은 오류가 발생했습니다",
-        "networkError": "원격 금고에 접근하는 중 네트워크 오류가 발생했습니다",
         "notAVault": "이 파일은 유효한 AeroVault 컨테이너가 아닙니다",
-        "pathNotFound": "금고 파일을 찾을 수 없습니다 — 이동되었거나 삭제되었을 수 있습니다",
         "permissionDenied": "접근이 거부되었습니다 — 파일 권한을 확인하세요",
-        "vaultLocked": "금고가 다른 프로세스에 의해 잠겨 있습니다",
-        "wrongPassword": "비밀번호가 틀립니다 — 다시 시도해 주세요"
+        "wrongPassword": "비밀번호가 틀립니다 — 다시 시도해 주세요",
+        "unsupportedVersion": "지원되지 않는 볼트 버전",
+        "corrupted": "볼트 파일이 손상되었습니다",
+        "fileNotFound": "파일을 찾을 수 없습니다",
+        "directoryTooLarge": "디렉토리가 크기 제한을 초과합니다",
+        "invalidPath": "잘못된 파일 경로"
       },
       "extract": "추출",
       "extracted": "{name} 추출됨",
@@ -2338,7 +2341,8 @@
       "totalItems": "전체",
       "unlock": "잠금 해제",
       "v1Standard": "AeroVault v1 (표준)",
-      "v2Advanced": "AeroVault v2 (고급 보안)"
+      "v2Advanced": "AeroVault v2 (고급 보안)",
+      "encryptFolderPreview": "{dirCount}개 디렉토리에 {fileCount}개 파일 ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator 저장소",
@@ -3115,9 +3119,6 @@
       "removeTag": "태그 제거",
       "tags": "태그"
     },
-    "preconfiguredProviders": "사전 구성된 제공자",
-    "customConnection": "사용자 지정 연결",
-    "custom": "사용자 지정",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "사용 가능한 라벨이 없습니다. Zoho WorkDrive 설정에서 라벨을 만듭니다.",
       "createLabel": "레이블 생성",
       "labelName": "레이블 이름"
+    },
+    "healthCheck": {
+      "title": "서버 상태 점검",
+      "subtitle": "현재 위치에서의 실시간 네트워크 진단",
+      "checkAll": "모두 점검",
+      "checkOne": "이 서버 점검",
+      "checking": "점검 중...",
+      "checked": "점검 완료",
+      "healthy": "정상",
+      "degraded": "저하됨",
+      "unreachable": "연결 불가",
+      "error": "오류",
+      "noServers": "점검할 저장된 서버가 없습니다",
+      "score": "점수",
+      "dnsResolution": "DNS 확인",
+      "tcpConnect": "TCP 연결",
+      "tlsHandshake": "TLS 핸드셰이크",
+      "httpResponse": "HTTP 응답",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

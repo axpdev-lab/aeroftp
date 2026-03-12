@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ihanteellinen pilvipohjaiselle objektitallennukselle, varmuuskopioinneille ja suurimittaiselle tiedostojen palvelulle.",
       "webdavInfoLine1": "Vaatii palvelimen URL:n, käyttäjänimen ja salasanan. Portti 443 (HTTPS) oletuksena.",
       "webdavInfoLine2": "Ihanteellinen itsepalvelun pilville, NAS-laitteille ja tiedostojen jakamiselle.",
-      "selectProviderPrompt": "Valitse palveluntarjoaja yllä tai valitse \"Custom\"",
       "seafileDesc": "Avoimen lähdekoodin pilvitallennustila",
       "seafileTooltip": "Seafile - Itse isännöity avoimen lähdekoodin pilvi WebDAV-tuella",
       "fileluDesc": "Moniprotokollinen pilvitallennus",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Tila",
       "canaryNoResults": "Ei otettuja tiedostoja",
       "canaryProjection": "{percent}% otoksen perusteella täysi synkronointi siirtäisi ~{files} tiedostoa ({size})",
-      "canaryApproveFullSync": "Hyväksy täysi synkronointi"
+      "canaryApproveFullSync": "Hyväksy täysi synkronointi",
+      "profilePull": "Pull",
+      "profilePullDesc": "Etä → Paikallinen, poista orvot, tarkista koko",
+      "profileRemoteBackup": "Etävarmuuskopio",
+      "profileRemoteBackupDesc": "Etä → Paikallinen, tarkistussumma, ei poistoja"
     },
     "ui": {
       "syncing": "Synkronoidaan...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Salataan kansiota...",
       "errors": {
         "alreadyExists": "Tämän niminen merkintä on jo olemassa",
-        "corruptedVault": "Holvitiedosto on vioittunut tai katkaistu",
         "diskFull": "Levy täynnä — ei tarpeeksi tilaa toiminnon suorittamiseen",
-        "genericError": "Odottamaton virhe tapahtui",
-        "networkError": "Verkkovirhe etäholvin käytössä",
         "notAVault": "Tämä tiedosto ei ole kelvollinen AeroVault-säilö",
-        "pathNotFound": "Holvitiedostoa ei löytynyt — se on voitu siirtää tai poistaa",
         "permissionDenied": "Käyttö estetty — tarkista tiedoston käyttöoikeudet",
-        "vaultLocked": "Holvi on toisen prosessin lukitsema",
-        "wrongPassword": "Väärä salasana — yritä uudelleen"
+        "wrongPassword": "Väärä salasana — yritä uudelleen",
+        "unsupportedVersion": "Ei-tuettu holvin versio",
+        "corrupted": "Holvitiedosto on vioittunut",
+        "fileNotFound": "Tiedostoa ei löytynyt",
+        "directoryTooLarge": "Hakemisto ylittää kokorajoituksen",
+        "invalidPath": "Virheellinen tiedostopolku"
       },
       "extract": "Pura",
       "extracted": "{name} purettu",
@@ -2338,7 +2341,8 @@
       "totalItems": "yhteensä",
       "unlock": "Avaa",
       "v1Standard": "AeroVault v1 (standardi)",
-      "v2Advanced": "AeroVault v2 (edistynyt suojaus)"
+      "v2Advanced": "AeroVault v2 (edistynyt suojaus)",
+      "encryptFolderPreview": "{fileCount} tiedostoa {dirCount} hakemistossa ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-holvi",
@@ -3125,9 +3129,6 @@
       "removeTag": "Poista tunniste",
       "tags": "Tunnisteet"
     },
-    "preconfiguredProviders": "Ennalta Määritellyt Palveluntarjoajat",
-    "customConnection": "Mukautettu Yhteys",
-    "custom": "Mukautettu",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Tunnisteita ei ole saatavilla. Luo tunnisteita Zoho WorkDrive -asetuksissa.",
       "createLabel": "Luo tunnus",
       "labelName": "Tunnuksen nimi"
+    },
+    "healthCheck": {
+      "title": "Palvelimen kuntotarkistus",
+      "subtitle": "Reaaliaikainen verkkodiagnostiikka sijainnistasi",
+      "checkAll": "Tarkista kaikki",
+      "checkOne": "Tarkista tämä palvelin",
+      "checking": "Tarkistetaan...",
+      "checked": "tarkistettu",
+      "healthy": "Kunnossa",
+      "degraded": "Heikentynyt",
+      "unreachable": "Tavoittamaton",
+      "error": "Virhe",
+      "noServers": "Ei tallennettuja palvelimia tarkistettavaksi",
+      "score": "Pistemäärä",
+      "dnsResolution": "DNS-selvitys",
+      "tcpConnect": "TCP-yhteys",
+      "tlsHandshake": "TLS-kättely",
+      "httpResponse": "HTTP-vastaus",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

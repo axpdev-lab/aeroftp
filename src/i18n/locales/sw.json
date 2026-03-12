@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Bora kwa hifadhi ya kitu cha mabingu, nakala za kunusa, na ukaaji wa faili kwa kiwango kikubwa.",
       "webdavInfoLine1": "Inahitaji URL ya seva, jina la mtumiaji, na nenosiri. Bandari 443 (HTTPS) kwa chaguo-msingi.",
       "webdavInfoLine2": "Bora kwa miabingu yenye owneroperations wenyewe, vifaa vya NAS, na kushiriki faili.",
-      "selectProviderPrompt": "Chagua mtoa huduma hapo juu au chagua \"Custom\"",
       "seafileDesc": "Hifadhi ya wingu la chanzo huria",
       "seafileTooltip": "Seafile - Wingu la chanzo huria linalojihifadhi na msaada wa WebDAV",
       "fileluDesc": "Hifadhi ya wingu yenye itifaki nyingi",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Hali",
       "canaryNoResults": "Hakuna faili zilizosampulishwa",
       "canaryProjection": "Kulingana na sampuli ya {percent}%, usawazishaji kamili ungehamisha ~{files} faili ({size})",
-      "canaryApproveFullSync": "Idhinisha Usawazishaji Kamili"
+      "canaryApproveFullSync": "Idhinisha Usawazishaji Kamili",
+      "profilePull": "Pull",
+      "profilePullDesc": "Mbali → Ndani, futa yatima, thibitisha ukubwa",
+      "profileRemoteBackup": "Hifadhi ya Mbali",
+      "profileRemoteBackupDesc": "Mbali → Ndani, uthibitishaji checksum, hakuna kufutwa"
     },
     "ui": {
       "syncing": "Inasawazisha...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Inasimba folda...",
       "errors": {
         "alreadyExists": "Ingizo lenye jina hili tayari lipo",
-        "corruptedVault": "Faili ya kasifumu imeharibika au imekatwa",
         "diskFull": "Diski imejaa — hakuna nafasi ya kutosha kukamilisha operesheni",
-        "genericError": "Hitilafu isiyotarajiwa imetokea",
-        "networkError": "Hitilafu ya mtandao wakati wa kufikia kasifumu ya mbali",
         "notAVault": "Faili hii si chombo halali cha AeroVault",
-        "pathNotFound": "Faili ya kasifumu haikupatikana — huenda imehamishwa au kufutwa",
         "permissionDenied": "Ruhusa imekataliwa — angalia ruhusa za faili",
-        "vaultLocked": "Kasifumu imefungwa na mchakato mwingine",
-        "wrongPassword": "Nenosiri si sahihi — tafadhali jaribu tena"
+        "wrongPassword": "Nenosiri si sahihi — tafadhali jaribu tena",
+        "unsupportedVersion": "Toleo la hifadhi haliwezi kutumika",
+        "corrupted": "Faili ya hifadhi imeharibika",
+        "fileNotFound": "Faili haikupatikana",
+        "directoryTooLarge": "Saraka inazidi kikomo cha ukubwa",
+        "invalidPath": "Njia ya faili si sahihi"
       },
       "extract": "Fungua",
       "extracted": "Imetolewa {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "jumla",
       "unlock": "Fungua",
       "v1Standard": "AeroVault v1 (Kawaida)",
-      "v2Advanced": "AeroVault v2 (Usalama wa Juu)"
+      "v2Advanced": "AeroVault v2 (Usalama wa Juu)",
+      "encryptFolderPreview": "faili {fileCount} katika saraka {dirCount} ({totalSize})"
     },
     "cryptomator": {
       "title": "Hazina ya Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "Ondoa Lebo",
       "tags": "Lebo"
     },
-    "preconfiguredProviders": "Watoa unaotaka tangu awali",
-    "customConnection": "Uunganisho maalum",
-    "custom": "Maalum",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Hakuna lebo inayopatikana. Unda lebo katika mipangilio ya Zoho WorkDrive.",
       "createLabel": "Tengeneza kichwa",
       "labelName": "Jina la kichwa"
+    },
+    "healthCheck": {
+      "title": "Ukaguzi wa hali ya seva",
+      "subtitle": "Uchunguzi wa mtandao kwa wakati halisi kutoka eneo lako",
+      "checkAll": "Kagua zote",
+      "checkOne": "Kagua seva hii",
+      "checking": "Inakagua...",
+      "checked": "imekaguliwa",
+      "healthy": "Inafanya kazi vizuri",
+      "degraded": "Imepungua ubora",
+      "unreachable": "Haifikiki",
+      "error": "Hitilafu",
+      "noServers": "Hakuna seva zilizohifadhiwa za kukagua",
+      "score": "Alama",
+      "dnsResolution": "Utatuzi wa DNS",
+      "tcpConnect": "Muunganisho wa TCP",
+      "tlsHandshake": "Kupeana mkono kwa TLS",
+      "httpResponse": "Jibu la HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

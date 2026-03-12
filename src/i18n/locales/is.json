@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Kjalkki fyrir geymslu hlutaa í skýi, öryggisafrit og stærðarframboðun á stærri skrám.",
       "webdavInfoLine1": "Krefst slóðar netþjóns, notendanafns og lykilorðs. Gagn 443 (HTTPS) er sjálfgefið.",
       "webdavInfoLine2": "Kjalkki fyrir sjálfsorkrá skýi, NAS-tæki og skráarmiðlun.",
-      "selectProviderPrompt": "Veldu þjónustuveitanda hér að ofan eða veldu \"Custom\"",
       "seafileDesc": "Opinn skjalageymsluský",
       "seafileTooltip": "Seafile - Sjálfshjálað opinn skjalageymsluský með WebDAV stuðningi",
       "fileluDesc": "Fjölreglugeymsla í skýi",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Staða",
       "canaryNoResults": "Engar sýnishornskrár",
       "canaryProjection": "Miðað við {percent}% sýnishorn, full samstilling myndi flytja ~{files} skrár ({size})",
-      "canaryApproveFullSync": "Samþykja fulla samstillingu"
+      "canaryApproveFullSync": "Samþykja fulla samstillingu",
+      "profilePull": "Pull",
+      "profilePullDesc": "Fjarlægt → Staðbundið, eyða munaðarlausum, staðfesta stærð",
+      "profileRemoteBackup": "Fjarafrit",
+      "profileRemoteBackupDesc": "Fjarlægt → Staðbundið, checksum staðfesting, engin eyðing"
     },
     "ui": {
       "syncing": "Samstillir...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Dulkóða möppu...",
       "errors": {
         "alreadyExists": "Færsla með þessu nafni er þegar til",
-        "corruptedVault": "Hirsluskrá er skemmd eða styttri",
         "diskFull": "Diskur fullur — ekki nægt pláss til að ljúka aðgerðinni",
-        "genericError": "Óvænt villa kom upp",
-        "networkError": "Netvilla við aðgang að fjarhirslu",
         "notAVault": "Þessi skrá er ekki gildur AeroVault geymir",
-        "pathNotFound": "Hirsluskráin fannst ekki — hún gæti hafa verið flutt eða eytt",
         "permissionDenied": "Heimild hafnað — athugaðu skráarheimildir",
-        "vaultLocked": "Hirslan er læst af öðru ferli",
-        "wrongPassword": "Rangt lykilorð — reyndu aftur"
+        "wrongPassword": "Rangt lykilorð — reyndu aftur",
+        "unsupportedVersion": "Óstudd útgáfa hólfs",
+        "corrupted": "Hólfsskráin er skemmd",
+        "fileNotFound": "Skrá fannst ekki",
+        "directoryTooLarge": "Mappa fer yfir stærðarmörk",
+        "invalidPath": "Ógild skráarslóð"
       },
       "extract": "Flytja út",
       "extracted": "Afþjappað {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "samtals",
       "unlock": "Aflæsa",
       "v1Standard": "AeroVault v1 (Staðlað)",
-      "v2Advanced": "AeroVault v2 (Ítarlegt Öryggi)"
+      "v2Advanced": "AeroVault v2 (Ítarlegt Öryggi)",
+      "encryptFolderPreview": "{fileCount} skrár í {dirCount} möppum ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Hvelfing",
@@ -3285,6 +3289,27 @@
       "noLabels": "Engar merkjar tiltækar. Búðu til merkja í stillingum Zoho WorkDrive.",
       "createLabel": "Búa til merki",
       "labelName": "Nafn merkis"
+    },
+    "healthCheck": {
+      "title": "Heilsufarsskoðun netþjóns",
+      "subtitle": "Rauntíma netgreining frá þinni staðsetningu",
+      "checkAll": "Athuga alla",
+      "checkOne": "Athuga þennan netþjón",
+      "checking": "Athuga...",
+      "checked": "athugað",
+      "healthy": "Heilbrigt",
+      "degraded": "Skert",
+      "unreachable": "Óaðgengilegt",
+      "error": "Villa",
+      "noServers": "Engir vistaðir netþjónar til að athuga",
+      "score": "Einkunn",
+      "dnsResolution": "DNS uppfletting",
+      "tcpConnect": "TCP tenging",
+      "tlsHandshake": "TLS handaband",
+      "httpResponse": "HTTP svar",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

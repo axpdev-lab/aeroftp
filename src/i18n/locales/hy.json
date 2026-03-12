@@ -1200,7 +1200,6 @@
       "s3InfoLine2": "Կոր համար ե օբեկտ նոր Մոսկվաց, բեզոր անկաց, եւ մեծ օղ ծառ հաստի:",
       "webdavInfoLine1": "Մեղավում Թե պաղմ URL, կարգա անոն եւ սկրանկ նոր թե 443 (HTTPS) մըստ մկրատ ե:",
       "webdavInfoLine2": "Կոր համար ե հովսում ընթեր նոր կոսկ, NAS օղ նեծե եւ ֆայլի քրաց տոբ:",
-      "selectProviderPrompt": "Կոր բաց բաց եւ բեր իս \"Custom\"-ի օղ",
       "seafileDesc": "Բաց կոդի ամպային պահոց",
       "seafileTooltip": "Seafile - Ինքնահոսթինգ բաց կոդի ամպ WebDAV աջակցությամբ",
       "fileluDesc": "Բազմարձանագրային ամպային պահոց",
@@ -1580,7 +1579,11 @@
       "canaryStatus": "Կարգավիճակ",
       "canaryNoResults": "Նմուշառված ֆայլեր չկան",
       "canaryProjection": "{percent}% նմուշի հիման վրա, լրիվ սինքրոնիզացիան կփոխանցի ~{files} ֆայլ ({size})",
-      "canaryApproveFullSync": "Հաստատել լրիվ սինքրոնիզացիան"
+      "canaryApproveFullSync": "Հաստատել լրիվ սինքրոնիզացիան",
+      "profilePull": "Pull",
+      "profilePullDesc": "Հեռադիր → Տեղական, ջնջել օրբերը, ստուգել չափը",
+      "profileRemoteBackup": "Հեռադիր պահուստային պատճեն",
+      "profileRemoteBackupDesc": "Հեռադիր → Տեղական, ստուգման checksum, առանց ջնջման"
     },
     "ui": {
       "syncing": "Սինքրոնացում...",
@@ -2268,15 +2271,15 @@
       "encryptFolder": "Թղթապանակը գաղտնագրվում է...",
       "errors": {
         "alreadyExists": "Այս անունով գրառում արդեն գոյություն ունի",
-        "corruptedVault": "Պահարանի ֆայլը վնասված է կամ կտրված",
         "diskFull": "Սկավառակը լիքն է — բավարար տեղ չկա գործողությունը ավարտելու համար",
-        "genericError": "Անսպասելի սխալ տեղի ունեցավ",
-        "networkError": "Ցանցի սխալ հեռակա պահարան մուտք գործելիս",
         "notAVault": "Այս ֆայլը վավեր AeroVault պարունակ չէ",
-        "pathNotFound": "Պահարանի ֆայլը չի գտնվել — հնարավոր է տեղափոխվել կամ ջնջվել",
         "permissionDenied": "Թույլտվությունը մերժվել է — ստուգեք ֆայլի թույլտվությունները",
-        "vaultLocked": "Պահարանը կողպված է այլ գործընթացի կողմից",
-        "wrongPassword": "Սխալ գաղտնաբառ — խնդրում ենք կրկին փորձեք"
+        "wrongPassword": "Սխալ գաղտնաբառ — խնդրում ենք կրկին փորձեք",
+        "unsupportedVersion": "Չապահոված պահարանի տարբերակ",
+        "corrupted": "Պահարանի ֆայլը վծած է",
+        "fileNotFound": "Ֆայլը չի գտնվել",
+        "directoryTooLarge": "Թղթապանակը գերազանցում է չափի սահմանափակումը",
+        "invalidPath": "Անվավեր ֆայլի ճանապարհ"
       },
       "extract": "Արտահանել",
       "extracted": "Հանվեց՝ {name}",
@@ -2331,7 +2334,8 @@
       "totalItems": "ընդամենը",
       "unlock": "Ապակողպել",
       "v1Standard": "AeroVault v1 (Ստանդարտ)",
-      "v2Advanced": "AeroVault v2 (Ընդլայնված անվտանգություն)"
+      "v2Advanced": "AeroVault v2 (Ընդլայնված անվտանգություն)",
+      "encryptFolderPreview": "{fileCount} ֆայլ եր {dirCount} թղթապանակներում ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Պահոց",
@@ -3266,6 +3270,27 @@
       "noLabels": "Եղեր անուշնախ մար ենլ. Պահշէք Եղեր Zoho WorkDrive շլադապաօցումին աջելշվի.",
       "createLabel": "ՎայրաօրՌ ճզազ ւշաքպեր",
       "labelName": "ւշքպաերի անվնխ"
+    },
+    "healthCheck": {
+      "title": "Սերվերի առողջականության ստուգում",
+      "subtitle": "Իրական ժամանակի ցանցային ախտորոսում ձեր դիրքից",
+      "checkAll": "Ստուգել բոլորը",
+      "checkOne": "Ստուգել այս սերվերը",
+      "checking": "Ստուգում...",
+      "checked": "ստուգված",
+      "healthy": "Առողջ",
+      "degraded": "Վատթարացած",
+      "unreachable": "Անհասանելի",
+      "error": "Սխալ",
+      "noServers": "Պահված սերվերներ չկան ստուգման համար",
+      "score": "Գնահատական",
+      "dnsResolution": "DNS լուծում",
+      "tcpConnect": "TCP կապակցում",
+      "tlsHandshake": "TLS ձեռքսողում",
+      "httpResponse": "HTTP պատասխան",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

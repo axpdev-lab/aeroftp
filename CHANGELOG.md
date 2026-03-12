@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.4] - 2026-03-13
+
+### Server Health Check, Sync Direction Fix, mtime Preservation & AeroVault Pro
+
+#### Added
+
+- **Server Health Check**: Real-time network diagnostics for saved servers — DNS resolution, TCP connect, TLS handshake, and HTTP response probes with latency measurements, health scoring (0-100), and professional modal with SVG radial gauge, latency bars, and Canvas 2D area chart
+- **Server context menu**: Right-click on saved server cards for Connect, Edit, Duplicate, Health Check, and Delete actions via reusable `useContextMenu` hook
+- **Batch health check**: "Check All" button in home screen header runs parallel diagnostics across all saved servers with healthy/degraded/unreachable summary and batch progress toast
+- **Cloud API host mapping**: Health checks work across all 20 protocols — cloud providers probe their actual API endpoints (e.g., `www.googleapis.com` for Google Drive, `api.dropboxapi.com` for Dropbox)
+- **Provider-specific health probes**: 16 cloud providers use dedicated lightweight endpoints (pCloud `/getapiserver`, kDrive `/1/ping`, Filen `/v3/health`, MEGA `/cs`, etc.) instead of generic HEAD / for accurate reachability detection
+- **Copy health check results**: One-click copy of formatted diagnostic report with scores, check details, latencies, and healthy/degraded/unreachable summary
+- **AeroSync Pull preset**: Remote → Local mirror with orphan deletion and size verification — downloads remote state to local
+- **AeroSync Remote Backup preset**: Remote → Local with checksum verification and no deletes — safely backs up remote files locally
+- **AeroVault Pro modular architecture**: VaultPanel refactored from 1117-line monolith into 5 focused components (VaultHome, VaultCreate, VaultOpen, VaultBrowse, useVaultState hook)
+- **Recent Vaults**: SQLite WAL-backed vault history with last-opened tracking, security badges, and one-click reopen from VaultHome screen
+- **Folder encryption**: Encrypt entire directories as AeroVault containers with recursive `walkdir` scan, progress events, and folder preview (file count, dir count, total size)
+- **Provider Integration Guide**: Comprehensive developer reference for adding new storage protocols — StorageProvider trait, 7 auth patterns, upload strategies, XML parsing, pagination
+
+#### Fixed
+
+- **Download mtime preservation**: Downloaded files now retain the remote server's modification timestamp via `filetime` crate — fixes sync/overwrite-if-newer producing incorrect results after download because local files had download-time as mtime
+- **AeroSync missing directions**: Mirror and Backup were Local → Remote only — added Pull (Remote → Local mirror) and Remote Backup (Remote → Local backup) to Quick Sync presets, covering all 5 sync patterns
+- **Health check false positives**: SFTP no longer penalized for TLS (uses SSH), WebDAV on port 80 probed via HTTP not HTTPS, cloud API 404/400/429 treated as reachable, S3 resolves saved endpoint instead of localhost placeholder, TLS timeout on open TCP port scored as skip instead of fail, HEAD→GET fallback for providers that reject HEAD
+- **Health check React Strict Mode**: `mountedRef` correctly reset on remount — fixes single and batch checks staying permanently in loading state
+- **AeroVault icon consistency**: Titlebar and modal header now use outline-only shield+lock icon matching other titlebar icons; removed redundant Lock badge from VaultHome
+- **i18n vault keys**: 6 missing `vault.errors.*` keys propagated to all 46 non-English locales, 5 stale keys removed, 4 extra root-level keys cleaned up
+
+#### Changed
+
+- **Snap Store auto-publish disabled**: Commented out pending manual review approval — `.snap` still built and uploaded to GitHub Releases. Re-enable when Snap Store review clears
+- **`filetime` crate added**: Cross-platform file modification time setting for mtime preservation after downloads
+
+---
+
 ## [2.9.3] - 2026-03-11
 
 ### AeroVault OS Integration Fix & Security Patch

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Delfrydol ar gyfer storio gwrthrychau'r cwmwl, copïau wrth gefn a lletygarwch ffeiliau ar raddfa fawr.",
       "webdavInfoLine1": "Yn gofyn URL y gweinydd, enw defnyddiwr a chyfrinair. Porthladd 443 (HTTPS) yn ddiofyn.",
       "webdavInfoLine2": "Delfrydol ar gyfer cymylau hunod, dyfeisiau NAS a rhannu ffeiliau.",
-      "selectProviderPrompt": "Dewiswch darparwr uchod neu dewiswch \"Custom\"",
       "seafileDesc": "Storfa Cwmwl Cod Agored",
       "seafileTooltip": "Seafile - Cwmwl cod agored hunan-gynhaliol gyda chefnogaeth WebDAV",
       "fileluDesc": "Storfa Cwmwl Aml-Brotocol",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Statws",
       "canaryNoResults": "Dim ffeiliau wedi'u samplu",
       "canaryProjection": "Yn seiliedig ar sampl {percent}%, byddai cysoni llawn yn trosglwyddo ~{files} ffeil ({size})",
-      "canaryApproveFullSync": "Cymeradwyo Cysoni Llawn"
+      "canaryApproveFullSync": "Cymeradwyo Cysoni Llawn",
+      "profilePull": "Pull",
+      "profilePullDesc": "Pell → Lleol, dileu amddifaid, gwirio maint",
+      "profileRemoteBackup": "Copi Wrth Gefn Pell",
+      "profileRemoteBackupDesc": "Pell → Lleol, gwirio checksum, dim dileu"
     },
     "ui": {
       "syncing": "Yn cysoni...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Amgryptio ffolder...",
       "errors": {
         "alreadyExists": "Mae cofnod gyda'r enw hwn eisoes yn bodoli",
-        "corruptedVault": "Mae ffeil y coffor wedi'i llygru neu'i thorri",
         "diskFull": "Disg yn llawn — dim digon o le i gwblhau'r gweithrediad",
-        "genericError": "Digwyddodd gwall annisgwyl",
-        "networkError": "Gwall rhwydwaith wrth gyrchu coffor pell",
         "notAVault": "Nid yw'r ffeil hon yn gynhwysydd AeroVault dilys",
-        "pathNotFound": "Ni chanfuwyd ffeil y coffor — efallai ei bod wedi'i symud neu'i dileu",
         "permissionDenied": "Caniatâd wedi'i wrthod — gwiriwch ganiatadau'r ffeil",
-        "vaultLocked": "Mae'r coffor wedi'i gloi gan broses arall",
-        "wrongPassword": "Cyfrinair anghywir — ceisiwch eto"
+        "wrongPassword": "Cyfrinair anghywir — ceisiwch eto",
+        "unsupportedVersion": "Fersiwn cell nad yw'n cael ei gefnogi",
+        "corrupted": "Mae ffeil y gell wedi'i llygru",
+        "fileNotFound": "Ni chanfuwyd y ffeil",
+        "directoryTooLarge": "Mae'r cyfeiriadur yn fwy na'r terfyn maint",
+        "invalidPath": "Llwybr ffeil annilys"
       },
       "extract": "Echdynnu",
       "extracted": "{name} wedi'i echdynnu",
@@ -2338,7 +2341,8 @@
       "totalItems": "cyfanswm",
       "unlock": "Datgloi",
       "v1Standard": "AeroVault v1 (Safonol)",
-      "v2Advanced": "AeroVault v2 (Diogelwch Uwch)"
+      "v2Advanced": "AeroVault v2 (Diogelwch Uwch)",
+      "encryptFolderPreview": "{fileCount} ffeil mewn {dirCount} cyfeiriadur ({totalSize})"
     },
     "cryptomator": {
       "title": "Coffor Cryptomator",
@@ -3285,6 +3289,27 @@
       "noLabels": "Dim labeli ar gael. Crëwch labeli yn y gosodiadau Zoho WorkDrive.",
       "createLabel": "Creu Label",
       "labelName": "Enw'r label"
+    },
+    "healthCheck": {
+      "title": "Gwiriad Iechyd y Gweinydd",
+      "subtitle": "Diagnosteg rhwydwaith amser real o'ch lleoliad",
+      "checkAll": "Gwirio popeth",
+      "checkOne": "Gwirio'r gweinydd hwn",
+      "checking": "Yn gwirio...",
+      "checked": "gwiriwyd",
+      "healthy": "Iach",
+      "degraded": "Dirywiad",
+      "unreachable": "Analluog i gyrraedd",
+      "error": "Gwall",
+      "noServers": "Dim gweinyddion wedi'u cadw i'w gwirio",
+      "score": "Sgôr",
+      "dnsResolution": "Datrysiad DNS",
+      "tcpConnect": "Cysylltiad TCP",
+      "tlsHandshake": "Ysgwyd llaw TLS",
+      "httpResponse": "Ymateb HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

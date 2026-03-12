@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -11,6 +11,8 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
+import { ServerHealthCheck } from './ServerHealthCheck';
 
 // Helper: get credential with retry if vault not ready yet (race condition on app startup)
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -130,6 +132,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
+    const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
     // Filter servers by search query (name, host, protocol, username)
     const SEARCH_THRESHOLD = 10;
@@ -269,6 +273,18 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         // Open in edit mode so user can change name/host
         onEdit(cloned);
     };
+
+    const handleServerContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {
+        const items: ContextMenuItem[] = [
+            { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
+            { label: t('connection.editServer'), icon: <Edit2 size={14} />, action: () => handleEdit(server) },
+            { label: t('connection.duplicateServer'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
+            { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
+            { label: t('connection.deleteServer'), icon: <Trash2 size={14} />, danger: true, action: () => handleDelete(server.id), divider: true },
+        ];
+        showContextMenu(e, items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [servers, t]);
 
     const handleConnect = async (serverParam: ServerProfile) => {
         const server = serverParam;
@@ -475,6 +491,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     </div>
                 </div>
                 <div className="flex items-center gap-1.5">
+                    {servers.length > 0 && (
+                        <button
+                            onClick={() => setHealthCheckTarget('all')}
+                            className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                            title={t('healthCheck.title')}
+                        >
+                            <Activity size={18} />
+                        </button>
+                    )}
                     {onOpenExportImport && (
                         <button
                             onClick={onOpenExportImport}
@@ -547,6 +572,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                         onDragOver={isDraggable ? (e) => handleReorderDragOver(e, idx) : undefined}
                         onDrop={isDraggable ? (e) => handleReorderDrop(e, idx) : undefined}
                         onDragEnd={isDraggable ? handleReorderDragEnd : undefined}
+                        onContextMenu={(e) => handleServerContextMenu(e, server)}
                         className={`flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 group ${oauthConnecting === server.id ? 'opacity-75' : ''} ${dragIdx === idx ? 'scale-[0.97] shadow-lg ring-2 ring-blue-400/50' : ''} ${overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-t-2 border-blue-400' : 'border-t-2 border-transparent'}`}
                     >
                         {/* Drag handle (hidden during search) */}
@@ -655,6 +681,25 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     </p>
                 )}
             </div>
+
+            {/* Context Menu */}
+            {contextMenuState.visible && (
+                <ContextMenu
+                    x={contextMenuState.x}
+                    y={contextMenuState.y}
+                    items={contextMenuState.items}
+                    onClose={hideContextMenu}
+                />
+            )}
+
+            {/* Health Check Modal */}
+            {healthCheckTarget && (
+                <ServerHealthCheck
+                    servers={servers}
+                    onClose={() => setHealthCheckTarget(false)}
+                    singleServerId={healthCheckTarget !== 'all' ? healthCheckTarget : undefined}
+                />
+            )}
         </div>
     );
 };

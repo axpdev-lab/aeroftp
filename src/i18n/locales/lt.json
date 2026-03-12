@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Idealu debesies objekto saugyklai, atsargoms ir didelės apimties failų hostingui.",
       "webdavInfoLine1": "Reikalingas serverio URL, naudotojo vardas ir slaptažodis. Numatytasis prievadas yra 443 (HTTPS).",
       "webdavInfoLine2": "Idealu savitarnos debesims, NAS įrenginiams ir failų bendrinimui.",
-      "selectProviderPrompt": "Pasirinkite teikėją aukščiau arba pasirinkite \"Custom\"",
       "seafileDesc": "Atvirojo kodo debesijos saugykla",
       "seafileTooltip": "Seafile - Savarankiškai talpinamas atvirojo kodo debesis su WebDAV palaikymu",
       "fileluDesc": "Daugiprotokolis debesų saugykla",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Būsena",
       "canaryNoResults": "Nėra išbandytų failų",
       "canaryProjection": "Remiantis {percent}% imtimi, visa sinchronizacija perkeltų ~{files} failų ({size})",
-      "canaryApproveFullSync": "Patvirtinti visą sinchronizaciją"
+      "canaryApproveFullSync": "Patvirtinti visą sinchronizaciją",
+      "profilePull": "Pull",
+      "profilePullDesc": "Nuotolinis → Vietinis, ištrinti našlaičius, tikrinti dydį",
+      "profileRemoteBackup": "Nuotolinė atsarginė kopija",
+      "profileRemoteBackupDesc": "Nuotolinis → Vietinis, checksum tikrinimas, be ištrynimų"
     },
     "ui": {
       "syncing": "Sinchronizuojama...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Šifruojamas aplankas...",
       "errors": {
         "alreadyExists": "Įrašas tokiu pavadinimu jau egzistuoja",
-        "corruptedVault": "Seifo failas sugadintas arba sutrumpintas",
         "diskFull": "Diskas pilnas — nepakanka vietos operacijai užbaigti",
-        "genericError": "Įvyko netikėta klaida",
-        "networkError": "Tinklo klaida jungiantis prie nuotolinio seifo",
         "notAVault": "Šis failas nėra galiojantis AeroVault konteineris",
-        "pathNotFound": "Seifo failas nerastas — jis galėjo būti perkeltas arba ištrintas",
         "permissionDenied": "Prieiga uždrausta — patikrinkite failo teises",
-        "vaultLocked": "Seifas užrakintas kito proceso",
-        "wrongPassword": "Neteisingas slaptažodis — bandykite dar kartą"
+        "wrongPassword": "Neteisingas slaptažodis — bandykite dar kartą",
+        "unsupportedVersion": "Nepalaikoma saugyklos versija",
+        "corrupted": "Saugyklos failas sugadintas",
+        "fileNotFound": "Failas nerastas",
+        "directoryTooLarge": "Katalogas viršija dydžio ribą",
+        "invalidPath": "Neteisingas failo kelias"
       },
       "extract": "Išskleisti",
       "extracted": "{name} išskleista",
@@ -2338,7 +2341,8 @@
       "totalItems": "iš viso",
       "unlock": "Atrakinti",
       "v1Standard": "AeroVault v1 (standartinis)",
-      "v2Advanced": "AeroVault v2 (išplėstinis saugumas)"
+      "v2Advanced": "AeroVault v2 (išplėstinis saugumas)",
+      "encryptFolderPreview": "{fileCount} failų {dirCount} kataloguose ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator saugykla",
@@ -3125,9 +3129,6 @@
       "removeTag": "Pašalinti žymą",
       "tags": "Žymos"
     },
-    "preconfiguredProviders": "Iš anksto sukonfigūroti teikėjai",
-    "customConnection": "Pasirinktinis ryšys",
-    "custom": "Pasirinktinis",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Nėra jokių prieinamų žymių. Kurkite žymes Zoho WorkDrive nustatymuose.",
       "createLabel": "Sukurti žymą",
       "labelName": "Žymos pavadinimas"
+    },
+    "healthCheck": {
+      "title": "Serverio būklės patikra",
+      "subtitle": "Tinklo diagnostika realiuoju laiku iš jūsų vietos",
+      "checkAll": "Tikrinti visus",
+      "checkOne": "Tikrinti šį serverį",
+      "checking": "Tikrinama...",
+      "checked": "patikrinta",
+      "healthy": "Veikia",
+      "degraded": "Pablogėjusi",
+      "unreachable": "Nepasiekiamas",
+      "error": "Klaida",
+      "noServers": "Nėra išsaugotų serverių patikrai",
+      "score": "Įvertinimas",
+      "dnsResolution": "DNS išsprendimas",
+      "tcpConnect": "TCP prisijungimas",
+      "tlsHandshake": "TLS rankos paspaudimas",
+      "httpResponse": "HTTP atsakymas",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

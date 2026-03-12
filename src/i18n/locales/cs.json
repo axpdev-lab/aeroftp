@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideální pro cloudové úložiště objektů, zálohy a velkoplošné hostování souborů.",
       "webdavInfoLine1": "Vyžaduje URL serveru, uživatelské jméno a heslo. Výchozí port 443 (HTTPS).",
       "webdavInfoLine2": "Ideální pro vlastní cloudy, zařízení NAS a sdílení souborů.",
-      "selectProviderPrompt": "Vyberte poskytovatele výše nebo zvolte \"Custom\"",
       "seafileDesc": "Open-source cloudové úložiště",
       "seafileTooltip": "Seafile - Samohostovaný open-source cloud s podporou WebDAV",
       "fileluDesc": "Cloudové úložiště s více protokoly",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Stav",
       "canaryNoResults": "Žádné vzorkované soubory",
       "canaryProjection": "Na základě {percent}% vzorku by plná synchronizace přenesla ~{files} souborů ({size})",
-      "canaryApproveFullSync": "Schválit plnou synchronizaci"
+      "canaryApproveFullSync": "Schválit plnou synchronizaci",
+      "profilePull": "Pull",
+      "profilePullDesc": "Vzdálený → Místní, smazat osiřelé, ověřit velikost",
+      "profileRemoteBackup": "Vzdálená záloha",
+      "profileRemoteBackupDesc": "Vzdálený → Místní, ověření checksum, bez mazání"
     },
     "ui": {
       "syncing": "Synchronizace...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Šifrování složky...",
       "errors": {
         "alreadyExists": "Položka s tímto názvem již existuje",
-        "corruptedVault": "Soubor trezoru je poškozen nebo zkrácen",
         "diskFull": "Disk je plný — nedostatek místa k dokončení operace",
-        "genericError": "Došlo k neočekávané chybě",
-        "networkError": "Chyba sítě při přístupu ke vzdálenému trezoru",
         "notAVault": "Tento soubor není platný kontejner AeroVault",
-        "pathNotFound": "Soubor trezoru nebyl nalezen — mohl být přesunut nebo smazán",
         "permissionDenied": "Přístup odepřen — zkontrolujte oprávnění souboru",
-        "vaultLocked": "Trezor je uzamčen jiným procesem",
-        "wrongPassword": "Nesprávné heslo — zkuste to prosím znovu"
+        "wrongPassword": "Nesprávné heslo — zkuste to prosím znovu",
+        "unsupportedVersion": "Nepodporovaná verze trezoru",
+        "corrupted": "Soubor trezoru je poškozen",
+        "fileNotFound": "Soubor nebyl nalezen",
+        "directoryTooLarge": "Adresář překračuje limit velikosti",
+        "invalidPath": "Neplatná cesta k souboru"
       },
       "extract": "Rozbalit",
       "extracted": "{name} rozbaleno",
@@ -2338,7 +2341,8 @@
       "totalItems": "celkem",
       "unlock": "Odemknout",
       "v1Standard": "AeroVault v1 (Standardni)",
-      "v2Advanced": "AeroVault v2 (Pokrocile zabezpeceni)"
+      "v2Advanced": "AeroVault v2 (Pokrocile zabezpeceni)",
+      "encryptFolderPreview": "{fileCount} souborů v {dirCount} adresářích ({totalSize})"
     },
     "cryptomator": {
       "title": "Trezor Cryptomator",
@@ -3266,6 +3270,27 @@
       "noLabels": "Nejsou k dispozici žádné štítky. Vytvořte štítky v nastavení Zoho WorkDrive.",
       "createLabel": "Vytvořit štítek",
       "labelName": "Název štítku"
+    },
+    "healthCheck": {
+      "title": "Kontrola stavu serveru",
+      "subtitle": "Síťová diagnostika v reálném čase z vaší pozice",
+      "checkAll": "Zkontrolovat vše",
+      "checkOne": "Zkontrolovat tento server",
+      "checking": "Kontrola...",
+      "checked": "zkontrolováno",
+      "healthy": "V pořádku",
+      "degraded": "Zhoršený",
+      "unreachable": "Nedostupný",
+      "error": "Chyba",
+      "noServers": "Žádné uložené servery ke kontrole",
+      "score": "Skóre",
+      "dnsResolution": "DNS rozlišení",
+      "tcpConnect": "TCP připojení",
+      "tlsHandshake": "TLS handshake",
+      "httpResponse": "HTTP odpověď",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

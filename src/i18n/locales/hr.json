@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Idealno za cloud pohranu objekata, sigurnosne kopije i hostiranje velikih datoteka.",
       "webdavInfoLine1": "Zahtijeva URL poslužitelja, korisničko ime i lozinku. Port 443 (HTTPS) je standardno.",
       "webdavInfoLine2": "Idealno za samohostirane oblake, NAS uređaje i dijeljenje datoteka.",
-      "selectProviderPrompt": "Odaberite pružatelja gore ili odaberite \"Custom\"",
       "seafileDesc": "Otvoreni oblak za pohranu",
       "seafileTooltip": "Seafile - Samohostirana pohrana otvorenog koda s WebDAV podrškom",
       "fileluDesc": "Višeprotokolna pohrana u oblaku",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Nema uzorkovanih datoteka",
       "canaryProjection": "Na temelju {percent}% uzorka, potpuna sinkronizacija bi prenijela ~{files} datoteka ({size})",
-      "canaryApproveFullSync": "Odobri potpunu sinkronizaciju"
+      "canaryApproveFullSync": "Odobri potpunu sinkronizaciju",
+      "profilePull": "Pull",
+      "profilePullDesc": "Udaljeno → Lokalno, obriši siročad, provjeri veličinu",
+      "profileRemoteBackup": "Udaljena sigurnosna kopija",
+      "profileRemoteBackupDesc": "Udaljeno → Lokalno, provjera checksum, bez brisanja"
     },
     "ui": {
       "syncing": "Sinkronizacija...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Šifriranje mape...",
       "errors": {
         "alreadyExists": "Unos s ovim imenom već postoji",
-        "corruptedVault": "Datoteka trezora je oštećena ili okrnjena",
         "diskFull": "Disk je pun — nema dovoljno prostora za dovršetak operacije",
-        "genericError": "Došlo je do neočekivane pogreške",
-        "networkError": "Mrežna pogreška pri pristupu udaljenom trezoru",
         "notAVault": "Ova datoteka nije valjani AeroVault spremnik",
-        "pathNotFound": "Datoteka trezora nije pronađena — možda je premještena ili obrisana",
         "permissionDenied": "Pristup odbijen — provjerite dozvole datoteke",
-        "vaultLocked": "Trezor je zaključan od strane drugog procesa",
-        "wrongPassword": "Pogrešna lozinka — pokušajte ponovo"
+        "wrongPassword": "Pogrešna lozinka — pokušajte ponovo",
+        "unsupportedVersion": "Nepodržana verzija trezora",
+        "corrupted": "Datoteka trezora je oštećena",
+        "fileNotFound": "Datoteka nije pronađena",
+        "directoryTooLarge": "Direktorij premašuje ograničenje veličine",
+        "invalidPath": "Nevažeća putanja datoteke"
       },
       "extract": "Izdvoji",
       "extracted": "Izdvojeno {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "ukupno",
       "unlock": "Otključaj",
       "v1Standard": "AeroVault v1 (Standardni)",
-      "v2Advanced": "AeroVault v2 (Napredna sigurnost)"
+      "v2Advanced": "AeroVault v2 (Napredna sigurnost)",
+      "encryptFolderPreview": "{fileCount} datoteka u {dirCount} direktorija ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Trezor",
@@ -3266,6 +3270,27 @@
       "noLabels": "Nema dostupnih oznaka. Kreirajte oznake u postavkama Zoho WorkDrive.",
       "createLabel": "Kreiraj oznaku",
       "labelName": "Naziv oznake"
+    },
+    "healthCheck": {
+      "title": "Provjera stanja poslužitelja",
+      "subtitle": "Mrežna dijagnostika u stvarnom vremenu s vaše lokacije",
+      "checkAll": "Provjeri sve",
+      "checkOne": "Provjeri ovaj poslužitelj",
+      "checking": "Provjeravanje...",
+      "checked": "provjereno",
+      "healthy": "Ispravno",
+      "degraded": "Degradirano",
+      "unreachable": "Nedostupno",
+      "error": "Greška",
+      "noServers": "Nema spremljenih poslužitelja za provjeru",
+      "score": "Ocjena",
+      "dnsResolution": "DNS rezolucija",
+      "tcpConnect": "TCP povezivanje",
+      "tlsHandshake": "TLS rukovanje",
+      "httpResponse": "HTTP odgovor",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

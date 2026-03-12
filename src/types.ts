@@ -115,6 +115,7 @@ export interface ConnectionParams {
 export interface DownloadParams {
   remote_path: string;
   local_path: string;
+  modified?: string;
 }
 
 export interface UploadParams {

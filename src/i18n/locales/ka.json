@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "იდეალური ღია ობიექტის შენახვისთვის, სარეზერვო ასლებისთვის და დიდი ფაილების ჰოსტირებისთვის.",
       "webdavInfoLine1": "მოითხოვს სერვერის URL-ს, მომხმარებლის სახელს და პაროლს. პორტი 443 (HTTPS) ნაგულისხმევია.",
       "webdavInfoLine2": "იდეალური თვითჰოსტებული კლაუდებისთვის, NAS მოწყობილობებისთვის და ფაილის გაზიარებისთვის.",
-      "selectProviderPrompt": "აირჩიეთ მომწოდებელი ზემოთ ან აირჩიეთ \"Custom\"",
       "seafileDesc": "ღია კოდის ღრუბლოვანი საცავი",
       "seafileTooltip": "Seafile - თვითჰოსტინგის ღია კოდის ღრუბლი WebDAV მხარდაჭერით",
       "fileluDesc": "მრავალპროტოკოლიანი ღრუბლოვანი საცავი",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "სტატუსი",
       "canaryNoResults": "შერჩეული ფაილები არ არის",
       "canaryProjection": "{percent}% ნიმუშის საფუძველზე, სრული სინქრონიზაცია გადაიტანს ~{files} ფაილს ({size})",
-      "canaryApproveFullSync": "სრული სინქრონიზაციის დამტკიცება"
+      "canaryApproveFullSync": "სრული სინქრონიზაციის დამტკიცება",
+      "profilePull": "Pull",
+      "profilePullDesc": "დისტანციური → ლოკალური, ობოლების წაშლა, ზომის შემოწმება",
+      "profileRemoteBackup": "დისტანციური სარეზერვო",
+      "profileRemoteBackupDesc": "დისტანციური → ლოკალური, checksum შემოწმება, წაშლის გარეშე"
     },
     "ui": {
       "syncing": "სინქრონიზაცია...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "საქაღალდის დაშიფვრა...",
       "errors": {
         "alreadyExists": "ამ სახელით ჩანაწერი უკვე არსებობს",
-        "corruptedVault": "სეიფის ფაილი დაზიანებულია ან მოჭრილი",
         "diskFull": "დისკი სავსეა — არ არის საკმარისი ადგილი ოპერაციის დასასრულებლად",
-        "genericError": "მოხდა მოულოდნელი შეცდომა",
-        "networkError": "ქსელის შეცდომა დისტანციურ სეიფზე წვდომისას",
         "notAVault": "ეს ფაილი არ არის ვალიდური AeroVault კონტეინერი",
-        "pathNotFound": "სეიფის ფაილი ვერ მოიძებნა — შესაძლოა გადატანილია ან წაშლილია",
         "permissionDenied": "წვდომა აკრძალულია — შეამოწმეთ ფაილის უფლებები",
-        "vaultLocked": "სეიფი ჩაკეტილია სხვა პროცესის მიერ",
-        "wrongPassword": "არასწორი პაროლი — სცადეთ ხელახლა"
+        "wrongPassword": "არასწორი პაროლი — სცადეთ ხელახლა",
+        "unsupportedVersion": "მხარდაუჭერელი საცავის ვერსია",
+        "corrupted": "საცავის ფაილი დაზიანებულია",
+        "fileNotFound": "ფაილი ვერ მოიძებნა",
+        "directoryTooLarge": "დირექტორია აღემატება ზომის ლიმიტს",
+        "invalidPath": "არასწორი ფაილის ბილიკი"
       },
       "extract": "ამოღება",
       "extracted": "{name} ამოღებულია",
@@ -2338,7 +2341,8 @@
       "totalItems": "სულ",
       "unlock": "განბლოკვა",
       "v1Standard": "AeroVault v1 (სტანდარტი)",
-      "v2Advanced": "AeroVault v2 (გაფართოებული უსაფრთხოება)"
+      "v2Advanced": "AeroVault v2 (გაფართოებული უსაფრთხოება)",
+      "encryptFolderPreview": "{fileCount} ფაილი {dirCount} დირექტორიაში ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator საცავი",
@@ -3125,9 +3129,6 @@
       "removeTag": "ტეგის წაშლა",
       "tags": "ტეგები"
     },
-    "preconfiguredProviders": "წინასწარ კონფიგურირებული მომწოდებლები",
-    "customConnection": "მორგებული კავშირი",
-    "custom": "მორგებული",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "ლეიბლები არ არის ხელმისაწვდომი. შექმენით ლეიბლები Zoho WorkDrive პარამეტრებში.",
       "createLabel": "მარკა ააღი",
       "labelName": "მარკის სახელი"
+    },
+    "healthCheck": {
+      "title": "სერვერის ჯანმრთელობის შემოწმება",
+      "subtitle": "რეალურ დროში ქსელის დიაგნოსტიკა თქვენი მდებარეობიდან",
+      "checkAll": "ყველას შემოწმება",
+      "checkOne": "ამ სერვერის შემოწმება",
+      "checking": "მოწმება...",
+      "checked": "შემოწმებულია",
+      "healthy": "გამართული",
+      "degraded": "გაუარესებული",
+      "unreachable": "მიუწვდომელი",
+      "error": "შეცდომა",
+      "noServers": "შემოწმებისთვის შენახული სერვერები არ არის",
+      "score": "ქულა",
+      "dnsResolution": "DNS გარკვევა",
+      "tcpConnect": "TCP დაკავშირება",
+      "tlsHandshake": "TLS ჰენდშეიქი",
+      "httpResponse": "HTTP პასუხი",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

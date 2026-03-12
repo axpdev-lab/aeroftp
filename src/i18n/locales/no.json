@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideell for skykjørt objektlagring, sikkerhetskopier og storskala filhosting.",
       "webdavInfoLine1": "Krever server-URL, brukernavn og passord. Port 443 (HTTPS) er standard.",
       "webdavInfoLine2": "Ideell for selvhosted sky, NAS-enheter og fildeling.",
-      "selectProviderPrompt": "Velg en leverandør ovenfor eller velg \"Custom\"",
       "seafileDesc": "Åpen kildekode skylagring",
       "seafileTooltip": "Seafile - Selvhostet åpen kildekode sky med WebDAV-støtte",
       "fileluDesc": "Multiprotokoll skylagring",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Ingen uttatte filer",
       "canaryProjection": "Basert på {percent}% utvalg vil full synkronisering overføre ~{files} filer ({size})",
-      "canaryApproveFullSync": "Godkjenn full synkronisering"
+      "canaryApproveFullSync": "Godkjenn full synkronisering",
+      "profilePull": "Pull",
+      "profilePullDesc": "Ekstern → Lokal, slett foreldreløse, verifiser størrelse",
+      "profileRemoteBackup": "Ekstern sikkerhetskopiering",
+      "profileRemoteBackupDesc": "Ekstern → Lokal, checksum-verifisering, ingen slettinger"
     },
     "ui": {
       "syncing": "Synkroniserer...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Krypterer mappe...",
       "errors": {
         "alreadyExists": "En oppføring med dette navnet finnes allerede",
-        "corruptedVault": "Hvelvfilen er skadet eller avkortet",
         "diskFull": "Disken er full — ikke nok plass til å fullføre operasjonen",
-        "genericError": "En uventet feil oppstod",
-        "networkError": "Nettverksfeil ved tilgang til eksternt hvelv",
         "notAVault": "Denne filen er ikke en gyldig AeroVault-beholder",
-        "pathNotFound": "Hvelvfilen ble ikke funnet — den kan ha blitt flyttet eller slettet",
         "permissionDenied": "Tilgang nektet — sjekk filtillatelser",
-        "vaultLocked": "Hvelvet er låst av en annen prosess",
-        "wrongPassword": "Feil passord — vennligst prøv igjen"
+        "wrongPassword": "Feil passord — vennligst prøv igjen",
+        "unsupportedVersion": "Ustottet hvelvversjon",
+        "corrupted": "Hvelvfilen er skadet",
+        "fileNotFound": "Filen ble ikke funnet",
+        "directoryTooLarge": "Katalogen overskrider storrelsesgrensen",
+        "invalidPath": "Ugyldig filbane"
       },
       "extract": "Pakk ut",
       "extracted": "Pakket ut {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "totalt",
       "unlock": "Lås opp",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Avansert sikkerhet)"
+      "v2Advanced": "AeroVault v2 (Avansert sikkerhet)",
+      "encryptFolderPreview": "{fileCount} filer i {dirCount} kataloger ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator-hvelv",
@@ -3285,6 +3289,27 @@
       "noLabels": "Ingen etiketter tilgjengelige. Opprett en nedenfor.",
       "createLabel": "Opprett etikett",
       "labelName": "Etikettnavn"
+    },
+    "healthCheck": {
+      "title": "Servertilstandskontroll",
+      "subtitle": "Nettverksdiagnostikk i sanntid fra din posisjon",
+      "checkAll": "Sjekk alle",
+      "checkOne": "Sjekk denne serveren",
+      "checking": "Sjekker...",
+      "checked": "sjekket",
+      "healthy": "Frisk",
+      "degraded": "Redusert",
+      "unreachable": "Utilgjengelig",
+      "error": "Feil",
+      "noServers": "Ingen lagrede servere å sjekke",
+      "score": "Poengsum",
+      "dnsResolution": "DNS-oppslag",
+      "tcpConnect": "TCP-tilkobling",
+      "tlsHandshake": "TLS-håndtrykk",
+      "httpResponse": "HTTP-respons",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

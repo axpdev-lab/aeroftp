@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Идеален за облачно хранилище на обекти, резервни копия и масово хостване на файлове.",
       "webdavInfoLine1": "Изисква URL на сървъра, потребителско име и парола. Портът 443 (HTTPS) по подразбиране.",
       "webdavInfoLine2": "Идеален за самостоятелни облаци, устройства NAS и споделяне на файлове.",
-      "selectProviderPrompt": "Изберете доставчик по-горе или изберете \"Custom\"",
       "seafileDesc": "Облачно хранилище с отворен код",
       "seafileTooltip": "Seafile - Самостоятелно хоствано облачно хранилище с отворен код с поддръжка на WebDAV",
       "fileluDesc": "Многопротоколно облачно хранилище",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Състояние",
       "canaryNoResults": "Няма извадка от файлове",
       "canaryProjection": "Въз основа на {percent}% извадка, пълната синхронизация ще прехвърли ~{files} файла ({size})",
-      "canaryApproveFullSync": "Одобри пълна синхронизация"
+      "canaryApproveFullSync": "Одобри пълна синхронизация",
+      "profilePull": "Pull",
+      "profilePullDesc": "Отдалечен → Локален, изтрий осиротели, провери размер",
+      "profileRemoteBackup": "Отдалечено архивиране",
+      "profileRemoteBackupDesc": "Отдалечен → Локален, проверка checksum, без изтривания"
     },
     "ui": {
       "syncing": "Синхронизиране...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Криптиране на папка...",
       "errors": {
         "alreadyExists": "Запис с това име вече съществува",
-        "corruptedVault": "Файлът на хранилището е повреден или съкратен",
         "diskFull": "Дискът е пълен — няма достатъчно място за завършване на операцията",
-        "genericError": "Възникна неочаквана грешка",
-        "networkError": "Мрежова грешка при достъп до отдалечено хранилище",
         "notAVault": "Този файл не е валиден AeroVault контейнер",
-        "pathNotFound": "Файлът на хранилището не е намерен — може да е преместен или изтрит",
         "permissionDenied": "Достъпът е отказан — проверете правата на файла",
-        "vaultLocked": "Хранилището е заключено от друг процес",
-        "wrongPassword": "Грешна парола — моля, опитайте отново"
+        "wrongPassword": "Грешна парола — моля, опитайте отново",
+        "unsupportedVersion": "Неподдържана версия на хранилището",
+        "corrupted": "Файлът на хранилището е повреден",
+        "fileNotFound": "Файлът не е намерен",
+        "directoryTooLarge": "Директорията надвишава ограничението за размер",
+        "invalidPath": "Невалиден път до файла"
       },
       "extract": "Разархивиране",
       "extracted": "Извлечено: {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "общо",
       "unlock": "Отключване",
       "v1Standard": "AeroVault v1 (Стандартен)",
-      "v2Advanced": "AeroVault v2 (Разширена сигурност)"
+      "v2Advanced": "AeroVault v2 (Разширена сигурност)",
+      "encryptFolderPreview": "{fileCount} файла в {dirCount} директории ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator трезор",
@@ -3266,6 +3270,27 @@
       "noLabels": "Няма налични етикети. Създайте етикети в настройките на Zoho WorkDrive.",
       "createLabel": "Създаване на етикет",
       "labelName": "Име на етикета"
+    },
+    "healthCheck": {
+      "title": "Проверка на сървъра",
+      "subtitle": "Мрежова диагностика в реално време от вашата позиция",
+      "checkAll": "Провери всички",
+      "checkOne": "Провери този сървър",
+      "checking": "Проверка...",
+      "checked": "проверено",
+      "healthy": "Изправен",
+      "degraded": "Забавен",
+      "unreachable": "Недостъпен",
+      "error": "Грешка",
+      "noServers": "Няма запазени сървъри за проверка",
+      "score": "Резултат",
+      "dnsResolution": "DNS резолюция",
+      "tcpConnect": "TCP свързване",
+      "tlsHandshake": "TLS удостоверяване",
+      "httpResponse": "HTTP отговор",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

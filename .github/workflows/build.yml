@@ -173,22 +173,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publish Snap to Snapcraft Store (only on tags)
-      # continue-on-error: Snap Store publish should not block the release
-      - name: Publish to Snap Store
-        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        continue-on-error: true
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        run: |
-          SNAP_FILE="${{ steps.snap-build.outputs.snap }}"
-          if [ -n "$SNAP_FILE" ] && [ -f "$SNAP_FILE" ]; then
-            echo "Uploading $SNAP_FILE to Snap Store..."
-            snapcraft upload --release=stable "$SNAP_FILE"
-          else
-            echo "Warning: Snap file not found, skipping Snap Store upload"
-            echo "This is non-fatal - other packages will still be released"
-          fi
+      # Snap Store auto-publish DISABLED — pending manual review approval.
+      # Re-enable once the Snap Store review clears or after forum escalation.
+      # See: https://forum.snapcraft.io/ for review status.
+      #
+      # - name: Publish to Snap Store
+      #   if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
+      #   continue-on-error: true
+      #   env:
+      #     SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+      #   run: |
+      #     SNAP_FILE="${{ steps.snap-build.outputs.snap }}"
+      #     if [ -n "$SNAP_FILE" ] && [ -f "$SNAP_FILE" ]; then
+      #       echo "Uploading $SNAP_FILE to Snap Store..."
+      #       snapcraft upload --release=stable "$SNAP_FILE"
+      #     else
+      #       echo "Warning: Snap file not found, skipping Snap Store upload"
+      #       echo "This is non-fatal - other packages will still be released"
+      #     fi
 
       - name: Upload Windows binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'windows'

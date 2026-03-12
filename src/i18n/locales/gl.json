@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal para almacenamento de obxectos en nube, copias de seguridade e aloxamento de arquivos a gran escala.",
       "webdavInfoLine1": "Require a URL do servidor, nome de usuario e contrasinal. Porto 443 (HTTPS) por defecto.",
       "webdavInfoLine2": "Ideal para nubes autoxestionadas, dispositivos NAS e compartición de arquivos.",
-      "selectProviderPrompt": "Selecciona un provedor anterior ou escolle \"Custom\"",
       "seafileDesc": "Almacenamento na nube de código aberto",
       "seafileTooltip": "Seafile - Nube de código aberto autoaloxada con compatibilidade WebDAV",
       "fileluDesc": "Almacenamento na nube multiprotocolo",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Estado",
       "canaryNoResults": "Non hai ficheiros mostrados",
       "canaryProjection": "Baseado na mostra do {percent}%, a sincronización completa transferiría ~{files} ficheiros ({size})",
-      "canaryApproveFullSync": "Aprobar sincronización completa"
+      "canaryApproveFullSync": "Aprobar sincronización completa",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remoto → Local, eliminar orfos, verificar tamaño",
+      "profileRemoteBackup": "Copia remota",
+      "profileRemoteBackupDesc": "Remoto → Local, verificación checksum, sen eliminacións"
     },
     "ui": {
       "syncing": "Sincronizando...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Cifrando cartafol...",
       "errors": {
         "alreadyExists": "Xa existe unha entrada con este nome",
-        "corruptedVault": "O ficheiro da caixa forte está danado ou truncado",
         "diskFull": "Disco cheo — non hai espazo suficiente para completar a operación",
-        "genericError": "Produciuse un erro inesperado",
-        "networkError": "Erro de rede ao acceder á caixa forte remota",
         "notAVault": "Este ficheiro non é un contedor AeroVault válido",
-        "pathNotFound": "Non se atopou o ficheiro da caixa forte — pode que fose movido ou eliminado",
         "permissionDenied": "Permiso denegado — comprobe os permisos do ficheiro",
-        "vaultLocked": "A caixa forte está bloqueada por outro proceso",
-        "wrongPassword": "Contrasinal incorrecto — ténteo de novo"
+        "wrongPassword": "Contrasinal incorrecto — ténteo de novo",
+        "unsupportedVersion": "Versión de caixa forte non compatible",
+        "corrupted": "O ficheiro da caixa forte está danado",
+        "fileNotFound": "Ficheiro non atopado",
+        "directoryTooLarge": "O directorio supera o límite de tamaño",
+        "invalidPath": "Ruta de ficheiro non válida"
       },
       "extract": "Extraer",
       "extracted": "{name} extraído",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Desbloquear",
       "v1Standard": "AeroVault v1 (Estándar)",
-      "v2Advanced": "AeroVault v2 (Seguridade Avanzada)"
+      "v2Advanced": "AeroVault v2 (Seguridade Avanzada)",
+      "encryptFolderPreview": "{fileCount} ficheiros en {dirCount} directorios ({totalSize})"
     },
     "cryptomator": {
       "title": "Bóveda Cryptomator",
@@ -3125,9 +3129,6 @@
       "removeTag": "Eliminar etiqueta",
       "tags": "Etiquetas"
     },
-    "preconfiguredProviders": "Provedores Preconfigurados",
-    "customConnection": "Conexión Personalizada",
-    "custom": "Personalizado",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3288,6 +3289,27 @@
       "noLabels": "Non hai etiquetas dispoñibles. Crea unha abaixo.",
       "createLabel": "Crear etiqueta",
       "labelName": "Nome da etiqueta"
+    },
+    "healthCheck": {
+      "title": "Comprobación de saúde do servidor",
+      "subtitle": "Diagnóstico de rede en tempo real dende a túa posición",
+      "checkAll": "Comprobar todos",
+      "checkOne": "Comprobar este servidor",
+      "checking": "Comprobando...",
+      "checked": "comprobado",
+      "healthy": "Correcto",
+      "degraded": "Degradado",
+      "unreachable": "Inaccesible",
+      "error": "Erro",
+      "noServers": "Non hai servidores gardados para comprobar",
+      "score": "Puntuación",
+      "dnsResolution": "Resolución DNS",
+      "tcpConnect": "Conexión TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Resposta HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

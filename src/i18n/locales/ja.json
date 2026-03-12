@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "クラウドオブジェクトストレージ、バックアップ、大規模ファイルホスティングに最適です。",
       "webdavInfoLine1": "サーバーURL、ユーザー名、パスワードが必要です。ポート443（HTTPS）がデフォルトです。",
       "webdavInfoLine2": "自己ホスト型クラウド、NASデバイス、ファイル共有に最適です。",
-      "selectProviderPrompt": "上記のプロバイダーを選択するか、\"Custom\"を選択してください",
       "seafileDesc": "オープンソースクラウドストレージ",
       "seafileTooltip": "Seafile - WebDAV対応のセルフホスト型オープンソースクラウド",
       "fileluDesc": "マルチプロトコルクラウドストレージ",
@@ -1552,7 +1551,11 @@
       "canaryStatus": "ステータス",
       "canaryNoResults": "サンプルファイルなし",
       "canaryProjection": "{percent}%のサンプルに基づくと、完全同期では約{files}ファイル（{size}）が転送されます",
-      "canaryApproveFullSync": "完全同期を承認"
+      "canaryApproveFullSync": "完全同期を承認",
+      "profilePull": "Pull",
+      "profilePullDesc": "リモート → ローカル、孤立ファイル削除、サイズ検証",
+      "profileRemoteBackup": "リモートバックアップ",
+      "profileRemoteBackupDesc": "リモート → ローカル、チェックサム検証、削除なし"
     },
     "ui": {
       "syncing": "同期中...",
@@ -2240,15 +2243,15 @@
       "encryptFolder": "フォルダを暗号化中...",
       "errors": {
         "alreadyExists": "この名前のエントリは既に存在します",
-        "corruptedVault": "保管庫ファイルが破損しているか切り捨てられています",
         "diskFull": "ディスクがいっぱいです — 操作を完了するのに十分な空き容量がありません",
-        "genericError": "予期しないエラーが発生しました",
-        "networkError": "リモート保管庫へのアクセス中にネットワークエラーが発生しました",
         "notAVault": "このファイルは有効なAeroVaultコンテナではありません",
-        "pathNotFound": "保管庫ファイルが見つかりません — 移動または削除された可能性があります",
         "permissionDenied": "アクセスが拒否されました — ファイルのアクセス権を確認してください",
-        "vaultLocked": "保管庫は別のプロセスによってロックされています",
-        "wrongPassword": "パスワードが間違っています — もう一度お試しください"
+        "wrongPassword": "パスワードが間違っています — もう一度お試しください",
+        "unsupportedVersion": "サポートされていないボールトバージョン",
+        "corrupted": "ボールトファイルが破損しています",
+        "fileNotFound": "ファイルが見つかりません",
+        "directoryTooLarge": "ディレクトリがサイズ制限を超えています",
+        "invalidPath": "無効なファイルパス"
       },
       "extract": "抽出",
       "extracted": "{name} を展開しました",
@@ -2303,7 +2306,8 @@
       "totalItems": "合計",
       "unlock": "解除",
       "v1Standard": "AeroVault v1（標準）",
-      "v2Advanced": "AeroVault v2（高度なセキュリティ）"
+      "v2Advanced": "AeroVault v2（高度なセキュリティ）",
+      "encryptFolderPreview": "{dirCount} ディレクトリ内の {fileCount} ファイル ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator保管庫",
@@ -3256,6 +3260,27 @@
       "noLabels": "利用可能なラベルはありません。Zoho WorkDriveの設定でラベルを作成します。",
       "createLabel": "ラベルを作成",
       "labelName": "ラベル名"
+    },
+    "healthCheck": {
+      "title": "サーバーヘルスチェック",
+      "subtitle": "現在地からのリアルタイムネットワーク診断",
+      "checkAll": "すべてチェック",
+      "checkOne": "このサーバーをチェック",
+      "checking": "確認中...",
+      "checked": "確認済み",
+      "healthy": "正常",
+      "degraded": "低下",
+      "unreachable": "到達不能",
+      "error": "エラー",
+      "noServers": "チェックするサーバーが保存されていません",
+      "score": "スコア",
+      "dnsResolution": "DNS 解決",
+      "tcpConnect": "TCP 接続",
+      "tlsHandshake": "TLS ハンドシェイク",
+      "httpResponse": "HTTP レスポンス",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

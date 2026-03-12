@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Eguzkia objektuen biltegiratze, babes-kopiak eta fitxategien ostalaria eskalan egokia.",
       "webdavInfoLine1": "Zerbitzariaren URL-a, erabiltzaile-izena eta pasahitza behar ditu. 443 ataka (HTTPS) berez.",
       "webdavInfoLine2": "Autojabea diren hodeiak, NAS gailuak eta fitxategiak partekatzeko egokia.",
-      "selectProviderPrompt": "Hautatu hornitzailea goian edo hautatu \"Custom\"",
       "seafileDesc": "Kode irekiko hodeiko biltegiratzea",
       "seafileTooltip": "Seafile - Norberak ostatatutako kode irekiko hodeia WebDAV euskarriarekin",
       "fileluDesc": "Protokolo anitzeko hodeiko biltegiratzea",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Egoera",
       "canaryNoResults": "Ez dago laginkatutako fitxategirik",
       "canaryProjection": "%{percent} laginean oinarrituta, sinkronizazio osoak ~{files} fitxategi ({size}) transferituko lituzke",
-      "canaryApproveFullSync": "Sinkronizazio osoa onartu"
+      "canaryApproveFullSync": "Sinkronizazio osoa onartu",
+      "profilePull": "Pull",
+      "profilePullDesc": "Urruneko → Lokala, umezurtzak ezabatu, tamaina egiaztatu",
+      "profileRemoteBackup": "Urruneko babeskopia",
+      "profileRemoteBackupDesc": "Urruneko → Lokala, checksum egiaztapena, ezabapenik gabe"
     },
     "ui": {
       "syncing": "Sinkronizatzen...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Karpeta enkriptatzen...",
       "errors": {
         "alreadyExists": "Izen hau duen sarrera bat dagoeneko existitzen da",
-        "corruptedVault": "Kutxa-fitxategia hondatuta edo moztuta dago",
         "diskFull": "Diskoa beteta — ez dago nahikoa lekurik eragiketa osatzeko",
-        "genericError": "Ustekabeko errore bat gertatu da",
-        "networkError": "Sareko errorea urruneko kutxara sartzean",
         "notAVault": "Fitxategi hau ez da baliozko AeroVault edukiontzi bat",
-        "pathNotFound": "Ez da kutxa-fitxategia aurkitu — mugitua edo ezabatua izan daiteke",
         "permissionDenied": "Baimena ukatua — egiaztatu fitxategi-baimenak",
-        "vaultLocked": "Kutxa beste prozesu batek blokeatuta dauka",
-        "wrongPassword": "Pasahitz okerra — saiatu berriro mesedez"
+        "wrongPassword": "Pasahitz okerra — saiatu berriro mesedez",
+        "unsupportedVersion": "Kutxa gogorren bertsio ez onartua",
+        "corrupted": "Kutxa gogorraren fitxategia hondatuta dago",
+        "fileNotFound": "Fitxategia ez da aurkitu",
+        "directoryTooLarge": "Direktorioak tamaina-muga gainditzen du",
+        "invalidPath": "Fitxategi-bide baliogabea"
       },
       "extract": "Erauzi",
       "extracted": "{name} ateratuta",
@@ -2338,7 +2341,8 @@
       "totalItems": "guztira",
       "unlock": "Desblokeatu",
       "v1Standard": "AeroVault v1 (Estandarra)",
-      "v2Advanced": "AeroVault v2 (Segurtasun Aurreratua)"
+      "v2Advanced": "AeroVault v2 (Segurtasun Aurreratua)",
+      "encryptFolderPreview": "{fileCount} fitxategi {dirCount} direktoriatan ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Ganga",
@@ -3125,9 +3129,6 @@
       "removeTag": "Kendu etiketa",
       "tags": "Etiketak"
     },
-    "preconfiguredProviders": "Aurrekonfiguraturiko Hornitzaileak",
-    "customConnection": "Norbere Konexioa",
-    "custom": "Norbera",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3288,6 +3289,27 @@
       "noLabels": "Ez dago etiketarik erabilgarri. Sortu bat behean.",
       "createLabel": "Etiketa sortu",
       "labelName": "Etiketaren izena"
+    },
+    "healthCheck": {
+      "title": "Zerbitzariaren osasun-egiaztapena",
+      "subtitle": "Denbora errealeko sare-diagnostikoak zure kokapenetik",
+      "checkAll": "Egiaztatu denak",
+      "checkOne": "Egiaztatu zerbitzari hau",
+      "checking": "Egiaztatzen...",
+      "checked": "egiaztatuta",
+      "healthy": "Osasuntsu",
+      "degraded": "Degradatuta",
+      "unreachable": "Eskuraezina",
+      "error": "Errorea",
+      "noServers": "Ez dago gordetako zerbitzaririk egiaztatzeko",
+      "score": "Puntuazioa",
+      "dnsResolution": "DNS ebazpena",
+      "tcpConnect": "TCP konexioa",
+      "tlsHandshake": "TLS handshake",
+      "httpResponse": "HTTP erantzuna",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

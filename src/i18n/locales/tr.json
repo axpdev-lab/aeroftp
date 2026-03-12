@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Bulut nesne depolaması, yedeklemeler ve büyük ölçekli dosya barındırma için ideal.",
       "webdavInfoLine1": "Sunucu URL'si, kullanıcı adı ve şifre gerektirir. Varsayılan olarak 443 bağlantı noktası (HTTPS).",
       "webdavInfoLine2": "Kendi kendine barındırılan bulutlar, NAS cihazları ve dosya paylaşımı için ideal.",
-      "selectProviderPrompt": "Yukarıdaki bir sağlayıcı seçin veya \"Custom\" seçeneğini seçin",
       "seafileDesc": "Açık kaynak bulut depolama",
       "seafileTooltip": "Seafile - WebDAV destekli, kendi sunucunuzda barındırılan açık kaynak bulut",
       "fileluDesc": "Çok protokollü bulut depolama",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Durum",
       "canaryNoResults": "Orneklenen dosya yok",
       "canaryProjection": "{percent}% ornekleme temelinde, tam senkronizasyon yaklasik {files} dosya ({size}) aktarir",
-      "canaryApproveFullSync": "Tam senkronizasyonu onayla"
+      "canaryApproveFullSync": "Tam senkronizasyonu onayla",
+      "profilePull": "Pull",
+      "profilePullDesc": "Uzak → Yerel, yetim dosyaları sil, boyut doğrula",
+      "profileRemoteBackup": "Uzak Yedekleme",
+      "profileRemoteBackupDesc": "Uzak → Yerel, checksum doğrulama, silme yok"
     },
     "ui": {
       "syncing": "Senkronize ediliyor...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Klasör şifreleniyor...",
       "errors": {
         "alreadyExists": "Bu isimde bir kayıt zaten mevcut",
-        "corruptedVault": "Kasa dosyası bozuk veya kesilmiş",
         "diskFull": "Disk dolu — işlemi tamamlamak için yeterli alan yok",
-        "genericError": "Beklenmeyen bir hata oluştu",
-        "networkError": "Uzak kasaya erişirken ağ hatası",
         "notAVault": "Bu dosya geçerli bir AeroVault kapsayıcısı değil",
-        "pathNotFound": "Kasa dosyası bulunamadı — taşınmış veya silinmiş olabilir",
         "permissionDenied": "Erişim reddedildi — dosya izinlerini kontrol edin",
-        "vaultLocked": "Kasa başka bir işlem tarafından kilitli",
-        "wrongPassword": "Yanlış şifre — lütfen tekrar deneyin"
+        "wrongPassword": "Yanlış şifre — lütfen tekrar deneyin",
+        "unsupportedVersion": "Desteklenmeyen kasa surumu",
+        "corrupted": "Kasa dosyasi bozuk",
+        "fileNotFound": "Dosya bulunamadi",
+        "directoryTooLarge": "Dizin boyut sinirini asiyor",
+        "invalidPath": "Gecersiz dosya yolu"
       },
       "extract": "Çıkar",
       "extracted": "{name} çıkarıldı",
@@ -2338,7 +2341,8 @@
       "totalItems": "toplam",
       "unlock": "Kilidi Aç",
       "v1Standard": "AeroVault v1 (Standart)",
-      "v2Advanced": "AeroVault v2 (Gelişmiş Güvenlik)"
+      "v2Advanced": "AeroVault v2 (Gelişmiş Güvenlik)",
+      "encryptFolderPreview": "{dirCount} dizinde {fileCount} dosya ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator Kasası",
@@ -3125,9 +3129,6 @@
       "removeTag": "Etiketi Kaldır",
       "tags": "Etiketler"
     },
-    "preconfiguredProviders": "Önceden yapılandırılmış sağlayıcılar",
-    "customConnection": "Özel bağlantı",
-    "custom": "Özel",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3269,6 +3270,27 @@
       "noLabels": "Kullanılabilir etiket yok. Zoho WorkDrive ayarlarında etiketler oluşturun.",
       "createLabel": "Etiket Oluştur",
       "labelName": "Etiket adı"
+    },
+    "healthCheck": {
+      "title": "Sunucu sağlık kontrolü",
+      "subtitle": "Konumunuzdan gerçek zamanlı ağ tanılama",
+      "checkAll": "Tümünü kontrol et",
+      "checkOne": "Bu sunucuyu kontrol et",
+      "checking": "Kontrol ediliyor...",
+      "checked": "kontrol edildi",
+      "healthy": "Sağlıklı",
+      "degraded": "Düşük performans",
+      "unreachable": "Erişilemiyor",
+      "error": "Hata",
+      "noServers": "Kontrol edilecek kayıtlı sunucu yok",
+      "score": "Puan",
+      "dnsResolution": "DNS çözümlemesi",
+      "tcpConnect": "TCP bağlantısı",
+      "tlsHandshake": "TLS el sıkışması",
+      "httpResponse": "HTTP yanıtı",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

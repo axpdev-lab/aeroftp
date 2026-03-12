@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal pentru stocare de obiecte în cloud, backup-uri și găzduire de fișiere la scară largă.",
       "webdavInfoLine1": "Necesită adresa URL a serverului, nume de utilizator și parolă. Portul 443 (HTTPS) implicit.",
       "webdavInfoLine2": "Ideal pentru cloud-uri self-hosted, dispozitive NAS și partajare de fișiere.",
-      "selectProviderPrompt": "Selectați un furnizor mai sus sau alegeți \"Custom\"",
       "seafileDesc": "Stocare cloud open-source",
       "seafileTooltip": "Seafile - Cloud auto-găzduit open-source cu suport WebDAV",
       "fileluDesc": "Stocare în cloud multi-protocol",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Stare",
       "canaryNoResults": "Niciun fișier eșantionat",
       "canaryProjection": "Pe baza eșantionului de {percent}%, sincronizarea completă ar transfera ~{files} fișiere ({size})",
-      "canaryApproveFullSync": "Aprobă sincronizarea completă"
+      "canaryApproveFullSync": "Aprobă sincronizarea completă",
+      "profilePull": "Pull",
+      "profilePullDesc": "Distant → Local, șterge orfani, verifică dimensiune",
+      "profileRemoteBackup": "Backup distant",
+      "profileRemoteBackupDesc": "Distant → Local, verificare checksum, fără ștergeri"
     },
     "ui": {
       "syncing": "Se sincronizează...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Se criptează dosarul...",
       "errors": {
         "alreadyExists": "O intrare cu acest nume există deja",
-        "corruptedVault": "Fișierul seifului este corupt sau trunchiat",
         "diskFull": "Disc plin — spațiu insuficient pentru finalizarea operațiunii",
-        "genericError": "A apărut o eroare neașteptată",
-        "networkError": "Eroare de rețea la accesarea seifului la distanță",
         "notAVault": "Acest fișier nu este un container AeroVault valid",
-        "pathNotFound": "Fișierul seifului nu a fost găsit — este posibil să fi fost mutat sau șters",
         "permissionDenied": "Permisiune refuzată — verificați permisiunile fișierului",
-        "vaultLocked": "Seiful este blocat de un alt proces",
-        "wrongPassword": "Parolă greșită — încercați din nou"
+        "wrongPassword": "Parolă greșită — încercați din nou",
+        "unsupportedVersion": "Versiune de seif neacceptata",
+        "corrupted": "Fisierul seifului este corupt",
+        "fileNotFound": "Fisierul nu a fost gasit",
+        "directoryTooLarge": "Directorul depaseste limita de dimensiune",
+        "invalidPath": "Cale de fisier invalida"
       },
       "extract": "Extrage",
       "extracted": "Extras {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Deblochează",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Securitate avansată)"
+      "v2Advanced": "AeroVault v2 (Securitate avansată)",
+      "encryptFolderPreview": "{fileCount} fisiere in {dirCount} directoare ({totalSize})"
     },
     "cryptomator": {
       "title": "Seif Cryptomator",
@@ -3256,6 +3260,27 @@
       "noLabels": "Nicio etichetă disponibilă. Creați etichete în setările Zoho WorkDrive.",
       "createLabel": "Creați eticheta",
       "labelName": "Nume etichetă"
+    },
+    "healthCheck": {
+      "title": "Verificare stare server",
+      "subtitle": "Diagnosticare rețea în timp real din poziția ta",
+      "checkAll": "Verifică toate",
+      "checkOne": "Verifică acest server",
+      "checking": "Se verifică...",
+      "checked": "verificat",
+      "healthy": "Funcțional",
+      "degraded": "Degradat",
+      "unreachable": "Inaccesibil",
+      "error": "Eroare",
+      "noServers": "Niciun server salvat de verificat",
+      "score": "Scor",
+      "dnsResolution": "Rezoluție DNS",
+      "tcpConnect": "Conexiune TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Răspuns HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

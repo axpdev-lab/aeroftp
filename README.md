@@ -350,7 +350,7 @@ sudo snap install aeroftp
   </a>
 </p>
 
-> **Note:** Snap version has limited filesystem access due to strict confinement. For full filesystem access, use .deb, .AppImage, or AUR.
+> **Note:** The Snap Store version may not be up-to-date while awaiting store review. The latest `.snap` package is always available on [GitHub Releases](https://github.com/axpnet/aeroftp/releases). In-app auto-update works regardless. Snap has limited filesystem access due to strict confinement — for full access, use .deb, .AppImage, or AUR.
 
 #### AUR (Arch Linux)
 ```bash

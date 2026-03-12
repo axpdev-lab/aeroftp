@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "2.9.3"
+version = "2.9.4"
 dependencies = [
  "aerovault",
  "aes",
@@ -42,6 +42,7 @@ dependencies = [
  "ctrlc",
  "data-encoding",
  "dirs 5.0.1",
+ "filetime",
  "flate2",
  "futures-util",
  "globset",

@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Idéal pour le stockage d'objets dans le cloud, les sauvegardes et l'hébergement de fichiers à grande échelle.",
       "webdavInfoLine1": "Nécessite une URL de serveur, un nom d'utilisateur et un mot de passe. Port 443 (HTTPS) par défaut.",
       "webdavInfoLine2": "Idéal pour les clouds autohébergés, les appareils NAS et le partage de fichiers.",
-      "selectProviderPrompt": "Sélectionnez un fournisseur ci-dessus ou choisissez \"Custom\"",
       "seafileDesc": "Stockage cloud open source",
       "seafileTooltip": "Seafile - Cloud open source auto-hébergé avec prise en charge WebDAV",
       "fileluDesc": "Stockage cloud multi-protocole",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Statut",
       "canaryNoResults": "Aucun fichier echantillonne",
       "canaryProjection": "Sur la base d'un echantillon de {percent}%, la synchronisation complete transfererait environ {files} fichiers ({size})",
-      "canaryApproveFullSync": "Approuver la synchronisation complete"
+      "canaryApproveFullSync": "Approuver la synchronisation complete",
+      "profilePull": "Pull",
+      "profilePullDesc": "Distant → Local, supprimer orphelins, vérifier taille",
+      "profileRemoteBackup": "Sauvegarde distante",
+      "profileRemoteBackupDesc": "Distant → Local, vérification checksum, sans suppressions"
     },
     "ui": {
       "syncing": "Synchronisation...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Chiffrement du dossier...",
       "errors": {
         "alreadyExists": "Une entrée portant ce nom existe déjà",
-        "corruptedVault": "Le fichier du coffre est corrompu ou tronqué",
         "diskFull": "Disque plein — espace insuffisant pour terminer l'opération",
-        "genericError": "Une erreur inattendue s'est produite",
-        "networkError": "Erreur réseau lors de l'accès au coffre distant",
         "notAVault": "Ce fichier n'est pas un conteneur AeroVault valide",
-        "pathNotFound": "Le fichier du coffre est introuvable — il a peut-être été déplacé ou supprimé",
         "permissionDenied": "Autorisation refusée — vérifiez les permissions du fichier",
-        "vaultLocked": "Le coffre est verrouillé par un autre processus",
-        "wrongPassword": "Mot de passe incorrect — veuillez réessayer"
+        "wrongPassword": "Mot de passe incorrect — veuillez réessayer",
+        "unsupportedVersion": "Version de coffre-fort non prise en charge",
+        "corrupted": "Le fichier du coffre-fort est corrompu",
+        "fileNotFound": "Fichier introuvable",
+        "directoryTooLarge": "Le répertoire dépasse la limite de taille",
+        "invalidPath": "Chemin de fichier non valide"
       },
       "extract": "Extraire",
       "extracted": "{name} extrait",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Deverrouiller",
       "v1Standard": "AeroVault v1 (Standard)",
-      "v2Advanced": "AeroVault v2 (Securite avancee)"
+      "v2Advanced": "AeroVault v2 (Securite avancee)",
+      "encryptFolderPreview": "{fileCount} fichiers dans {dirCount} répertoires ({totalSize})"
     },
     "cryptomator": {
       "title": "Coffre-fort Cryptomator",
@@ -3115,9 +3119,6 @@
       "removeTag": "Supprimer le tag",
       "tags": "Tags"
     },
-    "preconfiguredProviders": "Fournisseurs Préconfigurés",
-    "customConnection": "Connexion Personnalisée",
-    "custom": "Personnalisé",
     "commandPalette": {
       "category": {
         "ai": "AI",
@@ -3259,6 +3260,27 @@
       "noLabels": "Aucun libellé disponible. Créez des libellés dans les paramètres de Zoho WorkDrive.",
       "createLabel": "Créer un libellé",
       "labelName": "Nom du libellé"
+    },
+    "healthCheck": {
+      "title": "Vérification de l'état du serveur",
+      "subtitle": "Diagnostic réseau en temps réel depuis votre position",
+      "checkAll": "Vérifier tout",
+      "checkOne": "Vérifier ce serveur",
+      "checking": "Vérification...",
+      "checked": "vérifié",
+      "healthy": "Opérationnel",
+      "degraded": "Dégradé",
+      "unreachable": "Inaccessible",
+      "error": "Erreur",
+      "noServers": "Aucun serveur enregistré à vérifier",
+      "score": "Score",
+      "dnsResolution": "Résolution DNS",
+      "tcpConnect": "Connexion TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Réponse HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

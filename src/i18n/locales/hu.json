@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideális felhő objektumtároláshoz, biztonsági mentésekhez és nagyméretű fájlok hosztálásához.",
       "webdavInfoLine1": "Kiszolgáló URL, felhasználónév és jelszó szükséges. Az 443-as port (HTTPS) az alapértelmezett.",
       "webdavInfoLine2": "Ideális önhoszolt felhőkhöz, NAS eszközökhöz és fájlmegosztáshoz.",
-      "selectProviderPrompt": "Válasszon egy szolgáltatót fent vagy válassza a \"Custom\" opciót",
       "seafileDesc": "Nyílt forrású felhőtárhely",
       "seafileTooltip": "Seafile - Önkiszolgáló nyílt forrású felhő WebDAV támogatással",
       "fileluDesc": "Többprotokollos felhőtárhely",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Állapot",
       "canaryNoResults": "Nincsenek mintázott fájlok",
       "canaryProjection": "A {percent}% minta alapján a teljes szinkronizálás ~{files} fájlt vinne át ({size})",
-      "canaryApproveFullSync": "Teljes szinkronizálás jóváhagyása"
+      "canaryApproveFullSync": "Teljes szinkronizálás jóváhagyása",
+      "profilePull": "Pull",
+      "profilePullDesc": "Távoli → Helyi, árvák törlése, méret ellenőrzés",
+      "profileRemoteBackup": "Távoli biztonsági mentés",
+      "profileRemoteBackupDesc": "Távoli → Helyi, checksum ellenőrzés, törlés nélkül"
     },
     "ui": {
       "syncing": "Szinkronizálás...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "Mappa titkosítása...",
       "errors": {
         "alreadyExists": "Ilyen nevű bejegyzés már létezik",
-        "corruptedVault": "A széf fájl sérült vagy csonka",
         "diskFull": "A lemez megtelt — nincs elég hely a művelet befejezéséhez",
-        "genericError": "Váratlan hiba történt",
-        "networkError": "Hálózati hiba a távoli széf elérésekor",
         "notAVault": "Ez a fájl nem érvényes AeroVault tároló",
-        "pathNotFound": "A széf fájl nem található — lehet, hogy áthelyezték vagy törölték",
         "permissionDenied": "Hozzáférés megtagadva — ellenőrizze a fájljogosultságokat",
-        "vaultLocked": "A széfet egy másik folyamat zárolta",
-        "wrongPassword": "Helytelen jelszó — kérjük, próbálja újra"
+        "wrongPassword": "Helytelen jelszó — kérjük, próbálja újra",
+        "unsupportedVersion": "Nem támogatott széfverzió",
+        "corrupted": "A széffájl sérült",
+        "fileNotFound": "A fájl nem található",
+        "directoryTooLarge": "A könyvtár meghaladja a méretkorlátot",
+        "invalidPath": "Érvénytelen fájlútvonal"
       },
       "extract": "Kibontás",
       "extracted": "Kibontva: {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "összesen",
       "unlock": "Feloldás",
       "v1Standard": "AeroVault v1 (standard)",
-      "v2Advanced": "AeroVault v2 (haladó biztonság)"
+      "v2Advanced": "AeroVault v2 (haladó biztonság)",
+      "encryptFolderPreview": "{fileCount} fájl {dirCount} könyvtárban ({totalSize})"
     },
     "cryptomator": {
       "title": "Cryptomator tároló",
@@ -3266,6 +3270,27 @@
       "noLabels": "Nincsenek elérhető címkék. Hozz létre címkéket a Zoho WorkDrive beállításaiban.",
       "createLabel": "Címke létrehozása",
       "labelName": "Címke neve"
+    },
+    "healthCheck": {
+      "title": "Szerver állapotfelmérés",
+      "subtitle": "Valós idejű hálózati diagnosztika az Ön helyzetéből",
+      "checkAll": "Összes ellenőrzése",
+      "checkOne": "Szerver ellenőrzése",
+      "checking": "Ellenőrzés...",
+      "checked": "ellenőrizve",
+      "healthy": "Kifogástalan",
+      "degraded": "Leromlott",
+      "unreachable": "Elérhetetlen",
+      "error": "Hiba",
+      "noServers": "Nincs mentett szerver az ellenőrzéshez",
+      "score": "Pontszám",
+      "dnsResolution": "DNS feloldás",
+      "tcpConnect": "TCP kapcsolódás",
+      "tlsHandshake": "TLS kézfogás",
+      "httpResponse": "HTTP válasz",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }

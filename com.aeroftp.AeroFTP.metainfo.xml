@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.4" date="2026-03-13">
+      <description>
+        <p>Server Health Check with real-time network diagnostics (DNS, TCP, TLS, HTTP probes) and health scoring. Download mtime preservation fixes sync and overwrite-if-newer accuracy. AeroSync gains Pull and Remote Backup presets for Remote-to-Local sync. AeroVault Pro modular architecture with recent vaults history and folder encryption. Server context menu. Provider Integration Guide. Snap Store auto-publish paused pending review.</p>
+      </description>
+    </release>
     <release version="2.9.3" date="2026-03-11">
       <description>
         <p>AeroVault OS integration fix: MIME icons for Yaru/Adwaita/Papirus themes, Open-with handler, CVE-2026-31812 security patch</p>

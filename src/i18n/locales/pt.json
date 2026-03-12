@@ -1207,7 +1207,6 @@
       "s3InfoLine2": "Ideal para armazenamento de objetos em nuvem, backups e hospedagem de arquivos em larga escala.",
       "webdavInfoLine1": "Requer URL do servidor, nome de usuário e senha. Porta 443 (HTTPS) por padrão.",
       "webdavInfoLine2": "Ideal para nuvens auto-hospedadas, dispositivos NAS e compartilhamento de arquivos.",
-      "selectProviderPrompt": "Selecione um provedor acima ou escolha \"Custom\"",
       "seafileDesc": "Armazenamento cloud de código aberto",
       "seafileTooltip": "Seafile - Nuvem auto-hospedada de código aberto com suporte a WebDAV",
       "fileluDesc": "Armazenamento em nuvem multi-protocolo",
@@ -1587,7 +1586,11 @@
       "canaryStatus": "Status",
       "canaryNoResults": "Nenhum arquivo amostrado",
       "canaryProjection": "Com base em uma amostra de {percent}%, a sincronizacao completa transferiria aprox. {files} arquivos ({size})",
-      "canaryApproveFullSync": "Aprovar sincronizacao completa"
+      "canaryApproveFullSync": "Aprovar sincronizacao completa",
+      "profilePull": "Pull",
+      "profilePullDesc": "Remoto → Local, eliminar órfãos, verificar tamanho",
+      "profileRemoteBackup": "Backup remoto",
+      "profileRemoteBackupDesc": "Remoto → Local, verificação checksum, sem exclusões"
     },
     "ui": {
       "syncing": "Sincronizando...",
@@ -2275,15 +2278,15 @@
       "encryptFolder": "A cifrar pasta...",
       "errors": {
         "alreadyExists": "Já existe uma entrada com este nome",
-        "corruptedVault": "O ficheiro do cofre está corrompido ou truncado",
         "diskFull": "Disco cheio — espaço insuficiente para concluir a operação",
-        "genericError": "Ocorreu um erro inesperado",
-        "networkError": "Erro de rede ao aceder ao cofre remoto",
         "notAVault": "Este ficheiro não é um contentor AeroVault válido",
-        "pathNotFound": "O ficheiro do cofre não foi encontrado — pode ter sido movido ou eliminado",
         "permissionDenied": "Permissão negada — verifique as permissões do ficheiro",
-        "vaultLocked": "O cofre está bloqueado por outro processo",
-        "wrongPassword": "Palavra-passe incorreta — tente novamente"
+        "wrongPassword": "Palavra-passe incorreta — tente novamente",
+        "unsupportedVersion": "Versao do cofre nao suportada",
+        "corrupted": "O ficheiro do cofre esta corrompido",
+        "fileNotFound": "Ficheiro nao encontrado",
+        "directoryTooLarge": "A diretoria excede o limite de tamanho",
+        "invalidPath": "Caminho de ficheiro invalido"
       },
       "extract": "Extrair",
       "extracted": "Extraido {name}",
@@ -2338,7 +2341,8 @@
       "totalItems": "total",
       "unlock": "Desbloquear",
       "v1Standard": "AeroVault v1 (Padrão)",
-      "v2Advanced": "AeroVault v2 (Segurança Avançada)"
+      "v2Advanced": "AeroVault v2 (Segurança Avançada)",
+      "encryptFolderPreview": "{fileCount} ficheiros em {dirCount} diretorias ({totalSize})"
     },
     "cryptomator": {
       "title": "Cofre Cryptomator",
@@ -3256,6 +3260,27 @@
       "noLabels": "Nenhum rótulo disponível. Crie rótulos nas configurações do Zoho WorkDrive.",
       "createLabel": "Criar rótulo",
       "labelName": "Nome do rótulo"
+    },
+    "healthCheck": {
+      "title": "Verificação de estado do servidor",
+      "subtitle": "Diagnóstico de rede em tempo real a partir da sua posição",
+      "checkAll": "Verificar todos",
+      "checkOne": "Verificar este servidor",
+      "checking": "Verificando...",
+      "checked": "verificado",
+      "healthy": "Saudável",
+      "degraded": "Degradado",
+      "unreachable": "Inacessível",
+      "error": "Erro",
+      "noServers": "Nenhum servidor salvo para verificar",
+      "score": "Pontuação",
+      "dnsResolution": "Resolução DNS",
+      "tcpConnect": "Conexão TCP",
+      "tlsHandshake": "Handshake TLS",
+      "httpResponse": "Resposta HTTP",
+      "copyResults": "Copy Results",
+      "copied": "Copied\\!",
+      "batchChecking": "Checking {count} servers, please wait..."
     }
   }
 }
