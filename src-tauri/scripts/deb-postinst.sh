@@ -35,6 +35,20 @@ for THEME in Yaru Yaru-dark Adwaita elementary Papirus Papirus-Dark Papirus-Ligh
     copy_to_theme "$THEME"
 done
 
+# Patch Tauri-generated desktop file: add MimeType and %f argument
+# Tauri 2 does not propagate fileAssociations to the .desktop file
+DESKTOP_FILE="/usr/share/applications/AeroFTP.desktop"
+if [ -f "$DESKTOP_FILE" ]; then
+    # Add %f to Exec line if missing (required for file association)
+    if ! grep -q '%f' "$DESKTOP_FILE"; then
+        sed -i 's|^Exec=aeroftp.*|Exec=aeroftp %f|' "$DESKTOP_FILE"
+    fi
+    # Add MimeType if missing
+    if ! grep -q '^MimeType=' "$DESKTOP_FILE"; then
+        echo 'MimeType=application/x-aerovault;x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;' >> "$DESKTOP_FILE"
+    fi
+fi
+
 # Update hicolor cache and MIME database
 gtk-update-icon-cache -f -q "$HICOLOR" 2>/dev/null || true
 update-mime-database /usr/share/mime 2>/dev/null || true

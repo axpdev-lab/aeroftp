@@ -163,9 +163,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#FF9900',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket' },
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'IAM Console → Users → Security Credentials → Access Keys' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown only once at key creation' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket', helpText: 'S3 Console → Buckets → Bucket name' },
             {
                 key: 'region',
                 label: 'AWS Region',
@@ -308,8 +308,8 @@ export const PROVIDERS: ProviderConfig[] = [
         stable: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, helpText: 'e2 Dashboard → Access Keys → Access Key ID' },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-e2-bucket' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'e2 Dashboard → Access Keys → Secret Access Key' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-e2-bucket', helpText: 'e2 Dashboard → Buckets → Bucket name' },
             {
                 key: 'endpoint',
                 label: 'Region Endpoint',
@@ -341,9 +341,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#00C853',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket },
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Console → Access Keys → Access Key ID' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Console → Access Keys → Secret Access Key' },
+            { ...COMMON_FIELDS.bucket, helpText: 'Console → Buckets → Bucket name' },
             {
                 key: 'region',
                 label: 'Region',
@@ -427,9 +427,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#FF6A00',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, helpText: 'RAM Console → AccessKey Management → AccessKeyId' },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-oss-bucket' },
+            { ...COMMON_FIELDS.accessKeyId, label: 'AccessKey ID', helpText: 'RAM Console → AccessKey Management → AccessKeyId' },
+            { ...COMMON_FIELDS.secretAccessKey, label: 'AccessKey Secret', helpText: 'RAM Console → AccessKey Management → AccessKeySecret' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-oss-bucket', helpText: 'Bucket name from OSS Console → Bucket List' },
             {
                 key: 'region',
                 label: 'Region',
@@ -513,9 +513,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#0069FF',
         stable: false,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, helpText: 'API → Spaces Keys → Key' },
-            { ...COMMON_FIELDS.secretAccessKey, helpText: 'API → Spaces Keys → Secret' },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-space-name', label: 'Space Name' },
+            { ...COMMON_FIELDS.accessKeyId, label: 'Spaces Key', helpText: 'API → Spaces Keys → Key' },
+            { ...COMMON_FIELDS.secretAccessKey, label: 'Spaces Secret', helpText: 'API → Spaces Keys → Secret' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-space-name', label: 'Space Name', helpText: 'Spaces Object Storage → Create → Space name' },
             {
                 key: 'region',
                 label: 'Region',
@@ -553,9 +553,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#C74634',
         stable: false,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, helpText: 'Identity → Users → Customer Secret Keys → Access Key' },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-oci-bucket' },
+            { ...COMMON_FIELDS.accessKeyId, label: 'Access Key', helpText: 'Identity → Users → Customer Secret Keys → Access Key' },
+            { ...COMMON_FIELDS.secretAccessKey, label: 'Secret Key', helpText: 'Identity → Users → Customer Secret Keys → Secret Key' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-oci-bucket', helpText: 'Object Storage → Buckets → Bucket name' },
             {
                 key: 'endpoint',
                 label: 'S3 Endpoint',
@@ -588,9 +588,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#C72C48',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, placeholder: 'minioadmin' },
-            { ...COMMON_FIELDS.secretAccessKey },
-            { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket' },
+            { ...COMMON_FIELDS.accessKeyId, placeholder: 'minioadmin', helpText: 'MinIO Console → Access Keys → Access Key' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'MinIO Console → Access Keys → Secret Key' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket', helpText: 'MinIO Console → Buckets → Bucket name' },
             {
                 ...COMMON_FIELDS.endpoint,
                 label: 'MinIO Endpoint',
