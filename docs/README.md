@@ -16,6 +16,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant — 47 tools, 19 providers, architecture, safety system |
 | **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format — cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
 | **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI — 14 commands, batch scripting, glob transfers |
+| **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference — StorageProvider trait, 7 auth patterns, upload/pagination/XML parsing, adding new providers (20 protocols) |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 
 ---
@@ -96,8 +97,8 @@ AeroAgent features **47 tools** across 10 categories, **19 AI providers** (OpenA
 
 ---
 
-- **Documentation Version**: 2.9.1
-- **Last Update**: 2026-03-10
+- **Documentation Version**: 2.9.3
+- **Last Update**: 2026-03-12
 
 ---
 
