@@ -54,6 +54,7 @@ mod cyber_tools;
 mod totp;
 mod chat_history;
 mod file_tags;
+mod vault_history;
 mod image_edit;
 #[cfg(windows)]
 mod cloud_filter_badge;
@@ -7145,6 +7146,29 @@ pub fn run() {
                 }
             }
 
+            // Initialize Vault History SQLite database
+            {
+                let config_dir = app.path().app_config_dir().unwrap_or_default();
+                let db_path = config_dir.join("vault_history.db");
+                match rusqlite::Connection::open(&db_path) {
+                    Ok(conn) => {
+                        if let Err(e) = vault_history::init_db(&conn) {
+                            log::error!("Vault history schema init failed: {e}");
+                        }
+                        app.manage(vault_history::VaultHistoryDb(std::sync::Mutex::new(conn)));
+                    }
+                    Err(e) => {
+                        log::error!("Vault history DB open failed: {e}");
+                        let conn = rusqlite::Connection::open_in_memory()
+                            .expect("in-memory SQLite");
+                        if let Err(e2) = vault_history::init_db(&conn) {
+                            log::error!("Vault history in-memory schema init failed: {e2}");
+                        }
+                        app.manage(vault_history::VaultHistoryDb(std::sync::Mutex::new(conn)));
+                    }
+                }
+            }
+
             // Start mount watcher — emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
 
@@ -7648,6 +7672,8 @@ pub fn run() {
             aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
             aerovault_v2::vault_v2_sync_apply,
+            aerovault_v2::vault_v2_scan_directory,
+            aerovault_v2::vault_v2_add_directory,
             // Remote Vault — open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,
@@ -7906,6 +7932,11 @@ pub fn run() {
             file_tags::file_tags_update_path,
             file_tags::file_tags_delete_all_for_file,
             file_tags::file_tags_get_label_counts,
+            // Vault History
+            vault_history::vault_history_save,
+            vault_history::vault_history_list,
+            vault_history::vault_history_remove,
+            vault_history::vault_history_clear,
             // AeroImage
             image_edit::process_image,
         ])

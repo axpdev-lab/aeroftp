@@ -290,7 +290,7 @@ const App: React.FC = () => {
   }, [debugMode]);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[] }>(false);
+  const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
@@ -5547,6 +5547,16 @@ const App: React.FC = () => {
 
     // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
     if (!isAeroVaultFile && !isCryptomatorMarker) {
+      // Folder-specific: "Encrypt Folder as AeroVault..."
+      if (count === 1 && file.is_dir) {
+        items.push({
+          label: t('contextMenu.encryptFolderAsVault') || 'Encrypt Folder as AeroVault...',
+          icon: <VaultIcon size={14} />,
+          action: () => {
+            setShowVaultPanel({ mode: 'create', folderPath: file.path });
+          },
+        });
+      }
       items.push({
         label: t('contextMenu.createAeroVault') || 'Create AeroVault...',
         icon: <VaultIcon size={14} />,
@@ -6256,7 +6266,7 @@ const App: React.FC = () => {
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
         />
-        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} iconProvider={iconProvider} />}
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} />}
         {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
         {archiveBrowserState && (
           <ArchiveBrowser

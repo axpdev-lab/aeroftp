@@ -135,6 +135,7 @@ pub async fn vault_v2_add_files_to_dir(
     file_paths: Vec<String>,
     target_dir: String,
 ) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&target_dir)?;
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     let paths: Vec<std::path::PathBuf> = file_paths.iter().map(std::path::PathBuf::from).collect();
     let added = vault
@@ -203,6 +204,7 @@ pub async fn vault_v2_create_directory(
     password: String,
     dir_name: String,
 ) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&dir_name)?;
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     let created = vault
         .create_directory(&dir_name)
@@ -221,6 +223,7 @@ pub async fn vault_v2_delete_entry(
     password: String,
     entry_name: String,
 ) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&entry_name)?;
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     vault
         .delete_entry(&entry_name)
@@ -241,6 +244,9 @@ pub async fn vault_v2_delete_entries(
     entry_names: Vec<String>,
     recursive: bool,
 ) -> Result<serde_json::Value, String> {
+    for name in &entry_names {
+        validate_vault_relative_path(name)?;
+    }
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     let names: Vec<&str> = entry_names.iter().map(|s| s.as_str()).collect();
     let removed = vault
@@ -351,10 +357,20 @@ pub async fn vault_v2_sync_compare(
     // Walk local directory
     let mut local_files: std::collections::HashMap<String, (u64, String)> =
         std::collections::HashMap::new();
+    let mut scan_count: usize = 0;
     for dir_entry in walkdir::WalkDir::new(&local_dir_canonical)
+        .follow_links(false)
+        .max_depth(MAX_SCAN_DEPTH)
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        scan_count += 1;
+        if scan_count > MAX_SCAN_ENTRIES {
+            return Err(format!(
+                "Directory too large: exceeded {} entries",
+                MAX_SCAN_ENTRIES
+            ));
+        }
         if dir_entry.file_type().is_dir() {
             continue;
         }
@@ -451,6 +467,9 @@ pub async fn vault_v2_sync_apply(
     local_dir: String,
     actions: Vec<VaultSyncAction>,
 ) -> Result<VaultSyncResult, String> {
+    if actions.len() > MAX_SCAN_ENTRIES {
+        return Err(format!("Too many sync actions: {} (max {})", actions.len(), MAX_SCAN_ENTRIES));
+    }
     let local_dir_path = std::path::Path::new(&local_dir);
     if !local_dir_path.is_dir() {
         return Err(format!("Local directory does not exist: {}", local_dir));
@@ -568,7 +587,7 @@ pub async fn vault_v2_sync_apply(
 
     // Process to_local: extract vault entries to local dir
     for name in &to_local_files {
-        if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
+        if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains('\0') || name.contains('\\') {
             errors.push(format!("Invalid file name blocked: {}", name));
             skipped_count += 1;
             continue;
@@ -603,4 +622,259 @@ pub async fn vault_v2_sync_apply(
         skipped: skipped_count,
         errors,
     })
+}
+
+// ============================================================================
+// Helpers — Path Validation
+// ============================================================================
+
+/// Validate a relative path for vault entry safety.
+/// Rejects path traversal, absolute paths, null bytes, and Windows drive letters.
+fn validate_vault_relative_path(path: &str) -> Result<(), String> {
+    if path.contains("..")
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || path.contains('\0')
+        || path.contains('\\')
+    {
+        return Err(format!("Invalid path: {}", path));
+    }
+    #[cfg(windows)]
+    if path.len() >= 2 && path.as_bytes()[1] == b':' {
+        return Err(format!("Absolute path not allowed: {}", path));
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Tauri Commands — Recursive Directory Encryption
+// ============================================================================
+
+const MAX_SCAN_DEPTH: usize = 100;
+const MAX_SCAN_ENTRIES: usize = 500_000;
+
+/// Scan a local directory and return file/directory counts and total size.
+/// This is a preview command — no vault operations are performed.
+#[tauri::command]
+pub async fn vault_v2_scan_directory(
+    source_dir: String,
+) -> Result<serde_json::Value, String> {
+    let source = std::path::Path::new(&source_dir)
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve directory: {}", e))?;
+
+    if !source.is_dir() {
+        return Err(format!("Not a directory: {}", source_dir));
+    }
+
+    let mut file_count: u64 = 0;
+    let mut dir_count: u64 = 0;
+    let mut total_size: u64 = 0;
+    let mut entry_count: usize = 0;
+
+    for entry in walkdir::WalkDir::new(&source)
+        .follow_links(false)
+        .max_depth(MAX_SCAN_DEPTH)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        // Skip the root directory itself
+        if entry.path() == source {
+            continue;
+        }
+
+        entry_count += 1;
+        if entry_count > MAX_SCAN_ENTRIES {
+            return Err(format!(
+                "Directory exceeds maximum entry limit ({})",
+                MAX_SCAN_ENTRIES
+            ));
+        }
+
+        if entry.file_type().is_dir() {
+            dir_count += 1;
+        } else {
+            file_count += 1;
+            total_size += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        }
+    }
+
+    Ok(serde_json::json!({
+        "file_count": file_count,
+        "dir_count": dir_count,
+        "total_size": total_size
+    }))
+}
+
+/// Recursively add an entire local directory into an AeroVault v2.
+///
+/// Walks `source_dir`, creates vault directories in depth order, then adds files
+/// in per-directory batches. Emits `vault-add-progress` events throttled to 150ms.
+#[tauri::command]
+pub async fn vault_v2_add_directory(
+    app: tauri::AppHandle,
+    vault_path: String,
+    password: String,
+    source_dir: String,
+    target_prefix: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tauri::Emitter;
+
+    let source = std::path::Path::new(&source_dir)
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve directory: {}", e))?;
+
+    if !source.is_dir() {
+        return Err(format!("Not a directory: {}", source_dir));
+    }
+
+    // Collect all entries with relative paths
+    struct DirEntry {
+        rel_path: String,
+        is_dir: bool,
+        abs_path: std::path::PathBuf,
+        depth: usize,
+    }
+
+    let mut all_entries: Vec<DirEntry> = Vec::new();
+
+    for entry in walkdir::WalkDir::new(&source)
+        .follow_links(false)
+        .max_depth(MAX_SCAN_DEPTH)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.path() == source {
+            continue;
+        }
+
+        if all_entries.len() >= MAX_SCAN_ENTRIES {
+            return Err(format!(
+                "Directory exceeds maximum entry limit ({})",
+                MAX_SCAN_ENTRIES
+            ));
+        }
+
+        let rel_path = entry
+            .path()
+            .strip_prefix(&source)
+            .map_err(|_| "Failed to compute relative path")?
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        if rel_path.is_empty() {
+            continue;
+        }
+
+        validate_vault_relative_path(&rel_path)?;
+
+        let full_rel = match &target_prefix {
+            Some(prefix) => {
+                let trimmed = prefix.trim_matches('/');
+                if trimmed.is_empty() {
+                    rel_path.clone()
+                } else {
+                    format!("{}/{}", trimmed, rel_path)
+                }
+            }
+            None => rel_path.clone(),
+        };
+
+        // Validate the composed path (covers target_prefix traversal)
+        validate_vault_relative_path(&full_rel)?;
+
+        all_entries.push(DirEntry {
+            rel_path: full_rel,
+            is_dir: entry.file_type().is_dir(),
+            abs_path: entry.path().to_path_buf(),
+            depth: entry.depth(),
+        });
+    }
+
+    // Separate directories and files
+    let mut dirs: Vec<&DirEntry> = all_entries.iter().filter(|e| e.is_dir).collect();
+    let files: Vec<&DirEntry> = all_entries.iter().filter(|e| !e.is_dir).collect();
+
+    // Sort directories by depth ascending (create parents before children)
+    dirs.sort_by_key(|d| d.depth);
+
+    let total_files = files.len();
+    let mut added_files: usize = 0;
+    let mut added_dirs: usize = 0;
+
+    // First pass: create all directories
+    if !dirs.is_empty() {
+        let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+        for dir_entry in &dirs {
+            match vault.create_directory(&dir_entry.rel_path) {
+                Ok(_) => added_dirs += 1,
+                Err(e) => {
+                    // Ignore "already exists" errors for intermediate dirs
+                    let err_str = e.to_string();
+                    if !err_str.contains("already exists") {
+                        return Err(format!(
+                            "Failed to create directory '{}': {}",
+                            dir_entry.rel_path, err_str
+                        ));
+                    }
+                    added_dirs += 1;
+                }
+            }
+        }
+    }
+
+    // Second pass: add files grouped by parent directory
+    let mut files_by_dir: std::collections::BTreeMap<String, Vec<&DirEntry>> =
+        std::collections::BTreeMap::new();
+
+    for file_entry in &files {
+        let parent = std::path::Path::new(&file_entry.rel_path)
+            .parent()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        files_by_dir.entry(parent).or_default().push(file_entry);
+    }
+
+    let mut last_emit = std::time::Instant::now();
+    let throttle = std::time::Duration::from_millis(150);
+
+    for (dir_key, dir_files) in &files_by_dir {
+        let paths: Vec<std::path::PathBuf> =
+            dir_files.iter().map(|f| f.abs_path.clone()).collect();
+
+        let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+
+        let added = if dir_key.is_empty() {
+            vault.add_files(&paths).map_err(|e| e.to_string())?
+        } else {
+            vault
+                .add_files_to_dir(&paths, dir_key)
+                .map_err(|e| e.to_string())?
+        };
+
+        added_files += added as usize;
+
+        // Emit progress (per-batch, throttled)
+        if last_emit.elapsed() >= throttle || added_files == total_files {
+            let current_file = dir_files
+                .last()
+                .map(|f| f.rel_path.as_str())
+                .unwrap_or("");
+            let _ = app.emit(
+                "vault-add-progress",
+                serde_json::json!({
+                    "current": added_files,
+                    "total": total_files,
+                    "current_file": current_file
+                }),
+            );
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    Ok(serde_json::json!({
+        "added_files": added_files,
+        "added_dirs": added_dirs,
+        "total_entries": added_files + added_dirs
+    }))
 }

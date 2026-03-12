@@ -1157,6 +1157,7 @@
       "createShareLink": "Create Share Link",
       "creating7z": "Creating {name} (LZMA2)",
       "createAeroVault": "Create AeroVault...",
+      "encryptFolderAsVault": "Encrypt Folder as AeroVault...",
       "openWithAeroVault": "Open with AeroVault",
       "createCryptomator": "Create Cryptomator Vault...",
       "creatingShareLink": "Creating share link...",
@@ -3061,6 +3062,36 @@
         "title": "Remote Vault",
         "uploadFailed": "Failed to upload vault changes",
         "uploading": "Uploading vault changes..."
+      },
+      "recentVaults": "Recent Vaults",
+      "noRecentVaults": "No recently opened vaults",
+      "clearHistory": "Clear History",
+      "removeFromHistory": "Remove from history",
+      "lastOpened": "Last opened",
+      "encryptFolder": "Encrypting folder...",
+      "encryptFolderPreview": "{fileCount} files in {dirCount} directories ({totalSize})",
+      "addingDirectory": "Adding directory contents to vault...",
+      "addDirectorySuccess": "Added {files} files in {dirs} directories",
+      "emptyVaultHint": "Drag files here or click Add Files to get started",
+      "scanningFolder": "Scanning folder...",
+      "strength": {
+        "none": "Too short",
+        "weak": "Weak",
+        "fair": "Fair",
+        "strong": "Strong",
+        "excellent": "Excellent"
+      },
+      "errors": {
+        "wrongPassword": "Incorrect password",
+        "notAVault": "Not a valid AeroVault file",
+        "unsupportedVersion": "Unsupported vault version",
+        "corrupted": "Vault file is corrupted",
+        "fileNotFound": "File not found",
+        "permissionDenied": "Permission denied",
+        "alreadyExists": "File already exists",
+        "directoryTooLarge": "Directory exceeds size limit",
+        "invalidPath": "Invalid file path",
+        "diskFull": "Not enough disk space"
       }
     },
     "vaultSync": {

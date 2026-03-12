@@ -1,8 +1,8 @@
 # AeroVault v2 Format Specification
 
-**Version**: 2
+**Version**: 2.1
 **Status**: Stable
-**Date**: 2026-03-10
+**Date**: 2026-03-12
 **Authors**: AXP Development
 
 > Canonical source: [`aerovault` crate on crates.io](https://crates.io/crates/aerovault)
@@ -22,6 +22,8 @@ AeroVault v2 is a single-file encrypted container format designed for maximum se
 - **Atomic operations**: All mutations use temp+rename to prevent corruption on crash/power loss
 - **Optional cascade mode**: Double encryption (AES-256-GCM-SIV + ChaCha20-Poly1305) for defense-in-depth
 - **Deterministic filename encryption**: AES-256-SIV enables efficient duplicate detection
+- **Recursive directory support**: Full directory hierarchies with breadcrumb navigation
+- **OS-level integration**: `.aerovault` MIME type, file association, double-click open
 
 ### 1.2 Cryptographic Primitives
 
@@ -237,10 +239,12 @@ Nested directories use `/` as the path separator (e.g., `docs/notes`). Implement
 
 ### 5.7 Path Constraints
 
-- Path separator: `/` (forward slash)
+- Path separator: `/` (forward slash only — backslash `\` is forbidden)
 - Maximum path length: 4096 bytes
-- Forbidden sequences: `..` (parent traversal)
+- Forbidden sequences: `..` (parent traversal), null bytes (`\0`)
+- Forbidden characters: `\` (backslash, any position)
 - Leading/trailing slashes are stripped
+- Absolute paths (starting with `/` or Windows drive letters like `C:`) are rejected
 
 ---
 
@@ -360,7 +364,19 @@ The last chunk of a file may be smaller than `chunk_size`.
 3. Re-encrypt manifest with updated entries
 4. Write vault atomically: temp file → rename
 
-### 7.4 Extracting Files
+### 7.4 Adding Directories (Recursive)
+
+1. Validate source directory (canonicalize, ensure is_dir)
+2. Walk directory tree with `follow_links(false)`, max depth 100, max entries 500,000
+3. For each entry, compute relative path and validate (reject `..`, `\`, `\0`, absolute paths)
+4. Apply optional `target_prefix` and validate the composed path
+5. Separate entries into directories (sorted by depth) and files (grouped by parent directory)
+6. Create directory entries in depth order (auto-creating intermediates)
+7. Add files in per-directory batches
+8. Emit progress events throttled to 150ms or 2% delta: `{ current, total, current_file }`
+9. Return summary: `{ added_files, added_dirs, total_entries }`
+
+### 7.5 Extracting Files
 
 1. Open vault and decrypt manifest
 2. Find entry by decrypting all filenames (SIV comparison)
@@ -368,7 +384,7 @@ The last chunk of a file may be smaller than `chunk_size`.
 4. Read and decrypt `chunk_count` chunks
 5. Write plaintext to output file
 
-### 7.5 Password Change
+### 7.6 Password Change
 
 1. Open vault with current password (verifies access)
 2. Generate new 32-byte salt
@@ -377,15 +393,16 @@ The last chunk of a file may be smaller than `chunk_size`.
 5. Rebuild header with new salt, wrapped keys, and MAC
 6. Write atomically: only the header changes, data section is untouched
 
-### 7.6 Entry Deletion
+### 7.7 Entry Deletion
 
 1. Open vault and decrypt manifest
 2. Remove entry from manifest (by decrypting and matching name)
-3. Re-encrypt manifest
-4. Rewrite vault: header + new manifest + same data section
-5. Orphaned data remains until compaction (future feature)
+3. For directories with `recursive=true`, also remove all nested entries
+4. Re-encrypt manifest
+5. Rewrite vault: header + new manifest + same data section
+6. Orphaned data remains until compaction (future feature)
 
-### 7.7 Atomic Write Pattern
+### 7.8 Atomic Write Pattern
 
 All mutations follow the crash-safe pattern:
 
@@ -395,6 +412,17 @@ All mutations follow the crash-safe pattern:
 4. Delete `<path>.bak`
 
 If step 3 fails, step 2 is rolled back (`.bak` → original).
+
+### 7.9 Vault Sync (Local Directory ↔ Vault)
+
+Compare vault contents against a local directory:
+
+1. Walk local directory with `follow_links(false)`, max depth 100, max entries 500,000
+2. List vault entries and build file maps (name → size, modified)
+3. Categorize entries: vault-only, local-only, conflicts (different size/timestamp), unchanged
+4. Apply sync actions per-file (`to_vault`, `to_local`, `skip`)
+5. Maximum sync actions: 500,000 (prevents DoS from compromised frontend)
+6. All local paths validated against `..`, `\0`, `\` before filesystem operations
 
 ---
 
@@ -435,18 +463,205 @@ Compromise of any single derived key does not compromise the others.
 - Minimum password length: 8 characters (enforced at API level)
 - Argon2id with 128 MiB memory makes GPU/ASIC brute-force impractical
 - Each vault has a unique random salt, preventing rainbow table attacks
+- Client-side password strength meter provides real-time feedback (score 0-100)
 
-### 8.6 Memory Safety
+### 8.6 Path Validation
+
+All paths entering the vault are validated at the Tauri command boundary:
+
+- `validate_vault_relative_path()` rejects: `..`, leading `/` or `\`, null bytes `\0`, embedded `\`, Windows drive letters
+- Applied to: `create_directory`, `add_files_to_dir`, `delete_entry`, `delete_entries`, `add_directory` (both individual paths and composed target_prefix paths)
+- Directory scans are capped: max depth 100, max entries 500,000
+- Symlinks are not followed during directory walks (`follow_links(false)`)
+- Source directories are canonicalized before walk to prevent symlink-at-root attacks
+
+### 8.7 Memory Safety
 
 Implementations SHOULD:
 
 - Zeroize all key material when no longer needed
 - Use `SecretString` / `SecretVec` types to prevent accidental logging
 - Zeroize decrypted plaintext buffers after writing to output
+- Clear password state on UI component unmount
+
+### 8.8 Error Handling
+
+Backend error messages are mapped to user-friendly descriptions before display. Raw Rust error strings containing internal details (offsets, hex values, stack traces) are sanitized. Common patterns are mapped to localized messages:
+
+| Pattern | User Message |
+|---------|-------------|
+| `invalid password/hmac/key` | Incorrect password |
+| `not a valid vault` | Not a valid AeroVault file |
+| `corrupt` | Vault file is corrupted |
+| `no such file/not found` | File not found |
+| `permission denied` | Permission denied |
+| `directory too large` | Directory exceeds size limit |
 
 ---
 
-## 9. Comparison with Cryptomator
+## 9. Application Integration
+
+### 9.1 Architecture
+
+AeroVault Pro uses a modular frontend architecture:
+
+```
+VaultPanel.tsx (~90 lines, thin orchestrator)
+  ├── useVaultState.ts (hook: 25+ state variables, all async logic, recent vaults)
+  ├── VaultHome.tsx (home screen, recent vaults list, quick actions)
+  ├── VaultCreate.tsx (create form, folder preview, password strength bar)
+  ├── VaultOpen.tsx (password prompt, security badge)
+  └── VaultBrowse.tsx (file browser, toolbar, drag-and-drop, breadcrumb)
+
+PasswordStrengthBar.tsx (animated 4-segment strength indicator)
+
+vault_history.rs (SQLite WAL, 4 Tauri commands)
+aerovault_v2.rs (18 Tauri commands including add_directory, scan_directory)
+```
+
+### 9.2 Recent Vaults (History)
+
+Recently opened vaults are persisted in a SQLite database (`~/.config/aeroftp/vault_history.db`) with WAL mode.
+
+**Schema**:
+
+```sql
+CREATE TABLE IF NOT EXISTS recent_vaults (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vault_path TEXT NOT NULL UNIQUE,
+    vault_name TEXT NOT NULL,
+    security_level TEXT NOT NULL DEFAULT 'advanced',
+    vault_version INTEGER NOT NULL DEFAULT 2,
+    cascade_mode INTEGER NOT NULL DEFAULT 0,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    last_opened_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recent_vaults_opened
+    ON recent_vaults(last_opened_at DESC);
+```
+
+**Commands**:
+
+| Command | Description |
+|---------|-------------|
+| `vault_history_save` | UPSERT vault entry, auto-trim to 20 most recent |
+| `vault_history_list` | List recent vaults ordered by last_opened_at DESC |
+| `vault_history_remove` | Remove a single vault from history |
+| `vault_history_clear` | Clear entire history |
+
+**Security notes**:
+- Parameterized SQL queries (no injection risk)
+- Mutex with poison recovery
+- In-memory fallback if SQLite file cannot be opened
+- Vault paths stored in cleartext (accepted risk — attacker with FS access can already `find *.aerovault`)
+
+### 9.3 Security Levels
+
+Three security levels are available at creation time:
+
+| Level | Content Cipher | Cascade | KDF | Color |
+|-------|---------------|---------|-----|-------|
+| **Standard** | AES-256-GCM-SIV | No | Argon2id 128 MiB | Yellow |
+| **Advanced** (recommended) | AES-256-GCM-SIV | No | Argon2id 128 MiB | Emerald |
+| **Paranoid** | AES-256-GCM-SIV + ChaCha20-Poly1305 | Yes | Argon2id 128 MiB | Red |
+
+All levels use the same Argon2id parameters. The difference is cascade mode (double encryption) for Paranoid.
+
+### 9.4 Password Strength Meter
+
+A client-side password strength meter provides real-time feedback during vault creation and password change:
+
+- **Scoring** (0-100): Length (max 40pt), character variety (4 categories × 10pt), mixing bonus, penalties for repetition and sequential characters
+- **Visual**: 4 animated segments with staggered CSS transitions (50ms delay per segment)
+- **Levels**: Too short (gray) → Weak (red) → Fair (orange) → Strong (emerald) → Excellent (blue)
+- **Zero external dependencies** — lightweight inline calculation, no zxcvbn
+
+### 9.5 Remote Vault
+
+AeroVault supports opening `.aerovault` files stored on remote servers:
+
+1. Download remote file to temp directory with Unix 0o600 permissions
+2. All local vault operations apply (open, browse, add files, extract)
+3. "Save & Close" uploads modified vault back to the remote server
+4. Temp file is zero-filled before deletion (secure cleanup)
+
+**Validation**: null byte rejection, extension enforcement, path traversal rejection, symlink rejection before cleanup, temp directory confinement via `canonicalize()`.
+
+### 9.6 OS Integration
+
+AeroVault registers as a handler for `.aerovault` files across platforms:
+
+| Platform | Mechanism | Details |
+|----------|-----------|---------|
+| Linux (.deb) | Post-install script | Patches `.desktop` file: adds `MimeType=application/x-aerovault;` and `%f` to Exec line. Copies MIME icons to active icon themes (Yaru, Adwaita, etc.) |
+| Linux (Snap) | `snapcraft.yaml` | MIME type and file association via `apps.aeroftp.desktop` |
+| Windows | NSIS installer | File association via registry |
+| macOS | `Info.plist` | `CFBundleDocumentTypes` with UTI |
+
+**MIME type**: `application/x-aerovault`
+**Icon**: Shield + lock design, available in 8 PNG sizes (16-512px) + SVG + ICO + ICNS
+
+**Deep-link handler**: Single-instance argv forwarding. First-launch file open with `canonicalize()` + `symlink_metadata()` validation.
+
+### 9.7 Context Menu Integration
+
+AeroVault actions are available in the file manager context menu:
+
+| Action | Condition | Behavior |
+|--------|-----------|----------|
+| **Create AeroVault...** | File(s) selected | Opens VaultCreate with selected files pre-loaded |
+| **Encrypt Folder as AeroVault...** | Single directory selected | Scans folder, opens VaultCreate with folder preview and recursive encryption |
+| **Open with AeroVault** | `.aerovault` file selected | Opens VaultOpen password prompt |
+
+---
+
+## 10. Tauri Commands Reference
+
+### 10.1 Core Commands
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `vault_v2_create` | vault_path, password, security_level, description | Create new vault |
+| `vault_v2_open` | vault_path, password | Open and list contents |
+| `vault_v2_add_files` | vault_path, password, file_paths | Add files to root |
+| `vault_v2_add_files_to_dir` | vault_path, password, file_paths, target_dir | Add files to directory |
+| `vault_v2_create_directory` | vault_path, password, dir_name | Create directory |
+| `vault_v2_delete_entry` | vault_path, password, entry_name | Delete single entry |
+| `vault_v2_delete_entries` | vault_path, password, entry_names, recursive | Delete multiple entries |
+| `vault_v2_extract_entry` | vault_path, password, entry_name, dest_path | Extract single entry |
+| `vault_v2_extract_all` | vault_path, password, dest_dir | Extract entire vault |
+| `vault_v2_change_password` | vault_path, old_password, new_password | Change vault password |
+| `vault_v2_peek` | vault_path | Read header without password |
+| `vault_v2_security_info` | vault_path, password | Detailed security information |
+| `vault_v2_is_vault_v2` | vault_path | Check if file is AeroVault v2 |
+
+### 10.2 Directory Commands (v2.9.3)
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `vault_v2_scan_directory` | source_dir | Preview: file count, dir count, total size |
+| `vault_v2_add_directory` | app, vault_path, password, source_dir, target_prefix | Recursive folder encryption with progress |
+
+### 10.3 Sync Commands
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `vault_v2_sync_compare` | vault_path, password, local_dir | Compare vault vs local directory |
+| `vault_v2_sync_apply` | vault_path, password, local_dir, actions | Apply sync decisions |
+
+### 10.4 History Commands
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `vault_history_save` | vault_path, vault_name, security_level, vault_version, cascade_mode, file_count | UPSERT + trim to 20 |
+| `vault_history_list` | (none) | List recent vaults |
+| `vault_history_remove` | vault_path | Remove from history |
+| `vault_history_clear` | (none) | Clear all history |
+
+---
+
+## 11. Comparison with Cryptomator
 
 | Feature | AeroVault v2 | Cryptomator (v8) |
 |---------|-------------|------------------|
@@ -460,10 +675,15 @@ Implementations SHOULD:
 | Storage model | Single file | Directory tree |
 | Implementation | Rust (native) | Java/JVM |
 | Chunk size | 64 KiB (configurable) | 32 KiB (fixed) |
+| Recent vaults history | SQLite WAL | No |
+| Recursive folder encrypt | Yes (with progress) | Manual per-file |
+| Password strength meter | Built-in (0-100 score) | External |
+| Path validation | 6 checks at command boundary | Filesystem-level |
+| Remote vault support | Download → edit → upload | No |
 
 ---
 
-## 10. Constants Summary
+## 12. Constants Summary
 
 ```
 MAGIC                = "AEROVAULT2" (10 bytes)
@@ -478,6 +698,9 @@ MAC_SIZE             = 64  (HMAC-SHA512)
 DEFAULT_CHUNK_SIZE   = 65536  (64 KiB)
 MAX_MANIFEST_SIZE    = 67108864  (64 MiB)
 MIN_PASSWORD_LENGTH  = 8
+MAX_SCAN_DEPTH       = 100
+MAX_SCAN_ENTRIES     = 500000
+MAX_HISTORY_ENTRIES  = 20
 
 ARGON2_MEMORY        = 131072 KiB  (128 MiB)
 ARGON2_ITERATIONS    = 4
@@ -488,15 +711,15 @@ ARGON2_VERSION       = 0x13  (v1.3)
 
 ---
 
-## 11. Test Vectors
+## 13. Test Vectors
 
-### 11.1 Magic Bytes
+### 13.1 Magic Bytes
 
 ```
 Hex: 41 45 52 4F 56 41 55 4C 54 32
 ```
 
-### 11.2 Header Structure (bytes 0-511)
+### 13.2 Header Structure (bytes 0-511)
 
 ```
 00-09:  magic           AEROVAULT2
@@ -510,13 +733,13 @@ Hex: 41 45 52 4F 56 41 55 4C 54 32
 C0-1FF: reserved        320 zero bytes
 ```
 
-### 11.3 AAD for Chunk Index 0
+### 13.3 AAD for Chunk Index 0
 
 ```
 Hex: 00 00 00 00    (uint32 LE)
 ```
 
-### 11.4 AAD for Chunk Index 42
+### 13.4 AAD for Chunk Index 42
 
 ```
 Hex: 2a 00 00 00    (uint32 LE)
@@ -524,7 +747,7 @@ Hex: 2a 00 00 00    (uint32 LE)
 
 ---
 
-## 12. File Extension and MIME Type
+## 14. File Extension and MIME Type
 
 - **Extension**: `.aerovault`
 - **MIME Type**: `application/x-aerovault` (not registered with IANA)
@@ -532,22 +755,23 @@ Hex: 2a 00 00 00    (uint32 LE)
 
 ---
 
-## 13. Reference Implementations
+## 15. Reference Implementations
 
 | Language | Implementation | Status |
 |----------|---------------|--------|
-| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production |
+| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.3.2) |
 | **Rust** | [AeroFTP Desktop](https://github.com/axpnet/aeroftp) (GUI integration) | Production |
 | **Java** | [AeroFTP Mobile](https://github.com/axpnet/aeroftp-mobile) `VaultPlugin.java` | Production |
 
 ---
 
-## 14. Version History
+## 16. Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 2.0 | March 2026 | Initial specification |
 | 2.0.1 | March 2026 | Extracted to standalone [`aerovault`](https://crates.io/crates/aerovault) crate with `MIME_TYPE` and `ICON_SVG` constants |
+| 2.1 | March 2026 | **AeroVault Pro**: Recent Vaults history (SQLite WAL), recursive folder encryption with progress events, modular frontend architecture (useVaultState + 4 sub-components), password strength meter, user-friendly error mapping, path validation hardening (backslash rejection, null byte checks on all commands), BFS caps on sync/scan operations, OS integration (MIME type, file association, context menu), 3-auditor security review (21 findings, all resolved) |
 
 ---
 
