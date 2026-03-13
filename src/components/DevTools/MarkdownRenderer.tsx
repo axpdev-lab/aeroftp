@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import Prism from 'prismjs';
+import DOMPurify from 'dompurify';
 
 // Prism core languages (same set as FilePreview.tsx — loaded once via Vite)
 import 'prismjs/components/prism-markup';
@@ -346,7 +347,7 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                     <pre className="bg-gray-900 rounded p-3 pt-6 overflow-x-auto text-xs leading-relaxed">
                         <code
                             className={lang ? `language-${lang}` : undefined}
-                            dangerouslySetInnerHTML={{ __html: highlighted }}
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlighted) }}
                         />
                     </pre>
                     {/* Action buttons (visible on hover) — rendered after <pre> so DiffPreview flows naturally */}

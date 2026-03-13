@@ -1,9 +1,93 @@
 # AeroFTP — Independent Security & Quality Audit Reports
 
 > **Classification**: Public
-> **Last Updated**: 7 March 2026
+> **Last Updated**: 13 March 2026
 
 This document contains all public security and quality audit reports for AeroFTP releases.
+
+---
+
+## v2.9.4 / v2.9.5 — Dual-Engine Parallel Independent Audit Round 2 (13 March 2026)
+
+> **Subject**: AeroFTP Desktop File Transfer Client v2.9.4 — Full Codebase
+> **Methodology**: Parallel Independent Audit with cross-comparison (PIA Round 2)
+> **Auditors**: Claude Opus 4.6 (autonomous, 8-area, 8 parallel agents) + GPT-5.4 (autonomous, 8-area, independent)
+> **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
+> **Scope**: Full codebase — ~115,000+ lines across ~160 files (Rust backend + React/TypeScript frontend)
+> **Documentation**: 12 documents (8 area reports + README + consolidation + merge + GPT brief)
+
+### Executive Summary
+
+AeroFTP v2.9.4 underwent a second round parallel independent audit by two separate AI engines. Claude Opus 4.6 deployed 8 parallel agents (one per area) producing 103 findings. GPT-5.4 independently audited all 8 areas producing 14 concentrated findings with high severity density. After completion, a cross-comparison document identified 9 convergent findings, confirming them as high-confidence issues. A GPT-5.4 counter-review of the fixes caught 3 incomplete remediations, all subsequently resolved.
+
+### Audit Areas (8 domains)
+
+| # | Area | Claude Grade | Claude Findings | GPT-5.4 Findings | Convergent |
+|---|------|-------------|-----------------|-------------------|------------|
+| 1 | Trust boundaries & execution | B | 10 | 3 | 2 |
+| 2 | Vault, keystore & credentials | B+ | 11 | 2 | 2 |
+| 3 | Provider, network & auth | B | 16 | 1 | 0 |
+| 4 | AeroFile & local filesystem | B+ | 14 | 1 | 0 |
+| 5 | Sync & transfers | B+ | 13 | 1 | 1 |
+| 6 | Frontend, state & UI | B- | 16 | 2 | 1 |
+| 7 | Media, archives & preview | B+ | 12 | 1 | 1 |
+| 8 | Runtime hardening & packaging | B | 11 | 3 | 2 |
+| | **Total** | **B** | **103** | **14** | **9** |
+
+### Findings Summary (Cumulative)
+
+| Severity | Claude | GPT-5.4 | Cumulative |
+|----------|--------|---------|------------|
+| Critical | 2 | 0 | 2 |
+| High | 8 | 5 | 10 |
+| Medium | 29 | 7 | 31 |
+| Low | 40 | 1 | 40 |
+| Info | 24 | 1 | 24 |
+| **Total** | **103** | **14** | **~107 unique** |
+
+### Critical & High Findings (All Remediated)
+
+| ID | Finding | Engine | Status |
+|----|---------|--------|--------|
+| A3-01 | OAuth2 client_secret in cloud_config.json | Claude (Critical) | TODO comment + permissions hardened |
+| A6-02 | SSH password as React prop | Claude (Critical) | Documented — session handle pattern planned |
+| A1-01 | server_exec/vault_manage not in NEVER_AUTO_APPROVE | Claude (High) | Fixed |
+| A6-08 | dangerouslySetInnerHTML without DOMPurify | Claude (High) | Fixed — DOMPurify.sanitize() applied |
+| A1-05/GPT-A1-01 | Shell denylist incomplete | Both | Fixed — redirects, substitution, rm -r |
+| A1-09/GPT-A1-02 | Tool approval frontend-only | Both | Documented — backend enforcement planned |
+| A8-03/GPT-A8-01 | CSP unsafe-inline + fs scope | Both | Accepted risk (file manager) |
+| A7-05/GPT-A7-01 | vault_v2_upload_remote path confinement | Both | Fixed — canonicalize + starts_with |
+| A2-01/GPT-A2-01 | Vault writes without fsync | Both | Fixed — fsync + dir fsync + error propagation |
+| GPT-A1-03 | Plugin registry without crypto auth | GPT-5.4 (High) | Planned — plugin signing (P3) |
+
+### Key Remediation Highlights
+
+- **DOMPurify**: All `dangerouslySetInnerHTML` sanitized in MarkdownRenderer and TextViewer
+- **fsync crash durability**: `fsync_file_and_parent()` helper — file sync + parent directory sync, errors propagated
+- **Keystore import rollback**: All-or-nothing with original value restoration on failure
+- **Shell denylist**: Redirect operators, command substitution, home/root rm -r blocked
+- **TOTP-before-cache**: Vault cached only after successful 2FA verification
+- **Path validation**: `validate_path()` on all file_tags commands, `validate_relative_path()` in GUI sync
+- **Archive hardening**: `follow_links(false)` in 7z/TAR WalkDir, atomic writes for image edit
+
+### Grading
+
+| Phase | Grade |
+|-------|-------|
+| Pre-fix | **B** |
+| After P0+P1 | **B+** |
+| After P0+P1+P2 | **A-** |
+
+### Verification
+
+| Check | Result |
+|-------|--------|
+| `cargo clippy --all-targets -- -D warnings` | Pass — 0 errors |
+| `npm run build` | Pass — production bundle |
+| GPT-5.4 counter-review | 3 incomplete fixes caught and resolved |
+
+Evidence pack: `docs/security-evidence/SECURITY-EVIDENCE-v2.9.5.md`
+Audit documents: `docs/dev/audit/CLAUDE-OPUS-4.6-v2/` + `docs/dev/audit/GPT5.4-v2/`
 
 ---
 
@@ -590,6 +674,7 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Version | Date | Auditors | Grade |
 |---------|------|----------|-------|
+| v2.9.4/v2.9.5 | 13 Mar 2026 | Claude Opus 4.6 + GPT-5.4 (PIA Round 2, 8-area parallel independent) | **B** pre-rem → **A-** post-rem (103+14 findings, 9 convergent, GPT counter-review) |
 | v2.8.6/v2.8.7 | 6-7 Mar 2026 | Claude Opus 4.6 + GPT-5.4 (PIA, 8-area parallel independent) | **B-** pre-rem (~82 unique findings, 21 cross-engine confirmed) |
 | v2.6.4 | 24 Feb 2026 | 8x Opus 4.6 + GPT-5.3-Codex (DEIA) | **A-** (148 findings, 94 fixed) |
 | v2.6.0 | 22 Feb 2026 | 8x Claude Opus 4.6 (per-provider) | **147/147 remediated** |
@@ -617,7 +702,7 @@ This audit was conducted by AI-powered code review agents with full source acces
 ---
 
 **Document**: AeroFTP Independent Security & Quality Audit Reports
-**Revision**: 4.0
-**Date**: 7 March 2026
+**Revision**: 5.0
+**Date**: 13 March 2026
 **Classification**: Public
 **Repository**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)

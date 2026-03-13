@@ -217,7 +217,10 @@ impl VaultKeyFile {
         // A2-01: Atomic write via temp+rename to prevent corruption on crash
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &data)?;
+        // A2-01: fsync temp file before rename, then fsync parent dir after rename
+        fsync_file_and_parent(&tmp_path)?;
         std::fs::rename(&tmp_path, &path)?;
+        fsync_file_and_parent(&path)?;
         ensure_secure_permissions(&path)?;
         Ok(())
     }
@@ -386,13 +389,40 @@ impl CredentialStore {
 
     // ---- Master Password Management ----
 
-    /// Unlock vault with master password (master mode only)
+    /// Unlock vault with master password (master mode only).
+    /// Note: For TOTP-aware unlock, use verify_master() + cache_vault() instead.
+    #[allow(dead_code)]
     pub fn unlock_with_master(password: &str) -> Result<(), CredentialError> {
         let key_file = VaultKeyFile::read()?;
         let passphrase = key_file.decrypt_passphrase(password)?;
         let vault_key = Self::derive_vault_key(&passphrase);
         let vault_path = Self::vault_path()?;
         Self::open_and_cache(vault_path, vault_key)
+    }
+
+    /// A2-08: Verify master password and return vault key material WITHOUT caching.
+    /// Used by unlock_credential_store to defer caching until after TOTP verification.
+    pub fn verify_master(password: &str) -> Result<(PathBuf, [u8; 32]), CredentialError> {
+        let key_file = VaultKeyFile::read()?;
+        let passphrase = key_file.decrypt_passphrase(password)?;
+        let vault_key = Self::derive_vault_key(&passphrase);
+        let vault_path = Self::vault_path()?;
+
+        // Verify we can read and decrypt the vault (same as open_and_cache)
+        let vault = Self::read_vault(&vault_path)?;
+        crate::crypto::decrypt_aes_gcm(&vault_key, &vault.verify_nonce, &vault.verify_data)
+            .map_err(|_| CredentialError::InvalidMasterPassword)?;
+
+        Ok((vault_path, vault_key))
+    }
+
+    /// A2-08: Cache previously verified vault key material.
+    /// Called after TOTP verification succeeds.
+    pub fn cache_vault(vault_path: PathBuf, vault_key: [u8; 32]) {
+        if let Ok(mut cache) = VAULT_CACHE.lock() {
+            *cache = Some((vault_path, vault_key));
+        }
+        info!("Credential vault opened and cached");
     }
 
     /// Enable master password: encrypt vault.key passphrase with user password
@@ -516,6 +546,17 @@ impl CredentialStore {
         if Self::RESERVED_KEYS.contains(&account) {
             return Err(CredentialError::Encryption("Reserved account name".to_string()));
         }
+        self.store_entry(account, secret)
+    }
+
+    /// A2-05: Internal store that bypasses reserved key check.
+    /// Used by totp_enable to atomically store the TOTP secret.
+    pub fn store_internal(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        self.store_entry(account, secret)
+    }
+
+    /// Shared store implementation
+    fn store_entry(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
         let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         let nonce = crate::crypto::random_bytes(12);
@@ -573,13 +614,29 @@ impl CredentialStore {
         // A2-01: Atomic write via temp+rename to prevent corruption on crash
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &data)?;
+        // A2-01: fsync temp file before rename, then fsync parent dir after rename
+        fsync_file_and_parent(&tmp_path)?;
         std::fs::rename(&tmp_path, path)?;
+        fsync_file_and_parent(path)?;
         ensure_secure_permissions(path)?;
         Ok(())
     }
 }
 
 // ============ Shared Helpers ============
+
+/// A2-01: fsync a file to ensure data is durable, then fsync its parent directory
+/// to ensure the directory entry (rename) is also durable.
+fn fsync_file_and_parent(file_path: &Path) -> Result<(), std::io::Error> {
+    let f = std::fs::File::open(file_path)?;
+    f.sync_all()?;
+    if let Some(parent) = file_path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            dir.sync_all()?;
+        }
+    }
+    Ok(())
+}
 
 /// Get aeroftp config directory, creating it with secure permissions if needed
 fn config_dir() -> Result<PathBuf, CredentialError> {

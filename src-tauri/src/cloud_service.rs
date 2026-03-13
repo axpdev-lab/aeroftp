@@ -9,8 +9,8 @@ use crate::cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use crate::ftp::FtpManager;
 use crate::providers::{StorageProvider, RemoteEntry as ProviderRemoteEntry, ProviderError};
 use crate::sync::{
-    build_comparison_results, CompareOptions, FileComparison, FileInfo, SyncAction, SyncDirection,
-    SyncStatus,
+    build_comparison_results, validate_relative_path, CompareOptions, FileComparison, FileInfo,
+    SyncAction, SyncDirection, SyncStatus,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -76,26 +76,6 @@ pub struct CloudService {
     conflicts: Arc<RwLock<Vec<FileConflict>>>,
     task_tx: Option<mpsc::Sender<SyncTask>>,
     app_handle: Option<AppHandle>,
-}
-
-/// Validate relative_path against traversal attacks (CF-004)
-fn validate_relative_path(relative_path: &str) -> Result<(), String> {
-    if relative_path.contains('\0') {
-        return Err("Path contains null bytes".to_string());
-    }
-    if relative_path.starts_with('/') || relative_path.starts_with('\\') {
-        return Err("Absolute path not allowed in relative context".to_string());
-    }
-    // Check for Windows drive letters (e.g., C:)
-    if relative_path.len() >= 2 && relative_path.as_bytes()[1] == b':' {
-        return Err("Drive letter paths not allowed".to_string());
-    }
-    for component in std::path::Path::new(relative_path).components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err("Path traversal (..) not allowed".to_string());
-        }
-    }
-    Ok(())
 }
 
 impl CloudService {

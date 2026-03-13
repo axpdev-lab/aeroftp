@@ -4,6 +4,7 @@
 //! panels. Labels are color-coded and orderable; each file can carry multiple
 //! labels. Data is persisted in a per-user SQLite database with WAL mode.
 
+use crate::filesystem::validate_path;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -264,6 +265,9 @@ pub async fn file_tags_set_tags(
     file_paths: Vec<String>,
     label_ids: Vec<i64>,
 ) -> Result<(), String> {
+    for p in &file_paths {
+        validate_path(p)?;
+    }
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
@@ -304,6 +308,7 @@ pub async fn file_tags_remove_tag(
     file_path: String,
     label_id: i64,
 ) -> Result<(), String> {
+    validate_path(&file_path)?;
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
@@ -324,6 +329,9 @@ pub async fn file_tags_get_tags_for_files(
 ) -> Result<Vec<FileTag>, String> {
     if file_paths.is_empty() {
         return Ok(vec![]);
+    }
+    for p in &file_paths {
+        validate_path(p)?;
     }
 
     let db = app.state::<FileTagsDb>();
@@ -393,6 +401,8 @@ pub async fn file_tags_update_path(
     old_path: String,
     new_path: String,
 ) -> Result<usize, String> {
+    validate_path(&old_path)?;
+    validate_path(&new_path)?;
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
@@ -409,6 +419,7 @@ pub async fn file_tags_delete_all_for_file(
     app: AppHandle,
     file_path: String,
 ) -> Result<usize, String> {
+    validate_path(&file_path)?;
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 

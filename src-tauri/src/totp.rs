@@ -208,7 +208,9 @@ pub fn totp_status(
 
 /// Enable TOTP after successful verification. Requires that totp_setup_verify
 /// returned true before calling this (verified gate: RB-003, SEC-003).
-/// Returns the secret as a plain String for vault storage.
+/// A2-05: Atomically stores the TOTP secret in the credential vault before enabling.
+/// If the vault store fails, TOTP is NOT enabled (fail-closed).
+/// Returns the secret as a plain String for backward compatibility.
 #[tauri::command]
 pub fn totp_enable(
     state: State<'_, TotpState>,
@@ -219,10 +221,21 @@ pub fn totp_enable(
         return Err("Must verify TOTP code before enabling".into());
     }
 
-    let secret = inner.pending_secret.take()
+    let secret = inner.pending_secret.as_ref()
         .ok_or("No pending secret to enable")?;
-    // Extract the plain string for vault persistence, then store as SecretString
     let secret_plain = secret.expose_secret().to_string();
+
+    // A2-05: Store TOTP secret in vault BEFORE enabling — atomic operation.
+    // If vault write fails, TOTP is not enabled (fail-closed).
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        store.store_internal("totp_secret", &secret_plain)
+            .map_err(|e| format!("Failed to store TOTP secret in vault: {}", e))?;
+    } else {
+        return Err("Credential vault not available — cannot enable TOTP".into());
+    }
+
+    // Only enable after successful vault store
+    let secret = inner.pending_secret.take().unwrap();
     inner.active_secret = Some(secret);
     inner.enabled = true;
     inner.setup_verified = false;

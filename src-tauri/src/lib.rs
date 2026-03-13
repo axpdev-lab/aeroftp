@@ -3303,7 +3303,7 @@ async fn compress_7z(
             entries.push((file_name, path_str.clone()));
         } else if path.is_dir() {
             // Add directory contents recursively
-            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path).follow_links(false).into_iter().filter_map(|e| e.ok()) {
                 let entry_path = entry.path();
                 if entry_path.is_file() {
                     let relative_path = entry_path
@@ -3562,7 +3562,7 @@ async fn compress_tar(
     for p in &paths {
         let path = Path::new(p);
         if path.is_dir() {
-            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path).follow_links(false).into_iter().filter_map(|e| e.ok()) {
                 if entry.file_type().is_file() {
                     let rel = entry.path().strip_prefix(path.parent().unwrap_or(path))
                         .unwrap_or(entry.path());
@@ -6796,28 +6796,36 @@ async fn unlock_credential_store(
         return Err(format!("THROTTLED:{}", wait_secs));
     }
 
-    // Step 1: Verify master password and unlock vault
-    match credential_store::CredentialStore::unlock_with_master(&password) {
-        Ok(()) => {
+    // A2-08: Step 1: Verify master password WITHOUT caching vault key.
+    // The vault key is only cached after TOTP verification succeeds.
+    let (vault_path, vault_key) = match credential_store::CredentialStore::verify_master(&password) {
+        Ok(result) => {
             state.reset_throttle();
+            result
         }
         Err(e) => {
             state.record_failed_attempt();
             return Err(e.to_string());
         }
-    }
+    };
 
-    // Step 2: Check if TOTP is enabled by looking for stored secret
+    // A2-08: Step 2: Temporarily cache to read TOTP secret, then clear if TOTP is enabled
+    credential_store::CredentialStore::cache_vault(vault_path.clone(), vault_key);
     let totp_secret = credential_store::CredentialStore::from_cache()
         .and_then(|store| store.get("totp_secret").ok());
+
+    // If TOTP is enabled, clear cache before verification (fail-closed)
+    if let Some(ref secret) = totp_secret {
+        if !secret.is_empty() {
+            credential_store::CredentialStore::clear_cache();
+        }
+    }
 
     if let Some(secret) = totp_secret {
         if !secret.is_empty() {
             // TOTP is enabled — load secret into state and verify code
             totp::load_secret_internal(&totp_state, &secret)
                 .map_err(|e| {
-                    // Re-lock vault on failure (fail-closed)
-                    credential_store::CredentialStore::lock();
                     state.set_locked(true);
                     format!("Failed to load TOTP secret: {}", e)
                 })?;
@@ -6826,22 +6834,22 @@ async fn unlock_credential_store(
                 Some(ref code) if !code.is_empty() => {
                     let valid = totp::verify_internal(&totp_state, code)
                         .inspect_err(|_e| {
-                            credential_store::CredentialStore::lock();
                             state.set_locked(true);
                         })?;
                     if !valid {
-                        credential_store::CredentialStore::lock();
                         state.set_locked(true);
                         return Err("2FA_INVALID".to_string());
                     }
                 }
                 _ => {
                     // No TOTP code provided but 2FA is enabled
-                    credential_store::CredentialStore::lock();
                     state.set_locked(true);
                     return Err("2FA_REQUIRED".to_string());
                 }
             }
+
+            // A2-08: TOTP verified — NOW cache the vault key
+            credential_store::CredentialStore::cache_vault(vault_path, vault_key);
         }
     }
 

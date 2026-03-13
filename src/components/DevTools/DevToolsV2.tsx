@@ -328,7 +328,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             const normalizedChanged = path.replace(/\\/g, '/');
             const normalizedOpen = (previewFile.path || '').replace(/\\/g, '/');
 
-            if (normalizedChanged === normalizedOpen || normalizedOpen.endsWith(normalizedChanged) || normalizedChanged.endsWith(normalizedOpen)) {
+            if (normalizedChanged === normalizedOpen) {
                 // Re-read the file content
                 try {
                     const { readTextFile } = await import('@tauri-apps/plugin-fs');

@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { ViewerBaseProps } from '../types';
 import { MarkdownRenderer } from '../../DevTools/MarkdownRenderer';
 import Prism from 'prismjs';
+import DOMPurify from 'dompurify';
 import { useI18n } from '../../../i18n';
 
 interface TextViewerProps extends ViewerBaseProps {
@@ -530,7 +531,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                             {highlightedHtml ? (
                                 <code
                                     className={`language-${lang}`}
-                                    dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlightedHtml) }}
                                 />
                             ) : (
                                 <code className="text-gray-200">{content}</code>

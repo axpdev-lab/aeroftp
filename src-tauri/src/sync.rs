@@ -157,6 +157,27 @@ impl SyncResult {
     }
 }
 
+/// Validate a relative path against traversal attacks.
+/// Rejects null bytes, absolute paths, drive letters, and `..` components.
+pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
+    if relative_path.contains('\0') {
+        return Err("Path contains null bytes".to_string());
+    }
+    if relative_path.starts_with('/') || relative_path.starts_with('\\') {
+        return Err("Absolute path not allowed in relative context".to_string());
+    }
+    // Check for Windows drive letters (e.g., C:)
+    if relative_path.len() >= 2 && relative_path.as_bytes()[1] == b':' {
+        return Err("Drive letter paths not allowed".to_string());
+    }
+    for component in std::path::Path::new(relative_path).components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err("Path traversal (..) not allowed".to_string());
+        }
+    }
+    Ok(())
+}
+
 /// Check if a path matches any exclude pattern
 pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
     let path_lower = path.to_lowercase();
@@ -416,14 +437,20 @@ pub fn build_comparison_results(
     all_paths.extend(remote_files.keys().cloned());
     
     for path in all_paths {
+        // Reject paths with traversal components
+        if validate_relative_path(&path).is_err() {
+            tracing::warn!("Skipping entry with invalid relative path: {}", path);
+            continue;
+        }
+
         // Skip excluded paths
         if should_exclude(&path, &options.exclude_patterns) {
             continue;
         }
-        
+
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
-        
+
         let status = compare_file_pair(local, remote, options);
 
         // Skip identical files unless they're directories we need to show
@@ -592,6 +619,12 @@ pub fn build_comparison_results_with_index(
     all_paths.extend(remote_files.keys().cloned());
 
     for path in all_paths {
+        // Reject paths with traversal components
+        if validate_relative_path(&path).is_err() {
+            tracing::warn!("Skipping entry with invalid relative path: {}", path);
+            continue;
+        }
+
         if should_exclude(&path, &options.exclude_patterns) {
             continue;
         }

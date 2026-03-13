@@ -107,24 +107,44 @@ pub async fn process_image(
 
         let format_name = ext.clone();
 
-        // Save with appropriate format
+        // Atomic write: write to temp file then rename to prevent data loss
+        let output_path_obj = std::path::Path::new(&output);
+        let parent_dir = output_path_obj.parent().unwrap_or(std::path::Path::new("."));
+        let temp_path = parent_dir.join(format!(
+            ".aeroftp-img-{}.tmp",
+            std::process::id()
+        ));
+
+        // Save with appropriate format to temp file
         match ext.as_str() {
             "jpg" | "jpeg" => {
                 // JPEG: no alpha channel — convert to RGB8
                 let rgb = img.to_rgb8();
-                let file = std::fs::File::create(&output)
+                let file = std::fs::File::create(&temp_path)
                     .map_err(|e| format!("Failed to create output file: {e}"))?;
                 let writer = BufWriter::new(file);
                 let encoder = JpegEncoder::new_with_quality(writer, quality);
                 rgb.write_with_encoder(encoder)
-                    .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&temp_path);
+                        format!("Failed to encode JPEG: {e}")
+                    })?;
             }
             _ => {
                 // All other formats: auto-detect from extension
-                img.save(&output)
-                    .map_err(|e| format!("Failed to save image: {e}"))?;
+                img.save(&temp_path)
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&temp_path);
+                        format!("Failed to save image: {e}")
+                    })?;
             }
         }
+
+        // Rename temp file to final destination (atomic on same filesystem)
+        std::fs::rename(&temp_path, &output).map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            format!("Failed to finalize output file: {e}")
+        })?;
 
         // Get output file size
         let output_meta =

@@ -2,11 +2,31 @@
 // Exports ALL vault entries as encrypted .aeroftp-keystore file
 // Uses Argon2id + AES-256-GCM (same as profile_export)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 const FILE_VERSION: u32 = 1;
+
+/// A2-01: fsync a file and its parent directory for crash durability
+fn fsync_file_and_parent(file_path: &std::path::Path) -> Result<(), std::io::Error> {
+    let f = std::fs::File::open(file_path)?;
+    f.sync_all()?;
+    if let Some(parent) = file_path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            dir.sync_all()?;
+        }
+    }
+    Ok(())
+}
+
+fn normalize_merge_strategy(merge_strategy: &str) -> Result<&'static str, KeystoreExportError> {
+    match merge_strategy {
+        "skip" | "skip_existing" => Ok("skip_existing"),
+        "overwrite" | "overwrite_all" => Ok("overwrite"),
+        other => Err(KeystoreExportError::Encryption(format!("Invalid merge strategy: {}", other))),
+    }
+}
 
 // ============ Error Types ============
 
@@ -157,7 +177,10 @@ pub fn export_keystore(
     // A2-08: Atomic write (temp+rename) + secure permissions
     let tmp_path = file_path.with_extension("tmp");
     std::fs::write(&tmp_path, file_data)?;
+    // A2-01: fsync temp file before rename, then fsync parent dir after rename
+    fsync_file_and_parent(&tmp_path)?;
     std::fs::rename(&tmp_path, file_path)?;
+    fsync_file_and_parent(file_path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -200,18 +223,21 @@ pub fn import_keystore(
     };
 
     let entries: HashMap<String, String> = serde_json::from_slice(&payload_json)?;
+    let merge_strategy = normalize_merge_strategy(merge_strategy)?;
 
     // Get existing accounts for merge strategy
     let existing = if merge_strategy == "skip_existing" {
         store.list_accounts()
             .map_err(|e| KeystoreExportError::Encryption(e.to_string()))?
             .into_iter()
-            .collect::<std::collections::HashSet<_>>()
+            .collect::<HashSet<_>>()
     } else {
-        std::collections::HashSet::new()
+        HashSet::new()
     };
 
-    let mut imported = 0u32;
+    // GPT-A2-02: Stage entries first — collect what to import, then commit all-or-nothing
+    let mut staged: Vec<(&String, &String)> = Vec::new();
+    let mut originals: HashMap<String, Option<String>> = HashMap::new();
     let mut skipped = 0u32;
     let total = entries.len() as u32;
 
@@ -220,15 +246,41 @@ pub fn import_keystore(
             skipped += 1;
             continue;
         }
+        let original = match store.get(account) {
+            Ok(existing_value) => Some(existing_value),
+            Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+            Err(e) => return Err(KeystoreExportError::Encryption(e.to_string())),
+        };
+        originals.insert(account.clone(), original);
+        staged.push((account, value));
+    }
+
+    // Commit phase: write all staged entries, rollback on first failure
+    let mut committed: Vec<String> = Vec::new();
+    for (account, value) in &staged {
         match store.store(account, value) {
-            Ok(_) => imported += 1,
+            Ok(_) => committed.push((*account).clone()),
             Err(e) => {
-                tracing::warn!("Failed to import keystore entry '{}': {}", account, e);
-                skipped += 1;
+                tracing::error!("Failed to import keystore entry '{}': {} — rolling back {} committed entries", account, e, committed.len());
+                // Rollback: restore prior values for overwrites, delete only newly inserted entries
+                for rollback_account in committed.iter().rev() {
+                    let rollback_result = match originals.get(rollback_account) {
+                        Some(Some(previous_value)) => store.store(rollback_account, previous_value),
+                        Some(None) => store.delete(rollback_account),
+                        None => Ok(()),
+                    };
+                    if let Err(re) = rollback_result {
+                        tracing::warn!("Rollback failed for '{}': {}", rollback_account, re);
+                    }
+                }
+                return Err(KeystoreExportError::Encryption(
+                    format!("Import failed at '{}': {}. {} entries rolled back.", account, e, committed.len())
+                ));
             }
         }
     }
 
+    let imported = committed.len() as u32;
     tracing::info!("Keystore imported: {} entries ({} skipped) from {:?}", imported, skipped, file_path);
     Ok(KeystoreImportResult { imported, skipped, total })
 }

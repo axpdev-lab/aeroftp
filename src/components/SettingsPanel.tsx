@@ -396,7 +396,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [keystoreImporting, setKeystoreImporting] = useState(false);
     const [keystoreImportPassword, setKeystoreImportPassword] = useState('');
     const [showKeystoreImportPassword, setShowKeystoreImportPassword] = useState(false);
-    const [keystoreImportMerge, setKeystoreImportMerge] = useState<'skip' | 'overwrite'>('skip');
+    const [keystoreImportMerge, setKeystoreImportMerge] = useState<'skip_existing' | 'overwrite'>('skip_existing');
     const [keystoreMetadata, setKeystoreMetadata] = useState<{
         exportDate: string;
         aeroftpVersion: string;
@@ -3166,8 +3166,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     <input
                                                                         type="radio"
                                                                         name="keystoreMerge"
-                                                                        checked={keystoreImportMerge === 'skip'}
-                                                                        onChange={() => setKeystoreImportMerge('skip')}
+                                                                        checked={keystoreImportMerge === 'skip_existing'}
+                                                                        onChange={() => setKeystoreImportMerge('skip_existing')}
                                                                         className="accent-blue-500"
                                                                     />
                                                                     {t('settings.skipExisting')}
