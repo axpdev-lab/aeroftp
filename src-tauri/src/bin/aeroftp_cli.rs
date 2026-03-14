@@ -5307,6 +5307,28 @@ async fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
+    // Show banner when help is displayed (no args, --help, or -h)
+    let args: Vec<String> = std::env::args().collect();
+    let show_help = args.len() <= 1
+        || args.iter().any(|a| a == "--help" || a == "-h" || a == "help");
+    if show_help {
+        if use_color() {
+            eprintln!("\x1b[36m");
+            eprintln!("  \u{1F680} AeroFTP CLI");
+            eprintln!("  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}");
+            eprintln!("  Fast, Beautiful, Reliable");
+            eprintln!("  Multi-Protocol File Transfer");
+            eprintln!("\x1b[0m");
+        } else {
+            eprintln!();
+            eprintln!("  AeroFTP CLI");
+            eprintln!("  -----------------------------");
+            eprintln!("  Fast, Beautiful, Reliable");
+            eprintln!("  Multi-Protocol File Transfer");
+            eprintln!();
+        }
+    }
+
     let cli = Cli::parse();
     let format = cli.output_format();
 

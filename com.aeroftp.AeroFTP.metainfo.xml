@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.6" date="2026-03-14">
+      <description>
+        <p>Critical timezone fix: remote file timestamps (MLSD, SFTP, cloud APIs) now correctly converted from UTC to local timezone for display. Fixes overwrite-if-newer and sync comparisons producing incorrect results due to timezone offset. Frontend formatDate handles ISO 8601 with Z suffix, RFC 2822, and timezone offsets. 11 provider backends updated. CLI help banner added.</p>
+      </description>
+    </release>
     <release version="2.9.5" date="2026-03-13">
       <description>
         <p>Dual-engine security audit (Claude Opus 4.6 + GPT-5.4): 117 findings across 8 areas, all P0-P2 remediated. DOMPurify sanitization on all dangerouslySetInnerHTML. Vault write crash safety with fsync error propagation. Keystore import all-or-nothing rollback. Shell denylist expansion. TOTP-before-cache enforcement. Yandex Object Storage S3 preset (BETA).</p>

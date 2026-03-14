@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.6] - 2026-03-14
+
+### Remote Timestamp Timezone Fix
+
+Critical fix for remote file timestamps displayed in UTC instead of local timezone, affecting overwrite-if-newer decisions and sync comparisons.
+
+#### Fixed
+
+- **Remote timestamps displayed in UTC** (critical): MLSD (RFC 3659), SFTP, and cloud API timestamps now correctly converted from UTC to local timezone for display. All remote providers append `Z` suffix to UTC timestamps; frontend `formatDate` detects timezone markers and converts accordingly
+- **Sync timestamp comparisons**: AeroSync `compare_directories` and `provider_compare_directories` correctly strip `Z` suffix before parsing, ensuring accurate overwrite-if-newer and skip-if-identical decisions
+- **Download mtime preservation**: `preserve_remote_mtime` handles `Z`-suffixed timestamps from updated providers
+- **Frontend ISO parser expanded**: Supports `T` separator, fractional seconds, `Z`, `+HH:MM` offsets, and RFC 2822 format (WebDAV/Azure `getlastmodified`)
+
+#### Added
+
+- **CLI help banner**: Branded banner displayed on `aeroftp --help` with color support detection
+
+#### Changed
+
+- **11 provider backends updated**: ftp.rs (MLSD), sftp.rs, kdrive.rs, koofr.rs, jottacloud.rs, drime_cloud.rs, zoho_workdrive.rs, lib.rs, provider_commands.rs — all UTC timestamps now carry `Z` suffix
+
+---
+
 ## [2.9.5] - 2026-03-13
 
 ### Dual-Engine Security Audit Fix & Yandex Object Storage

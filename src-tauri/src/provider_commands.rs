@@ -697,8 +697,9 @@ async fn provider_download_folder_inner(
             if let Ok(local_meta) = std::fs::metadata(local_p) {
                 if local_meta.is_file() {
                     let remote_modified = entry.modified.as_ref().and_then(|s| {
-                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                        let clean = s.strip_suffix('Z').unwrap_or(s);
+                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
                             .ok()
                             .map(|ndt| ndt.and_utc())
                     });
@@ -1929,12 +1930,9 @@ pub async fn provider_compare_directories(
                     .map(|dt| dt.with_timezone(&chrono::Utc))
                     .ok()
                     .or_else(|| {
-                        chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
-                            .ok()
-                            .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
-                    })
-                    .or_else(|| {
-                        chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
+                        let clean = s.strip_suffix('Z').unwrap_or(&s);
+                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
+                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S"))
                             .ok()
                             .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
                     })

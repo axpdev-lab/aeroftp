@@ -592,7 +592,7 @@ impl StorageProvider for KDriveProvider {
                 let modified = file.last_modified.map(|ts| {
                     chrono::DateTime::from_timestamp(ts, 0)
                         .unwrap_or_default()
-                        .format("%Y-%m-%d %H:%M:%S")
+                        .format("%Y-%m-%d %H:%M:%SZ")
                         .to_string()
                 });
 
@@ -920,7 +920,7 @@ impl StorageProvider for KDriveProvider {
         let modified = file.last_modified.map(|ts| {
             chrono::DateTime::from_timestamp(ts, 0)
                 .unwrap_or_default()
-                .format("%Y-%m-%d %H:%M:%S")
+                .format("%Y-%m-%d %H:%M:%SZ")
                 .to_string()
         });
 
@@ -1065,7 +1065,7 @@ impl StorageProvider for KDriveProvider {
                 let modified = file.last_modified.map(|ts| {
                     chrono::DateTime::from_timestamp(ts, 0)
                         .unwrap_or_default()
-                        .format("%Y-%m-%d %H:%M:%S")
+                        .format("%Y-%m-%d %H:%M:%SZ")
                         .to_string()
                 });
                 let file_path = file.path.unwrap_or_else(|| format!("/{}", name));
@@ -1208,7 +1208,7 @@ impl StorageProvider for KDriveProvider {
             let modified = v.created_at.map(|ts| {
                 chrono::DateTime::from_timestamp(ts, 0)
                     .unwrap_or_default()
-                    .format("%Y-%m-%d %H:%M:%S")
+                    .format("%Y-%m-%d %H:%M:%SZ")
                     .to_string()
             });
             FileVersion {

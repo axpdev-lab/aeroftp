@@ -429,11 +429,11 @@ impl DrimeCloudProvider {
     fn parse_date(date_str: &str) -> Option<String> {
         // Try ISO 8601 format "2025-01-15T10:30:00.000000Z"
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
-            return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
+            return Some(dt.format("%Y-%m-%d %H:%M:%SZ").to_string());
         }
         // Try without fractional seconds
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&date_str.replace(' ', "T")) {
-            return Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
+            return Some(dt.format("%Y-%m-%d %H:%M:%SZ").to_string());
         }
         // Return as-is if it looks like a date (safe truncation at char boundary)
         if date_str.len() >= 10 {

@@ -2027,7 +2027,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                     v.attributes.modified_time_in_millisecond.map(|ms| {
                         chrono::DateTime::from_timestamp_millis(ms)
                             .unwrap_or_default()
-                            .format("%Y-%m-%d %H:%M:%S")
+                            .format("%Y-%m-%d %H:%M:%SZ")
                             .to_string()
                     })
                 });

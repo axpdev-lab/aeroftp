@@ -476,7 +476,7 @@ impl KoofrProvider {
         }
         let secs = ms / 1000;
         chrono::DateTime::from_timestamp(secs, 0).map(|dt| {
-            dt.format("%Y-%m-%d %H:%M:%S").to_string()
+            dt.format("%Y-%m-%d %H:%M:%SZ").to_string()
         })
     }
 

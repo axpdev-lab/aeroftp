@@ -170,7 +170,7 @@ impl SftpProvider {
 
         let modified = metadata.mtime.map(|t| {
             chrono::DateTime::from_timestamp(t as i64, 0)
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%SZ").to_string())
                 .unwrap_or_default()
         });
 

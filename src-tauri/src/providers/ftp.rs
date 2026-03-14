@@ -255,11 +255,12 @@ impl FtpProvider {
         })
     }
 
-    /// Format MLSD timestamp (YYYYMMDDHHMMSS) to readable form
+    /// Format MLSD timestamp (YYYYMMDDHHMMSS) to readable form.
+    /// Appends 'Z' suffix because MLSD timestamps are always UTC per RFC 3659.
     fn format_mlsd_time(ts: &str) -> String {
         if ts.len() >= 14 {
             format!(
-                "{}-{}-{} {}:{}:{}",
+                "{}-{}-{} {}:{}:{}Z",
                 &ts[0..4], &ts[4..6], &ts[6..8],
                 &ts[8..10], &ts[10..12], &ts[12..14]
             )

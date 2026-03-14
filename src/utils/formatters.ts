@@ -59,20 +59,39 @@ export const formatDate = (dateStr: string | Date | null): string => {
     } else {
         const str = dateStr.trim();
 
-        // 1. Try ISO format: YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS
-        const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+        // 1. Try ISO format: "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM:SS",
+        //    with optional fractional seconds and timezone suffix.
+        //    Timestamps with 'Z' or '+00:00' are UTC (remote: MLSD/SFTP/cloud APIs)
+        //    — use Date.UTC() so Intl.DateTimeFormat converts to local timezone.
+        //    Without timezone suffix = already local time (from get_local_files).
+        const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?$/);
         if (isoMatch) {
-            const [, year, month, day, hour, minute, second] = isoMatch;
-            date = new Date(
-                parseInt(year),
-                parseInt(month) - 1,
-                parseInt(day),
-                parseInt(hour),
-                parseInt(minute),
-                parseInt(second || '0')
-            );
+            const [, year, month, day, hour, minute, second, tz] = isoMatch;
+            const y = parseInt(year), mo = parseInt(month) - 1, d = parseInt(day);
+            const h = parseInt(hour), mi = parseInt(minute), s = parseInt(second || '0');
+            if (tz === 'Z' || tz === '+00:00') {
+                date = new Date(Date.UTC(y, mo, d, h, mi, s));
+            } else if (tz) {
+                // Non-zero offset: parse and apply
+                const sign = tz.startsWith('-') ? -1 : 1;
+                const [oh, om] = tz.slice(1).split(':').map(Number);
+                const offsetMs = sign * (oh * 60 + om) * 60000;
+                date = new Date(Date.UTC(y, mo, d, h, mi, s) - offsetMs);
+            } else {
+                date = new Date(y, mo, d, h, mi, s);
+            }
         }
-        // 2. Try FTP Unix format: "Feb 3 01:34" or "Dec 14 2024"
+        // 2. Try RFC 2822 format: "Sat, 14 Mar 2026 21:38:50 GMT" (WebDAV/Azure/HTTP)
+        // These are always UTC (GMT). Use Date.UTC() for correct local display.
+        else if (/^[A-Za-z]{3},\s/.test(str)) {
+            const rfc2822 = new Date(str);
+            if (!isNaN(rfc2822.getTime())) {
+                date = rfc2822; // JS Date() correctly parses RFC 2822 with timezone
+            } else {
+                return str;
+            }
+        }
+        // 3. Try FTP Unix format: "Feb 3 01:34" or "Dec 14 2024"
         else {
             const months: Record<string, number> = {
                 Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,

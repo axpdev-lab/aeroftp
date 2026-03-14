@@ -1100,9 +1100,11 @@ async fn upload_file(
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
     let Some(modified_str) = remote_modified else { return };
-    let ts = chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%dT%H:%M:%S"))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(modified_str, "%Y-%m-%dT%H:%M:%S%.f"))
+    // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
+    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
+    let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
         .or_else(|_| {
             // Try parsing full RFC 3339 (with timezone) → strip tz suffix
             chrono::DateTime::parse_from_rfc3339(modified_str)
@@ -1303,8 +1305,9 @@ async fn download_folder(
             } else {
                 // Add file to download list
                 let modified_dt = file.modified.as_ref().and_then(|s| {
-                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                    let clean = s.strip_suffix('Z').unwrap_or(s);
+                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
                         .ok()
                         .map(|ndt| ndt.and_utc())
                 });
@@ -1804,8 +1807,9 @@ async fn upload_folder(
                         if !entry.is_dir {
                             let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
                             let modified_dt = entry.modified.as_ref().and_then(|s| {
-                                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                                let clean = s.strip_suffix('Z').unwrap_or(s);
+                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
                                     .ok()
                                     .map(|ndt| ndt.and_utc())
                             });
@@ -4849,7 +4853,9 @@ async fn get_remote_files_recursive_with_progress(
                 path: format!("{}/{}", current_dir, entry.name),
                 size: entry.size.unwrap_or(0),
                 modified: entry.modified.and_then(|s| {
-                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M")
+                    let clean = s.strip_suffix('Z').unwrap_or(&s);
+                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S"))
                         .ok()
                         .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
                 }),

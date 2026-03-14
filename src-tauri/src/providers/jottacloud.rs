@@ -787,11 +787,11 @@ impl JottacloudProvider {
         let cleaned = s.replace("-T", "T");
         // Try to parse and format nicely, or return as-is
         if let Ok(dt) = chrono::DateTime::parse_from_str(&cleaned, "%Y-%m-%dT%H:%M:%S%z") {
-            return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+            return dt.format("%Y-%m-%d %H:%M:%SZ").to_string();
         }
         // Try RFC3339
         if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&cleaned) {
-            return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+            return dt.format("%Y-%m-%d %H:%M:%SZ").to_string();
         }
         // Return cleaned version
         cleaned
