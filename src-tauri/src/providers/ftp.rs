@@ -998,7 +998,7 @@ mod tests {
         assert_eq!(entry.name, "readme.txt");
         assert!(!entry.is_dir);
         assert_eq!(entry.size, 12345);
-        assert_eq!(entry.modified.as_deref(), Some("2026-01-31 12:00:00"));
+        assert_eq!(entry.modified.as_deref(), Some("2026-01-31 12:00:00Z"));
         assert_eq!(entry.permissions.as_deref(), Some("0644"));
         assert_eq!(entry.path, "/home/readme.txt");
     }
