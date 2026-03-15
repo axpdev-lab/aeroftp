@@ -62,7 +62,8 @@
       "modified": "Променено",
       "name": "Име",
       "size": "Размер",
-      "retry": "Опитай отново"
+      "retry": "Опитай отново",
+      "optional": "незадължително"
     },
     "connection": {
       "title": "Свързване със сървър",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Поставете тук паролата за приложение на Koofr",
       "koofrHelp": "Генерирайте парола за приложение на app.koofr.net → Предпочитания → Парола → Пароли за приложения",
       "duplicateServer": "Дублиране на сървър",
-      "saveAsNew": "Запази като нов"
+      "saveAsNew": "Запази като нов",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Отдалечен",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ако не е зададена икона, favicon или icon.png от сървъра се разпознава автоматично.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Базов публичен URL",
+      "publicUrlBaseDesc": "Активирайте „Копирай линк за споделяне“ за файлове на този сървър. Въведете HTTP URL адреса, който съответства на коренната FTP папка.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu чрез WebDAV",
       "fileluS3Desc": "FileLu S5 съвместимо с S3 хранилище",
       "koofrDesc": "Koofr Cloud (10 GB безплатно)",
-      "koofrTooltip": "Koofr - Словенски облак, ориентиран към поверителност, с 10GB безплатно, достъпен и чрез WebDAV"
+      "koofrTooltip": "Koofr - Словенски облак, ориентиран към поверителност, с 10GB безплатно, достъпен и чрез WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB безплатно)",
+      "yandexdiskTooltip": "Yandex Disk - руско облачно хранилище с 5GB безплатно, OAuth2 токен удостоверяване"
     },
     "shortcuts": {
       "title": "Клавишни комбинации",
@@ -1653,7 +1662,9 @@
       "retry": "Повторен опит за изтегляне",
       "installRestart": "Инсталиране и рестартиране",
       "openInstaller": "Отвори инсталатора",
-      "skipForNow": "По-късно, не сега"
+      "skipForNow": "По-късно, не сега",
+      "installing": "Инсталиране на актуализацията...",
+      "installingDesc": "Приложението ще се рестартира автоматично след няколко секунди"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Изтриване",
+      "downloading": "Изтегляне",
+      "uploading": "Качване",
+      "preparing": "Подготовка на операцията..."
     }
   }
 }

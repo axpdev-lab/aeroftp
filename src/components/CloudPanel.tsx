@@ -10,7 +10,7 @@ import {
     Cloud, CloudOff, CloudUpload, CloudDownload, RefreshCw,
     Folder, FolderOpen, Settings, Play, Pause, Check, X,
     AlertCircle, Clock, HardDrive, Server, ChevronRight,
-    Loader2, Zap, Shield, History, Radio
+    Loader2, Zap, Shield, History, Radio, Link2
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
 import { SyncScheduler } from './SyncScheduler';
@@ -60,6 +60,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'kdrive', label: 'kDrive' },
             { id: 'jottacloud', label: 'Jottacloud' },
             { id: 'koofr', label: 'Koofr' },
+            { id: 'yandexdisk', label: 'Yandex Disk' },
         ],
     },
     {
@@ -520,6 +521,28 @@ const SetupWizard: React.FC<{
                                 placeholder="/" className="wizard-input-editable" />
                         </div>
                         <p className="text-xs opacity-50">{t('connection.koofrHelp')}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Yandex Disk
+        if (selectedProtocol === 'yandexdisk') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Yandex Disk {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('connection.yandexdiskToken')}</label>
+                            <input type="password" value={connPassword} onChange={(e) => { setConnPassword(e.target.value); setConnUsername('oauth-token'); }}
+                                placeholder={t('connection.yandexdiskTokenPlaceholder')} className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                        <p className="text-xs opacity-50">{t('connection.yandexdiskHelp')}</p>
                     </div>
                 </div>
             );
@@ -1249,7 +1272,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                         {/* Public URL for sharing */}
                         <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                             <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                                🔗 {t('cloud.publicUrlBase')}
+                                <Link2 size={14} /> {t('cloud.publicUrlBase')}
                                 <span className="text-xs text-gray-400 font-normal">({t('cloud.forSharing')})</span>
                             </label>
                             <input

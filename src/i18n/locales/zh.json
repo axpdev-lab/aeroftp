@@ -62,7 +62,8 @@
       "modified": "修改时间",
       "name": "名称",
       "size": "大小",
-      "retry": "重试"
+      "retry": "重试",
+      "optional": "可选"
     },
     "connection": {
       "title": "连接到服务器",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "在此粘贴您的 Koofr 应用密码",
       "koofrHelp": "在 app.koofr.net → Preferences → Password → App Passwords 生成应用密码",
       "duplicateServer": "复制服务器",
-      "saveAsNew": "另存为新"
+      "saveAsNew": "另存为新",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "远程",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "如果未设置图标，将自动检测服务器的 favicon 或 icon.png。",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "公共 URL 基址",
+      "publicUrlBaseDesc": "为此服务器上的文件启用\"复制分享链接\"。输入与 FTP 根目录对应的 HTTP URL。",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "通过 WebDAV 连接 FileLu",
       "fileluS3Desc": "FileLu S5 S3 兼容存储",
       "koofrDesc": "Koofr Cloud（10 GB 免费）",
-      "koofrTooltip": "Koofr - 斯洛文尼亚隐私导向云存储，10 GB 免费，也可通过 WebDAV 访问"
+      "koofrTooltip": "Koofr - 斯洛文尼亚隐私导向云存储，10 GB 免费，也可通过 WebDAV 访问",
+      "yandexdiskDesc": "Yandex Disk（5 GB 免费）",
+      "yandexdiskTooltip": "Yandex Disk – 俄罗斯云存储服务，提供 5 GB 免费空间，使用 OAuth2 令牌认证"
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -1653,7 +1662,9 @@
       "retry": "重试下载",
       "installRestart": "安装并重启",
       "openInstaller": "打开安装程序",
-      "skipForNow": "稍后再说"
+      "skipForNow": "稍后再说",
+      "installing": "正在安装更新...",
+      "installingDesc": "应用程序将在几秒后自动重新启动"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "正在删除",
+      "downloading": "正在下载",
+      "uploading": "正在上传",
+      "preparing": "正在准备操作..."
     }
   }
 }

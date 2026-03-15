@@ -62,7 +62,8 @@
       "modified": "Zmenené",
       "name": "Názov",
       "size": "Veľkosť",
-      "retry": "Skúsiť znova"
+      "retry": "Skúsiť znova",
+      "optional": "voliteľné"
     },
     "connection": {
       "title": "Pripojenie k serveru",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Vložte vaše heslo aplikácie Koofr tu",
       "koofrHelp": "Vytvorte heslo aplikácie na app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Duplikovať server",
-      "saveAsNew": "Uložiť ako nový"
+      "saveAsNew": "Uložiť ako nový",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Vzdialený",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ak nie je nastavená žiadna ikona, favicon alebo icon.png zo servera sa zistí automaticky.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Základná verejná URL",
+      "publicUrlBaseDesc": "Povoliť \"Kopírovať odkaz na zdieľanie\" pre súbory na tomto serveri. Zadajte HTTP URL, ktorá zodpovedá koreňovému priečinku FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu cez WebDAV",
       "fileluS3Desc": "FileLu S5 úložisko kompatibilné s S3",
       "koofrDesc": "Koofr Cloud (10 GB zadarmo)",
-      "koofrTooltip": "Koofr - slovenský cloud zameraný na ochranu súkromia s 10 GB zadarmo, dostupný aj cez WebDAV"
+      "koofrTooltip": "Koofr - slovenský cloud zameraný na ochranu súkromia s 10 GB zadarmo, dostupný aj cez WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB zadarmo)",
+      "yandexdiskTooltip": "Yandex Disk – ruské cloudové úložisko s 5 GB zadarmo, autentifikácia cez token OAuth2"
     },
     "shortcuts": {
       "title": "Klávesové skratky",
@@ -1653,7 +1662,9 @@
       "retry": "Opakovat stahovanie",
       "installRestart": "Nainstalovat a restartovat",
       "openInstaller": "Otvoriť inštalátor",
-      "skipForNow": "Neskôr, nie teraz"
+      "skipForNow": "Neskôr, nie teraz",
+      "installing": "Inštalácia aktualizácie...",
+      "installingDesc": "Aplikácia sa automaticky reštartuje o niekoľko sekúnd"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Odstranovanie",
+      "downloading": "Stahovanie",
+      "uploading": "Nahravanie",
+      "preparing": "Pripravuje sa operacia..."
     }
   }
 }

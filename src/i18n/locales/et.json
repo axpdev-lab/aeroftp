@@ -62,7 +62,8 @@
       "modified": "Muudetud",
       "name": "Nimi",
       "size": "Suurus",
-      "retry": "Proovi uuesti"
+      "retry": "Proovi uuesti",
+      "optional": "valikuline"
     },
     "connection": {
       "title": "Ühenda serveriga",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Kleepige siia oma Koofr rakenduse parool",
       "koofrHelp": "Looge rakenduse parool aadressil app.koofr.net → Eelistused → Parool → Rakenduse paroolid",
       "duplicateServer": "Dubleeri server",
-      "saveAsNew": "Salvesta uuena"
+      "saveAsNew": "Salvesta uuena",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Kaugserver",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Kui ühtegi ikooni pole määratud, tuvastatakse serveri favicon või icon.png automaatselt.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Avalik baas-URL",
+      "publicUrlBaseDesc": "Aktiveerige selle serveri failide jaoks \"Kopeeri jagamislink\". Sisestage HTTP URL, mis vastab teie FTP juurkaustale.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV kaudu",
       "fileluS3Desc": "FileLu S5 S3-ühilduv salvestusruum",
       "koofrDesc": "Koofr Cloud (10 GB tasuta)",
-      "koofrTooltip": "Koofr - Sloveenia privaatsusele keskenduv pilveteenuse 10GB tasuta, samuti WebDAV kaudu ligipääsetav"
+      "koofrTooltip": "Koofr - Sloveenia privaatsusele keskenduv pilveteenuse 10GB tasuta, samuti WebDAV kaudu ligipääsetav",
+      "yandexdiskDesc": "Yandex Disk (5 GB tasuta)",
+      "yandexdiskTooltip": "Yandex Disk - Vene pilvemälu 5GB tasuta, OAuth2 märgisepõhine autentimine"
     },
     "shortcuts": {
       "title": "Kiirklahvid",
@@ -1653,7 +1662,9 @@
       "retry": "Proovi uuesti alla laadida",
       "installRestart": "Installi ja taaskäivita",
       "openInstaller": "Ava paigaldaja",
-      "skipForNow": "Hiljem, mitte praegu"
+      "skipForNow": "Hiljem, mitte praegu",
+      "installing": "Värskenduse paigaldamine...",
+      "installingDesc": "Rakendus taaskäivitub automaatselt mõne sekundi pärast"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Kustutamine",
+      "downloading": "Allalaadimine",
+      "uploading": "Üleslaadimine",
+      "preparing": "Toimingu ettevalmistamine..."
     }
   }
 }

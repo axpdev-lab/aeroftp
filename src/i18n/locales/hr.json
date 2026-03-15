@@ -62,7 +62,8 @@
       "modified": "Promijenjeno",
       "name": "Naziv",
       "size": "Veličina",
-      "retry": "Pokušaj ponovo"
+      "retry": "Pokušaj ponovo",
+      "optional": "neobavezno"
     },
     "connection": {
       "title": "Poveži se na poslužitelj",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Zalijepite vašu Koofr lozinku aplikacije ovdje",
       "koofrHelp": "Generirajte lozinku aplikacije na app.koofr.net → Postavke → Lozinka → Lozinke aplikacija",
       "duplicateServer": "Dupliciraj poslužitelj",
-      "saveAsNew": "Spremi kao novi"
+      "saveAsNew": "Spremi kao novi",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Udaljeno",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ako ikona nije postavljena, favicon ili icon.png s poslužitelja se otkrivaju automatski.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Baza javnog URL-a",
+      "publicUrlBaseDesc": "Omogucite \"Kopiraj poveznicu za dijeljenje\" za datoteke na ovom posluzitelju. Unesite HTTP URL koji odgovara korijenskoj mapi vaseg FTP-a.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu putem WebDAV-a",
       "fileluS3Desc": "FileLu S5 S3-kompatibilna pohrana",
       "koofrDesc": "Koofr Cloud (10 GB besplatno)",
-      "koofrTooltip": "Koofr - Slovenski privatnosti fokusirani oblak s 10 GB besplatnog prostora, dostupan i putem WebDAV-a"
+      "koofrTooltip": "Koofr - Slovenski privatnosti fokusirani oblak s 10 GB besplatnog prostora, dostupan i putem WebDAV-a",
+      "yandexdiskDesc": "Yandex Disk (5 GB besplatno)",
+      "yandexdiskTooltip": "Yandex Disk - Ruska pohrana u oblaku s 5 GB besplatno, OAuth2 token autentifikacija"
     },
     "shortcuts": {
       "title": "Tipkovnički prečaci",
@@ -1653,7 +1662,9 @@
       "retry": "Ponovni pokušaj",
       "installRestart": "Instaliraj i ponovno pokreni",
       "openInstaller": "Otvori instalaciju",
-      "skipForNow": "Kasnije, ne sada"
+      "skipForNow": "Kasnije, ne sada",
+      "installing": "Instaliranje ažuriranja...",
+      "installingDesc": "Aplikacija će se automatski ponovo pokrenuti za nekoliko sekundi"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Brisanje",
+      "downloading": "Preuzimanje",
+      "uploading": "Prijenos",
+      "preparing": "Priprema operacije..."
     }
   }
 }

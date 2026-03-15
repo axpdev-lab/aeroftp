@@ -62,7 +62,8 @@
       "modified": "შეცვლილი",
       "name": "სახელი",
       "size": "ზომა",
-      "retry": "ხელახლა"
+      "retry": "ხელახლა",
+      "optional": "არასავალდებულო"
     },
     "connection": {
       "title": "სერვერთან დაკავშირება",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "იტოვეთ თქვენი Koofr აპლიკაციის პაროლი აქ",
       "koofrHelp": "შექმენით აპლიკაციის პაროლი app.koofr.net → პარამეტრები → პაროლი → აპლიკაციის პაროლი-ზე",
       "duplicateServer": "სერვერის დუბლირება",
-      "saveAsNew": "ახლად შენახვა"
+      "saveAsNew": "ახლად შენახვა",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "დისტანციური",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "თუ ხატულა არ არის დაყენებული, სერვერიდან favicon ან icon.png ავტომატურად განისაზღვრება.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "საჯარო URL-ის ბაზა",
+      "publicUrlBaseDesc": "ჩართეთ \"გაზიარების ბმულის კოპირება\" ამ სერვერის ფაილებისთვის. შეიყვანეთ HTTP URL, რომელიც შეესაბამება თქვენი FTP ძირითად საქაღალდეს.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV-ის საშუალებით",
       "fileluS3Desc": "FileLu S5 S3-თავსებადი საცავი",
       "koofrDesc": "Koofr Cloud (10 GB უფასო)",
-      "koofrTooltip": "Koofr - სლოვენიური პირადი ღირებულების ღია ღრუბელი 10 GB უფასო, ასევე ხელმისაწვდომი WebDAV-ის მეშვეობით"
+      "koofrTooltip": "Koofr - სლოვენიური პირადი ღირებულების ღია ღრუბელი 10 GB უფასო, ასევე ხელმისაწვდომი WebDAV-ის მეშვეობით",
+      "yandexdiskDesc": "Yandex Disk (5 GB უფასოდ)",
+      "yandexdiskTooltip": "Yandex Disk - რუსული ღრუბლოვანი საცავი 5 GB უფასოდ, OAuth2 ტოკენის ავთენტიფიკაცია"
     },
     "shortcuts": {
       "title": "კლავიატურის მალსახმობები",
@@ -1653,7 +1662,9 @@
       "retry": "ჩამოტვირთვის ხელახლა ცდა",
       "installRestart": "ინსტალაცია და გადატვირთვა",
       "openInstaller": "ინსტალატორის გახსნა",
-      "skipForNow": "მოგვიანებით, ახლა არა"
+      "skipForNow": "მოგვიანებით, ახლა არა",
+      "installing": "განახლების ინსტალაცია...",
+      "installingDesc": "აპლიკაცია ავტომატურად გადაიტვირთება რამდენიმე წამში"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "წაშლა",
+      "downloading": "ჩამოტვირთვა",
+      "uploading": "ატვირთვა",
+      "preparing": "ოპერაციის მომზადება..."
     }
   }
 }

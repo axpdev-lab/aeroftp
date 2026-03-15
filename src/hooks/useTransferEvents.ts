@@ -13,6 +13,13 @@ interface NotifyMethods {
   warning: (title: string, message?: string) => string | null;
 }
 
+interface ScanningUpdate {
+  active: boolean;
+  folderName: string;
+  message: string;
+  operation: 'delete' | 'download' | 'upload';
+}
+
 interface UseTransferEventsOptions {
   t: (key: string, params?: Record<string, string | number>) => string;
   activityLog: ActivityLogContextValue;
@@ -26,6 +33,8 @@ interface UseTransferEventsOptions {
   currentRemotePath: string;
   /** Called when a transfer starts — used to auto-open Activity Log */
   onTransferStart?: () => void;
+  /** Called when scanning state changes (folder scan for delete/download/upload) */
+  onScanningUpdate?: (update: ScanningUpdate) => void;
 }
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
@@ -106,7 +115,19 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (logId && data.message) {
           activityLog.updateEntry(logId, { message: data.message });
         }
+        // Notify ScanningToast
+        const scanOp = data.direction === 'remote' ? 'delete' as const
+          : data.direction === 'upload' ? 'upload' as const
+          : 'download' as const;
+        optRef.current.onScanningUpdate?.({
+          active: true,
+          folderName: data.filename || '',
+          message: data.message || '',
+          operation: scanOp,
+        });
       } else if (data.event_type === 'file_start') {
+        // Dismiss scanning toast — actual file transfer has started
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         // Use full path from event if available, otherwise fall back to filename
         const displayName = data.path || data.filename;
@@ -196,6 +217,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           }
         }
       } else if (data.event_type === 'complete') {
+        // Dismiss scanning toast when transfer completes
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
         completedTransferIds.current.add(data.transfer_id);
         // Prevent unbounded growth: trim oldest entries when exceeding cap
         if (completedTransferIds.current.size > 500) {
@@ -332,7 +355,18 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         transferIdToLogId.current.set(data.transfer_id, logId);
         pendingDeleteLogIds.current.set(data.filename, logId);
         pendingDeleteLogIds.current.set(displayName, logId);
+        // Show scanning toast for folder deletions (message contains "Scanning")
+        if (data.message && data.message.includes('Scanning')) {
+          optRef.current.onScanningUpdate?.({
+            active: true,
+            folderName: data.filename || '',
+            message: t('scanning.preparing'),
+            operation: 'delete',
+          });
+        }
       } else if (data.event_type === 'delete_file_start') {
+        // Dismiss scanning toast — actual deletion has started
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'delete' });
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         const logId = humanLog.logRaw('activity.delete_start', 'DELETE', { location: loc, filename: displayName }, 'running');
@@ -366,7 +400,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           pendingDeleteLogIds.current.delete(data.filename);
           pendingDeleteLogIds.current.delete(displayName);
         }
-      } else if (data.event_type === 'delete_complete') {
+      } else if (data.event_type === 'delete_complete' || data.event_type === 'delete_cancelled') {
+        // Dismiss scanning toast
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'delete' });
         // Update the overall delete log entry to "success" (same pattern as upload/download complete)
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
@@ -386,6 +422,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (data.direction === 'remote') loadRemoteFiles();
         else if (data.direction === 'local') loadLocalFiles(currentLocalPath);
       } else if (data.event_type === 'delete_error') {
+        // Dismiss scanning toast on error
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'delete' });
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
         // Try transfer_id first (overall delete), then filename (file-level)

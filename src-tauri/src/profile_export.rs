@@ -65,6 +65,8 @@ pub struct ServerProfileExport {
     pub provider_id: Option<String>,
     pub credential: Option<String>,
     pub has_stored_credential: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_url_base: Option<String>,
 }
 
 // ============ Export/Import ============

@@ -62,7 +62,8 @@
       "modified": "संशोधित",
       "name": "नाम",
       "size": "आकार",
-      "retry": "पुनः प्रयास करें"
+      "retry": "पुनः प्रयास करें",
+      "optional": "वैकल्पिक"
     },
     "connection": {
       "title": "सर्वर से कनेक्ट करें",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "अपना Koofr ऐप पासवर्ड यहां पेस्ट करें",
       "koofrHelp": "app.koofr.net → प्राथमिकताएं → पासवर्ड → ऐप पासवर्ड पर एक ऐप पासवर्ड बनाएं",
       "duplicateServer": "सर्वर डुप्लिकेट करें",
-      "saveAsNew": "नए के रूप में सहेजें"
+      "saveAsNew": "नए के रूप में सहेजें",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "दूरस्थ",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "यदि कोई आइकन सेट नहीं है, तो सर्वर से favicon या icon.png स्वतः पहचान लिया जाता है।",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "सार्वजनिक बेस URL",
+      "publicUrlBaseDesc": "इस सर्वर पर फ़ाइलों के लिए \"शेयर लिंक कॉपी करें\" सक्षम करें। वह HTTP URL दर्ज करें जो आपके FTP रूट फ़ोल्डर से मैप होता है।",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "WebDAV के माध्यम से FileLu",
       "fileluS3Desc": "FileLu S5 S3-संगत स्टोरेज",
       "koofrDesc": "Koofr Cloud (10 GB मुक्त)",
-      "koofrTooltip": "Koofr - स्लोवेनियाई गोपनीयता-केंद्रित क्लाउड 10GB मुक्त के साथ, WebDAV के माध्यम से भी सुलभ"
+      "koofrTooltip": "Koofr - स्लोवेनियाई गोपनीयता-केंद्रित क्लाउड 10GB मुक्त के साथ, WebDAV के माध्यम से भी सुलभ",
+      "yandexdiskDesc": "Yandex Disk (5 GB निःशुल्क)",
+      "yandexdiskTooltip": "Yandex Disk - रूसी क्लाउड स्टोरेज, 5GB मुफ़्त, OAuth2 टोकन प्रमाणीकरण"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",
@@ -1653,7 +1662,9 @@
       "retry": "डाउनलोड पुनः प्रयास करें",
       "installRestart": "इंस्टॉल और पुनरारंभ करें",
       "openInstaller": "इंस्टॉलर खोलें",
-      "skipForNow": "बाद में, अभी नहीं"
+      "skipForNow": "बाद में, अभी नहीं",
+      "installing": "अपडेट इंस्टॉल हो रहा है...",
+      "installingDesc": "ऐप कुछ सेकंड में स्वचालित रूप से पुनः आरंभ होगा"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "हटाया जा रहा है",
+      "downloading": "डाउनलोड हो रहा है",
+      "uploading": "अपलोड हो रहा है",
+      "preparing": "ऑपरेशन तैयार किया जा रहा है..."
     }
   }
 }

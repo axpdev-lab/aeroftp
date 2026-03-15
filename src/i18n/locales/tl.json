@@ -62,7 +62,8 @@
       "modified": "Binago",
       "name": "Pangalan",
       "size": "Laki",
-      "retry": "Subukan muli"
+      "retry": "Subukan muli",
+      "optional": "opsyonal"
     },
     "connection": {
       "title": "Kumonekta sa Server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Idikit ang iyong Koofr app password dito",
       "koofrHelp": "Gumawa ng app password sa app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "I-duplicate ang server",
-      "saveAsNew": "I-save bilang bago"
+      "saveAsNew": "I-save bilang bago",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Remote",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Kung walang nakatakdang icon, ang favicon o icon.png mula sa server ay awtomatikong natutukoy.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Pampublikong Base URL",
+      "publicUrlBaseDesc": "I-enable ang \"Kopyahin ang Share Link\" para sa mga file sa server na ito. Ilagay ang HTTP URL na tumutugma sa root folder ng FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu sa pamamagitan ng WebDAV",
       "fileluS3Desc": "FileLu S5 S3-compatible na storage",
       "koofrDesc": "Koofr Cloud (10 GB libre)",
-      "koofrTooltip": "Koofr - Slovenian cloud na nakatuon sa privacy na may 10 GB libre, accessible din sa pamamagitan ng WebDAV"
+      "koofrTooltip": "Koofr - Slovenian cloud na nakatuon sa privacy na may 10 GB libre, accessible din sa pamamagitan ng WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB libre)",
+      "yandexdiskTooltip": "Yandex Disk – Russian cloud storage na may 5 GB libre, pagpapatunay gamit ang OAuth2 token"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -1653,7 +1662,9 @@
       "retry": "Subukan Ulit ang Download",
       "installRestart": "I-install at I-restart",
       "openInstaller": "Buksan ang Installer",
-      "skipForNow": "Mamaya na lang"
+      "skipForNow": "Mamaya na lang",
+      "installing": "Ini-install ang update...",
+      "installingDesc": "Awtomatikong magre-restart ang app sa loob ng ilang segundo"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3310,6 +3321,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Binubura",
+      "downloading": "Dina-download",
+      "uploading": "Ina-upload",
+      "preparing": "Inihahanda ang operasyon..."
     }
   }
 }

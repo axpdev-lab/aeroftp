@@ -62,7 +62,8 @@
       "modified": "แก้ไขแล้ว",
       "name": "ชื่อ",
       "size": "ขนาด",
-      "retry": "ลองใหม่"
+      "retry": "ลองใหม่",
+      "optional": "ไม่บังคับ"
     },
     "connection": {
       "title": "เชื่อมต่อเซิร์ฟเวอร์",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "วางรหัสผ่านแอปพลิเคชัน Koofr ของคุณที่นี่",
       "koofrHelp": "สร้างรหัสผ่านแอปพลิเคชันที่ app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "ทำซ้ำเซิร์ฟเวอร์",
-      "saveAsNew": "บันทึกเป็นรายการใหม่"
+      "saveAsNew": "บันทึกเป็นรายการใหม่",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "ระยะไกล",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "หากไม่ได้ตั้งค่าไอคอน ระบบจะตรวจจับ favicon หรือ icon.png จากเซิร์ฟเวอร์โดยอัตโนมัติ",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL สาธารณะพื้นฐาน",
+      "publicUrlBaseDesc": "เปิดใช้งาน \"คัดลอกลิงก์แชร์\" สำหรับไฟล์บนเซิร์ฟเวอร์นี้ ป้อน HTTP URL ที่แมปกับโฟลเดอร์รากของ FTP",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu ผ่าน WebDAV",
       "fileluS3Desc": "FileLu S5 พื้นที่จัดเก็บที่รองรับ S3",
       "koofrDesc": "Koofr Cloud (10 GB ฟรี)",
-      "koofrTooltip": "Koofr - คลาวด์สโลวีเนียที่มุ่งเน้นความเป็นส่วนตัวพร้อม 10 GB ฟรี ยังสามารถเข้าถึงได้ผ่าน WebDAV"
+      "koofrTooltip": "Koofr - คลาวด์สโลวีเนียที่มุ่งเน้นความเป็นส่วนตัวพร้อม 10 GB ฟรี ยังสามารถเข้าถึงได้ผ่าน WebDAV",
+      "yandexdiskDesc": "Yandex Disk (ฟรี 5 GB)",
+      "yandexdiskTooltip": "Yandex Disk – พื้นที่เก็บข้อมูลบนคลาวด์รัสเซียพร้อมพื้นที่ฟรี 5 GB การยืนยันตัวตนด้วยโทเค็น OAuth2"
     },
     "shortcuts": {
       "title": "แป้นพิมพ์ลัด",
@@ -1653,7 +1662,9 @@
       "retry": "ลองดาวน์โหลดใหม่",
       "installRestart": "ติดตั้งและรีสตาร์ท",
       "openInstaller": "เปิดตัวติดตั้ง",
-      "skipForNow": "ภายหลัง ไม่ใช่ตอนนี้"
+      "skipForNow": "ภายหลัง ไม่ใช่ตอนนี้",
+      "installing": "กำลังติดตั้งการอัปเดต...",
+      "installingDesc": "แอปจะรีสตาร์ทโดยอัตโนมัติในอีกไม่กี่วินาที"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "กำลังลบ",
+      "downloading": "กำลังดาวน์โหลด",
+      "uploading": "กำลังอัปโหลด",
+      "preparing": "กำลังเตรียมการดำเนินการ..."
     }
   }
 }

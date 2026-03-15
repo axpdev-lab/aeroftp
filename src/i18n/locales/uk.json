@@ -62,7 +62,8 @@
       "modified": "Змінено",
       "name": "Ім'я",
       "size": "Розмір",
-      "retry": "Повторити"
+      "retry": "Повторити",
+      "optional": "необов'язково"
     },
     "connection": {
       "title": "Підключення до сервера",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Вставте свій пароль програми Koofr сюди",
       "koofrHelp": "Створіть пароль програми на app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Дублювати сервер",
-      "saveAsNew": "Зберегти як новий"
+      "saveAsNew": "Зберегти як новий",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Віддалений",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Якщо іконку не встановлено, favicon або icon.png із сервера визначається автоматично.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Базова публічна URL-адреса",
+      "publicUrlBaseDesc": "Увімкніть \"Копіювати посилання для спільного доступу\" для файлів на цьому сервері. Введіть HTTP URL, що відповідає кореневій папці FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu через WebDAV",
       "fileluS3Desc": "FileLu S5 сховище, сумісне з S3",
       "koofrDesc": "Koofr Cloud (10 ГБ безплатно)",
-      "koofrTooltip": "Koofr - словенське хмарне сховище, орієнтоване на приватність, з 10 ГБ безплатно, також доступне через WebDAV"
+      "koofrTooltip": "Koofr - словенське хмарне сховище, орієнтоване на приватність, з 10 ГБ безплатно, також доступне через WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB безкоштовно)",
+      "yandexdiskTooltip": "Yandex Disk – російське хмарне сховище з 5 GB безкоштовно, автентифікація через токен OAuth2"
     },
     "shortcuts": {
       "title": "Грячі клавіші",
@@ -1653,7 +1662,9 @@
       "retry": "Повторити завантаження",
       "installRestart": "Встановити та перезапустити",
       "openInstaller": "Відкрити встановлювач",
-      "skipForNow": "Пізніше, не зараз"
+      "skipForNow": "Пізніше, не зараз",
+      "installing": "Встановлення оновлення...",
+      "installingDesc": "Додаток автоматично перезапуститься через кілька секунд"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Видалення",
+      "downloading": "Завантаження",
+      "uploading": "Вивантаження",
+      "preparing": "Підготовка операції..."
     }
   }
 }

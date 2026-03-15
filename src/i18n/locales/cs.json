@@ -62,7 +62,8 @@
       "modified": "Změněno",
       "name": "Název",
       "size": "Velikost",
-      "retry": "Zkusit znovu"
+      "retry": "Zkusit znovu",
+      "optional": "volitelné"
     },
     "connection": {
       "title": "Připojení k serveru",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Vložte své heslo aplikace Koofr zde",
       "koofrHelp": "Vygenerujte heslo aplikace na app.koofr.net → Předvolby → Heslo → Hesla aplikací",
       "duplicateServer": "Duplikovat server",
-      "saveAsNew": "Uložit jako nový"
+      "saveAsNew": "Uložit jako nový",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Vzdálený",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Pokud není nastavena žádná ikona, favicon nebo icon.png ze serveru se detekuje automaticky.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Základní veřejná URL",
+      "publicUrlBaseDesc": "Aktivujte \"Kopírovat odkaz ke sdílení\" pro soubory na tomto serveru. Zadejte HTTP URL, která odpovídá kořenové složce FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu přes WebDAV",
       "fileluS3Desc": "FileLu S5 úložiště kompatibilní s S3",
       "koofrDesc": "Koofr Cloud (10 GB zdarma)",
-      "koofrTooltip": "Koofr - Slovinský cloud zaměřený na ochranu soukromí s 10GB zdarma, přístupný také přes WebDAV"
+      "koofrTooltip": "Koofr - Slovinský cloud zaměřený na ochranu soukromí s 10GB zdarma, přístupný také přes WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB zdarma)",
+      "yandexdiskTooltip": "Yandex Disk - ruské cloudové úložiště s 5GB zdarma, ověřování pomocí OAuth2 tokenu"
     },
     "shortcuts": {
       "title": "Klávesové zkratky",
@@ -1653,7 +1662,9 @@
       "retry": "Opakovat stahovani",
       "installRestart": "Nainstalovat a restartovat",
       "openInstaller": "Otevřít instalátor",
-      "skipForNow": "Později, teď ne"
+      "skipForNow": "Později, teď ne",
+      "installing": "Instalace aktualizace...",
+      "installingDesc": "Aplikace se automaticky restartuje za několik sekund"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Mazání",
+      "downloading": "Stahování",
+      "uploading": "Nahrávání",
+      "preparing": "Příprava operace..."
     }
   }
 }

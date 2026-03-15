@@ -12,7 +12,7 @@ static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock:
 
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
-const TIMESTAMP_TOLERANCE_SECS: i64 = 2;
+const TIMESTAMP_TOLERANCE_SECS: i64 = 30;
 
 /// Status of a file comparison
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -245,6 +245,11 @@ pub fn compare_file_pair(
         (None, Some(_)) => SyncStatus::RemoteOnly,
         (Some(l), Some(r)) => {
             // Both exist - compare attributes
+
+            // Directories that exist on both sides are always identical
+            if l.is_dir && r.is_dir {
+                return SyncStatus::Identical;
+            }
 
             // ──── Checksum Comparison (when enabled) ────
             // Local file checksums are computed via SHA-256 in get_local_files_recursive

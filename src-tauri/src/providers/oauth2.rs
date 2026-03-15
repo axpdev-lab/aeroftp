@@ -96,6 +96,7 @@ pub enum OAuthProvider {
     Box,
     PCloud,
     ZohoWorkdrive,
+    YandexDisk,
 }
 
 impl std::fmt::Display for OAuthProvider {
@@ -104,6 +105,7 @@ impl std::fmt::Display for OAuthProvider {
             OAuthProvider::Google => write!(f, "Google Drive"),
             OAuthProvider::Dropbox => write!(f, "Dropbox"),
             OAuthProvider::OneDrive => write!(f, "OneDrive"),
+            OAuthProvider::YandexDisk => write!(f, "Yandex Disk"),
             OAuthProvider::Box => write!(f, "Box"),
             OAuthProvider::PCloud => write!(f, "pCloud"),
             OAuthProvider::ZohoWorkdrive => write!(f, "Zoho WorkDrive"),
@@ -293,6 +295,30 @@ impl OAuthConfig {
     /// Create Zoho WorkDrive OAuth config (default port for token refresh only)
     pub fn zoho(client_id: &str, client_secret: &str, region: &str) -> Self {
         Self::zoho_with_port(client_id, client_secret, 0, region)
+    }
+
+    /// Create Yandex Disk OAuth config with dynamic callback port
+    pub fn yandex_disk_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
+        Self {
+            provider: OAuthProvider::YandexDisk,
+            client_id: client_id.to_string(),
+            client_secret: Some(client_secret.to_string()),
+            auth_url: "https://oauth.yandex.com/authorize".to_string(),
+            token_url: "https://oauth.yandex.com/token".to_string(),
+            scopes: vec![
+                "cloud_api:disk.read".to_string(),
+                "cloud_api:disk.write".to_string(),
+                "cloud_api:disk.info".to_string(),
+                "cloud_api:disk.app_folder".to_string(),
+            ],
+            redirect_uri: format!("http://localhost:{}/callback", port),
+            extra_auth_params: vec![],
+        }
+    }
+
+    /// Create Yandex Disk OAuth config (default port for token refresh only)
+    pub fn yandex_disk(client_id: &str, client_secret: &str) -> Self {
+        Self::yandex_disk_with_port(client_id, client_secret, 0)
     }
 }
 

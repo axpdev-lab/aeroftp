@@ -17,12 +17,24 @@ const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
 const TEXT_EXTENSIONS = ['txt', 'log', 'ini', 'cfg', 'conf', 'env'];
 const CODE_EXTENSIONS = [
     'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
-    'json', 'xml', 'yaml', 'yml', 'toml', 'webmanifest',
+    'json', 'xml', 'yaml', 'yml', 'toml', 'webmanifest', 'manifest',
     'php', 'py', 'rb', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'swift',
     'sql', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
     'vue', 'svelte', 'astro',
-    'htaccess', 'config', 'conf'
+    'htaccess', 'config', 'conf', 'cfg',
+    'gitignore', 'gitattributes', 'gitmodules',
+    'dockerignore', 'editorconfig', 'eslintrc', 'prettierrc', 'babelrc',
+    'npmrc', 'nvmrc', 'browserslistrc',
+    'production', 'development', 'staging', 'local', 'example', 'sample', 'bak',
 ];
+
+// Well-known filenames without extensions that should be treated as code/text
+const KNOWN_CODE_FILENAMES = new Set([
+    'makefile', 'dockerfile', 'containerfile', 'vagrantfile', 'gemfile',
+    'rakefile', 'procfile', 'brewfile', 'justfile', 'taskfile',
+    'cmakelists.txt', 'license', 'licence', 'authors', 'contributors',
+    'changelog', 'changes', 'history', 'news', 'todo', 'readme',
+]);
 
 /**
  * Get file extension from filename
@@ -40,6 +52,7 @@ export function getFileExtension(filename: string): string {
  */
 export function getPreviewCategory(filename: string): PreviewCategory {
     const ext = getFileExtension(filename);
+    const baseName = filename.split('/').pop()?.toLowerCase() || filename.toLowerCase();
 
     if (IMAGE_EXTENSIONS.includes(ext)) return 'image';
     if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
@@ -48,6 +61,7 @@ export function getPreviewCategory(filename: string): PreviewCategory {
     if (MARKDOWN_EXTENSIONS.includes(ext)) return 'markdown';
     if (TEXT_EXTENSIONS.includes(ext)) return 'text';
     if (CODE_EXTENSIONS.includes(ext)) return 'code';
+    if (KNOWN_CODE_FILENAMES.has(baseName)) return 'code';
 
     return 'unknown';
 }

@@ -62,7 +62,8 @@
       "modified": "Modificado",
       "name": "Nome",
       "size": "Tamanho",
-      "retry": "Tentar novamente"
+      "retry": "Tentar novamente",
+      "optional": "opcional"
     },
     "connection": {
       "title": "Conectar ao Servidor",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Cole sua senha do aplicativo Koofr aqui",
       "koofrHelp": "Gere uma senha do aplicativo em app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Duplicar servidor",
-      "saveAsNew": "Salvar como novo"
+      "saveAsNew": "Salvar como novo",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Remoto",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Se nenhum ícone for definido, o favicon ou icon.png do servidor será detectado automaticamente.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL Base Publico",
+      "publicUrlBaseDesc": "Ative \"Copiar Link de Compartilhamento\" para arquivos neste servidor. Insira o URL HTTP que mapeia para a pasta raiz do FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 armazenamento compatível com S3",
       "koofrDesc": "Koofr Cloud (10 GB grátis)",
-      "koofrTooltip": "Koofr - nuvem eslovena focada em privacidade com 10 GB grátis, também acessível via WebDAV"
+      "koofrTooltip": "Koofr - nuvem eslovena focada em privacidade com 10 GB grátis, também acessível via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB grátis)",
+      "yandexdiskTooltip": "Yandex Disk – armazenamento em nuvem russo com 5 GB grátis, autenticação por token OAuth2"
     },
     "shortcuts": {
       "title": "Atalhos de Teclado",
@@ -1653,7 +1662,9 @@
       "retry": "Tentar Novamente",
       "installRestart": "Instalar e Reiniciar",
       "openInstaller": "Abrir instalador",
-      "skipForNow": "Mais tarde, agora não"
+      "skipForNow": "Mais tarde, agora não",
+      "installing": "Instalando atualização...",
+      "installingDesc": "O aplicativo será reiniciado automaticamente em alguns segundos"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Excluindo",
+      "downloading": "Baixando",
+      "uploading": "Enviando",
+      "preparing": "Preparando operacao..."
     }
   }
 }

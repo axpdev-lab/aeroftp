@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 20 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 21 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <!-- Row 1: Project Identity -->
@@ -17,7 +17,7 @@
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-20-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/protocols-21-green" alt="Protocols" />
   <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
@@ -56,7 +56,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 20 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 21 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
@@ -64,7 +64,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (20 protocols, sync, share)
+├── AeroCloud    — Personal cloud (21 protocols, sync, share)
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
@@ -78,7 +78,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any server** into a private personal cloud. Connect to all 20 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Connect to all 21 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -102,8 +102,9 @@ Turn **any server** into a private personal cloud. Connect to all 20 protocols t
 | **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, unlimited storage plans |
 | **Koofr** | OAuth2 PKCE | 10GB free, EU-based (Slovenia), native REST API, trash management |
 | **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
+| **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 
-**Cloud features**: Background sync works with all 20 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
+**Cloud features**: Background sync works with all 21 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -192,7 +193,7 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **47 provider-agnostic tools** that work across all 20 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
+An AI assistant with **47 provider-agnostic tools** that work across all 21 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 
@@ -258,6 +259,27 @@ aeroftp batch deploy.aeroftp
 - 45-finding security audit (grade A-)
 
 See the full **[CLI Guide](docs/CLI-GUIDE.md)** for usage, examples, and batch scripting reference.
+
+#### AI Agent & CI/CD Integration
+
+AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines:
+
+- **`--json` on every command** — structured output parsable by any agent (OpenClaw, Claude Code, Codex, Cursor, Devin)
+- **Semantic exit codes** (0-8) — agents know exactly what failed without parsing text
+- **URL-based connections** — single argument, zero interaction: `aeroftp put sftp://user@host ./dist/ /www/`
+- **`NO_COLOR` compliant** — no ANSI escape sequences polluting agent output
+- **stderr/stdout separation** — data on stdout for piping, errors on stderr for logging
+- **Batch scripts** (`.aeroftp`) — define multi-step deployment flows as files, execute atomically
+
+```bash
+# Example: AI agent deploys a website
+aeroftp sync ./build/ ftp://deploy@server/www/ --direction push --json
+
+# CI/CD: batch deployment with error handling
+aeroftp batch .aeroftp/deploy-production.aeroftp --json
+```
+
+> AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool — listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
 
 ---
 
@@ -350,7 +372,7 @@ sudo snap install aeroftp
   </a>
 </p>
 
-> **Note:** The Snap Store version may not be up-to-date while awaiting store review. The latest `.snap` package is always available on [GitHub Releases](https://github.com/axpnet/aeroftp/releases). In-app auto-update works regardless. Snap has limited filesystem access due to strict confinement — for full access, use .deb, .AppImage, or AUR.
+> **Note:** Snap Store publication is currently **pending manual review**. Auto-publish has been paused while the review queue is processed. The latest `.snap` package is always available on [GitHub Releases](https://github.com/axpnet/aeroftp/releases). In-app auto-update works regardless of installation method. Snap has limited filesystem access due to strict confinement — for full access, use .deb, .AppImage, or AUR.
 
 #### AUR (Arch Linux)
 ```bash
@@ -397,10 +419,14 @@ Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/lates
 - **.exe** — NSIS installer
 - **.msi** — Windows Installer
 
+> **Note:** Windows builds are not currently published on the Microsoft Store. The installer is not code-signed (no EV certificate), so Windows SmartScreen may show a warning on first run — this is safe to dismiss.
+
 ### macOS
 
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
 - **.dmg** — Universal disk image
+
+> **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch — right-click the app and select "Open" to bypass. See [#47](https://github.com/axpnet/aeroftp/issues/47) for known issues on Apple Silicon.
 
 ---
 

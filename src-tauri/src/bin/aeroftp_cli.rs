@@ -737,7 +737,8 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "jottacloud" => (ProviderType::Jottacloud, "jfs.jottacloud.com".to_string()),
         "filelu" => (ProviderType::FileLu, "filelu.com".to_string()),
         "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
-        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr", scheme)),
+        "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
+        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, yandexdisk", scheme)),
     };
 
     let username = if url_obj.username().is_empty() {

@@ -62,7 +62,8 @@
       "modified": "Gewijzigd",
       "name": "Naam",
       "size": "Grootte",
-      "retry": "Opnieuw"
+      "retry": "Opnieuw",
+      "optional": "optioneel"
     },
     "connection": {
       "title": "Verbinden met Server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Plak hier uw Koofr app-wachtwoord",
       "koofrHelp": "Genereer een app-wachtwoord op app.koofr.net → Instellingen → Wachtwoord → App-wachtwoorden",
       "duplicateServer": "Server dupliceren",
-      "saveAsNew": "Opslaan als nieuw"
+      "saveAsNew": "Opslaan als nieuw",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Extern",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Als er geen pictogram is ingesteld, wordt de favicon of icon.png van de server automatisch gedetecteerd.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Basis van openbare URL",
+      "publicUrlBaseDesc": "Schakel \"Deellink kopieren\" in voor bestanden op deze server. Voer de HTTP-URL in die verwijst naar uw FTP-hoofdmap.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 S3-compatibele opslag",
       "koofrDesc": "Koofr Cloud (10 GB gratis)",
-      "koofrTooltip": "Koofr - Sloveense privacy-gerichte cloud met 10 GB gratis, ook bereikbaar via WebDAV"
+      "koofrTooltip": "Koofr - Sloveense privacy-gerichte cloud met 10 GB gratis, ook bereikbaar via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
+      "yandexdiskTooltip": "Yandex Disk - Russische cloudopslag met 5 GB gratis, OAuth2-tokenauthenticatie"
     },
     "shortcuts": {
       "title": "Sneltoetsen",
@@ -1653,7 +1662,9 @@
       "retry": "Opnieuw downloaden",
       "installRestart": "Installeren en herstarten",
       "openInstaller": "Installatieprogramma openen",
-      "skipForNow": "Later, niet nu"
+      "skipForNow": "Later, niet nu",
+      "installing": "Update wordt geïnstalleerd...",
+      "installingDesc": "De app wordt automatisch opnieuw gestart over enkele seconden"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Verwijderen",
+      "downloading": "Downloaden",
+      "uploading": "Uploaden",
+      "preparing": "Bewerking voorbereiden..."
     }
   }
 }

@@ -62,7 +62,8 @@
       "modified": "បានកែប្រែ",
       "name": "ឈ្មោះ",
       "size": "ទំហំ",
-      "retry": "ព្យាយាមម្ដងទៀត"
+      "retry": "ព្យាយាមម្ដងទៀត",
+      "optional": "ជាក់មិនចំបាច់"
     },
     "connection": {
       "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "ដាក់ពាក្យសម្ងាត់កម្មវិធី Koofr របស់អ្នកនៅទីនេះ",
       "koofrHelp": "បង្កើតពាក្យសម្ងាត់កម្មវិធីនៅ app.koofr.net → ចម្លងលម្អិត → ពាក្យសម្ងាត់ → ពាក្យសម្ងាត់កម្មវិធី",
       "duplicateServer": "ចម្លងម៉ាស៊ីនមេ",
-      "saveAsNew": "រក្សាទុកជាថ្មី"
+      "saveAsNew": "រក្សាទុកជាថ្មី",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "ពីចម្ងាយ",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "ប្រសិនបើមិនមានរូបតំណាងត្រូវបានកំណត់ favicon ឬ icon.png ពីម៉ាស៊ីនបម្រើនឹងត្រូវបានរកឃើញដោយស្វ័យប្រវត្តិ។",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "មូលដ្ឋាន URL សាដារណៈ",
+      "publicUrlBaseDesc": "បើក \"ចំឡងតំណភ្ជាប់ចែករំលែក\" សម្រាប់ឯកសារនៅលើម៉ាស៊ីនម៉ឺក់នេះ។ បញ្ចូល URL HTTP ដែលផ្គូផ្គង់ទៅថេ FTP របស់អ្នក។",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu តាម WebDAV",
       "fileluS3Desc": "FileLu S5 ការផ្ទុកដែលឆបគ្នាជាមួយ S3",
       "koofrDesc": "Koofr Cloud (ឥតគិតថ្លៃ 10 GB)",
-      "koofrTooltip": "Koofr - មជ្ឈដ្ឋាននពData ការផ្តោតលើឯកជនរបស់ស្លូវេនីដែលមាន 10 GB ឥតគិតថ្លៃ ដែលអាចចូលប្រើបាននៅក្នុង WebDAV ផងដែរ"
+      "koofrTooltip": "Koofr - មជ្ឈដ្ឋាននពData ការផ្តោតលើឯកជនរបស់ស្លូវេនីដែលមាន 10 GB ឥតគិតថ្លៃ ដែលអាចចូលប្រើបាននៅក្នុង WebDAV ផងដែរ",
+      "yandexdiskDesc": "Yandex Disk (5 GB ឥតគិតថ្លៃ)",
+      "yandexdiskTooltip": "Yandex Disk - ផ្ទុកទិន្នន័យលើCloud របស់រុស្ស៊ី ជាមួយ 5 GB ឥតគិតថ្លៃ, ការផ្ទៀងផ្ទាត់ OAuth2 token"
     },
     "shortcuts": {
       "title": "ផ្លូវកាត់ក្តារចុច",
@@ -1653,7 +1662,9 @@
       "retry": "ព្យាយាមទាញយកម្តងទៀត",
       "installRestart": "ដំឡើងនិងចាប់ផ្តើមឡើងវិញ",
       "openInstaller": "បើកកម្មវិធីដំឡើង",
-      "skipForNow": "ពេលក្រោយ មិនមែនឥឡូវទេ"
+      "skipForNow": "ពេលក្រោយ មិនមែនឥឡូវទេ",
+      "installing": "កំពុងដំឡើងបច្ចុប្បន្នភាព...",
+      "installingDesc": "កម្មវិធីនឹងចាប់ផ្ដើមឡើងវិញដោយស្វ័យប្រវត្តិក្នុងរយៈពេលប៉ុន្មានវិនាទី"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3310,6 +3321,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "កំពុងលុប",
+      "downloading": "កំពុងទាញយក",
+      "uploading": "កំពុងផ្ទុកឡើង",
+      "preparing": "កំពុងរៀបចំប្រតិបត្តិការ..."
     }
   }
 }

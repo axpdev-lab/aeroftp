@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.7" date="2026-03-15">
+      <description>
+        <p>Share links for FTP/SFTP/WebDAV servers via configurable Public URL Base mapping. Folder scan progress toast with real-time counters during recursive delete and download. Fullscreen overlay during app update installation. Security audit: URL scheme validation, debug-level logging, path resolution fix. 15 new i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.9.6" date="2026-03-14">
       <description>
         <p>Critical timezone fix: remote file timestamps (MLSD, SFTP, cloud APIs) now correctly converted from UTC to local timezone for display. Fixes overwrite-if-newer and sync comparisons producing incorrect results due to timezone offset. Frontend formatDate handles ISO 8601 with Z suffix, RFC 2822, and timezone offsets. 11 provider backends updated. CLI help banner added.</p>

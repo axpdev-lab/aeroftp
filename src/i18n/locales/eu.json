@@ -62,7 +62,8 @@
       "modified": "Aldatua",
       "name": "Izena",
       "size": "Tamaina",
-      "retry": "Saiatu berriro"
+      "retry": "Saiatu berriro",
+      "optional": "aukerakoa"
     },
     "connection": {
       "title": "Zerbitzarira Konektatu",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Itsatsi zure Koofr aplikazioaren pasahitza hemen",
       "koofrHelp": "Sortu aplikazioaren pasahitza app.koofr.net → Hobespenak → Pasahitza → Aplikazioaren pasahitzak",
       "duplicateServer": "Zerbitzaria bikoiztu",
-      "saveAsNew": "Gorde berri gisa"
+      "saveAsNew": "Gorde berri gisa",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Urrunekoa",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ikonorik ezarri ezean, zerbitzariaren favicon edo icon.png automatikoki detektatzen da.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL publiko oinarria",
+      "publicUrlBaseDesc": "Gaitu \"Kopiatu partekatzeko esteka\" zerbitzari honetako fitxategientzat. Sartu zure FTP erro-karpetari dagokion HTTP URLa.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV bidez",
       "fileluS3Desc": "FileLu S5 S3-rekin bateragarria den biltegiratze",
       "koofrDesc": "Koofr Cloud (10 GB askea)",
-      "koofrTooltip": "Koofr - Esloveniako pribatutasunean oinarritutako hodeia 10GB askea, WebDAV bidez ere atzipena"
+      "koofrTooltip": "Koofr - Esloveniako pribatutasunean oinarritutako hodeia 10GB askea, WebDAV bidez ere atzipena",
+      "yandexdiskDesc": "Yandex Disk (5 GB doan)",
+      "yandexdiskTooltip": "Yandex Disk - Errusiako hodei-biltegiratzea 5GB doan, OAuth2 token autentifikazioa"
     },
     "shortcuts": {
       "title": "Teklatu lasterbideak",
@@ -1653,7 +1662,9 @@
       "retry": "Saiatu berriro",
       "installRestart": "Instalatu eta berrabiarazi",
       "openInstaller": "Ireki instalatzailea",
-      "skipForNow": "Geroago, orain ez"
+      "skipForNow": "Geroago, orain ez",
+      "installing": "Eguneratzea instalatzen...",
+      "installingDesc": "Aplikazioa automatikoki berrabiaraziko da segundo gutxi barru"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3310,6 +3321,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Ezabatzen",
+      "downloading": "Deskargatzen",
+      "uploading": "Igotzen",
+      "preparing": "Eragiketa prestatzen..."
     }
   }
 }

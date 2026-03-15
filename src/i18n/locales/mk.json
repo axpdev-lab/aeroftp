@@ -62,7 +62,8 @@
       "modified": "Модифицирано",
       "name": "Име",
       "size": "Величина",
-      "retry": "Обиди се повторно"
+      "retry": "Обиди се повторно",
+      "optional": "незадолжително"
     },
     "connection": {
       "title": "Поврзи се на сервер",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Залепете ја вашата Koofr лозинка на апликација овде",
       "koofrHelp": "Генерирајте лозинка на апликација на app.koofr.net → Поставки → Лозинка → Лозинки на апликации",
       "duplicateServer": "Дуплирај сервер",
-      "saveAsNew": "Зачувај како нов"
+      "saveAsNew": "Зачувај како нов",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Далечински",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ако не е поставена икона, favicon или icon.png од серверот се откриваат автоматски.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "База на јавен URL",
+      "publicUrlBaseDesc": "Овозможете „Копирај линк за споделување“ за датотеките на овој сервер. Внесете го HTTP URL-то што соодветствува на вашата FTP коренска папка.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu преку WebDAV",
       "fileluS3Desc": "FileLu S5 S3-компатибилно складирање",
       "koofrDesc": "Koofr Cloud (10 GB бесплатно)",
-      "koofrTooltip": "Koofr - словенски облак фокусиран на приватност со 10 GB бесплатно, исто така достапен преку WebDAV"
+      "koofrTooltip": "Koofr - словенски облак фокусиран на приватност со 10 GB бесплатно, исто така достапен преку WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB бесплатно)",
+      "yandexdiskTooltip": "Yandex Disk - Руски облак-складиште со 5 GB бесплатно, OAuth2 токен автентикација"
     },
     "shortcuts": {
       "title": "Кратенки на тастатура",
@@ -1653,7 +1662,9 @@
       "retry": "Обиди се повторно",
       "installRestart": "Инсталирај и рестартирај",
       "openInstaller": "Отвори инсталатор",
-      "skipForNow": "Подоцна, не сега"
+      "skipForNow": "Подоцна, не сега",
+      "installing": "Инсталирање на ажурирањето...",
+      "installingDesc": "Апликацијата автоматски ќе се рестартира за неколку секунди"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3310,6 +3321,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Бришење",
+      "downloading": "Преземање",
+      "uploading": "Поставување",
+      "preparing": "Подготовка на операција..."
     }
   }
 }

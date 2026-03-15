@@ -15,11 +15,11 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'jottacloud' | 'drime' | 'filelu' | 'koofr';
+export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'jottacloud' | 'drime' | 'filelu' | 'koofr' | 'yandexdisk';
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
-  return type === 'googledrive' || type === 'dropbox' || type === 'onedrive' || type === 'box' || type === 'pcloud' || type === 'zohoworkdrive';
+  return type === 'googledrive' || type === 'dropbox' || type === 'onedrive' || type === 'box' || type === 'pcloud' || type === 'zohoworkdrive' || type === 'yandexdisk';
 };
 
 // Check if a provider type requires OAuth 1.0 authentication (4shared)
@@ -34,7 +34,7 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
 
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'yandexdisk'].includes(type);
 };
 
 // Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
@@ -44,12 +44,12 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr'].includes(type);
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'yandexdisk'].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt', 'jottacloud', 'filelu', 'koofr'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt', 'jottacloud', 'filelu', 'koofr', 'yandexdisk'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode
@@ -153,7 +153,7 @@ export interface TransferEvent {
   | 'start' | 'scanning' | 'progress' | 'complete' | 'error' | 'cancelled'
   | 'file_start' | 'file_complete' | 'file_error' | 'file_skip'
   // Delete events
-  | 'delete_start' | 'delete_complete' | 'delete_error'
+  | 'delete_start' | 'delete_complete' | 'delete_cancelled' | 'delete_error'
   | 'delete_file_start' | 'delete_file_complete' | 'delete_file_error'
   | 'delete_dir_complete';
   transfer_id: string;
@@ -182,6 +182,7 @@ export interface ServerProfile {
   providerId?: string;        // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
   faviconUrl?: string;        // Base64 data URL of detected project favicon
   customIconUrl?: string;     // User-chosen custom icon (base64 data URL, highest priority)
+  publicUrlBase?: string;     // HTTP base URL for share link generation (e.g. https://www.example.com/)
 }
 
 // Session status for multi-tab management
@@ -202,6 +203,8 @@ export interface FtpSession {
   providerId?: string;        // Registry provider ID for logo display
   faviconUrl?: string;        // Inherited from ServerProfile on connection
   customIconUrl?: string;     // Inherited from ServerProfile on connection
+  publicUrlBase?: string;     // Inherited from ServerProfile for share link generation
+  serverInitialPath?: string; // Inherited from ServerProfile for share link path resolution
   // Per-session navigation sync state
   isSyncNavigation?: boolean;
   syncBasePaths?: { remote: string; local: string } | null;

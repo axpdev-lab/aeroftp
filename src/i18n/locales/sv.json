@@ -62,7 +62,8 @@
       "modified": "Ändrad",
       "name": "Namn",
       "size": "Storlek",
-      "retry": "Försök igen"
+      "retry": "Försök igen",
+      "optional": "valfritt"
     },
     "connection": {
       "title": "Anslut till server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Klistra in ditt Koofr-applösenord här",
       "koofrHelp": "Generera ett applösenord på app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Duplicera server",
-      "saveAsNew": "Spara som ny"
+      "saveAsNew": "Spara som ny",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Fjärr",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Om ingen ikon är inställd identifieras favicon eller icon.png från servern automatiskt.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Offentlig bas-URL",
+      "publicUrlBaseDesc": "Aktivera \"Kopiera delningslänk\" för filer på denna server. Ange HTTP-URL:en som motsvarar FTP-rotmappen.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 S3-kompatibel lagring",
       "koofrDesc": "Koofr Cloud (10 GB gratis)",
-      "koofrTooltip": "Koofr - slovenisk molntjänst fokuserad på integritet med 10 GB gratis, även tillgänglig via WebDAV"
+      "koofrTooltip": "Koofr - slovenisk molntjänst fokuserad på integritet med 10 GB gratis, även tillgänglig via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
+      "yandexdiskTooltip": "Yandex Disk – ryskt molnlagring med 5 GB gratis, autentisering via OAuth2-token"
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -1653,7 +1662,9 @@
       "retry": "Försök igen",
       "installRestart": "Installera och starta om",
       "openInstaller": "Öppna installeraren",
-      "skipForNow": "Senare, inte nu"
+      "skipForNow": "Senare, inte nu",
+      "installing": "Installerar uppdatering...",
+      "installingDesc": "Appen startar om automatiskt om några sekunder"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Tar bort",
+      "downloading": "Laddar ner",
+      "uploading": "Laddar upp",
+      "preparing": "Forbereder operation..."
     }
   }
 }

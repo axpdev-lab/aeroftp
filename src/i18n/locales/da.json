@@ -62,7 +62,8 @@
       "modified": "Ændret",
       "name": "Navn",
       "size": "Størrelse",
-      "retry": "Prøv igen"
+      "retry": "Prøv igen",
+      "optional": "valgfri"
     },
     "connection": {
       "title": "Forbind til server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Indsæt din Koofr app-adgangskode her",
       "koofrHelp": "Generer en app-adgangskode på app.koofr.net → Indstillinger → Adgangskode → App-adgangskoder",
       "duplicateServer": "Dupliker server",
-      "saveAsNew": "Gem som ny"
+      "saveAsNew": "Gem som ny",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Ekstern",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Hvis der ikke er angivet et ikon, registreres favicon eller icon.png fra serveren automatisk.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Offentlig URL-base",
+      "publicUrlBaseDesc": "Aktivér \"Kopiér delingslink\" for filer på denne server. Indtast den HTTP-URL, der svarer til din FTP-rodmappe.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 S3-kompatibelt lager",
       "koofrDesc": "Koofr Cloud (10 GB gratis)",
-      "koofrTooltip": "Koofr - Slovensk privatlivsfokuseret cloud med 10GB gratis, også tilgængelig via WebDAV"
+      "koofrTooltip": "Koofr - Slovensk privatlivsfokuseret cloud med 10GB gratis, også tilgængelig via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
+      "yandexdiskTooltip": "Yandex Disk - russisk cloudlager med 5GB gratis, OAuth2-tokengodkendelse"
     },
     "shortcuts": {
       "title": "Tastaturgenveje",
@@ -1653,7 +1662,9 @@
       "retry": "Prøv igen",
       "installRestart": "Installer og genstart",
       "openInstaller": "Åbn installationsprogram",
-      "skipForNow": "Senere, ikke nu"
+      "skipForNow": "Senere, ikke nu",
+      "installing": "Installerer opdatering...",
+      "installingDesc": "Appen genstarter automatisk om få sekunder"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Sletter",
+      "downloading": "Downloader",
+      "uploading": "Uploader",
+      "preparing": "Forbereder handling..."
     }
   }
 }

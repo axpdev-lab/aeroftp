@@ -62,7 +62,8 @@
       "modified": "変更日時",
       "name": "名前",
       "size": "サイズ",
-      "retry": "再試行"
+      "retry": "再試行",
+      "optional": "任意"
     },
     "connection": {
       "title": "サーバーに接続",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Koofr アプリパスワードをここに貼り付け",
       "koofrHelp": "app.koofr.net → 環境設定 → パスワード → アプリパスワード でアプリパスワードを生成してください",
       "duplicateServer": "サーバーを複製",
-      "saveAsNew": "新規として保存"
+      "saveAsNew": "新規として保存",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "リモート",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "アイコンが設定されていない場合、サーバーの favicon または icon.png が自動的に検出されます。",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "公開 URL ベース",
+      "publicUrlBaseDesc": "このサーバー上のファイルに対して「共有リンクをコピー」を有効にします。FTP ルートフォルダーにマッピングされる HTTP URL を入力してください。",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "WebDAV経由のFileLu",
       "fileluS3Desc": "FileLu S5 S3互換ストレージ",
       "koofrDesc": "Koofr Cloud (10 GB無料)",
-      "koofrTooltip": "Koofr - プライバシー重視のスロベニア製クラウド、10GB無料。WebDAVでも利用可能"
+      "koofrTooltip": "Koofr - プライバシー重視のスロベニア製クラウド、10GB無料。WebDAVでも利用可能",
+      "yandexdiskDesc": "Yandex Disk（5 GB 無料）",
+      "yandexdiskTooltip": "Yandex Disk - ロシアのクラウドストレージ、5 GB 無料、OAuth2 トークン認証"
     },
     "shortcuts": {
       "title": "キーボードショートカット",
@@ -1618,7 +1627,9 @@
       "retry": "ダウンロードを再試行",
       "installRestart": "インストールして再起動",
       "openInstaller": "インストーラーを開く",
-      "skipForNow": "後で、今はしない"
+      "skipForNow": "後で、今はしない",
+      "installing": "アップデートをインストール中...",
+      "installingDesc": "数秒後にアプリが自動的に再起動します"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "削除中",
+      "downloading": "ダウンロード中",
+      "uploading": "アップロード中",
+      "preparing": "操作を準備中..."
     }
   }
 }

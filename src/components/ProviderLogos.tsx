@@ -90,6 +90,25 @@ export const KoofrLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Yandex Cloud — blue arrows logo (for S3 Object Storage preset)
+export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+        <path d="M23.8577 27.4311C21.0452 29.3559 17.6544 29.2559 10.8484 29.2965L5.44495 29.2873L8.17863 21.9245L12.2291 21.9168C15.5236 21.9242 17.4894 21.6743 19.0884 20.5299C20.6443 19.4155 21.5921 17.7022 22.7307 14.6107L24.1462 10.8156L32.0001 10.8125L30.115 15.8605C27.7255 22.2493 26.6403 25.4633 23.8577 27.4311Z" fill="#2A9FFF"/>
+        <path d="M8.14237 4.60817C10.9549 2.6834 14.3457 2.78337 21.1517 2.74284L26.5552 2.75196L23.8215 10.1148L19.771 10.1225C16.4765 10.1151 14.5107 10.365 12.9117 11.5094C11.3558 12.6238 10.408 14.3371 9.26946 17.4286L7.85397 21.2237L3.05176e-05 21.2268L1.88517 16.1788C4.27457 9.79003 5.3598 6.57599 8.14237 4.60817Z" fill="#2A9FFF"/>
+    </svg>
+);
+
+// Yandex Disk — official blue UFO hat logo (PNG from yastatic.net)
+export const YandexDiskLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/yandex-disk.png"
+        alt="Yandex Disk"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Box — blue box logo (centered in square viewBox)
 export const BoxLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 40 40">
@@ -347,4 +366,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'filelu-ftps': FileLuLogo,
     'filelu-webdav': FileLuLogo,
     'filelu-s3': FileLuLogo,
+    'yandexdisk': YandexDiskLogo,
+    'yandex-storage': YandexCloudLogo,
 };

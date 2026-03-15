@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.7] - 2026-03-15
+
+### Yandex Disk, Share Links, Operation Feedback & UX Flow Polish
+
+Yandex Disk native API as the 21st protocol. Extended share link support to all server-based protocols and improved visual feedback during long-running operations.
+
+#### Added
+
+- **Yandex Disk provider** (21st protocol): Native REST API integration with OAuth2 token authentication, 5 GB free storage. Full StorageProvider trait: list with pagination, streaming upload/download (two-step URL pattern), mkdir, delete, rename, share links (publish/unpublish), trash management (list/restore/empty/permanent delete), storage quota, MD5 checksums, server-side copy, file search. `yandex_disk.rs` ~1200 lines with 7 unit tests. Security: SecretString for tokens, path traversal validation, SSRF URL validation (https + yandex domain whitelist), pagination safety cap 100K entries. Independent security audit: B+ grade (17 findings, 3 HIGH fixed). Integrated in CLI, AeroCloud, AeroAgent
+- **Share links for FTP/SFTP/WebDAV servers**: New `publicUrlBase` field in server profile settings enables "Copy Share Link" context menu for any server with HTTP access. Maps remote file path to public HTTP URL (e.g., FTP `/www.example.com/docs/file.pdf` → `https://www.example.com/docs/file.pdf`). URL path segments are properly percent-encoded. URL scheme validated to `http://` or `https://` only
+- **Per-server Public URL configuration**: New input field in Settings > Servers > Edit with Link2 icon, description, and optional label. Value inherited into session on connection for instant access in context menus. Server `initialPath` correctly resolved for relative path computation
+- **`generate_server_share_link` Rust command**: Backend URL generation with path-relative resolution, per-segment URL encoding via `urlencoding` crate, and `http://`/`https://` scheme validation
+- **Folder scan progress toast**: Centered toast with animated spinner shows real-time scan progress during recursive folder operations (delete and download). Displays folder name and live counters ("Scanning... 245 files, 12 folders found"). Auto-dismisses when the actual operation begins
+- **Delete scan progress events**: Rust backend now emits `scanning` events every 500ms during recursive folder deletion Phase 1, matching the existing download scan pattern. Previously, deleting a large remote folder showed no feedback for minutes during the directory tree traversal
+- **Update install overlay**: Fullscreen overlay with spinner and status message ("Installing update...") appears immediately after clicking "Install & Restart" and entering the system password. Covers the entire app to clearly signal the imminent restart, eliminating the confusing idle gap between password entry and app restart
+- **15 new i18n keys**: Share link settings (3), scanning toast (4), update overlay (2), `common.optional` — translated in all 47 languages
+- **AI Agent & CI/CD integration docs**: New README section documenting AeroFTP CLI compatibility with AI coding agents (OpenClaw, Claude Code, Codex, Cursor, Devin) and CI/CD pipelines. Highlights `--json` output, semantic exit codes, URL-based connections, `NO_COLOR` compliance, and batch scripting for automated deployments
+- **Extended file preview support**: Dotfiles (`.gitignore`, `.dockerignore`, `.editorconfig`, `.npmrc`, `.eslintrc`, `.prettierrc`), config variants (`.htaccess.production`, `.env.local`), extensionless files (`Makefile`, `Dockerfile`, `LICENSE`, `README`, `Vagrantfile`, `Gemfile`), and `.manifest` files now open in Quick Look, Monaco editor, and DevTools preview. Language detection maps each to appropriate syntax highlighting (ini, json, ruby, dockerfile, markdown)
+- **OAuth credentials always visible**: Client ID and Client Secret fields in the OAuth connection panel are now shown immediately instead of being hidden behind a "Configure Credentials" toggle. Users see exactly what they need to fill in without extra clicks
+
+#### Fixed
+
+- **AeroCloud sync ping-pong loop** (critical, regression from v2.9.6 timezone fix): AeroCloud was re-downloading and re-uploading all files on every sync cycle, creating an infinite transfer loop. The v2.9.6 UTC `Z` suffix fix exposed a latent bug: SFTP timestamps formatted as `"2026-03-12 00:00:00Z"` (space separator) failed `parse_from_rfc3339` which requires `T`, causing all remote timestamps to parse as `None` and every file to appear "new". Additionally, `preserve_remote_mtime` was never called after AeroCloud downloads, and SFTP servers reset mtime on upload. Fixed with flexible timestamp parser (RFC 3339 + space separator + naive fallback), `preserve_remote_mtime_dt` after every AeroCloud download, local mtime update after upload, and timestamp tolerance increased from 2s to 30s to absorb network transfer latency
+- **Directory sync loop**: Directories present on both sides were compared by timestamp and always seen as different, triggering unnecessary mkdir operations every sync cycle. Now directories that exist on both local and remote are immediately marked as `Identical`
+- **Hardcoded local share link label**: "Copy Share Link" in local file context menu now uses i18n key `contextMenu.copyShareLink` instead of hardcoded English string
+- **CloudPanel emoji removed**: Replaced hardcoded `🔗` emoji with Lucide `Link2` icon for consistency with project style guidelines
+
+#### Changed
+
+- **`delete_cancelled` event type**: Added to `TransferEvent` TypeScript union for proper type safety on cancellation events during folder deletion
+- **`publicUrlBase` in ServerProfileExport**: Included in server profile export/import with `serde(default)` backward compatibility
+- **Share link log level**: `generate_server_share_link` uses `debug!` instead of `info!` to avoid exposing file paths in production logs
+
+---
+
 ## [2.9.6] - 2026-03-14
 
 ### Remote Timestamp Timezone Fix

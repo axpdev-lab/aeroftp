@@ -62,7 +62,8 @@
       "modified": "Zmodyfikowano",
       "name": "Nazwa",
       "size": "Rozmiar",
-      "retry": "Ponów"
+      "retry": "Ponów",
+      "optional": "opcjonalne"
     },
     "connection": {
       "title": "Połącz z serwerem",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Wklej tutaj hasło aplikacji Koofr",
       "koofrHelp": "Wygeneruj hasło aplikacji w app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Duplikuj serwer",
-      "saveAsNew": "Zapisz jako nowy"
+      "saveAsNew": "Zapisz jako nowy",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Zdalny",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Jeśli nie ustawiono ikony, favicon lub icon.png z serwera zostanie wykryty automatycznie.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Bazowy publiczny URL",
+      "publicUrlBaseDesc": "Wlacz \"Kopiuj link udostepniania\" dla plikow na tym serwerze. Wprowadz adres URL HTTP odpowiadajacy folderowi glownemu FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu przez WebDAV",
       "fileluS3Desc": "FileLu S5 magazyn zgodny z S3",
       "koofrDesc": "Koofr Cloud (10 GB bezpłatnie)",
-      "koofrTooltip": "Koofr - słoweńska chmura skupiona na prywatności z 10 GB bezpłatnie, dostępna również przez WebDAV"
+      "koofrTooltip": "Koofr - słoweńska chmura skupiona na prywatności z 10 GB bezpłatnie, dostępna również przez WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB za darmo)",
+      "yandexdiskTooltip": "Yandex Disk – rosyjski magazyn w chmurze z 5 GB za darmo, uwierzytelnianie tokenem OAuth2"
     },
     "shortcuts": {
       "title": "Skróty klawiszowe",
@@ -1653,7 +1662,9 @@
       "retry": "Ponów pobieranie",
       "installRestart": "Zainstaluj i uruchom ponownie",
       "openInstaller": "Otwórz instalator",
-      "skipForNow": "Później, nie teraz"
+      "skipForNow": "Później, nie teraz",
+      "installing": "Instalowanie aktualizacji...",
+      "installingDesc": "Aplikacja uruchomi się ponownie automatycznie za kilka sekund"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Usuwanie",
+      "downloading": "Pobieranie",
+      "uploading": "Przesylanie",
+      "preparing": "Przygotowywanie operacji..."
     }
   }
 }

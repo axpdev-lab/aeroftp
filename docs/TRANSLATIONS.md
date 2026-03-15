@@ -1,8 +1,8 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 26 February 2026
-> Version: v2.7.0
-> Languages: 47 | Keys: 2860 | Coverage: 100%
+> Last Updated: 15 March 2026
+> Version: v2.9.7
+> Languages: 47 | Keys: 3009 | Coverage: 100%
 
 ---
 

@@ -562,7 +562,18 @@ impl CloudService {
                         path: format!("{}/{}", current_path, entry.name),
                         size: entry.size.unwrap_or(0),
                         modified: entry.modified.and_then(|s| {
+                            // Try RFC 3339 first (with T separator)
                             DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))
+                                .or_else(|| {
+                                    // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
+                                    let fixed = s.replacen(' ', "T", 1);
+                                    DateTime::parse_from_rfc3339(&fixed).ok().map(|dt| dt.with_timezone(&Utc))
+                                })
+                                .or_else(|| {
+                                    // Fallback: parse without timezone (assume UTC)
+                                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S").ok()
+                                        .map(|naive| naive.and_utc())
+                                })
                         }),
                         is_dir: entry.is_dir,
                         checksum: None,
@@ -650,6 +661,11 @@ impl CloudService {
                         .upload_file_with_progress(&local_info.path, &remote_path, local_info.size, |_| true)
                         .await
                         .map_err(|e| format!("Upload failed: {}", e))?;
+                    // After upload, update local file mtime to current time
+                    // to match the server's mtime (SFTP sets mtime to upload time).
+                    // This prevents ping-pong re-sync on next cycle.
+                    let now = filetime::FileTime::now();
+                    let _ = filetime::set_file_mtime(&local_info.path, now);
                 }
             }
             SyncAction::Download => {
@@ -676,6 +692,11 @@ impl CloudService {
                         )
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
+                    // After download, preserve remote mtime on local file
+                    // so next sync sees them as identical.
+                    if let Some(ref mtime) = remote_info.modified {
+                        crate::preserve_remote_mtime_dt(&local_path, Some(*mtime));
+                    }
                 }
             }
             SyncAction::KeepBoth => {
@@ -775,7 +796,18 @@ impl CloudService {
                         path: format!("{}/{}", current_path, entry.name),
                         size: entry.size,
                         modified: entry.modified.and_then(|s| {
+                            // Try RFC 3339 first (with T separator)
                             DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc))
+                                .or_else(|| {
+                                    // Fallback: replace space with T for timestamps like "2026-03-12 00:00:00Z"
+                                    let fixed = s.replacen(' ', "T", 1);
+                                    DateTime::parse_from_rfc3339(&fixed).ok().map(|dt| dt.with_timezone(&Utc))
+                                })
+                                .or_else(|| {
+                                    // Fallback: parse without timezone (assume UTC)
+                                    chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S").ok()
+                                        .map(|naive| naive.and_utc())
+                                })
                         }),
                         is_dir: entry.is_dir,
                         checksum: None,

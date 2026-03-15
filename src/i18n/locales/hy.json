@@ -62,7 +62,8 @@
       "modified": "Վաղրքաված",
       "name": "Գնոճ",
       "size": "Միերության",
-      "retry": "Կրկնել"
+      "retry": "Կրկնել",
+      "optional": "ոչ պարտադիր"
     },
     "connection": {
       "title": "Կապվել սերվերուհն",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Ւե֔ կափեք ո՚կազ Koofr թարի դո ուպյի սեթ",
       "koofrHelp": "Մոաբ թար շրդում app.koofr.net → Կշմենուցներ → Զծոճր → թարի թարի սոզպաղիս",
       "duplicateServer": "Սերվերի կրկնօրինակ",
-      "saveAsNew": "Պահել որպես նոր"
+      "saveAsNew": "Պահել որպես նոր",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Հեռավոր",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Եթե պատկերակը չի սահմանվել, սերվերի favicon-ը կամ icon.png-ն ավտոմատ կերպով կհայտնաբերվի:",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Հանրային URL հիմք",
+      "publicUrlBaseDesc": "Միացնել «Պատճենել տարածման հղման հղումը» այս սերվերի ֆայլերի համար։ Մուտքագրեք HTTP URL-ը, որը համապատասխանում է ձեր FTP արմատային թղթապանակին։",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1209,7 +1216,9 @@
       "fileluWebdavDesc": "FileLu WebDAV-ի միջոցով",
       "fileluS3Desc": "FileLu S5 S3-համատեղելի պահոց",
       "koofrDesc": "Koofr Cloud (10 GB բեզի)",
-      "koofrTooltip": "Koofr - Սովարաբեր առr։ ղիլավոոսկն դղանովրկոեւ 10 GB բեզի նոօ, համարլը WebDAV-i երկարէ"
+      "koofrTooltip": "Koofr - Սովարաբեր առr։ ղիլավոոսկն դղանովրկոեւ 10 GB բեզի նոօ, համարլը WebDAV-i երկարէ",
+      "yandexdiskDesc": "Yandex Disk (5 GB անվճար)",
+      "yandexdiskTooltip": "Yandex Disk - Ռուսական ամպային պահոց, 5 GB անվճար, OAuth2 նշանի նույնականացում"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",
@@ -1646,7 +1655,9 @@
       "retry": "Կրկնել",
       "installRestart": "Տեղադրել և վերագործարկել",
       "openInstaller": "Բացել տեղադրիչը",
-      "skipForNow": "Հետո, ոչ հիմա"
+      "skipForNow": "Հետո, ոչ հիմա",
+      "installing": "Թարմացման տեղադրում...",
+      "installingDesc": "Հավելվածը ինքնաբերաբար կվերագործարկվի մի քանի վայրկյանից հետո"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Ջնջում",
+      "downloading": "Ներբեռնում",
+      "uploading": "Վերբեռնում",
+      "preparing": "Գործողության նախապատրաստում..."
     }
   }
 }

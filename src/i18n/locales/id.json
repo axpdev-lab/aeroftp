@@ -62,7 +62,8 @@
       "modified": "Diubah",
       "name": "Nama",
       "size": "Ukuran",
-      "retry": "Coba lagi"
+      "retry": "Coba lagi",
+      "optional": "opsional"
     },
     "connection": {
       "title": "Hubungkan ke Server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Tempel sandi aplikasi Koofr Anda di sini",
       "koofrHelp": "Buat sandi aplikasi di app.koofr.net → Preferensi → Sandi → Sandi Aplikasi",
       "duplicateServer": "Duplikat server",
-      "saveAsNew": "Simpan sebagai baru"
+      "saveAsNew": "Simpan sebagai baru",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Jarak Jauh",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Jika tidak ada ikon yang diatur, favicon atau icon.png dari server akan terdeteksi secara otomatis.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Basis URL Publik",
+      "publicUrlBaseDesc": "Aktifkan \"Salin Tautan Berbagi\" untuk file di server ini. Masukkan URL HTTP yang memetakan ke folder root FTP Anda.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu melalui WebDAV",
       "fileluS3Desc": "FileLu S5 penyimpanan kompatibel S3",
       "koofrDesc": "Koofr Cloud (10 GB gratis)",
-      "koofrTooltip": "Koofr - Cloud berfokus privasi Slovenia dengan 10 GB gratis, juga dapat diakses melalui WebDAV"
+      "koofrTooltip": "Koofr - Cloud berfokus privasi Slovenia dengan 10 GB gratis, juga dapat diakses melalui WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
+      "yandexdiskTooltip": "Yandex Disk - Penyimpanan cloud Rusia dengan 5 GB gratis, autentikasi token OAuth2"
     },
     "shortcuts": {
       "title": "Pintasan Keyboard",
@@ -1653,7 +1662,9 @@
       "retry": "Coba Lagi Unduh",
       "installRestart": "Instal & Mulai Ulang",
       "openInstaller": "Buka Installer",
-      "skipForNow": "Nanti saja, tidak sekarang"
+      "skipForNow": "Nanti saja, tidak sekarang",
+      "installing": "Memasang pembaruan...",
+      "installingDesc": "Aplikasi akan dimulai ulang secara otomatis dalam beberapa detik"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Menghapus",
+      "downloading": "Mengunduh",
+      "uploading": "Mengunggah",
+      "preparing": "Menyiapkan operasi..."
     }
   }
 }

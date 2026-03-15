@@ -109,6 +109,12 @@ const OAUTH_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [],
   },
+  {
+    name: 'Yandex Disk',
+    logoId: 'yandexdisk',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [],
+  },
 ];
 
 const S3_PROVIDERS: ProviderFeatures[] = [

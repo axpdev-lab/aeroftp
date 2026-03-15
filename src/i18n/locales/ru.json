@@ -62,7 +62,8 @@
       "modified": "Изменено",
       "name": "Имя",
       "size": "Размер",
-      "retry": "Повторить"
+      "retry": "Повторить",
+      "optional": "необязательно"
     },
     "connection": {
       "title": "Подключение к серверу",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Вставьте пароль приложения Koofr здесь",
       "koofrHelp": "Создайте пароль приложения на app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Дублировать сервер",
-      "saveAsNew": "Сохранить как новый"
+      "saveAsNew": "Сохранить как новый",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Удалённый",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Если иконка не задана, favicon или icon.png с сервера определяются автоматически.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Базовый публичный URL",
+      "publicUrlBaseDesc": "Включите «Копировать ссылку для общего доступа» для файлов на этом сервере. Введите HTTP URL, соответствующий корневой папке FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu через WebDAV",
       "fileluS3Desc": "FileLu S5 хранилище, совместимое с S3",
       "koofrDesc": "Koofr Cloud (10 ГБ бесплатно)",
-      "koofrTooltip": "Koofr - словенское облачное хранилище, ориентированное на конфиденциальность, с 10 ГБ бесплатно, также доступно через WebDAV"
+      "koofrTooltip": "Koofr - словенское облачное хранилище, ориентированное на конфиденциальность, с 10 ГБ бесплатно, также доступно через WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB бесплатно)",
+      "yandexdiskTooltip": "Yandex Disk – российское облачное хранилище с 5 GB бесплатно, аутентификация через токен OAuth2"
     },
     "shortcuts": {
       "title": "Горячие клавиши",
@@ -1653,7 +1662,9 @@
       "retry": "Повторить загрузку",
       "installRestart": "Установить и перезапустить",
       "openInstaller": "Открыть установщик",
-      "skipForNow": "Позже, не сейчас"
+      "skipForNow": "Позже, не сейчас",
+      "installing": "Установка обновления...",
+      "installingDesc": "Приложение автоматически перезапустится через несколько секунд"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Удаление",
+      "downloading": "Скачивание",
+      "uploading": "Загрузка",
+      "preparing": "Подготовка операции..."
     }
   }
 }

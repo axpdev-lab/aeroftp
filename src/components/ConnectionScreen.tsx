@@ -1198,7 +1198,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             />
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
-                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive'}
+                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 saveConnection={saveConnection}

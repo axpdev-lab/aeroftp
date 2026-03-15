@@ -62,7 +62,8 @@
       "modified": "Addaswyd",
       "name": "Enw",
       "size": "Maint",
-      "retry": "Ailgeisio"
+      "retry": "Ailgeisio",
+      "optional": "dewisol"
     },
     "connection": {
       "title": "Cysylltu a'r Gweinydd",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Gludiodd eich cyfrinair ap Koofr yma",
       "koofrHelp": "Cynhyrchu cyfrinair ap ar app.koofr.net → Dewisiadau → Cyfrinair → Cyfrineiriau Ap",
       "duplicateServer": "Dyblygu gweinydd",
-      "saveAsNew": "Cadw fel newydd"
+      "saveAsNew": "Cadw fel newydd",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Pell",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Os na osodir unrhyw eicon, caiff y favicon neu'r icon.png o'r gweinydd ei ganfod yn awtomatig.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Sylfaen URL Cyhoeddus",
+      "publicUrlBaseDesc": "Galluogwch \"Copïo Dolen Rhannu\" ar gyfer ffeiliau ar y gweinydd hwn. Rhowch yr URL HTTP sy'n mapio i'ch ffolder gwraidd FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu drwy WebDAV",
       "fileluS3Desc": "FileLu S5 storfa sy'n gydnaws ag S3",
       "koofrDesc": "Koofr Cloud (10 GB am ddim)",
-      "koofrTooltip": "Koofr - Cwmwl Slofenaidd sy'n canolbwyntio ar breifatrwydd gyda 10GB am ddim, hefyd yn hygyrch drwy WebDAV"
+      "koofrTooltip": "Koofr - Cwmwl Slofenaidd sy'n canolbwyntio ar breifatrwydd gyda 10GB am ddim, hefyd yn hygyrch drwy WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB am ddim)",
+      "yandexdiskTooltip": "Yandex Disk - storfa cwmwl Rwsiaidd gyda 5GB am ddim, dilysu tocyn OAuth2"
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",
@@ -1653,7 +1662,9 @@
       "retry": "Ailgeisio Lawrlwytho",
       "installRestart": "Gosod ac Ailgychwyn",
       "openInstaller": "Agor y Gosodwr",
-      "skipForNow": "Yn nes ymlaen, dim nawr"
+      "skipForNow": "Yn nes ymlaen, dim nawr",
+      "installing": "Yn gosod y diweddariad...",
+      "installingDesc": "Bydd yr ap yn ailgychwyn yn awtomatig mewn ychydig eiliadau"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3310,6 +3321,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Dileu",
+      "downloading": "Lawrlwytho",
+      "uploading": "Uwchlwytho",
+      "preparing": "Paratoi'r weithred..."
     }
   }
 }

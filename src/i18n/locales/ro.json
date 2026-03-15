@@ -62,7 +62,8 @@
       "modified": "Modificat",
       "name": "Nume",
       "size": "Dimensiune",
-      "retry": "Reîncercare"
+      "retry": "Reîncercare",
+      "optional": "optional"
     },
     "connection": {
       "title": "Conectare la server",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Lipiți parola aplicației Koofr aici",
       "koofrHelp": "Generați o parolă de aplicație la app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Duplică serverul",
-      "saveAsNew": "Salvează ca nou"
+      "saveAsNew": "Salvează ca nou",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "La distanță",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Dacă nu este setat niciun icon, favicon-ul sau icon.png de pe server este detectat automat.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL public de baza",
+      "publicUrlBaseDesc": "Activeaza \"Copiaza linkul de partajare\" pentru fisierele de pe acest server. Introdu URL-ul HTTP care corespunde folderului radacina FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 stocare compatibilă cu S3",
       "koofrDesc": "Koofr Cloud (10 GB gratuit)",
-      "koofrTooltip": "Koofr - cloud sloveni axat pe confidențialitate cu 10 GB gratuit, accesibil și prin WebDAV"
+      "koofrTooltip": "Koofr - cloud sloveni axat pe confidențialitate cu 10 GB gratuit, accesibil și prin WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratuit)",
+      "yandexdiskTooltip": "Yandex Disk – stocare în cloud rusesc cu 5 GB gratuit, autentificare prin token OAuth2"
     },
     "shortcuts": {
       "title": "Scurtături tastatură",
@@ -1653,7 +1662,9 @@
       "retry": "Reîncearcă descărcarea",
       "installRestart": "Instalare și repornire",
       "openInstaller": "Deschide instalatorul",
-      "skipForNow": "Mai târziu, nu acum"
+      "skipForNow": "Mai târziu, nu acum",
+      "installing": "Se instalează actualizarea...",
+      "installingDesc": "Aplicația se va reporni automat în câteva secunde"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Se sterge",
+      "downloading": "Se descarca",
+      "uploading": "Se incarca",
+      "preparing": "Se pregateste operatiunea..."
     }
   }
 }

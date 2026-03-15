@@ -504,6 +504,32 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://www.tencentcloud.com/account/register',
     },
     {
+        id: 'yandex-storage',
+        name: 'Yandex Object Storage',
+        description: 'S3-compatible cloud storage by Yandex Cloud (Russia)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#FF6600',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Yandex Cloud Console → Service Accounts → Static Access Keys → Key ID' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Yandex Cloud Console → Service Accounts → Static Access Keys → Secret Key' },
+            { ...COMMON_FIELDS.bucket, helpText: 'Yandex Cloud Console → Object Storage → Bucket name' },
+        ],
+        defaults: {
+            pathStyle: false,
+            region: 'ru-central1',
+            endpoint: 'https://storage.yandexcloud.net',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        helpUrl: 'https://yandex.cloud/en/docs/storage/',
+        signupUrl: 'https://console.yandex.cloud/',
+    },
+    {
         id: 'digitalocean-spaces',
         name: 'DigitalOcean Spaces',
         description: 'S3-compatible object storage with built-in CDN',

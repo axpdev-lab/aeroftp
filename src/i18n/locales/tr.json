@@ -62,7 +62,8 @@
       "modified": "Değiştirildi",
       "name": "Ad",
       "size": "Boyut",
-      "retry": "Tekrar dene"
+      "retry": "Tekrar dene",
+      "optional": "isteğe bağlı"
     },
     "connection": {
       "title": "Sunucuya Bağlan",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Koofr uygulama şifrenizi buraya yapıştırın",
       "koofrHelp": "app.koofr.net → Preferences → Password → App Passwords adresinde uygulama şifresi oluşturun",
       "duplicateServer": "Sunucuyu çoğalt",
-      "saveAsNew": "Yeni olarak kaydet"
+      "saveAsNew": "Yeni olarak kaydet",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Uzak",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Herhangi bir simge ayarlanmamışsa, sunucudaki favicon veya icon.png otomatik olarak algılanır.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Genel Temel URL",
+      "publicUrlBaseDesc": "Bu sunucudaki dosyalar için \"Paylaşım Bağlantısını Kopyala\" özelliğini etkinleştirin. FTP kök klasörüne karşılık gelen HTTP URL'sini girin.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV üzerinden",
       "fileluS3Desc": "FileLu S5 S3 uyumlu depolama",
       "koofrDesc": "Koofr Cloud (10 GB ücretsiz)",
-      "koofrTooltip": "Koofr - Gizlilik odaklı Slovenya bulut hizmeti, 10 GB ücretsiz, ayrıca WebDAV ile de erişilebilir"
+      "koofrTooltip": "Koofr - Gizlilik odaklı Slovenya bulut hizmeti, 10 GB ücretsiz, ayrıca WebDAV ile de erişilebilir",
+      "yandexdiskDesc": "Yandex Disk (5 GB ücretsiz)",
+      "yandexdiskTooltip": "Yandex Disk – 5 GB ücretsiz depolama alanı sunan Rus bulut hizmeti, OAuth2 token doğrulaması"
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",
@@ -1653,7 +1662,9 @@
       "retry": "İndirmeyi Yeniden Dene",
       "installRestart": "Kur ve Yeniden Başlat",
       "openInstaller": "Yükleyiciyi Aç",
-      "skipForNow": "Sonra, şimdi değil"
+      "skipForNow": "Sonra, şimdi değil",
+      "installing": "Güncelleme yükleniyor...",
+      "installingDesc": "Uygulama birkaç saniye içinde otomatik olarak yeniden başlatilacak"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Siliniyor",
+      "downloading": "Indiriliyor",
+      "uploading": "Yukleniyor",
+      "preparing": "Islem hazirlaniyor..."
     }
   }
 }

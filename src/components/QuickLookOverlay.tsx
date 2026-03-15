@@ -34,8 +34,9 @@ interface QuickLookOverlayProps {
 const IMAGE_EXTS = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico|tiff?)$/i;
 const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv|flv|wmv|m4v)$/i;
 const AUDIO_EXTS = /\.(mp3|wav|ogg|flac|aac|wma|m4a|opus)$/i;
-const CODE_EXTS = /\.(js|jsx|ts|tsx|py|rs|go|java|c|cpp|h|hpp|cs|rb|php|swift|kt|scala|sh|bash|zsh|fish|ps1|bat|cmd|sql|graphql|yaml|yml|toml|ini|conf|env|dockerfile|makefile|cmake|gradle)$/i;
+const CODE_EXTS = /\.(js|jsx|ts|tsx|py|rs|go|java|c|cpp|h|hpp|cs|rb|php|swift|kt|scala|sh|bash|zsh|fish|ps1|bat|cmd|sql|graphql|yaml|yml|toml|ini|conf|cfg|env|manifest|webmanifest|vue|svelte|astro|htaccess|gitignore|gitattributes|dockerignore|editorconfig|eslintrc|prettierrc|babelrc|npmrc|nvmrc|browserslistrc|production|development|staging|local|example|sample|bak)$/i;
 const TEXT_EXTS = /\.(txt|md|markdown|rst|log|csv|tsv|xml|html|htm|css|scss|sass|less|json|jsonc|json5)$/i;
+const KNOWN_CODE_NAMES = /^(makefile|dockerfile|containerfile|vagrantfile|gemfile|rakefile|procfile|brewfile|justfile|license|licence|authors|contributors|changelog|changes|readme|todo)$/i;
 
 type PreviewType = 'image' | 'video' | 'audio' | 'code' | 'text' | 'markdown' | 'folder' | 'unknown';
 
@@ -48,6 +49,7 @@ function getPreviewType(file: LocalFile): PreviewType {
   if (name.endsWith('.md') || name.endsWith('.markdown')) return 'markdown';
   if (CODE_EXTS.test(name)) return 'code';
   if (TEXT_EXTS.test(name)) return 'text';
+  if (KNOWN_CODE_NAMES.test(name)) return 'code';
   return 'unknown';
 }
 

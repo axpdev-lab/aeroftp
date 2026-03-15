@@ -62,7 +62,8 @@
       "modified": "Muokattu",
       "name": "Nimi",
       "size": "Koko",
-      "retry": "Yritä uudelleen"
+      "retry": "Yritä uudelleen",
+      "optional": "valinnainen"
     },
     "connection": {
       "title": "Yhdistä palvelimeen",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Liitä Koofr-sovelluksesi salasana tähän",
       "koofrHelp": "Luo sovelluksen salasana osoitteessa app.koofr.net → Asetukset → Salasana → Sovelluksen salasanat",
       "duplicateServer": "Kopioi palvelin",
-      "saveAsNew": "Tallenna uutena"
+      "saveAsNew": "Tallenna uutena",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Etä",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Jos kuvaketta ei ole asetettu, palvelimen favicon tai icon.png havaitaan automaattisesti.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Julkinen perus-URL",
+      "publicUrlBaseDesc": "Ota käyttöön \"Kopioi jakolinkki\" tämän palvelimen tiedostoille. Syötä HTTP-URL, joka vastaa FTP-juurikansiota.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV:n kautta",
       "fileluS3Desc": "FileLu S5 S3-yhteensopiva tallennus",
       "koofrDesc": "Koofr Cloud (10 GB ilmainen)",
-      "koofrTooltip": "Koofr - Slovenialainen yksityisyyteen keskittyvä pilvitallennuspalvelu 10GB ilmaiseksi, käytettävissä myös WebDAV:n kautta"
+      "koofrTooltip": "Koofr - Slovenialainen yksityisyyteen keskittyvä pilvitallennuspalvelu 10GB ilmaiseksi, käytettävissä myös WebDAV:n kautta",
+      "yandexdiskDesc": "Yandex Disk (5 GB ilmainen)",
+      "yandexdiskTooltip": "Yandex Disk - venäläinen pilvipalvelu 5GB ilmaisella tallennustilalla, OAuth2-tunnistautuminen"
     },
     "shortcuts": {
       "title": "Pikanäppäimet",
@@ -1653,7 +1662,9 @@
       "retry": "Yritä latausta uudelleen",
       "installRestart": "Asenna ja käynnistä uudelleen",
       "openInstaller": "Avaa asennusohjelma",
-      "skipForNow": "Myöhemmin, ei nyt"
+      "skipForNow": "Myöhemmin, ei nyt",
+      "installing": "Asennetaan päivitystä...",
+      "installingDesc": "Sovellus käynnistyy uudelleen automaattisesti muutaman sekunnin kuluttua"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Poistetaan",
+      "downloading": "Ladataan",
+      "uploading": "Lähetetään",
+      "preparing": "Valmistellaan toimintoa..."
     }
   }
 }

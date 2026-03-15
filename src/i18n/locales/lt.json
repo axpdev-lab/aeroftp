@@ -62,7 +62,8 @@
       "modified": "Modifikuota",
       "name": "Pavadinimas",
       "size": "Dydis",
-      "retry": "Bandyti dar kartą"
+      "retry": "Bandyti dar kartą",
+      "optional": "neprivaloma"
     },
     "connection": {
       "title": "Prisijungti prie serverio",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Įklijuokite savo Koofr programos slaptažodį čia",
       "koofrHelp": "Sukurkite programos slaptažodį adresu app.koofr.net → Nustatymai → Slaptažodis → Programų slaptažodžiai",
       "duplicateServer": "Dubliuoti serverį",
-      "saveAsNew": "Išsaugoti kaip naują"
+      "saveAsNew": "Išsaugoti kaip naują",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Jei piktograma nenustatyta, automatiškai aptinkamas serverio favicon arba icon.png.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Viesojo URL bazinis adresas",
+      "publicUrlBaseDesc": "Ijunkite \"Kopijuoti bendrinimo nuoroda\" siame serveryje esantiems failams. Iveskite HTTP URL, atitinkanti jusu FTP saknini aplanka.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu per WebDAV",
       "fileluS3Desc": "FileLu S5 S3 suderinama saugykla",
       "koofrDesc": "Koofr Cloud (10 GB nemokamai)",
-      "koofrTooltip": "Koofr - Slovėnijos privatumui skirtas debesys su 10 GB nemokamo saugojimo, taip pat pasiekiamas per WebDAV"
+      "koofrTooltip": "Koofr - Slovėnijos privatumui skirtas debesys su 10 GB nemokamo saugojimo, taip pat pasiekiamas per WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB nemokamai)",
+      "yandexdiskTooltip": "Yandex Disk - Rusijos debesų saugykla su 5 GB nemokamai, OAuth2 prieigos rakto autentifikacija"
     },
     "shortcuts": {
       "title": "Klaviatūros trumpiniai",
@@ -1653,7 +1662,9 @@
       "retry": "Bandyti atsisiųsti iš naujo",
       "installRestart": "Įdiegti ir paleisti iš naujo",
       "openInstaller": "Atidaryti diegimo programą",
-      "skipForNow": "Vėliau, ne dabar"
+      "skipForNow": "Vėliau, ne dabar",
+      "installing": "Diegiamas naujinimas...",
+      "installingDesc": "Programa automatiškai persikraus po kelių sekundžių"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Trinama",
+      "downloading": "Atsiunčiama",
+      "uploading": "Įkeliama",
+      "preparing": "Ruošiama operacija..."
     }
   }
 }

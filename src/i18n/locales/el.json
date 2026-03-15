@@ -62,7 +62,8 @@
       "modified": "Τροποποιήθηκε",
       "name": "Όνομα",
       "size": "Μέγεθος",
-      "retry": "Επανάληψη"
+      "retry": "Επανάληψη",
+      "optional": "προαιρετικό"
     },
     "connection": {
       "title": "Σύνδεση σε διακομιστή",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Επικολλήστε τον κωδικό εφαρμογής Koofr εδώ",
       "koofrHelp": "Δημιουργήστε έναν κωδικό εφαρμογής στο app.koofr.net → Προτιμήσεις → Κωδικός → Κωδικοί εφαρμογών",
       "duplicateServer": "Αντιγραφή διακομιστή",
-      "saveAsNew": "Αποθήκευση ως νέο"
+      "saveAsNew": "Αποθήκευση ως νέο",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Απομακρυσμένο",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Εάν δεν έχει οριστεί εικονίδιο, το favicon ή το icon.png από τον διακομιστή ανιχνεύεται αυτόματα.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Βασικό δημόσιο URL",
+      "publicUrlBaseDesc": "Ενεργοποιήστε την επιλογή «Αντιγραφή συνδέσμου κοινής χρήσης» για αρχεία σε αυτόν τον διακομιστή. Εισάγετε το HTTP URL που αντιστοιχεί στον ριζικό φάκελο FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu μέσω WebDAV",
       "fileluS3Desc": "FileLu S5 αποθήκευση συμβατή με S3",
       "koofrDesc": "Koofr Cloud (10 GB δωρεάν)",
-      "koofrTooltip": "Koofr - Σλοβενικό cloud με εστίαση στο απόρρητο με 10GB δωρεάν, επίσης προσβάσιμο μέσω WebDAV"
+      "koofrTooltip": "Koofr - Σλοβενικό cloud με εστίαση στο απόρρητο με 10GB δωρεάν, επίσης προσβάσιμο μέσω WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB δωρεάν)",
+      "yandexdiskTooltip": "Yandex Disk - ρωσική υπηρεσία αποθήκευσης cloud με 5GB δωρεάν, έλεγχος ταυτότητας με διακριτικό OAuth2"
     },
     "shortcuts": {
       "title": "Συντομεύσεις πληκτρολογίου",
@@ -1653,7 +1662,9 @@
       "retry": "Επανάληψη Λήψης",
       "installRestart": "Εγκατάσταση & Επανεκκίνηση",
       "openInstaller": "Άνοιγμα εγκαταστάτη",
-      "skipForNow": "Αργότερα, όχι τώρα"
+      "skipForNow": "Αργότερα, όχι τώρα",
+      "installing": "Εγκατάσταση ενημέρωσης...",
+      "installingDesc": "Η εφαρμογή θα επανεκκινήσει αυτόματα σε λίγα δευτερόλεπτα"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Διαγραφή",
+      "downloading": "Λήψη",
+      "uploading": "Μεταφόρτωση",
+      "preparing": "Προετοιμασία λειτουργίας..."
     }
   }
 }

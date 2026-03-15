@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Copy } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -964,7 +964,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         const isJottacloud = protocol === 'jottacloud';
                                         const isDrime = protocol === 'drime';
                                         const isKoofr = protocol === 'koofr';
-                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr;
+                                        const isYandexDisk = protocol === 'yandexdisk';
+                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isYandexDisk;
                                         const needsPassword = !isOAuth;
                                         const isNewServer = !servers.some(s => s.id === editingServer.id);
                                         const logoKey = editingServer.providerId || protocol;
@@ -990,6 +991,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             { value: 'kdrive', label: 'kDrive', port: 443 },
                                             { value: 'jottacloud', label: 'Jottacloud', port: 443 },
                                             { value: 'koofr', label: 'Koofr', port: 443 },
+                                            { value: 'yandexdisk', label: 'Yandex Disk', port: 443 },
                                             { value: 'drime', label: 'Drime Cloud', port: 443 },
                                             { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                         ];
@@ -1316,6 +1318,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </>
                                                         )}
 
+                                                        {/* Yandex Disk - OAuth Token */}
+                                                        {isYandexDisk && (
+                                                            <>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.yandexdiskToken')}</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type={showEditPassword ? 'text' : 'password'}
+                                                                            placeholder={t('connection.yandexdiskTokenPlaceholder')}
+                                                                            value={editingServer.password || ''}
+                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'cloud-api.yandex.net', port: 443, username: e.target.value ? 'oauth-token' : '' })}
+                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-xs text-gray-400">{t('connection.yandexdiskHelp')}</p>
+                                                            </>
+                                                        )}
+
                                                         {/* Drime Cloud - API Token only */}
                                                         {isDrime && (
                                                             <>
@@ -1509,6 +1533,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             >
                                                                 <FolderOpen size={16} />
                                                             </button>
+                                                        </div>
+                                                        {/* Public URL Base for share links (FTP/SFTP/WebDAV) */}
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
+                                                                <Link2 size={12} />
+                                                                {t('settings.publicUrlBase')}
+                                                                <span className="text-gray-400 font-normal">({t('common.optional')})</span>
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="https://www.example.com/"
+                                                                value={editingServer.publicUrlBase || ''}
+                                                                onChange={e => setEditingServer({ ...editingServer, publicUrlBase: e.target.value || undefined })}
+                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                            />
+                                                            <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
                                                         </div>
                                                     </div>
                                                     <div className="flex gap-2 justify-end">

@@ -6,7 +6,7 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive';
+export type OAuthProvider = 'google_drive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive' | 'yandexdisk';
 
 interface OAuthFlowStarted {
   auth_url: string;
@@ -166,5 +166,11 @@ export const OAUTH_APPS = {
     client_id: '',
     client_secret: '',
     help_url: 'https://api-console.zoho.com/',
+  },
+  yandexdisk: {
+    // Users need to create an OAuth app at oauth.yandex.com
+    client_id: '',
+    client_secret: '',
+    help_url: 'https://oauth.yandex.com/client/new',
   },
 };

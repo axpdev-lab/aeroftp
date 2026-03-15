@@ -62,7 +62,8 @@
       "modified": "Diubah",
       "name": "Nama",
       "size": "Saiz",
-      "retry": "Cuba lagi"
+      "retry": "Cuba lagi",
+      "optional": "pilihan"
     },
     "connection": {
       "title": "Sambung ke Pelayan",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Tampal kata laluan aplikasi Koofr anda di sini",
       "koofrHelp": "Hasilkan kata laluan aplikasi di app.koofr.net → Pilihan → Kata Laluan → Kata Laluan Aplikasi",
       "duplicateServer": "Duplikat pelayan",
-      "saveAsNew": "Simpan sebagai baharu"
+      "saveAsNew": "Simpan sebagai baharu",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Jauh",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Jika tiada ikon ditetapkan, favicon atau icon.png daripada pelayan akan dikesan secara automatik.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Asas URL Awam",
+      "publicUrlBaseDesc": "Dayakan \"Salin Pautan Kongsi\" untuk fail pada pelayan ini. Masukkan URL HTTP yang dipetakan ke folder akar FTP anda.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu melalui WebDAV",
       "fileluS3Desc": "FileLu S5 storan serasi S3",
       "koofrDesc": "Koofr Cloud (10 GB percuma)",
-      "koofrTooltip": "Koofr - Awan Slovenia berfokus privasi dengan 10 GB percuma, juga boleh diakses melalui WebDAV"
+      "koofrTooltip": "Koofr - Awan Slovenia berfokus privasi dengan 10 GB percuma, juga boleh diakses melalui WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB percuma)",
+      "yandexdiskTooltip": "Yandex Disk - Storan awan Rusia dengan 5 GB percuma, pengesahan token OAuth2"
     },
     "shortcuts": {
       "title": "Pintasan Papan Kekunci",
@@ -1653,7 +1662,9 @@
       "retry": "Cuba Semula Muat Turun",
       "installRestart": "Pasang & Mulakan Semula",
       "openInstaller": "Buka Pemasang",
-      "skipForNow": "Nanti, bukan sekarang"
+      "skipForNow": "Nanti, bukan sekarang",
+      "installing": "Memasang kemas kini...",
+      "installingDesc": "Aplikasi akan dimulakan semula secara automatik dalam beberapa saat"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Memadam",
+      "downloading": "Memuat turun",
+      "uploading": "Memuat naik",
+      "preparing": "Menyediakan operasi..."
     }
   }
 }

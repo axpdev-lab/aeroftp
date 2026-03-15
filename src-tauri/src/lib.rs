@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::Mutex;
-use tracing::{info, warn, error};
+use tracing::{debug, info, warn, error};
 use semver::Version;
 use reqwest::Client as HttpClient;
 use secrecy::{ExposeSecret, SecretString};
@@ -2504,24 +2504,27 @@ async fn delete_remote_file(
             path: String,
             name: String,
         }
-        
+
         let mut files_to_delete: Vec<DeleteItem> = Vec::new();
         let mut dirs_to_delete: Vec<String> = Vec::new();
         let mut dirs_to_scan: Vec<String> = vec![target_path.clone()];
-        
+        let mut last_scan_emit = std::time::Instant::now();
+        let mut scan_counter: usize = 0;
+
         while let Some(current_dir) = dirs_to_scan.pop() {
             if ftp_manager.change_dir(&current_dir).await.is_err() {
                 continue;
             }
-            
+
             let files = match ftp_manager.list_files().await {
                 Ok(f) => f,
                 Err(_) => continue,
             };
-            
+
             for file in files {
                 let file_path = format!("{}/{}", current_dir, file.name);
-                
+                scan_counter += 1;
+
                 if file.is_dir {
                     dirs_to_scan.push(file_path.clone());
                 } else {
@@ -2531,9 +2534,23 @@ async fn delete_remote_file(
                     });
                 }
             }
-            
+
             // Add directory to delete list (will be deleted after its contents)
             dirs_to_delete.push(current_dir);
+
+            // Emit scan progress every 500ms or every 100 entries
+            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: delete_id.clone(),
+                    filename: file_name.clone(),
+                    direction: "remote".to_string(),
+                    message: Some(format!("Scanning... {} files, {} folders found", files_to_delete.len(), dirs_to_delete.len())),
+                    progress: None,
+                    path: None,
+                });
+                last_scan_emit = std::time::Instant::now();
+            }
         }
         
         let total_files = files_to_delete.len();
@@ -2542,11 +2559,11 @@ async fn delete_remote_file(
         info!("Found {} files and {} directories to delete in {}", total_files, total_dirs, file_name);
         
         let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "progress".to_string(),
+            event_type: "scanning".to_string(),
             transfer_id: delete_id.clone(),
             filename: file_name.clone(),
             direction: "remote".to_string(),
-            message: Some(format!("Found {} files in {} folders to delete", total_files, total_dirs)),
+            message: Some(format!("Scan complete: {} files in {} folders to delete", total_files, total_dirs)),
             progress: None,
             path: None,
         });
@@ -6249,6 +6266,53 @@ fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
     Ok(url)
 }
 
+/// Generate share link for any server with a configured public URL base.
+/// Works for FTP/FTPS/SFTP/WebDAV — maps remote path to HTTP URL.
+#[tauri::command]
+fn generate_server_share_link(
+    public_url_base: String,
+    initial_path: String,
+    remote_path: String,
+) -> Result<String, String> {
+    if public_url_base.is_empty() {
+        return Err("Public URL base not configured for this server".to_string());
+    }
+
+    // SL-H01: Only allow http/https schemes
+    if !public_url_base.starts_with("http://") && !public_url_base.starts_with("https://") {
+        return Err("Public URL base must start with http:// or https://".to_string());
+    }
+
+    let root = initial_path.trim_end_matches('/');
+    let base = public_url_base.trim_end_matches('/');
+
+    // Strip server root from remote path to get relative path
+    let relative = if !root.is_empty() && remote_path.starts_with(root) {
+        remote_path
+            .strip_prefix(root)
+            .unwrap_or(&remote_path)
+            .trim_start_matches('/')
+    } else {
+        // No initial path or path doesn't match — use full remote path
+        remote_path.trim_start_matches('/')
+    };
+
+    if relative.is_empty() {
+        return Err("Cannot generate share link for root directory".to_string());
+    }
+
+    // URL-encode path segments (spaces, special chars) but preserve /
+    let encoded = relative
+        .split('/')
+        .map(|seg| urlencoding::encode(seg))
+        .collect::<Vec<_>>()
+        .join("/");
+
+    let url = format!("{}/{}", base, encoded);
+    debug!("Generated server share link: {}", url);
+    Ok(url)
+}
+
 #[tauri::command]
 fn get_default_cloud_folder() -> String {
     let default_config = CloudConfig::default();
@@ -7633,6 +7697,7 @@ pub fn run() {
             enable_aerocloud,
             generate_share_link,
             generate_share_link_remote,
+            generate_server_share_link,
             get_default_cloud_folder,
             update_conflict_strategy,
             trigger_cloud_sync,

@@ -62,7 +62,8 @@
       "modified": "Spremenjeno",
       "name": "Ime",
       "size": "Velikost",
-      "retry": "Poskusi znova"
+      "retry": "Poskusi znova",
+      "optional": "neobvezno"
     },
     "connection": {
       "title": "Poveži se s strežnikom",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Prilepite vaše geslo aplikacije Koofr tukaj",
       "koofrHelp": "Ustvarite geslo aplikacije na app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Podvoji strežnik",
-      "saveAsNew": "Shrani kot novo"
+      "saveAsNew": "Shrani kot novo",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Oddaljeno",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Če ikona ni nastavljena, se favicon ali icon.png s strežnika zazna samodejno.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Osnovni javni URL",
+      "publicUrlBaseDesc": "Omogočite \"Kopiraj povezavo za deljenje\" za datoteke na tem strežniku. Vnesite HTTP URL, ki ustreza korenski mapi FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu prek WebDAV",
       "fileluS3Desc": "FileLu S5 shramba, združljiva s S3",
       "koofrDesc": "Koofr Cloud (10 GB brezplačno)",
-      "koofrTooltip": "Koofr - slovenski oblak osredotočen na varnost podatkov s 10 GB brezplačno, dostopen tudi prek WebDAV"
+      "koofrTooltip": "Koofr - slovenski oblak osredotočen na varnost podatkov s 10 GB brezplačno, dostopen tudi prek WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB brezplačno)",
+      "yandexdiskTooltip": "Yandex Disk – rusko oblačno shranjevanje s 5 GB brezplačno, avtentikacija z žetonom OAuth2"
     },
     "shortcuts": {
       "title": "Bližnjice na tipkovnici",
@@ -1653,7 +1662,9 @@
       "retry": "Ponovi prenos",
       "installRestart": "Namesti in znova zaženi",
       "openInstaller": "Odpri namestitveni program",
-      "skipForNow": "Pozneje, ne zdaj"
+      "skipForNow": "Pozneje, ne zdaj",
+      "installing": "Nameščanje posodobitve...",
+      "installingDesc": "Aplikacija se bo samodejno znova zagnala čez nekaj sekund"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Brisanje",
+      "downloading": "Prenasanje",
+      "uploading": "Nalaganje",
+      "preparing": "Priprava operacije..."
     }
   }
 }

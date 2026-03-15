@@ -21,6 +21,7 @@ export interface PreviewFile {
 // File type detection helpers
 export const getFileLanguage = (filename: string): string => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const baseName = filename.split('/').pop()?.toLowerCase() || filename.toLowerCase();
     const langMap: Record<string, string> = {
         'html': 'html',
         'htm': 'html',
@@ -54,17 +55,47 @@ export const getFileLanguage = (filename: string): string => {
         'yml': 'yaml',
         'toml': 'toml',
         'ini': 'ini',
+        'cfg': 'ini',
         'conf': 'ini',
         'htaccess': 'ini',
         'env': 'ini',
+        'gitignore': 'ini',
+        'gitattributes': 'ini',
+        'dockerignore': 'ini',
+        'editorconfig': 'ini',
+        'npmrc': 'ini',
+        'nvmrc': 'text',
+        'browserslistrc': 'text',
+        'eslintrc': 'json',
+        'prettierrc': 'json',
+        'babelrc': 'json',
         'txt': 'text',
         'log': 'text',
+        'manifest': 'xml',
         'webmanifest': 'json',
         'vue': 'html',
         'svelte': 'html',
         'astro': 'html',
+        'production': 'ini',
+        'development': 'ini',
+        'staging': 'ini',
+        'local': 'ini',
     };
-    return langMap[ext] || 'text';
+    // Check known filenames without extensions
+    const filenameMap: Record<string, string> = {
+        'makefile': 'makefile',
+        'dockerfile': 'dockerfile',
+        'containerfile': 'dockerfile',
+        'gemfile': 'ruby',
+        'rakefile': 'ruby',
+        'vagrantfile': 'ruby',
+        'procfile': 'text',
+        'license': 'text',
+        'licence': 'text',
+        'changelog': 'markdown',
+        'readme': 'markdown',
+    };
+    return langMap[ext] || filenameMap[baseName] || 'text';
 };
 
 export const isImageFile = (filename: string): boolean => {
@@ -84,14 +115,25 @@ export const isPdfFile = (filename: string): boolean => {
 
 export const isPreviewable = (filename: string): boolean => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const baseName = filename.split('/').pop()?.toLowerCase() || filename.toLowerCase();
     const previewableExts = [
         // Code
         'html', 'htm', 'php', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass', 'less',
         'json', 'xml', 'svg', 'md', 'markdown', 'py', 'rb', 'java', 'c', 'cpp', 'h',
-        'rs', 'go', 'sh', 'bash', 'sql', 'yaml', 'yml', 'toml', 'ini', 'conf', 'txt', 'log',
+        'rs', 'go', 'sh', 'bash', 'sql', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg',
+        'txt', 'log', 'manifest',
         'htaccess', 'env', 'webmanifest', 'vue', 'svelte', 'astro',
+        'gitignore', 'gitattributes', 'dockerignore', 'editorconfig',
+        'eslintrc', 'prettierrc', 'babelrc', 'npmrc', 'nvmrc', 'browserslistrc',
+        'production', 'development', 'staging', 'local', 'example', 'sample', 'bak',
         // Images
         'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp',
     ];
-    return previewableExts.includes(ext);
+    const knownFilenames = [
+        'makefile', 'dockerfile', 'containerfile', 'vagrantfile', 'gemfile',
+        'rakefile', 'procfile', 'brewfile', 'justfile',
+        'license', 'licence', 'authors', 'contributors',
+        'changelog', 'changes', 'readme', 'todo',
+    ];
+    return previewableExts.includes(ext) || knownFilenames.includes(baseName);
 };

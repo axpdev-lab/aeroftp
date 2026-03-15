@@ -69,6 +69,8 @@ import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } f
 import { resolveS3Endpoint } from './providers/registry';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
+import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToast';
+import type { ScanningState } from './components/ScanningToast';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen,
@@ -236,6 +238,7 @@ const App: React.FC = () => {
     if (wasActive !== isActive) setHasActiveTransfer(isActive);
   }, []);
   const [isReconnecting, setIsReconnecting] = useState(false);  // FTP reconnection in progress
+  const [scanningState, setScanningState] = useState<ScanningState>(INITIAL_SCANNING_STATE);
   const hasActivity = hasActiveTransfer;  // Track if upload/download in progress
   const [activePanel, setActivePanel] = useState<'remote' | 'local'>('remote');
   const [remoteSortField, setRemoteSortField] = useState<SortField>('name');
@@ -686,6 +689,7 @@ const App: React.FC = () => {
     total: number;
     completedPath?: string;
     error?: string;
+    installing?: boolean;
   } | null>(null);
 
   // Auto-dismiss update toast after 2 animation cycles (8s) — only when not downloading
@@ -1668,6 +1672,7 @@ const App: React.FC = () => {
     onTransferStart: () => {
       if (!showActivityLog) setShowActivityLog(true);
     },
+    onScanningUpdate: setScanningState,
   });
 
   const handleRemoteSearch = async (query: string) => {
@@ -1785,9 +1790,9 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'yandexdisk'];
   // Providers that support server-side copy (for context menu)
-  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr'];
+  const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
   const getProviderHostFallback = (protocol?: string, username?: string): string => {
     switch (protocol) {
@@ -1809,6 +1814,8 @@ const App: React.FC = () => {
         return 'filelu.com';
       case 'koofr':
         return 'app.koofr.net';
+      case 'yandexdisk':
+        return 'cloud-api.yandex.net';
       default:
         return 'localhost';
     }
@@ -1828,6 +1835,13 @@ const App: React.FC = () => {
       return {
         ...params,
         server: params.server || 'app.koofr.net',
+        port: params.port || 443,
+      };
+    }
+    if (protocol === 'yandexdisk') {
+      return {
+        ...params,
+        server: params.server || 'cloud-api.yandex.net',
         port: params.port || 443,
       };
     }
@@ -1982,7 +1996,7 @@ const App: React.FC = () => {
 
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure') || !effectiveParams.username) {
+      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'yandexdisk') || !effectiveParams.username) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -2004,6 +2018,8 @@ const App: React.FC = () => {
             ? 'FileLu'
           : protocol === 'koofr'
             ? `Koofr ${effectiveParams.username}`
+          : protocol === 'yandexdisk'
+            ? `Yandex Disk ${effectiveParams.username}`
           : protocol === 'kdrive'
             ? `kDrive ${effectiveParams.options?.bucket || ''}`
             : protocol === 'jottacloud'
@@ -2230,12 +2246,16 @@ const App: React.FC = () => {
     // Look up cached icons from saved server profile (vault-first, localStorage may be empty)
     let cachedFavicon: string | undefined;
     let cachedCustomIcon: string | undefined;
+    let cachedPublicUrlBase: string | undefined;
+    let cachedInitialPath: string | undefined;
     try {
       const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
       if (servers) {
         const match = servers.find(s => s.id === serverName || s.name === serverName || s.host === serverName);
         if (match?.faviconUrl) cachedFavicon = match.faviconUrl;
         if (match?.customIconUrl) cachedCustomIcon = match.customIconUrl;
+        if (match?.publicUrlBase) cachedPublicUrlBase = match.publicUrlBase;
+        if (match?.initialPath) cachedInitialPath = match.initialPath;
       }
     } catch { /* ignore */ }
 
@@ -2253,6 +2273,8 @@ const App: React.FC = () => {
       providerId: paramsCopy.providerId,
       faviconUrl: cachedFavicon,
       customIconUrl: cachedCustomIcon,
+      publicUrlBase: cachedPublicUrlBase,
+      serverInitialPath: cachedInitialPath,
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
@@ -4890,6 +4912,30 @@ const App: React.FC = () => {
       });
     }
 
+    // Add Share Link for FTP/SFTP/WebDAV servers with publicUrlBase configured
+    const sessionPublicUrl = activeSession?.publicUrlBase;
+    if (sessionPublicUrl && (!currentProtocol || !supportsNativeShareLink(currentProtocol))) {
+      if (count === 1) {
+        items.push({
+          label: t('contextMenu.copyShareLink'),
+          icon: <Share2 size={14} />,
+          action: async () => {
+            try {
+              const shareUrl = await invoke<string>('generate_server_share_link', {
+                publicUrlBase: sessionPublicUrl,
+                initialPath: activeSession?.serverInitialPath || '',
+                remotePath: file.path,
+              });
+              await invoke('copy_to_clipboard', { text: shareUrl });
+              notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+            } catch (err) {
+              notify.error(t('contextMenu.shareLinkFailed'), String(err));
+            }
+          }
+        });
+      }
+    }
+
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
     const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
     if (hasNativeShareLink) {
@@ -5519,7 +5565,7 @@ const App: React.FC = () => {
     // and the file is within the AeroCloud local folder
     if (isCloudActive && cloudPublicUrlBase && cloudLocalFolder && file.path.startsWith(cloudLocalFolder)) {
       items.push({
-        label: 'Copy Share Link',
+        label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
         action: async () => {
           try {
@@ -5884,6 +5930,7 @@ const App: React.FC = () => {
         />
 
         <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
+        <ScanningToast state={scanningState} t={t} />
 
         {/* Update Available Toast with inline download */}
         {updateAvailable?.has_update && !updateToastDismissed && (
@@ -5937,7 +5984,7 @@ const App: React.FC = () => {
             )}
 
             {/* State: Download complete — Install & Restart */}
-            {updateDownload?.completedPath && (
+            {updateDownload?.completedPath && !updateDownload?.installing && (
               <div className="flex flex-col gap-2">
                 <span className="text-xs text-green-200 flex items-center gap-1">
                   <CheckCircle2 size={12} /> {t('update.downloadComplete')}
@@ -5955,10 +6002,11 @@ const App: React.FC = () => {
                         : updateAvailable.install_format === 'rpm'
                           ? 'install_rpm_update'
                           : 'install_deb_update';
+                      setUpdateDownload(prev => prev ? { ...prev, installing: true } : null);
                       try {
                         await invoke(cmd, { downloadedPath: updateDownload.completedPath });
                       } catch (e) {
-                        setUpdateDownload(prev => prev ? { ...prev, error: String(e) } : null);
+                        setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
                       }
                     }}
                     className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
@@ -5981,6 +6029,17 @@ const App: React.FC = () => {
                 >
                   <Clock size={10} /> {t('update.skipForNow')}
                 </button>
+              </div>
+            )}
+
+            {/* State: Installing — shown in overlay below */}
+            {updateDownload?.installing && (
+              <div className="flex items-center gap-2 py-1">
+                <svg className="w-4 h-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="text-xs">{t('update.installing')}</span>
               </div>
             )}
 
@@ -6009,6 +6068,21 @@ const App: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Fullscreen overlay during update installation */}
+        {updateDownload?.installing && (
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-5 animate-scale-in">
+            <svg className="w-12 h-12 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <div className="text-center">
+              <p className="text-white text-lg font-semibold">{t('update.installing')}</p>
+              <p className="text-white/60 text-sm mt-1">{t('update.installingDesc')}</p>
+            </div>
+          </div>
+        )}
+
         <TransferQueue
           items={transferQueue.items}
           isVisible={transferQueue.isVisible}
@@ -6564,6 +6638,8 @@ const App: React.FC = () => {
                         ? 'FileLu'
                         : normalizedParams.protocol === 'koofr'
                           ? `Koofr ${normalizedParams.username}`
+                        : normalizedParams.protocol === 'yandexdisk'
+                          ? `Yandex Disk ${normalizedParams.username}`
                         : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'
                           ? normalizedParams.username
                           : normalizedParams.server.split(':')[0]);

@@ -62,7 +62,8 @@
       "modified": "Modificēts",
       "name": "Nosaukums",
       "size": "Izmērs",
-      "retry": "Mēģināt vēlreiz"
+      "retry": "Mēģināt vēlreiz",
+      "optional": "neobligats"
     },
     "connection": {
       "title": "Savienoties ar serveri",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Ielīmējiet savu Koofr lietojumprogrammas paroli šeit",
       "koofrHelp": "Izveidojiet lietojumprogrammas paroli lapā app.koofr.net → Preferences → Parole → Lietojumprogrammu paroles",
       "duplicateServer": "Dublēt serveri",
-      "saveAsNew": "Saglabāt kā jaunu"
+      "saveAsNew": "Saglabāt kā jaunu",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Attālināts",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ja ikona nav iestatīta, servera favicon vai icon.png tiek noteikts automātiski.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Publiska URL baze",
+      "publicUrlBaseDesc": "Iespejot \"Kopet kopigosanas saiti\" failiem si serveri. Ievadiet HTTP URL, kas atbilst jusu FTP saknes mapei.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu caur WebDAV",
       "fileluS3Desc": "FileLu S5 S3 saderīga krātuve",
       "koofrDesc": "Koofr Cloud (10 GB bez maksas)",
-      "koofrTooltip": "Koofr - Slovēnijas privātumam vērtā mākoņa krātuve ar 10 GB bez maksas, pieejama arī caur WebDAV"
+      "koofrTooltip": "Koofr - Slovēnijas privātumam vērtā mākoņa krātuve ar 10 GB bez maksas, pieejama arī caur WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB bezmaksas)",
+      "yandexdiskTooltip": "Yandex Disk - Krievijas mākoņkrātuve ar 5 GB bezmaksas, OAuth2 marķiera autentifikācija"
     },
     "shortcuts": {
       "title": "Tastatūras saīsnes",
@@ -1653,7 +1662,9 @@
       "retry": "Mēģināt lejupielādēt vēlreiz",
       "installRestart": "Instalēt un pārstartēt",
       "openInstaller": "Atvērt instalētāju",
-      "skipForNow": "Vēlāk, ne tagad"
+      "skipForNow": "Vēlāk, ne tagad",
+      "installing": "Atjauninājuma instalēšana...",
+      "installingDesc": "Lietotne automātiski restartēsies pēc dažām sekundēm"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Dzēšana",
+      "downloading": "Lejupielāde",
+      "uploading": "Augšupielāde",
+      "preparing": "Sagatavo darbību..."
     }
   }
 }

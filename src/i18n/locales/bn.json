@@ -62,7 +62,8 @@
       "modified": "সংশোধিত",
       "name": "নাম",
       "size": "আকার",
-      "retry": "পুনরায় চেষ্টা করুন"
+      "retry": "পুনরায় চেষ্টা করুন",
+      "optional": "ঐচ্ছিক"
     },
     "connection": {
       "title": "সার্ভারে সংযোগ করুন",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "আপনার Koofr অ্যাপ পাসওয়ার্ড এখানে পেস্ট করুন",
       "koofrHelp": "app.koofr.net → পছন্দসমূহ → পাসওয়ার্ড → অ্যাপ পাসওয়ার্ড-এ একটি অ্যাপ পাসওয়ার্ড তৈরি করুন",
       "duplicateServer": "সার্ভার ডুপ্লিকেট করুন",
-      "saveAsNew": "নতুন হিসেবে সংরক্ষণ করুন"
+      "saveAsNew": "নতুন হিসেবে সংরক্ষণ করুন",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "রিমোট",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "কোনো আইকন সেট না থাকলে, সার্ভার থেকে favicon বা icon.png স্বয়ংক্রিয়ভাবে শনাক্ত করা হয়।",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "পাবলিক URL বেস",
+      "publicUrlBaseDesc": "এই সার্ভারের ফাইলগুলির জন্য “শেয়ার লিংক কপি করুন” সক্রিয় করুন। আপনার FTP রুট ফোল্ডারের সাথে ম্যাপ করা HTTP URL লিখুন।",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "WebDAV এর মাধ্যমে FileLu",
       "fileluS3Desc": "FileLu S5 S3-সামঞ্জস্যপূর্ণ স্টোরেজ",
       "koofrDesc": "Koofr Cloud (10 GB বিনামূল্যে)",
-      "koofrTooltip": "Koofr - স্লোভেনীয় গোপনীয়তা-কেন্দ্রিক ক্লাউড যেখানে 10GB বিনামূল্যে, WebDAV-এর মাধ্যমেও অ্যাক্সেসযোগ্য"
+      "koofrTooltip": "Koofr - স্লোভেনীয় গোপনীয়তা-কেন্দ্রিক ক্লাউড যেখানে 10GB বিনামূল্যে, WebDAV-এর মাধ্যমেও অ্যাক্সেসযোগ্য",
+      "yandexdiskDesc": "Yandex Disk (5 GB বিনামূল্যে)",
+      "yandexdiskTooltip": "Yandex Disk - রাশিয়ান ক্লাউড স্টোরেজ, 5GB বিনামূল্যে, OAuth2 টোকেন প্রমাণীকরণ"
     },
     "shortcuts": {
       "title": "কীবোর্ড শর্টকাট",
@@ -1653,7 +1662,9 @@
       "retry": "পুনরায় ডাউনলোড চেষ্টা করুন",
       "installRestart": "ইনস্টল এবং রিস্টার্ট করুন",
       "openInstaller": "ইনস্টলার খুলুন",
-      "skipForNow": "পরে, এখন নয়"
+      "skipForNow": "পরে, এখন নয়",
+      "installing": "আপডেট ইনস্টল হচ্ছে...",
+      "installingDesc": "অ্যাপটি কয়েক সেকেন্ডের মধ্যে স্বয়ংক্রিয়ভাবে পুনরায় চালু হবে"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "মুছে ফেলা হচ্ছে",
+      "downloading": "ডাউনলোড হচ্ছে",
+      "uploading": "আপলোড হচ্ছে",
+      "preparing": "অপারেশন প্রস্তুত করা হচ্ছে..."
     }
   }
 }

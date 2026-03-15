@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 4 March 2026
-> Version: v2.8.0 (Koofr Native API, Production CLI & AeroAgent Server Exec)
+> Last Updated: 15 March 2026
+> Version: v2.9.7 (Share Links, Operation Feedback & UX Flow Polish)
 
 ---
 
@@ -602,12 +602,17 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
 | v2.7.4 | **Complete Provider Integration** — Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
 | v2.8.0 | **Koofr Native API** (20th protocol), **Production CLI** (13 commands, 20 protocols), **AeroAgent Server Exec** (2 new tools, vault-secured), Ed25519 license foundation | Done |
+| v2.9.2 | **CLI Expansion** — Batch scripting engine (17 commands), glob transfers, tree command, exit codes, path traversal protection, BFS caps, NO_COLOR, SIGPIPE | Done |
+| v2.9.4 | **Server Health Check** — DNS/TCP/TLS/HTTP probes, latency gauge, batch diagnostics. Download mtime preservation. AeroVault Pro modular refactor, recent vaults, folder encryption | Done |
+| v2.9.5 | **Dual-Engine Security Audit** — Claude Opus 4.6 + GPT-5.4 (117 findings), DOMPurify, vault write safety, shell denylist expansion, TOTP-before-cache. Yandex Object Storage S3 preset | Done |
+| v2.9.6 | **Remote Timestamp Timezone Fix** — MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
+| v2.9.7 | **Share Links for FTP/SFTP/WebDAV** — Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v2.9.0 | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
+| v2.9.x | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
 
 ---
 

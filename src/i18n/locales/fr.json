@@ -62,7 +62,8 @@
       "modified": "Modifié",
       "name": "Nom",
       "size": "Taille",
-      "retry": "Réessayer"
+      "retry": "Réessayer",
+      "optional": "facultatif"
     },
     "connection": {
       "title": "Connexion au Serveur",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Collez votre mot de passe d'application Koofr ici",
       "koofrHelp": "Générez un mot de passe d'application sur app.koofr.net → Préférences → Mot de passe → Mots de passe d'application",
       "duplicateServer": "Dupliquer le serveur",
-      "saveAsNew": "Enregistrer comme nouveau"
+      "saveAsNew": "Enregistrer comme nouveau",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Distant",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Si aucune icône n'est définie, le favicon ou l'icon.png du serveur est détecté automatiquement.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL publique de base",
+      "publicUrlBaseDesc": "Activez \"Copier le lien de partage\" pour les fichiers de ce serveur. Saisissez l'URL HTTP correspondant à votre dossier racine FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 stockage compatible S3",
       "koofrDesc": "Koofr Cloud (10 GB gratuit)",
-      "koofrTooltip": "Koofr - Cloud slovène axé sur la vie privée avec 10GB gratuit, également accessible via WebDAV"
+      "koofrTooltip": "Koofr - Cloud slovène axé sur la vie privée avec 10GB gratuit, également accessible via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratuits)",
+      "yandexdiskTooltip": "Yandex Disk - stockage cloud russe avec 5GB gratuits, authentification par token OAuth2"
     },
     "shortcuts": {
       "title": "Raccourcis clavier",
@@ -1653,7 +1662,9 @@
       "retry": "Reessayer le telechargement",
       "installRestart": "Installer et redemarrer",
       "openInstaller": "Ouvrir l'installateur",
-      "skipForNow": "Plus tard, pas maintenant"
+      "skipForNow": "Plus tard, pas maintenant",
+      "installing": "Installation de la mise à jour...",
+      "installingDesc": "L'application redémarrera automatiquement dans quelques secondes"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Suppression",
+      "downloading": "Téléchargement",
+      "uploading": "Envoi",
+      "preparing": "Préparation de l'opération..."
     }
   }
 }

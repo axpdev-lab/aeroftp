@@ -30,6 +30,7 @@
       "yes": "Sì",
       "no": "No",
       "ok": "OK",
+      "optional": "opzionale",
       "back": "Indietro",
       "next": "Avanti",
       "finish": "Fine",
@@ -247,6 +248,9 @@
       "koofrAppPassword": "Password dell'app",
       "koofrAppPasswordPlaceholder": "Incolla qui la password dell'app Koofr",
       "koofrHelp": "Genera una password dell'app su app.koofr.net → Preferenze → Password → Password delle app",
+      "yandexdiskToken": "Token OAuth",
+      "yandexdiskTokenPlaceholder": "Incolla qui il tuo token OAuth di Yandex",
+      "yandexdiskHelp": "Crea un'app su oauth.yandex.com → Autorizza → Copia il token OAuth (valido 1 anno)",
       "duplicateServer": "Duplica server",
       "saveAsNew": "Salva come nuovo"
     },
@@ -366,7 +370,9 @@
       "fileluWebdavDesc": "FileLu tramite WebDAV",
       "fileluS3Desc": "FileLu S5 storage compatibile S3",
       "koofrDesc": "Koofr Cloud (10 GB gratis)",
-      "koofrTooltip": "Koofr - Cloud sloveno orientato alla privacy con 10GB gratis, accessibile anche via WebDAV"
+      "koofrTooltip": "Koofr - Cloud sloveno orientato alla privacy con 10GB gratis, accessibile anche via WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
+      "yandexdiskTooltip": "Yandex Disk - Cloud russo con 5GB gratis, autenticazione tramite token OAuth2"
     },
     "browser": {
       "remote": "Remoto",
@@ -568,6 +574,12 @@
       },
       "retryAllFailed": "Riprova tutti i falliti"
     },
+    "scanning": {
+      "deleting": "Eliminazione",
+      "downloading": "Download",
+      "uploading": "Upload",
+      "preparing": "Preparazione operazione..."
+    },
     "settings": {
       "title": "Impostazioni",
       "general": "Generali",
@@ -767,6 +779,8 @@
       "launchOnStartup": "Avvia all'avvio del sistema",
       "launchOnStartupDesc": "Avvia automaticamente AeroFTP all'accensione del computer. Consigliato se usi AeroCloud Sync.",
       "showHiddenFiles": "Mostra file nascosti (dotfiles)",
+      "publicUrlBase": "URL Pubblico Base",
+      "publicUrlBaseDesc": "Abilita \"Copia Link Condivisione\" per i file su questo server. Inserisci l'URL HTTP che corrisponde alla root FTP.",
       "rememberLastFolder": "Ricorda ultima cartella",
       "rememberLastFolderDesc": "Apri l'ultima cartella locale visitata all'avvio",
       "doubleClickAction": "Azione doppio clic",
@@ -902,7 +916,8 @@
       "serverIcon": "Icona server",
       "iconAutoDetectHint": "Se non impostata, la favicon o icon.png del server viene rilevata automaticamente.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "appearance": {
       "patternCross": "Croce",
@@ -1714,7 +1729,9 @@
       "openInstaller": "Apri Installer",
       "retry": "Riprova Download",
       "skipForNow": "Dopo, non adesso",
-      "installRestart": "Installa e Riavvia"
+      "installRestart": "Installa e Riavvia",
+      "installing": "Installazione in corso...",
+      "installingDesc": "L'app si riavvierà automaticamente tra pochi secondi"
     },
     "ai": {
       "aeroAgent": "AeroAgent",

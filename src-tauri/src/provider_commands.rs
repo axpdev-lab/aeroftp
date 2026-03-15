@@ -107,6 +107,7 @@ impl ProviderConnectionParams {
             "drime" => ProviderType::DrimeCloud,
             "filelu" => ProviderType::FileLu,
             "koofr" => ProviderType::Koofr,
+            "yandexdisk" => ProviderType::YandexDisk,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -221,6 +222,8 @@ impl ProviderConnectionParams {
             "filelu.com".to_string()
         } else if provider_type == ProviderType::Koofr {
             "app.koofr.net".to_string()
+        } else if provider_type == ProviderType::YandexDisk {
+            "cloud-api.yandex.net".to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {
@@ -1098,6 +1101,9 @@ pub async fn oauth2_start_auth(
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
         }
+        "yandexdisk" | "yandex_disk" | "yandex" => {
+            OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
+        }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
@@ -1142,6 +1148,9 @@ pub async fn oauth2_complete_auth(
         }
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
+        }
+        "yandexdisk" | "yandex_disk" | "yandex" => {
+            OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -1228,9 +1237,20 @@ pub async fn oauth2_connect(
                 .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
             Box::new(p)
         }
+        "yandexdisk" | "yandex_disk" | "yandex" => {
+            // Yandex Disk OAuth: retrieve token from stored OAuth tokens
+            use crate::providers::{OAuth2Manager, OAuthProvider};
+            let manager = OAuth2Manager::new();
+            let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
+                .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
+            let mut p = crate::providers::YandexDiskProvider::new(tokens.access_token, None);
+            p.connect().await
+                .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
+            Box::new(p)
+        }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
-    
+
     let display_name = provider.display_name();
     let account_email = provider.account_email();
 
@@ -1258,6 +1278,7 @@ pub async fn oauth2_full_auth(
         "onedrive" | "microsoft" => 27154,
         "pcloud" => 17384,
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => 18765,
+        "yandexdisk" | "yandex_disk" | "yandex" => 19847,
         _ => 0,
     };
 
@@ -1286,6 +1307,9 @@ pub async fn oauth2_full_auth(
         }
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             OAuthConfig::zoho_with_port(&params.client_id, &params.client_secret, port, &params.region)
+        }
+        "yandexdisk" | "yandex_disk" | "yandex" => {
+            OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
@@ -1457,6 +1481,7 @@ pub async fn oauth2_has_tokens(
         "box" => OAuthProvider::Box,
         "pcloud" => OAuthProvider::PCloud,
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
+        "yandexdisk" | "yandex_disk" | "yandex" => OAuthProvider::YandexDisk,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
@@ -1478,6 +1503,7 @@ pub async fn oauth2_logout(
         "box" => OAuthProvider::Box,
         "pcloud" => OAuthProvider::PCloud,
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
+        "yandexdisk" | "yandex_disk" | "yandex" => OAuthProvider::YandexDisk,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 

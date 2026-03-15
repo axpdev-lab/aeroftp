@@ -62,7 +62,8 @@
       "modified": "Iliyobadilishwa",
       "name": "Jina",
       "size": "Ukubwa",
-      "retry": "Jaribu tena"
+      "retry": "Jaribu tena",
+      "optional": "hiari"
     },
     "connection": {
       "title": "Unganisha na Seva",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Tandika nenosiri lako la programu ya Koofr hapa",
       "koofrHelp": "Tengeneza nenosiri la programu katika app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Nakili seva",
-      "saveAsNew": "Hifadhi kama mpya"
+      "saveAsNew": "Hifadhi kama mpya",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Mbali",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ikiwa aikoni haijawekwa, favicon au icon.png kutoka kwa seva itagunduliwa kiotomatiki.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL ya Msingi wa Umma",
+      "publicUrlBaseDesc": "Washa \"Nakili Kiungo cha Kushiriki\" kwa faili kwenye seva hii. Ingiza URL ya HTTP inayolingana na folda kuu ya FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu kupitia WebDAV",
       "fileluS3Desc": "FileLu S5 hifadhi inayolingana na S3",
       "koofrDesc": "Koofr Cloud (10 GB bure)",
-      "koofrTooltip": "Koofr - mtandao wa Slovenia unaozingatia faragha na 10 GB bure, pia unaweza kufikia kupitia WebDAV"
+      "koofrTooltip": "Koofr - mtandao wa Slovenia unaozingatia faragha na 10 GB bure, pia unaweza kufikia kupitia WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB bure)",
+      "yandexdiskTooltip": "Yandex Disk – hifadhi ya wingu ya Kirusi na 5 GB bure, uthibitishaji wa tokeni ya OAuth2"
     },
     "shortcuts": {
       "title": "Njia za Mkato",
@@ -1653,7 +1662,9 @@
       "retry": "Jaribu Kupakua Tena",
       "installRestart": "Sakinisha na Anzisha Upya",
       "openInstaller": "Fungua Kisakinishi",
-      "skipForNow": "Baadaye, si sasa"
+      "skipForNow": "Baadaye, si sasa",
+      "installing": "Inasakinisha sasisho...",
+      "installingDesc": "Programu itaanza upya moja kwa moja baada ya sekunde chache"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Inafuta",
+      "downloading": "Inapakua",
+      "uploading": "Inapakia",
+      "preparing": "Inaandaa operesheni..."
     }
   }
 }

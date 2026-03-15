@@ -62,7 +62,8 @@
       "modified": "Geändert",
       "name": "Name",
       "size": "Größe",
-      "retry": "Wiederholen"
+      "retry": "Wiederholen",
+      "optional": "optional"
     },
     "connection": {
       "title": "Mit Server verbinden",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Fügen Sie hier Ihr Koofr App-Passwort ein",
       "koofrHelp": "Erstellen Sie ein App-Passwort auf app.koofr.net → Einstellungen → Passwort → App-Passwörter",
       "duplicateServer": "Server duplizieren",
-      "saveAsNew": "Als neu speichern"
+      "saveAsNew": "Als neu speichern",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Remote",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Wenn kein Symbol festgelegt ist, wird das favicon oder icon.png vom Server automatisch erkannt.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Öffentliche Basis-URL",
+      "publicUrlBaseDesc": "Aktivieren Sie \"Freigabelink kopieren\" für Dateien auf diesem Server. Geben Sie die HTTP-URL ein, die Ihrem FTP-Stammordner entspricht.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu via WebDAV",
       "fileluS3Desc": "FileLu S5 S3-kompatibler Speicher",
       "koofrDesc": "Koofr Cloud (10 GB kostenlos)",
-      "koofrTooltip": "Koofr - Slowenische datenschutzorientierte Cloud mit 10GB kostenlos, auch über WebDAV zugänglich"
+      "koofrTooltip": "Koofr - Slowenische datenschutzorientierte Cloud mit 10GB kostenlos, auch über WebDAV zugänglich",
+      "yandexdiskDesc": "Yandex Disk (5 GB kostenlos)",
+      "yandexdiskTooltip": "Yandex Disk - russischer Cloud-Speicher mit 5GB kostenlos, OAuth2-Token-Authentifizierung"
     },
     "shortcuts": {
       "title": "Tastenkombinationen",
@@ -1653,7 +1662,9 @@
       "retry": "Download wiederholen",
       "installRestart": "Installieren & Neustarten",
       "openInstaller": "Installer öffnen",
-      "skipForNow": "Später, nicht jetzt"
+      "skipForNow": "Später, nicht jetzt",
+      "installing": "Update wird installiert...",
+      "installingDesc": "Die App wird in wenigen Sekunden automatisch neu gestartet"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Löschen",
+      "downloading": "Herunterladen",
+      "uploading": "Hochladen",
+      "preparing": "Vorgang wird vorbereitet..."
     }
   }
 }

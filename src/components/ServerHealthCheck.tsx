@@ -228,7 +228,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     const getHostAndPort = (server: ServerProfile) => {
         const protocol = server.protocol || 'ftp';
         const isCloud = isOAuthProvider(protocol) || isFourSharedProvider(protocol) ||
-            ['mega', 'filen', 'internxt', 'azure', 'filelu', 'koofr', 'jottacloud', 'kdrive', 'drime'].includes(protocol);
+            ['mega', 'filen', 'internxt', 'azure', 'filelu', 'koofr', 'yandexdisk', 'jottacloud', 'kdrive', 'drime'].includes(protocol);
         const host = isCloud ? protocol : (server.host || 'localhost');
         const port = isCloud ? 443 : (server.port || 21);
         const endpoint = server.options?.endpoint || (protocol === 'webdav' || protocol === 's3' ? server.host : undefined);

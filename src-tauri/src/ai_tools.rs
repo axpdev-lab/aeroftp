@@ -840,6 +840,7 @@ async fn create_temp_provider(
         "jottacloud" => ProviderType::Jottacloud,
         "filelu" => ProviderType::FileLu,
         "koofr" => ProviderType::Koofr,
+        "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" | "dropbox" | "onedrive" | "box" | "pcloud"
         | "zohoworkdrive" | "fourshared" => {
             return Err(format!(

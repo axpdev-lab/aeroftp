@@ -327,6 +327,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         zohoworkdrive: '### Zoho WorkDrive\n- **Auth**: OAuth 2.0. Multi-region (US/EU/IN/AU/JP/UK/CA/SA). Team-based file management.',
         filelu: '### FileLu\n- **Auth**: API Key (query param). ID-based FS (fld_id/file_code). 2-step upload. Also: FTP, FTPS, WebDAV, S3. 1GB free.',
         koofr: '### Koofr\n- **Auth**: Email + App Password (Basic Auth). Mount-centric REST API v2.1. Path-based operations. 10GB free. Also accessible via WebDAV.',
+        yandexdisk: '### Yandex Disk\n- **Auth**: OAuth 2.0 token (long-lived, 1 year). REST API v1 (cloud-api.yandex.net). Path-based with disk:/ prefix. Two-step upload/download. 5GB free.',
     };
 
     const active = activeProvider ? sections[activeProvider.toLowerCase()] || '' : '';

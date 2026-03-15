@@ -62,7 +62,8 @@
       "modified": "수정됨",
       "name": "이름",
       "size": "크기",
-      "retry": "재시도"
+      "retry": "재시도",
+      "optional": "선택 사항"
     },
     "connection": {
       "title": "서버에 연결",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Koofr 앱 비밀번호를 여기에 붙여넣으세요",
       "koofrHelp": "app.koofr.net → 설정 → 비밀번호 → 앱 비밀번호에서 앱 비밀번호를 생성하세요",
       "duplicateServer": "서버 복제",
-      "saveAsNew": "새로 저장"
+      "saveAsNew": "새로 저장",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "원격",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "아이콘이 설정되지 않은 경우, 서버의 favicon 또는 icon.png가 자동으로 감지됩니다.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "공개 URL 기본 경로",
+      "publicUrlBaseDesc": "이 서버의 파일에 대해 \"공유 링크 복사\"를 활성화합니다. FTP 루트 폴더에 매핑되는 HTTP URL을 입력하세요.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "WebDAV를 통한 FileLu",
       "fileluS3Desc": "FileLu S5 S3 호환 스토리지",
       "koofrDesc": "Koofr Cloud (무료 10GB)",
-      "koofrTooltip": "Koofr - 무료 10GB 용량을 제공하는 슬로베니아의 개인정보보호 중심 클라우드, WebDAV로도 접근 가능"
+      "koofrTooltip": "Koofr - 무료 10GB 용량을 제공하는 슬로베니아의 개인정보보호 중심 클라우드, WebDAV로도 접근 가능",
+      "yandexdiskDesc": "Yandex Disk (5 GB 무료)",
+      "yandexdiskTooltip": "Yandex Disk - 5 GB 무료 제공 러시아 클라우드 스토리지, OAuth2 토큰 인증"
     },
     "shortcuts": {
       "title": "단축키",
@@ -1653,7 +1662,9 @@
       "retry": "다운로드 재시도",
       "installRestart": "설치 및 재시작",
       "openInstaller": "설치 프로그램 열기",
-      "skipForNow": "나중에, 지금은 안 할래요"
+      "skipForNow": "나중에, 지금은 안 할래요",
+      "installing": "업데이트 설치 중...",
+      "installingDesc": "몇 초 후에 앱이 자동으로 다시 시작됩니다"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3281,6 +3292,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "삭제 중",
+      "downloading": "다운로드 중",
+      "uploading": "업로드 중",
+      "preparing": "작업 준비 중..."
     }
   }
 }

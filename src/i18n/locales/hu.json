@@ -62,7 +62,8 @@
       "modified": "Módosítva",
       "name": "Név",
       "size": "Méret",
-      "retry": "Újra"
+      "retry": "Újra",
+      "optional": "nem kotelezo"
     },
     "connection": {
       "title": "Csatlakozás szerverhez",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Másolja ide a Koofr alkalmazáshesszót",
       "koofrHelp": "Alkalmazáshesszót generálhat az app.koofr.net → Beállítások → Jelszó → Alkalmazáshesszók helyen",
       "duplicateServer": "Szerver duplikálása",
-      "saveAsNew": "Mentés újként"
+      "saveAsNew": "Mentés újként",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Távoli",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Ha nincs ikon beállítva, a kiszolgálóról a favicon vagy az icon.png automatikusan kerül felismerésre.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "Nyilvanos URL-alap",
+      "publicUrlBaseDesc": "A \"Megosztasi hivatkozas masolasa\" engedelyezese a kiszolgalon levo fajlokhoz. Adja meg azt a HTTP URL-t, amely az FTP gyokermappajara mutat.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu WebDAV-on keresztül",
       "fileluS3Desc": "FileLu S5 S3-kompatibilis tárhely",
       "koofrDesc": "Koofr Cloud (10 GB ingyenes)",
-      "koofrTooltip": "Koofr - Szlovén adatvédelem-központú felhő 10 GB ingyenes tárolóval, WebDAV-on keresztül is elérhető"
+      "koofrTooltip": "Koofr - Szlovén adatvédelem-központú felhő 10 GB ingyenes tárolóval, WebDAV-on keresztül is elérhető",
+      "yandexdiskDesc": "Yandex Disk (5 GB ingyenes)",
+      "yandexdiskTooltip": "Yandex Disk - Orosz felhőtároló 5 GB ingyenes tárhellyel, OAuth2 token hitelesítéssel"
     },
     "shortcuts": {
       "title": "Billentyűparancsok",
@@ -1653,7 +1662,9 @@
       "retry": "Letöltés újra",
       "installRestart": "Telepítés és újraindítás",
       "openInstaller": "Telepítő megnyitása",
-      "skipForNow": "Később, most nem"
+      "skipForNow": "Később, most nem",
+      "installing": "Frissítés telepítése...",
+      "installingDesc": "Az alkalmazás néhány másodpercen belül automatikusan újraindul"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Törlés",
+      "downloading": "Letöltés",
+      "uploading": "Feltöltés",
+      "preparing": "Művelet előkészítése..."
     }
   }
 }

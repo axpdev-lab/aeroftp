@@ -42,6 +42,7 @@ pub mod jottacloud;
 pub mod drime_cloud;
 pub mod filelu;
 pub mod koofr;
+pub mod yandex_disk;
 pub mod http_retry;
 
 pub use types::*;
@@ -68,6 +69,7 @@ pub use jottacloud::JottacloudProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use filelu::FileLuProvider;
 pub use koofr::KoofrProvider;
+pub use yandex_disk::YandexDiskProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -582,6 +584,11 @@ impl ProviderFactory {
                 let koofr_config = koofr::KoofrConfig::from_provider_config(config)?;
                 Ok(Box::new(KoofrProvider::new(koofr_config)))
             }
+            ProviderType::YandexDisk => {
+                let token = config.password.clone().unwrap_or_default();
+                let initial_path = config.initial_path.clone();
+                Ok(Box::new(YandexDiskProvider::new(token, initial_path)))
+            }
         }
     }
     
@@ -610,6 +617,7 @@ impl ProviderFactory {
             ProviderType::DrimeCloud,
             ProviderType::FileLu,
             ProviderType::Koofr,
+            ProviderType::YandexDisk,
         ]
     }
 }

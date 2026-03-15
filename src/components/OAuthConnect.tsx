@@ -13,7 +13,7 @@ import { openUrl } from '../utils/openUrl';
 import { logger } from '../utils/logger';
 
 interface OAuthConnectProps {
-  provider: 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive';
+  provider: 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
   onConnected: (displayName: string, extraOptions?: { region?: string }) => void;
   disabled?: boolean;
   initialLocalPath?: string;
@@ -32,6 +32,7 @@ const providerMap: Record<string, OAuthProvider> = {
   box: 'box',
   pcloud: 'pcloud',
   zohoworkdrive: 'zoho_workdrive',
+  yandexdisk: 'yandexdisk',
 };
 
 const providerNames: Record<string, string> = {
@@ -41,6 +42,7 @@ const providerNames: Record<string, string> = {
   box: 'Box',
   pcloud: 'pCloud',
   zohoworkdrive: 'Zoho WorkDrive',
+  yandexdisk: 'Yandex Disk',
 };
 
 const providerColors: Record<string, string> = {
@@ -50,6 +52,7 @@ const providerColors: Record<string, string> = {
   box: 'bg-blue-600 hover:bg-blue-700',
   pcloud: 'bg-green-500 hover:bg-green-600',
   zohoworkdrive: 'bg-blue-700 hover:bg-blue-800',
+  yandexdisk: 'bg-yellow-500 hover:bg-yellow-600',
 };
 
 // Zoho region options for multi-region support
@@ -72,6 +75,7 @@ const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
   box: { uri: 'http://127.0.0.1:9484/callback' },
   pcloud: { uri: 'http://localhost:17384/callback' },
   zohoworkdrive: { uri: 'http://127.0.0.1:18765/callback' },
+  yandexdisk: { uri: 'http://localhost:19847/callback' },
 };
 
 // Provider icons as SVG components (white fill for buttons)
@@ -141,6 +145,10 @@ const ProviderIcon: React.FC<{ provider: string; className?: string; white?: boo
           <path d="M21.2062 22H16.6624L16.6547 22L16.6468 22H7.02891C6.98027 22 6.93281 21.9951 6.88699 21.9858C6.56624 21.9209 6.32578 21.6401 6.32578 21.3023L6.32581 21.2963V19.7232C6.32581 18.9953 6.54612 18.2953 6.96565 17.6976C7.38518 17.1 7.96877 16.6511 8.65784 16.4L9.26336 16.1773C8.95723 15.8139 8.77271 15.3464 8.77271 14.8372C8.77271 13.6837 9.71958 12.7442 10.8821 12.7442C12.0446 12.7442 12.9915 13.6837 12.9915 14.8372C12.9915 14.8499 12.9913 14.8626 12.9911 14.8753C13.1503 14.7878 13.3171 14.712 13.4906 14.6488L13.836 14.5219C13.4815 14.1305 13.2656 13.6131 13.2656 13.0465C13.2656 11.8279 14.2641 10.8372 15.4922 10.8372C16.7203 10.8372 17.7188 11.8279 17.7188 13.0465C17.7188 13.0782 17.7181 13.1098 17.7167 13.1412C17.8505 13.0704 17.9897 13.0085 18.1336 12.9558L18.626 12.7749C18.2367 12.3661 17.9977 11.8148 17.9977 11.2092C17.9977 9.95105 19.0289 8.9278 20.2969 8.9278C21.5297 8.9278 22.5387 9.89503 22.5938 11.105V7.09766C22.5938 6.3372 21.9703 5.72092 21.2062 5.72092H12.2719C11.6742 5.72092 11.0789 5.52557 10.6008 5.16976L8.57344 3.66744C8.33437 3.49069 8.04141 3.39302 7.74375 3.39302H2.79375C2.02969 3.39535 1.40625 4.01395 1.40625 4.77209V19.2279C1.40625 19.9883 2.02969 20.6046 2.79375 20.6046H4.19297C4.58203 20.6046 4.89609 20.9162 4.89609 21.3023C4.89609 21.6883 4.58203 22 4.19297 22H2.79375C1.25391 22 0 20.7558 0 19.2279V4.77209C0 3.24418 1.25391 2 2.79375 2H7.74375C8.34141 2 8.93672 2.19535 9.41484 2.55116L11.4422 4.05348C11.6813 4.23023 11.9742 4.3279 12.2719 4.3279H21.2062C22.7461 4.3279 24 5.57209 24 7.09999V19.2302C24 20.7558 22.7461 22 21.2062 22ZM22.5938 11.3132V19.2279C22.5938 19.986 21.9727 20.6046 21.2062 20.6046H17.3601V16.0651C17.3601 15.2651 17.8687 14.5419 18.6234 14.2651L21.0726 13.3651C21.1091 13.3516 21.1437 13.3354 21.1765 13.3168C21.9785 12.9856 22.5526 12.216 22.5938 11.3132ZM15.9515 16.0628V20.6046H12.5672V17.972C12.5672 17.079 13.1344 16.2697 13.9804 15.9581L16.068 15.1915C15.9909 15.4729 15.9515 15.7652 15.9515 16.0628ZM15.7757 13.8103C16.0887 13.6956 16.3125 13.3965 16.3125 13.0465C16.3125 12.5977 15.9445 12.2325 15.4922 12.2325C15.0398 12.2325 14.6719 12.5977 14.6719 13.0465C14.6719 13.4953 15.0398 13.8604 15.4922 13.8604C15.5808 13.8604 15.6662 13.8464 15.7462 13.8205C15.756 13.8169 15.7658 13.8135 15.7757 13.8103ZM9.14768 17.7093L11.3213 16.9099C11.2137 17.2508 11.1586 17.6079 11.1586 17.972V20.6046H7.7344V19.7232C7.7344 18.8302 8.30159 18.0209 9.14768 17.7093ZM10.179 14.8372C10.179 14.4535 10.4954 14.1395 10.8821 14.1395C11.2688 14.1395 11.5852 14.4535 11.5852 14.8372C11.5852 15.2209 11.2688 15.5349 10.8821 15.5349C10.4954 15.5349 10.179 15.2209 10.179 14.8372ZM19.4039 11.2069C19.4039 10.7185 19.8047 10.3208 20.2969 10.3208C20.7891 10.3208 21.1899 10.7185 21.1899 11.2069C21.1899 11.6952 20.7891 12.0929 20.2969 12.0929C19.8047 12.0929 19.4039 11.6952 19.4039 11.2069Z" />
         </svg>
       );
+    case 'yandexdisk':
+      return (
+        <img src="/icons/providers/yandex-disk.png" alt="Yandex Disk" width={size} height={size} className={className} style={{ objectFit: 'contain' }} />
+      );
     default:
       return null;
   }
@@ -160,7 +168,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const { t } = useI18n();
   const { isAuthenticating, error, startAuth, connect, hasTokens, logout } = useOAuth2();
   const [hasExistingTokens, setHasExistingTokens] = useState(false);
-  const [showCredentialsForm, setShowCredentialsForm] = useState(false);
+  const [showCredentialsForm, setShowCredentialsForm] = useState(true);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isChecking, setIsChecking] = useState(true);
@@ -527,37 +535,6 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         </div>
       )}
 
-      {/* Provider Sign In Button */}
-      <div className="text-center">
-        <button
-          onClick={hasExistingTokens ? handleQuickConnect : handleSignIn}
-          disabled={disabled || isAuthenticating}
-          className={`
-            w-full py-3 px-4 rounded-lg text-white font-medium
-            flex items-center justify-center gap-2 transition-colors
-            ${providerColors[provider]}
-            disabled:opacity-50 disabled:cursor-not-allowed
-          `}
-        >
-          {isAuthenticating ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              {t('connection.authenticating')}
-            </>
-          ) : hasExistingTokens ? (
-            <>
-              <ProviderIcon provider={provider} className="w-5 h-5" white />
-              {t('connection.oauth.connectTo', { provider: providerNames[provider] })}
-            </>
-          ) : (
-            <>
-              <ProviderIcon provider={provider} className="w-5 h-5" white />
-              {t('connection.oauth.signInWith', { provider: providerNames[provider] })}
-            </>
-          )}
-        </button>
-      </div>
-
       {/* Error Display */}
       {error && (
         <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
@@ -568,9 +545,8 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         </div>
       )}
 
-      {/* Credentials Form */}
-      {showCredentialsForm && (
-        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+      {/* Credentials Form — always visible, fields first, button last */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
             <button
@@ -658,34 +634,24 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowCredentialsForm(false)}
-              className="flex-1 py-2 px-3 text-sm border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleSignIn}
-              disabled={!clientId || !clientSecret}
-              className={`flex-1 py-2 px-3 text-sm text-white rounded-lg ${providerColors[provider]} disabled:opacity-50`}
-            >
-              {t('connection.oauth.continue')}
-            </button>
-          </div>
+          <button
+            onClick={handleSignIn}
+            disabled={!clientId || !clientSecret || isAuthenticating}
+            className={`w-full py-3 px-4 text-sm text-white font-medium rounded-lg flex items-center justify-center gap-2 ${providerColors[provider]} disabled:opacity-50`}
+          >
+            {isAuthenticating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {t('connection.authenticating')}
+              </>
+            ) : (
+              <>
+                <ProviderIcon provider={provider} className="w-5 h-5" white />
+                {t('connection.oauth.signInWith', { provider: providerNames[provider] })}
+              </>
+            )}
+          </button>
         </div>
-      )}
-
-      {/* Setup instructions toggle */}
-      {!showCredentialsForm && (
-        <button
-          onClick={() => setShowCredentialsForm(true)}
-          className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1"
-        >
-          <Settings className="w-4 h-4" />
-          {t('connection.oauth.configureCredentials')}
-        </button>
-      )}
 
       {/* Back to existing account (if user changed mind) */}
       {wantsNewAccount && hasExistingTokens && (

@@ -62,7 +62,8 @@
       "modified": "Đã sửa đổi",
       "name": "Tên",
       "size": "Kích thước",
-      "retry": "Thử lại"
+      "retry": "Thử lại",
+      "optional": "tùy chọn"
     },
     "connection": {
       "title": "Kết nối đến máy chủ",
@@ -220,7 +221,10 @@
       "koofrAppPasswordPlaceholder": "Dán mật khẩu ứng dụng Koofr của bạn tại đây",
       "koofrHelp": "Tạo mật khẩu ứng dụng tại app.koofr.net → Preferences → Password → App Passwords",
       "duplicateServer": "Nhân bản máy chủ",
-      "saveAsNew": "Lưu như mới"
+      "saveAsNew": "Lưu như mới",
+      "yandexdiskToken": "OAuth Token",
+      "yandexdiskTokenPlaceholder": "Yandex OAuth token",
+      "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
     },
     "browser": {
       "remote": "Từ xa",
@@ -745,7 +749,10 @@
       "protocolSeafile": "Seafile",
       "iconAutoDetectHint": "Nếu không có icon nào được đặt, favicon hoặc icon.png từ máy chủ sẽ được phát hiện tự động.",
       "protocolFilelu": "FileLu",
-      "protocolKoofr": "Koofr"
+      "protocolKoofr": "Koofr",
+      "publicUrlBase": "URL công khai cơ sở",
+      "publicUrlBaseDesc": "Bật \"Sao chép liên kết chia sẻ\" cho các tệp trên máy chủ này. Nhập URL HTTP tương ứng với thư mục gốc FTP.",
+      "protocolYandexdisk": "Yandex Disk"
     },
     "devtools": {
       "title": "AeroTools",
@@ -1216,7 +1223,9 @@
       "fileluWebdavDesc": "FileLu qua WebDAV",
       "fileluS3Desc": "FileLu S5 lưu trữ tương thích S3",
       "koofrDesc": "Koofr Cloud (10 GB miễn phí)",
-      "koofrTooltip": "Koofr - dịch vụ lưu trữ đám mây Slovenia tập trung vào quyền riêng tư với 10 GB miễn phí, cũng có thể truy cập qua WebDAV"
+      "koofrTooltip": "Koofr - dịch vụ lưu trữ đám mây Slovenia tập trung vào quyền riêng tư với 10 GB miễn phí, cũng có thể truy cập qua WebDAV",
+      "yandexdiskDesc": "Yandex Disk (5 GB miễn phí)",
+      "yandexdiskTooltip": "Yandex Disk – lưu trữ đám mây của Nga với 5 GB miễn phí, xác thực bằng token OAuth2"
     },
     "shortcuts": {
       "title": "Phím tắt",
@@ -1653,7 +1662,9 @@
       "retry": "Thử tải lại",
       "installRestart": "Cài đặt & Khởi động lại",
       "openInstaller": "Mở trình cài đặt",
-      "skipForNow": "Để sau, không phải bây giờ"
+      "skipForNow": "Để sau, không phải bây giờ",
+      "installing": "Đang cài đặt bản cập nhật...",
+      "installingDesc": "Ứng dụng sẽ tự động khởi động lại sau vài giây"
     },
     "ai": {
       "aeroAgent": "AeroAgent",
@@ -3291,6 +3302,12 @@
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
       "batchChecking": "Checking {count} servers, please wait..."
+    },
+    "scanning": {
+      "deleting": "Đang xóa",
+      "downloading": "Đang tải xuống",
+      "uploading": "Đang tải lên",
+      "preparing": "Đang chuẩn bị thao tác..."
     }
   }
 }
