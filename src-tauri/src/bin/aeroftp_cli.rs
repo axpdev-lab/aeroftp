@@ -108,6 +108,14 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_2FA", hide_env_values = true)]
     two_factor: Option<String>,
 
+    /// Use a saved server profile instead of URL (name or ID)
+    #[arg(long, short = 'P', global = true)]
+    profile: Option<String>,
+
+    /// Master password for encrypted vault (or set AEROFTP_MASTER_PASSWORD)
+    #[arg(long, global = true, env = "AEROFTP_MASTER_PASSWORD", hide_env_values = true)]
+    master_password: Option<String>,
+
     /// Verbose output (-v debug, -vv trace)
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -339,6 +347,8 @@ enum Commands {
         #[arg(long)]
         system: Option<String>,
     },
+    /// List saved server profiles from the encrypted vault
+    Profiles,
 }
 
 // ── Serializable Output Types ──────────────────────────────────────
@@ -793,6 +803,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     // TLS cert verification
     if cli.insecure {
         extra.insert("verify_cert".to_string(), "false".to_string());
+        if cli.verbose > 0 || !cli.quiet {
+            eprintln!("Warning: TLS certificate verification disabled (--insecure)");
+        }
     }
 
     // S3
@@ -827,18 +840,481 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     Ok((config, url_path))
 }
 
-async fn create_and_connect(
-    url: &str,
-    cli: &Cli,
-    format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    let (config, path) = match url_to_provider_config(url, cli) {
-        Ok(v) => v,
+// ── Vault Profile Support ─────────────────────────────────────────
+
+fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    use ftp_client_gui_lib::credential_store::CredentialStore;
+
+    // Try to init vault (auto mode unlocks automatically)
+    match CredentialStore::init() {
+        Ok(status) if status == "MASTER_PASSWORD_REQUIRED" => {
+            // Need master password
+            if let Some(ref mp) = cli.master_password {
+                if std::env::var("AEROFTP_MASTER_PASSWORD").is_err() {
+                    eprintln!("Warning: --master-password on command line is visible in process list. Use AEROFTP_MASTER_PASSWORD env var instead.");
+                }
+                CredentialStore::unlock_with_master(mp)
+                    .map_err(|e| format!("Failed to unlock vault: {}", e))?;
+            } else if std::io::stdin().is_terminal() {
+                // Interactive: prompt for master password (hidden input)
+                eprint!("Master password: ");
+                let _ = io::stderr().flush();
+                let mp = rpassword::read_password()
+                    .map_err(|e| format!("Failed to read master password: {}", e))?;
+                CredentialStore::unlock_with_master(mp.trim())
+                    .map_err(|e| format!("Failed to unlock vault: {}", e))?;
+            } else {
+                return Err("Vault is locked. Use --master-password or set AEROFTP_MASTER_PASSWORD".to_string());
+            }
+        }
+        Ok(_) => {} // Auto mode — already open
+        Err(e) => return Err(format!("Failed to open vault: {}", e)),
+    }
+
+    CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not available after init".to_string())
+}
+
+fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let profiles_json = match store.get("config_server_profiles") {
+        Ok(json) => json,
+        Err(_) => {
+            if matches!(format, OutputFormat::Json) {
+                println!("[]");
+            } else {
+                println!("No saved profiles found.");
+            }
+            return 0;
+        }
+    };
+
+    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&profiles_json) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            return 5;
+        }
+    };
+
+    if profiles.is_empty() {
+        if matches!(format, OutputFormat::Json) {
+            println!("[]");
+        } else {
+            println!("No saved profiles found.");
+        }
+        return 0;
+    }
+
+    if matches!(format, OutputFormat::Json) {
+        // JSON: output array with safe fields only (no credentials)
+        let safe: Vec<serde_json::Value> = profiles.iter().map(|p| {
+            serde_json::json!({
+                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+            })
+        }).collect();
+        println!("{}", serde_json::to_string_pretty(&safe).unwrap_or_default());
+    } else {
+        // Text: formatted table
+        println!("  {:<4} {:<30} {:<8} {:<35} Path", "#", "Name", "Proto", "Host");
+        println!("  {}", "\u{2500}".repeat(90));
+        for (i, p) in profiles.iter().enumerate() {
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("?");
+            let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
+            let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
+            let path = p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
+            let host_port = if port > 0 && port != 21 && port != 22 && port != 443 && port != 80 {
+                format!("{}:{}", host, port)
+            } else {
+                host.to_string()
+            };
+            println!("  {:<4} {:<30} {:<8} {:<35} {}", i + 1, name, proto.to_uppercase(), host_port, path);
+        }
+        eprintln!("\n{} profile(s). Use: aeroftp ls --profile \"Name\" [path]", profiles.len());
+    }
+
+    0
+}
+
+fn resolve_url_or_profile(url: &str, cli: &Cli, format: OutputFormat) -> Result<(ProviderConfig, String), i32> {
+    // If --profile is set, the "url" field is actually the first positional arg (path)
+    // But if we have a profile, we ignore the url and use the profile
+    if let Some(ref profile_name) = cli.profile {
+        return profile_to_provider_config(profile_name, cli, format);
+    }
+
+    // Normal URL path
+    match url_to_provider_config(url, cli) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            print_error(format, &e, 5);
+            Err(5)
+        }
+    }
+}
+
+fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputFormat) -> Result<(ProviderConfig, String), i32> {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
         Err(e) => {
             print_error(format, &e, 5);
             return Err(5);
         }
     };
+
+    let profiles_json = match store.get("config_server_profiles") {
+        Ok(json) => json,
+        Err(_) => {
+            print_error(format, "No saved profiles found in vault", 5);
+            return Err(5);
+        }
+    };
+
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
+        .map_err(|e| { print_error(format, &format!("Failed to parse profiles: {}", e), 5); 5 })?;
+
+    // Match by index, exact name, ID, or substring (with disambiguation)
+    let profile_lower = profile_name.to_lowercase();
+    let matched = if let Ok(idx) = profile_name.parse::<usize>() {
+        profiles.get(idx.saturating_sub(1))
+    } else {
+        // 1. Exact name match (case-insensitive)
+        let exact = profiles.iter().find(|p| {
+            p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase() == profile_lower
+        });
+        if exact.is_some() {
+            exact
+        } else {
+            // 2. Exact ID match
+            let by_id = profiles.iter().find(|p| {
+                p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name
+            });
+            if by_id.is_some() {
+                by_id
+            } else {
+                // 3. Substring match with disambiguation
+                let matches: Vec<_> = profiles.iter().filter(|p| {
+                    p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&profile_lower)
+                }).collect();
+                match matches.len() {
+                    0 => None,
+                    1 => Some(matches[0]),
+                    _ => {
+                        print_error(format, &format!(
+                            "Ambiguous profile '{}'. Matches: {}. Use exact name or index number.",
+                            profile_name,
+                            matches.iter().filter_map(|p| p.get("name").and_then(|v| v.as_str())).collect::<Vec<_>>().join(", ")
+                        ), 5);
+                        return Err(5);
+                    }
+                }
+            }
+        }
+    };
+
+    let profile = match matched {
+        Some(p) => p,
+        None => {
+            print_error(format, &format!("Profile not found: '{}'. Run 'aeroftp profiles' to list.", profile_name), 5);
+            return Err(5);
+        }
+    };
+
+    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+    let host = profile.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let port = profile.get("port").and_then(|v| v.as_u64()).map(|p| p as u16);
+    let username = profile.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let protocol = profile.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp");
+    let initial_path = profile.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/").to_string();
+
+    // Load credentials from vault
+    // Password is stored as a raw string (not JSON) in server_{id}
+    let (cred_user, cred_pass) = if !id.is_empty() {
+        match store.get(&format!("server_{}", id)) {
+            Ok(password_str) => {
+                // The vault stores just the password as a plain string
+                // Try to parse as JSON first (legacy format), fall back to raw string
+                if let Ok(cred) = serde_json::from_str::<serde_json::Value>(&password_str) {
+                    if let Some(obj) = cred.as_object() {
+                        let u = obj.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let p = obj.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        (if u.is_empty() { username.clone() } else { u }, p)
+                    } else {
+                        // JSON but not an object — treat as raw password string
+                        let raw = password_str.trim_matches('"').to_string();
+                        (username.clone(), raw)
+                    }
+                } else {
+                    // Raw password string (current format from GUI)
+                    (username.clone(), password_str)
+                }
+            }
+            Err(_) => (username.clone(), String::new()),
+        }
+    } else {
+        (username.clone(), String::new())
+    };
+
+    let provider_type = match protocol {
+        "ftp" => ProviderType::Ftp,
+        "ftps" => ProviderType::Ftps,
+        "sftp" => ProviderType::Sftp,
+        "webdav" => ProviderType::WebDav,
+        "s3" => ProviderType::S3,
+        "mega" => ProviderType::Mega,
+        "azure" => ProviderType::Azure,
+        "filen" => ProviderType::Filen,
+        "internxt" => ProviderType::Internxt,
+        "jottacloud" => ProviderType::Jottacloud,
+        "filelu" => ProviderType::FileLu,
+        "koofr" => ProviderType::Koofr,
+        "opendrive" => ProviderType::OpenDrive,
+        "yandexdisk" => ProviderType::YandexDisk,
+        "googledrive" => ProviderType::GoogleDrive,
+        "dropbox" => ProviderType::Dropbox,
+        "onedrive" => ProviderType::OneDrive,
+        "box" => ProviderType::Box,
+        "pcloud" => ProviderType::PCloud,
+        "zohoworkdrive" => ProviderType::ZohoWorkdrive,
+        "fourshared" => ProviderType::FourShared,
+        "drime" => ProviderType::DrimeCloud,
+        _ => {
+            print_error(format, &format!("Unsupported protocol in profile: {}", protocol), 7);
+            return Err(7);
+        }
+    };
+
+    // Build extra from profile options and CLI overrides
+    let mut extra = HashMap::new();
+
+    // Load provider-specific options from profile
+    if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
+        for (k, v) in opts {
+            if let Some(s) = v.as_str() {
+                extra.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+
+    // CLI overrides take precedence
+    if let Some(ref key) = cli.key {
+        extra.insert("private_key_path".to_string(), key.clone());
+    }
+    if let Some(ref kp) = cli.key_passphrase {
+        extra.insert("key_passphrase".to_string(), kp.clone());
+    }
+    if cli.trust_host_key {
+        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+    if let Some(ref tls) = cli.tls {
+        extra.insert("tls_mode".to_string(), tls.clone());
+    }
+    if cli.insecure {
+        extra.insert("verify_cert".to_string(), "false".to_string());
+    }
+    if let Some(ref bucket) = cli.bucket {
+        extra.insert("bucket".to_string(), bucket.clone());
+    }
+    if let Some(ref region) = cli.region {
+        extra.insert("region".to_string(), region.clone());
+    }
+    if let Some(ref container) = cli.container {
+        extra.insert("container".to_string(), container.clone());
+    }
+
+    if !cli.quiet {
+        eprintln!("Using profile: {} ({} → {})", name, protocol.to_uppercase(), host);
+    }
+
+    let config = ProviderConfig {
+        name: name.to_string(),
+        provider_type,
+        host,
+        port,
+        username: Some(cred_user),
+        password: Some(cred_pass),
+        initial_path: Some(initial_path.clone()),
+        extra,
+    };
+
+    Ok((config, initial_path))
+}
+
+/// Try to create an OAuth provider directly from vault tokens (for --profile with OAuth providers)
+async fn try_create_oauth_provider(
+    protocol: &str,
+    profile_name: &str,
+    initial_path: &str,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    quiet: bool,
+) -> Option<Result<(Box<dyn StorageProvider>, String), i32>> {
+    use ftp_client_gui_lib::providers::{
+        OAuth2Manager, OAuthProvider,
+        GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
+        ZohoWorkdriveProvider,
+        google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
+        onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
+        zoho_workdrive::ZohoWorkdriveConfig,
+    };
+
+    type OAuthCreateFn = Box<dyn FnOnce(&CredentialStore) -> Result<Box<dyn StorageProvider>, String>>;
+    let (oauth_provider, create_fn): (OAuthProvider, OAuthCreateFn) = match protocol {
+        "googledrive" => {
+            let oauth_settings = load_oauth_client_config(store, "googledrive");
+            (OAuthProvider::Google, Box::new(move |_| {
+                let config = GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
+                Ok(Box::new(GoogleDriveProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "dropbox" => {
+            let oauth_settings = load_oauth_client_config(store, "dropbox");
+            (OAuthProvider::Dropbox, Box::new(move |_| {
+                let config = DropboxConfig::new(&oauth_settings.0, &oauth_settings.1);
+                Ok(Box::new(DropboxProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "onedrive" => {
+            let oauth_settings = load_oauth_client_config(store, "onedrive");
+            (OAuthProvider::OneDrive, Box::new(move |_| {
+                let config = OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
+                Ok(Box::new(OneDriveProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "box" => {
+            let oauth_settings = load_oauth_client_config(store, "box");
+            (OAuthProvider::Box, Box::new(move |_| {
+                let config = BoxConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1 };
+                Ok(Box::new(BoxProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "pcloud" => {
+            let oauth_settings = load_oauth_client_config(store, "pcloud");
+            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
+            (OAuthProvider::PCloud, Box::new(move |_| {
+                let config = PCloudConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1, region };
+                Ok(Box::new(PCloudProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "zohoworkdrive" => {
+            let oauth_settings = load_oauth_client_config(store, "zohoworkdrive");
+            let region = store.get("oauth_zoho_region").unwrap_or_else(|_| "us".to_string());
+            (OAuthProvider::ZohoWorkdrive, Box::new(move |_| {
+                let config = ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
+                Ok(Box::new(ZohoWorkdriveProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        _ => return None,
+    };
+
+    // Check if tokens exist
+    let manager = OAuth2Manager::new();
+    if !manager.has_tokens(oauth_provider) {
+        eprintln!("Error: No OAuth tokens found for {}. Please authorize in AeroFTP GUI first.", profile_name);
+        return Some(Err(6));
+    }
+
+    // Create provider
+    let mut provider = match create_fn(store) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: Failed to create provider: {}", e);
+            return Some(Err(5));
+        }
+    };
+
+    if !quiet {
+        eprintln!("Using profile: {} ({} via OAuth)", profile_name, protocol.to_uppercase());
+    }
+
+    // Connect
+    if let Err(e) = provider.connect().await {
+        eprintln!("Error: OAuth connection failed: {}. Token may be expired — re-authorize in AeroFTP GUI.", e);
+        return Some(Err(6));
+    }
+
+    Some(Ok((provider, initial_path.to_string())))
+}
+
+/// Load OAuth client_id and client_secret from vault settings
+fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String, String) {
+    // Format 1: Individual vault keys (current SettingsPanel format)
+    let cid_key = format!("oauth_{}_client_id", provider);
+    let csec_key = format!("oauth_{}_client_secret", provider);
+    if let Ok(cid) = store.get(&cid_key) {
+        if !cid.is_empty() {
+            let csec = store.get(&csec_key).unwrap_or_default();
+            return (cid, csec);
+        }
+    }
+
+    // Format 2: Structured JSON (legacy migration / config_oauth_clients)
+    for key in &["config_oauth_clients", "config_aeroftp_oauth_settings"] {
+        if let Ok(json) = store.get(key) {
+            if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Some(p) = settings.get(provider) {
+                    let cid = p.get("clientId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let csec = p.get("clientSecret").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    if !cid.is_empty() {
+                        return (cid, csec);
+                    }
+                }
+            }
+        }
+    }
+    (String::new(), String::new())
+}
+
+use ftp_client_gui_lib::credential_store::CredentialStore;
+
+async fn create_and_connect(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(Box<dyn StorageProvider>, String), i32> {
+    // Check if --profile points to an OAuth provider — handle separately
+    if let Some(ref profile_name) = cli.profile {
+        if let Ok(store) = open_vault(cli) {
+            if let Ok(profiles_json) = store.get("config_server_profiles") {
+                if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json) {
+                    let profile_lower = profile_name.to_lowercase();
+                    let matched = if let Ok(idx) = profile_name.parse::<usize>() {
+                        profiles.get(idx.saturating_sub(1))
+                    } else {
+                        profiles.iter().find(|p| {
+                            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                            name.to_lowercase().contains(&profile_lower) || id == profile_name
+                        })
+                    };
+                    if let Some(profile) = matched {
+                        let protocol = profile.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+                        let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+                        let initial_path = profile.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
+                        if let Some(result) = try_create_oauth_provider(protocol, name, initial_path, &store, cli.quiet).await {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let (config, path) = resolve_url_or_profile(url, cli, format)?;
 
     let mut provider = match ProviderFactory::create(&config) {
         Ok(p) => p,
@@ -1188,6 +1664,8 @@ async fn cmd_get(
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
+            // Clean up partial file on failure
+            let _ = std::fs::remove_file(local_path);
             print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
@@ -1611,12 +2089,18 @@ async fn cmd_put_recursive(
     let remote_base = remote_base.unwrap_or("/");
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
-    // Walk local directory
-    let walker = walkdir::WalkDir::new(local_dir).follow_links(false);
+    // Walk local directory (bounded: max 100 levels deep, 500K entries)
+    const MAX_SCAN_DEPTH_PUT: usize = 100;
+    const MAX_SCAN_ENTRIES_PUT: usize = 500_000;
+    let walker = walkdir::WalkDir::new(local_dir).follow_links(false).max_depth(MAX_SCAN_DEPTH_PUT);
     let mut files: Vec<(String, String, u64)> = Vec::new(); // (local, remote, size)
     let mut dirs: Vec<String> = Vec::new();
 
     for entry in walker {
+        if files.len() + dirs.len() >= MAX_SCAN_ENTRIES_PUT {
+            eprintln!("Warning: scan capped at {} entries", MAX_SCAN_ENTRIES_PUT);
+            break;
+        }
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
@@ -4371,7 +4855,7 @@ fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
         for (key, val) in obj {
             let display = match val {
                 serde_json::Value::String(s) => {
-                    if s.len() > 80 { format!("{}...", &s[..77]) } else { s.clone() }
+                    if s.len() > 80 { format!("{}...", s.get(..77).unwrap_or(s)) } else { s.clone() }
                 }
                 other => other.to_string(),
             };
@@ -4519,7 +5003,7 @@ async fn agent_tool_loop(
                                 }
                                 let s = val.to_string();
                                 if s.len() > 8192 {
-                                    format!("{}... [truncated, {} bytes total]", &s[..8192], s.len())
+                                    format!("{}... [truncated, {} bytes total]", s.get(..8192).unwrap_or(&s), s.len())
                                 } else {
                                     s
                                 }
@@ -5416,6 +5900,7 @@ async fn main() {
             )
             .await
         }
+        Commands::Profiles => list_vault_profiles(&cli, format),
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Agent {
             message,

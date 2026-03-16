@@ -901,13 +901,14 @@ impl StorageProvider for WebDavProvider {
         let file = tokio::fs::File::open(local_path).await
             .map_err(ProviderError::IoError)?;
         let total_size = file.metadata().await
-            .map_err(ProviderError::IoError)?
-            .len();
+            .map_err(ProviderError::IoError)?.len();
 
+        // Stream file with Content-Length header (required by some HTTP/1.1 servers)
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
         let response = self.request(Method::PUT, remote_path)
+            .header("Content-Length", total_size)
             .body(body)
             .send()
             .await

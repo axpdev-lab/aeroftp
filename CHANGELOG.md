@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.9] - 2026-03-17
+
+### CLI Vault Profiles, FTP/TLS Upload Fix & 5-Auditor Security Hardening
+
+Major CLI evolution: saved server profiles accessible via `--profile` flag — connect to any of 22 protocols without exposing credentials. Critical fix for FTP/TLS upload truncation and WebDAV HTTP upload failures. 83-finding security audit across 5 specialized auditors with all CRITICAL/HIGH/MEDIUM resolved.
+
+#### Added
+
+- **CLI `--profile` flag**: Connect to any saved server profile from the encrypted vault without exposing credentials. Supports all 22 protocols. `aeroftp ls --profile "My Server" /path/` — zero passwords in command line, shell history, or process list. Fuzzy name matching with exact-match priority and ambiguous-match disambiguation
+- **CLI `profiles` command**: List all saved server profiles with protocol, host, and path. `aeroftp profiles` (table) or `aeroftp profiles --json` (machine-readable). Never shows credentials
+- **CLI OAuth provider support**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive accessible via `--profile` when tokens are authorized from GUI. pCloud verified working end-to-end
+- **CLI `--master-password` flag**: Unlock vault with master password for headless/CI use. Supports `AEROFTP_MASTER_PASSWORD` env var for secure scripting
+
+#### Fixed
+
+- **FTP/TLS upload truncation** (critical): Files uploaded via FTP with TLS were silently truncated to multiples of ~8-16 KB (TLS record buffer size). Root cause: `native-tls` `shutdown()` sent TLS `close_notify` before TCP send buffer drained. Fix: explicit `flush()` + scaled drain delay before `finalize_put_stream()`, plus binary transfer mode (`TYPE I`). Verified with 5KB-5MB files on Aruba hosting
+- **WebDAV HTTP upload 0 bytes** (critical): Files uploaded via WebDAV over plain HTTP arrived as 0 bytes while HTTPS worked. Root cause: streaming body without `Content-Length` header failed on servers not supporting chunked transfer encoding. Fix: streaming upload with explicit `Content-Length` header via `tokio_util::io::ReaderStream`
+- **WebDAV upload OOM on large files**: Upload now streams from file instead of reading entire file into memory. Previously a 2GB file would allocate 2GB RAM
+- **Master password echo**: Vault master password prompt now uses hidden input (`rpassword`) instead of visible `stdin.read_line()`
+- **Profile ambiguity**: `--profile` with substring matching multiple profiles now shows clear error with candidates instead of silently picking first match
+- **--insecure warning**: TLS certificate verification disabled warning now shown to user (was only in debug logs)
+- **Partial download cleanup**: Failed downloads now remove partial local file instead of leaving corrupt file on disk
+- **FTP upload chunk size**: Increased from 8KB to 64KB for ~8x throughput improvement on high-bandwidth connections
+- **Recursive upload limits**: `put -r` now capped at 100 depth levels and 500K entries, matching download limits
+- **UTF-8 string truncation safety**: Fixed potential panic on multi-byte UTF-8 characters in output truncation
+
+#### Security (5-Auditor CLI Audit — 83 findings, all CRITICAL/HIGH/MEDIUM resolved)
+
+- **SEC-001**: Master password hidden input (was visible echo)
+- **SEC-002**: CLI arg exposure warning for `--master-password`
+- **SEC-011**: TLS insecure mode warning shown to user
+- **AUTH-001**: OAuth client config vault key lookup corrected for token refresh
+- **AUTH-004**: Profile matching disambiguation prevents wrong-server operations
+- **PERF-001**: WebDAV streaming upload eliminates OOM vector
+- **PERF-011**: Recursive upload bounded to prevent resource exhaustion
+- **QUAL-002**: WebDAV upload no longer loads entire file in memory
+- **QUAL-004**: Removed redundant import
+- **QUAL-021**: UTF-8 safe string truncation
+
+---
+
 ## [2.9.8] - 2026-03-16
 
 ### OpenDrive, Yandex Trash & Windows Credential Fix

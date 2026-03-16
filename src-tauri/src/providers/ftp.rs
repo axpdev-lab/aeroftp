@@ -614,25 +614,59 @@ impl StorageProvider for FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        use tokio::io::AsyncReadExt;
+        use suppaftp::types::FileType;
+
         let stream = self.stream_mut()?;
 
-        // Stream from file instead of reading entire file into memory
-        let total_size = tokio::fs::metadata(local_path).await
-            .map_err(ProviderError::IoError)?.len();
+        // Set binary transfer mode explicitly
+        stream.transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let mut file = tokio::fs::File::open(local_path).await
             .map_err(ProviderError::IoError)?;
+        let total_size = file.metadata().await
+            .map_err(ProviderError::IoError)?.len();
 
-        // Upload using AsyncRead
-        stream
-            .put_file(remote_path, &mut file)
+        // Open streaming upload channel (PASV + STOR)
+        let mut data_stream = stream.put_with_stream(remote_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
-        if let Some(progress) = on_progress {
-            progress(total_size, total_size);
+
+        // Write in 64KB chunks for optimal throughput
+        let mut chunk = [0u8; 65536];
+        let mut total_written: u64 = 0;
+
+        loop {
+            let n = file.read(&mut chunk).await.map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            data_stream.write_all(&chunk[..n])
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
+            total_written += n as u64;
+            if let Some(ref progress) = on_progress {
+                progress(total_written, total_size);
+            }
         }
-        
+
+        // Flush all TLS buffers to the wire
+        data_stream.flush()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+
+        // Wait for TCP to drain all TLS records before close_notify
+        // native-tls shutdown races with TCP send buffer; scale delay with file size
+        let drain_ms = (total_written / 4096).clamp(100, 2000);
+        tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
+
+        // Finalize: sends TLS close_notify, reads 226 from control channel
+        stream.finalize_put_stream(data_stream)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
         Ok(())
     }
     

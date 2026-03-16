@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.9" date="2026-03-17">
+      <description>
+        <p>CLI vault profiles: connect to any saved server with --profile flag, zero credentials exposed. Critical fix for FTP/TLS upload truncation and WebDAV HTTP 0-byte uploads. 5-auditor security hardening (83 findings, all resolved). WebDAV streaming upload eliminates memory issues on large files. OAuth providers accessible from CLI when authorized via GUI.</p>
+      </description>
+    </release>
     <release version="2.9.8" date="2026-03-16">
       <description>
         <p>OpenDrive native REST API as 22nd protocol (5 GB free, session auth, trash management). Yandex Disk trash manager fully wired with context menu. Critical fix for Windows credential persistence — server profiles no longer disappear after saving. Import/export credential error handling improved. 9 new OpenDrive i18n keys in 47 languages.</p>

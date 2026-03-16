@@ -28,7 +28,7 @@ mod provider_commands;
 mod session_manager;
 mod session_commands;
 mod crypto;
-mod credential_store;
+pub mod credential_store;
 mod profile_export;
 mod keystore_export;
 mod pty;

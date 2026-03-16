@@ -513,6 +513,13 @@ impl FtpManager {
             }
         }
 
+        // Flush TLS buffers and wait for TCP to drain before close_notify
+        if !cancelled {
+            let _ = data_stream.flush().await;
+            let drain_ms = (total_written / 4096).clamp(100, 2000);
+            tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
+        }
+
         // Finalize the stream (must always finalize to keep FTP connection clean)
         let finalize_result = stream.finalize_put_stream(data_stream).await;
         if cancelled {
