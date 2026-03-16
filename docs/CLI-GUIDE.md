@@ -1,6 +1,6 @@
 # AeroFTP CLI — User Guide
 
-> **Version**: 2.9.1
+> **Version**: 2.9.9
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
 > **License**: GPL-3.0
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, supporting 12 protocols through a single binary with consistent behavior across all of them.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, supporting 22 protocols through a single binary with consistent behavior across all of them.
 
 ### Supported Protocols
 
@@ -26,6 +26,18 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 | Jottacloud | `jottacloud://` | Bearer Token |
 | FileLu | `filelu://` | API Key |
 | Koofr | `koofr://` | OAuth2 Token |
+| OpenDrive | `opendrive://` | Password |
+| Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
+| Google Drive | — | OAuth2 (via `--profile`) |
+| Dropbox | — | OAuth2 (via `--profile`) |
+| OneDrive | — | OAuth2 (via `--profile`) |
+| Box | — | OAuth2 (via `--profile`) |
+| pCloud | — | OAuth2 (via `--profile`) |
+| Zoho WorkDrive | — | OAuth2 (via `--profile`) |
+| 4shared | — | OAuth1 (via `--profile`) |
+| kDrive | — | OAuth2 (via `--profile`) |
+
+> **OAuth providers** do not have URL schemes. Use `--profile` to connect via saved server profiles authorized from the AeroFTP GUI.
 
 ---
 
@@ -36,7 +48,7 @@ The CLI binary (`aeroftp-cli`) is included in all AeroFTP distribution packages 
 ```bash
 # Verify installation
 aeroftp --version
-# aeroftp 2.9.1
+# aeroftp 2.9.9
 
 aeroftp --help
 ```
@@ -89,6 +101,92 @@ Passwords can be provided in several ways (in order of preference):
 4. **URL** (least secure): `sftp://user:password@host` — a warning is displayed
 
 > **Security**: stdin passwords are limited to 4 KB. A warning is shown when passwords appear in URLs.
+
+---
+
+## Server Profiles (`--profile`)
+
+The most powerful way to use the CLI. Connect to any saved server from the AeroFTP encrypted vault — **zero credentials exposed** in the command line, shell history, or process list.
+
+### Setup
+
+1. Open the AeroFTP GUI
+2. Connect to a server and save it (check "Save this connection")
+3. Use `--profile` in the CLI to connect by name
+
+### Usage
+
+```bash
+# List all saved profiles
+aeroftp profiles
+
+# Connect using a profile name
+aeroftp ls --profile "My Server" /path/
+
+# Fuzzy name matching (case-insensitive)
+aeroftp ls --profile "aruba" /www/
+
+# Connect by profile index number
+aeroftp ls --profile 3 /
+
+# JSON output for scripting
+aeroftp profiles --json
+```
+
+### Profile Matching
+
+The CLI matches profiles in this order:
+1. **Exact name** (case-insensitive)
+2. **Exact ID** (internal UUID)
+3. **Substring match** — if only one profile matches, it connects. If multiple match, an error lists the candidates
+
+```bash
+$ aeroftp ls --profile "SSH" /
+Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exact name or index number.
+```
+
+### OAuth Providers via Profile
+
+OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk) require browser authorization. Authorize once in the AeroFTP GUI, then use the CLI:
+
+```bash
+# After authorizing Google Drive in the GUI:
+aeroftp ls --profile "My Google Drive" /
+
+# pCloud (long-lived tokens — works immediately)
+aeroftp ls --profile "pCloud" /
+
+# Dropbox
+aeroftp get --profile "My Dropbox" /Documents/report.pdf
+```
+
+### Master Password
+
+If the vault is protected with a master password:
+
+```bash
+# Via environment variable (recommended)
+AEROFTP_MASTER_PASSWORD=secret aeroftp ls --profile "server" /
+
+# Interactive prompt (hidden input)
+aeroftp ls --profile "server" /
+# Master password: ********
+
+# Via flag (visible in process list — use env var instead)
+aeroftp ls --profile "server" --master-password secret /
+```
+
+### AI Agent Integration
+
+The `--profile` flag is designed for AI coding agents (Claude Code, Cursor, Codex, Devin). The agent never sees credentials:
+
+```bash
+# Agent runs this — no password anywhere
+aeroftp put --profile "Production" ./dist/app.js /var/www/app.js
+
+# Agent can list, upload, download, sync — all credential-free
+aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run
+```
 
 ---
 
@@ -246,6 +344,8 @@ Executes a `.aeroftp` script file containing a sequence of commands. See [Batch 
 
 | Flag | Description |
 |------|-------------|
+| `--profile <name>` / `-P` | Use a saved server profile from the encrypted vault |
+| `--master-password <pw>` | Unlock vault master password (env: `AEROFTP_MASTER_PASSWORD`) |
 | `--json` / `--format json` | Machine-readable JSON output |
 | `--quiet` / `-q` | Suppress info messages (errors only) |
 | `--verbose` / `-v` | Debug output (`-vv` for trace) |

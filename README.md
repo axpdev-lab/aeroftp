@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 21 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. 22 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <!-- Row 1: Project Identity -->
@@ -56,7 +56,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 21 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 22 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
 
 ---
 
@@ -64,13 +64,13 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (21 protocols, sync, share)
+├── AeroCloud    — Personal cloud (22 protocols, sync, share)
 ├── AeroFile     — Professional file manager
 ├── AeroSync     — Bidirectional sync engine
 ├── AeroVault    — Military-grade encryption
 ├── AeroTools    — Code editor + Terminal + AI chat
 │   └── AeroAgent    — AI-powered assistant (47 tools, 19 providers)
-├── AeroFTP CLI  — Production command-line client (14 commands, 12 protocols)
+├── AeroFTP CLI  — Production command-line client (15 commands, 22 protocols, vault profiles)
 └── AeroPlayer   — Media player with visualizers
 ```
 
@@ -78,7 +78,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-Turn **any server** into a private personal cloud. Connect to all 21 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Connect to all 22 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -105,7 +105,7 @@ Turn **any server** into a private personal cloud. Connect to all 21 protocols t
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, expiring share links |
 
-**Cloud features**: Background sync works with all 21 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
+**Cloud features**: Background sync works with all 22 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -194,7 +194,7 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent — AI-Powered Assistant
 
-An AI assistant with **47 provider-agnostic tools** that work across all 21 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
+An AI assistant with **47 provider-agnostic tools** that work across all 22 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 
@@ -229,10 +229,16 @@ An AI assistant with **47 provider-agnostic tools** that work across all 21 prot
 
 ### AeroFTP CLI — Command-Line Client
 
-A production command-line interface sharing the same Rust backend as the GUI. 14 commands across 12 protocols with structured JSON output, glob pattern transfers, and a batch scripting engine.
+A production command-line interface sharing the same Rust backend as the GUI. 15 commands across 22 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
 
 ```bash
-# Connect and list files
+# Zero-credential connection via saved profiles
+aeroftp ls --profile "My Server" /var/www/ -l
+
+# List all saved servers from encrypted vault
+aeroftp profiles
+
+# URL-based connection (classic mode)
 aeroftp ls sftp://user@myserver.com /var/www/ -l
 
 # Download with glob patterns
@@ -241,43 +247,45 @@ aeroftp get sftp://user@host "/data/*.csv"
 # Pipe-friendly: data on stdout, messages on stderr
 aeroftp cat sftp://user@host /config.ini | grep DB_HOST
 
-# Batch deployment script
-aeroftp batch deploy.aeroftp
+# OAuth providers via profile (Google Drive, Dropbox, OneDrive, etc.)
+aeroftp ls --profile "My Google Drive" /
 ```
 
-**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `find`, `stat`, `df`, `tree`, `sync`, `batch`
+**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `find`, `stat`, `df`, `tree`, `sync`, `batch`, `profiles`
 
-**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr
+**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
 
 **Features**:
+- **`--profile` vault profiles** — connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows
 - `--json` structured output for all commands
 - Glob pattern transfers (`*.csv`, `*.json`)
-- `.aeroftp` batch scripts with variables, error policies, and 16 commands
+- `.aeroftp` batch scripts with variables, error policies, and 17 commands
 - Progress bars with speed and ETA
 - `NO_COLOR` / `CLICOLOR` compliance
 - Password via stdin, env vars, or interactive prompt
 - SSH key authentication for SFTP
-- 45-finding security audit (grade A-)
+- 10-auditor dual security audit (Claude Opus 4.6 + GPT 5.4, 83+ findings resolved)
 
-See the full **[CLI Guide](docs/CLI-GUIDE.md)** for usage, examples, and batch scripting reference.
+See the full **[CLI Guide](docs/CLI-GUIDE.md)** for usage, examples, profiles, and batch scripting reference.
 
 #### AI Agent & CI/CD Integration
 
-AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines:
+AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines. The `--profile` flag is the key enabler — agents connect to servers without ever seeing passwords:
 
-- **`--json` on every command** — structured output parsable by any agent (OpenClaw, Claude Code, Codex, Cursor, Devin)
+- **`--profile "Name"`** — connect via encrypted vault, zero credentials in the command line, shell history, or process list
+- **`--json` on every command** — structured output parsable by any agent (Claude Code, Codex, Cursor, Devin)
 - **Semantic exit codes** (0-8) — agents know exactly what failed without parsing text
-- **URL-based connections** — single argument, zero interaction: `aeroftp put sftp://user@host ./dist/ /www/`
 - **`NO_COLOR` compliant** — no ANSI escape sequences polluting agent output
 - **stderr/stdout separation** — data on stdout for piping, errors on stderr for logging
 - **Batch scripts** (`.aeroftp`) — define multi-step deployment flows as files, execute atomically
 
 ```bash
-# Example: AI agent deploys a website
-aeroftp sync ./build/ ftp://deploy@server/www/ --direction push --json
+# AI agent deploys a website — no credentials anywhere
+aeroftp put --profile "Production" ./dist/app.js /var/www/app.js
+aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run
 
-# CI/CD: batch deployment with error handling
-aeroftp batch .aeroftp/deploy-production.aeroftp --json
+# CI/CD with env-based vault unlock
+AEROFTP_MASTER_PASSWORD=$SECRET aeroftp put --profile "Deploy" ./dist/ /www/ -r
 ```
 
 > AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool — listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
