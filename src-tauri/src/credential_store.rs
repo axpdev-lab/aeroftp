@@ -214,13 +214,38 @@ impl VaultKeyFile {
     fn write(&self) -> Result<(), CredentialError> {
         let path = Self::path()?;
         let data = self.to_bytes();
-        // A2-01: Atomic write via temp+rename to prevent corruption on crash
+        // Atomic write via temp+rename (with Windows fallback)
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &data)?;
-        // A2-01: fsync temp file before rename, then fsync parent dir after rename
-        fsync_file_and_parent(&tmp_path)?;
-        std::fs::rename(&tmp_path, &path)?;
-        fsync_file_and_parent(&path)?;
+        if let Ok(f) = std::fs::File::open(&tmp_path) {
+            let _ = f.sync_all();
+        }
+        // Rename temp → target (Windows: retry with remove-first, then direct write fallback)
+        if let Err(_) = std::fs::rename(&tmp_path, &path) {
+            #[cfg(windows)]
+            {
+                let _ = std::fs::remove_file(&path);
+                if std::fs::rename(&tmp_path, &path).is_err() {
+                    std::fs::write(&path, &data)?;
+                    let _ = std::fs::remove_file(&tmp_path);
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                return Err(CredentialError::Io(
+                    std::io::Error::new(std::io::ErrorKind::Other, "rename failed")
+                ));
+            }
+        }
+        if let Ok(f) = std::fs::File::open(&path) {
+            let _ = f.sync_all();
+        }
+        #[cfg(unix)]
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
         ensure_secure_permissions(&path)?;
         Ok(())
     }
@@ -614,10 +639,43 @@ impl CredentialStore {
         // A2-01: Atomic write via temp+rename to prevent corruption on crash
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &data)?;
-        // A2-01: fsync temp file before rename, then fsync parent dir after rename
-        fsync_file_and_parent(&tmp_path)?;
-        std::fs::rename(&tmp_path, path)?;
-        fsync_file_and_parent(path)?;
+        // fsync temp file before rename
+        if let Ok(f) = std::fs::File::open(&tmp_path) {
+            let _ = f.sync_all();
+        }
+        // Rename temp → target. On Windows, rename can fail if the destination is
+        // locked by a concurrent read (VAULT_WRITE_LOCK only covers writes, not reads).
+        // Fallback: remove destination first, then retry rename; last resort: direct write.
+        if let Err(_) = std::fs::rename(&tmp_path, path) {
+            #[cfg(windows)]
+            {
+                // Windows: try remove + rename, then fallback to direct overwrite
+                let _ = std::fs::remove_file(path);
+                if std::fs::rename(&tmp_path, path).is_err() {
+                    // Last resort: direct write (non-atomic but functional)
+                    std::fs::write(path, &data)?;
+                    let _ = std::fs::remove_file(&tmp_path);
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                // On Unix rename is atomic even if destination exists — this shouldn't fail
+                return Err(CredentialError::Io(
+                    std::io::Error::new(std::io::ErrorKind::Other, "rename failed")
+                ));
+            }
+        }
+        // fsync the final file
+        if let Ok(f) = std::fs::File::open(path) {
+            let _ = f.sync_all();
+        }
+        // fsync parent directory (Unix only — Windows doesn't support opening dirs as files)
+        #[cfg(unix)]
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
         ensure_secure_permissions(path)?;
         Ok(())
     }
@@ -625,18 +683,8 @@ impl CredentialStore {
 
 // ============ Shared Helpers ============
 
-/// A2-01: fsync a file to ensure data is durable, then fsync its parent directory
-/// to ensure the directory entry (rename) is also durable.
-fn fsync_file_and_parent(file_path: &Path) -> Result<(), std::io::Error> {
-    let f = std::fs::File::open(file_path)?;
-    f.sync_all()?;
-    if let Some(parent) = file_path.parent() {
-        if let Ok(dir) = std::fs::File::open(parent) {
-            dir.sync_all()?;
-        }
-    }
-    Ok(())
-}
+// fsync_file_and_parent removed — fsync logic is now inline in write_vault/VaultKeyFile::write
+// with platform-specific handling (Windows can't open directories as files)
 
 /// Get aeroftp config directory, creating it with secure permissions if needed
 fn config_dir() -> Result<PathBuf, CredentialError> {
