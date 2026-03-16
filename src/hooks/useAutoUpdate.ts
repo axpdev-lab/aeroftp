@@ -42,16 +42,24 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const activityLogRef = useRef(activityLog);
   activityLogRef.current = activityLog;
 
+  const sendSystemNotification = useCallback(async (title: string, body: string) => {
+    try {
+      await sendNotification({ title, body });
+    } catch (error) {
+      console.warn('System notification unavailable:', error);
+    }
+  }, []);
+
   const checkForUpdate = useCallback(async (manual = false) => {
     try {
       const info: UpdateInfo = await invoke('check_update');
       setUpdateAvailable(info);
 
       if (info.has_update) {
-        sendNotification({
-          title: 'AeroFTP Update Available!',
-          body: `Version ${info.latest_version} is ready.`,
-        });
+        await sendSystemNotification(
+          'AeroFTP Update Available!',
+          `Version ${info.latest_version} is ready.`
+        );
         const checkType = manual ? '[Manual]' : '[Auto]';
         activityLogRef.current.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         await invoke('log_update_detection', { version: info.latest_version || '' });
@@ -72,7 +80,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
             checkForUpdate(false);
           }, THIRTY_MINUTES);
         } else if (manual) {
-          sendNotification({ title: 'No Update Available', body: `You're running the latest version (${info.current_version})` });
+          await sendSystemNotification('No Update Available', `You're running the latest version (${info.current_version})`);
           activityLogRef.current.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         }
       }
@@ -82,7 +90,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
         activityLogRef.current.log('ERROR', `Update check failed: ${error}`, 'error');
       }
     }
-  }, []);
+  }, [sendSystemNotification]);
 
   // Check on startup (5s delay) + periodic every 24h
   useEffect(() => {

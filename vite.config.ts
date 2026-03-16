@@ -57,6 +57,11 @@ function copyMonacoAssets(): Plugin {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), copyMonacoAssets()],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+  },
   define: {
     __FRONTEND_VERSIONS__: JSON.stringify({
       react: cleanVer(pkg.dependencies?.['react'] ?? '?'),

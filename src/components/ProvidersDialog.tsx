@@ -110,6 +110,12 @@ const OAUTH_PROVIDERS: ProviderFeatures[] = [
     advanced: [],
   },
   {
+    name: 'OpenDrive',
+    logoId: 'opendrive',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'shareLink', 'trash'],
+    advanced: [],
+  },
+  {
     name: 'Yandex Disk',
     logoId: 'yandexdisk',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],

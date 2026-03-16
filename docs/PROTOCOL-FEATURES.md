@@ -30,21 +30,23 @@
 | **kDrive** | HTTPS | API Token (Bearer) | Universal Vault | TLS Certificate |
 | **Koofr** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **FileLu** | HTTPS | API Key | Universal Vault | TLS Certificate |
+| **Yandex Disk** | HTTPS | OAuth2 Token | Universal Vault | TLS Certificate |
+| **OpenDrive** | HTTPS | Session (Username/Password) | Universal Vault | TLS Certificate |
 
 ### Security Features by Protocol
 
-| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu |
-|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
-| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
-| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - | - |
-| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - | - | - | - |
-| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
-| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - | - | - | - |
-| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - |
-| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes | Yes | - | - |
-| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu | Yandex | OpenDrive |
+|---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|--------|-----------|
+| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes | Yes | Yes | Yes |
+| SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| PKCE Flow | - | - | - | - | - | Yes | - | Yes | Yes | - | - | - | - | - | - | - | - |
+| Digest Auth (RFC 2617) | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Ephemeral Port | - | - | - | - | - | Yes | - | Yes | Yes | - | Yes | - | - | - | - | Yes | - |
+| OAuth 1.0 Flow | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - |
+| E2E Encryption | - | - | - | - | - | - | Yes | - | - | - | - | Yes | Yes | - | - | - | - |
+| Memory Zeroize | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ---
 
@@ -52,17 +54,17 @@
 
 ### Core Operations
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu |
-|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|
-| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes | Yes | Yes | Yes*** | Yes |
-| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No | Yes |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | Google Drive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu | Yandex | OpenDrive |
+|-----------|-----|------|------|--------|-----|--------------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|--------|-----------|
+| List | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Upload | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Download | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Delete | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Rename | Yes | Yes | Yes | Yes | Yes* | Yes | Yes | Yes | Yes | Yes | Yes | Yes** | Yes | Yes | Yes | Yes | Yes*** | Yes | Yes | Yes |
+| Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No | Yes | Yes | Yes |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete
@@ -70,30 +72,30 @@
 
 ### Advanced Operations (v1.4.0)
 
-| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu |
-|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|
-| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes | Yes† |
-| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - |
-| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
-| **Locking** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - |
-| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
-| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - |
-| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
-| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - |
-| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| **Remote URL Fetch** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
-| **File Password** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
-| **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes |
-| **Tags** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **Watermark** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - |
-| **Comments** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
-| **Collaborations** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - |
+| Operation | FTP | FTPS | SFTP | WebDAV | S3 | GDrive | Dropbox | OneDrive | MEGA | Box | pCloud | Azure | 4shared | Filen | Zoho WD | Internxt | kDrive | FileLu | Yandex | OpenDrive |
+|-----------|-----|------|------|--------|-----|--------|---------|----------|------|-----|--------|-------|---------|-------|---------|----------|--------|--------|--------|-----------|
+| **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes | Yes† | Yes | - |
+| **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | Yes | - | - | - | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - | - | - |
+| **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Locking** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - | - | - |
+| **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Resumable Upload** | - | - | - | - | Yes | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
+| **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **Remote URL Fetch** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
+| **File Password** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
+| **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
+| **Tags** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| **Watermark** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - | - | - |
+| **Comments** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
+| **Collaborations** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
 
 †FileLu Server Copy = server-side clone (`filelu_clone_file`)
 ‡Box Enterprise only (Business/Enterprise plan required)
@@ -120,6 +122,8 @@
 | **kDrive** | — | — | Not yet implemented |
 | **Koofr** | Native | `provider_create_share_link` | Share link via Koofr API |
 | **FileLu** | Native | `provider_create_share_link` | Public share link via FileLu API |
+| **Yandex Disk** | Native | `provider_create_share_link` | Publish/unpublish via REST API |
+| **OpenDrive** | Native | `provider_create_share_link` | Expiring share links |
 
 ---
 
@@ -414,7 +418,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 47 tools work identically across all 20 protocols via the `StorageProvider` trait:
+All 47 tools work identically across all 21 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -607,6 +611,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.9.5 | **Dual-Engine Security Audit** — Claude Opus 4.6 + GPT-5.4 (117 findings), DOMPurify, vault write safety, shell denylist expansion, TOTP-before-cache. Yandex Object Storage S3 preset | Done |
 | v2.9.6 | **Remote Timestamp Timezone Fix** — MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
 | v2.9.7 | **Share Links for FTP/SFTP/WebDAV** — Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
+| v2.9.8 | **OpenDrive Native API** (22nd protocol), Settings OAuth for Yandex/Zoho, protocol count update to 21 | Done |
 
 ### Planned
 

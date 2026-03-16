@@ -7039,11 +7039,16 @@ async fn export_server_profiles(
 
     // Fetch credentials from secure store if requested
     if include_credentials {
-        if let Some(store) = credential_store::CredentialStore::from_cache() {
-            for server in &mut servers {
-                if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
-                    server.credential = Some(cred);
+        match credential_store::CredentialStore::from_cache() {
+            Some(store) => {
+                for server in &mut servers {
+                    if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
+                        server.credential = Some(cred);
+                    }
                 }
+            }
+            None => {
+                log::warn!("Export: vault not ready, credentials will not be included");
             }
         }
     }
@@ -7061,12 +7066,27 @@ async fn import_server_profiles(
         .map_err(|e| e.to_string())?;
 
     // Store credentials in secure store
-    if let Some(store) = credential_store::CredentialStore::from_cache() {
-        for server in &servers {
-            if let Some(ref cred) = server.credential {
-                let _ = store.store(&format!("server_{}", server.id), cred);
+    let mut cred_errors: Vec<String> = Vec::new();
+    match credential_store::CredentialStore::from_cache() {
+        Some(store) => {
+            for server in &servers {
+                if let Some(ref cred) = server.credential {
+                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                        cred_errors.push(format!("{}: {}", server.id, e));
+                    }
+                }
             }
         }
+        None => {
+            // Vault not ready — credentials cannot be stored
+            let cred_count = servers.iter().filter(|s| s.credential.is_some()).count();
+            if cred_count > 0 {
+                cred_errors.push(format!("Vault not ready, {} credentials not stored", cred_count));
+            }
+        }
+    }
+    if !cred_errors.is_empty() {
+        log::warn!("Import credential issues: {:?}", cred_errors);
     }
 
     // H16 fix: Redact credentials before returning to renderer.
@@ -7408,7 +7428,7 @@ pub fn run() {
             // the frontend signals readiness via the `app_ready` command.
             let splash_url = {
                 #[cfg(dev)]
-                { WebviewUrl::External(url::Url::parse("http://localhost:5173/splash.html").unwrap()) }
+                { WebviewUrl::External(url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap()) }
                 #[cfg(not(dev))]
                 { WebviewUrl::External(url::Url::parse(&format!("http://localhost:{}/splash.html", port)).unwrap()) }
             };
@@ -7880,6 +7900,14 @@ pub fn run() {
             provider_commands::google_drive_list_trash,
             provider_commands::google_drive_restore_from_trash,
             provider_commands::google_drive_permanent_delete,
+            provider_commands::opendrive_list_trash,
+            provider_commands::opendrive_restore_from_trash,
+            provider_commands::opendrive_permanent_delete,
+            provider_commands::opendrive_empty_trash,
+            provider_commands::yandex_list_trash,
+            provider_commands::yandex_restore_from_trash,
+            provider_commands::yandex_permanent_delete,
+            provider_commands::yandex_empty_trash,
             provider_commands::google_drive_set_starred,
             provider_commands::google_drive_list_comments,
             provider_commands::google_drive_add_comment,

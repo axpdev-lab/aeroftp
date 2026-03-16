@@ -90,6 +90,17 @@ export const KoofrLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// OpenDrive — PNG logo
+export const OpenDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/opendrive.png"
+        alt="OpenDrive"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Yandex Cloud — blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -338,7 +349,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'oracle-cloud': OracleCloudLogo,
     'idrive-e2': IDriveLogo,
     'nextcloud': NextcloudLogo,
-'koofr': KoofrLogo,
+    'koofr': KoofrLogo,
+    'opendrive': OpenDriveLogo,
     'box': BoxLogo,
     'pcloud': PCloudLogo,
     'azure': AzureLogo,

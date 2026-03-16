@@ -55,6 +55,8 @@ pub enum ProviderType {
     FileLu,
     /// Koofr Cloud Storage (European, 10 GB free)
     Koofr,
+    /// OpenDrive Cloud Storage
+    OpenDrive,
     /// Yandex Disk (Russian cloud, 5 GB free)
     YandexDisk,
 }
@@ -84,6 +86,7 @@ impl fmt::Display for ProviderType {
             ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
             ProviderType::FileLu => write!(f, "FileLu"),
             ProviderType::Koofr => write!(f, "Koofr"),
+            ProviderType::OpenDrive => write!(f, "OpenDrive"),
             ProviderType::YandexDisk => write!(f, "Yandex Disk"),
         }
     }
@@ -115,6 +118,7 @@ impl ProviderType {
             ProviderType::DrimeCloud => 443,
             ProviderType::FileLu => 443,
             ProviderType::Koofr => 443,
+            ProviderType::OpenDrive => 443,
             ProviderType::YandexDisk => 443,
         }
     }
@@ -144,6 +148,7 @@ impl ProviderType {
             ProviderType::DrimeCloud |
             ProviderType::FileLu |
             ProviderType::Koofr |
+            ProviderType::OpenDrive |
             ProviderType::YandexDisk
         )
     }

@@ -5,7 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.9.8] - 2026-03-16
+
+### OpenDrive, Yandex Trash & Windows Credential Fix
+
+OpenDrive joins as the 22nd protocol with a full native REST API provider. Yandex Disk trash management now fully wired. Critical fix for Windows credential persistence that caused server profiles to disappear.
+
+#### Added
+
+- **OpenDrive provider** (22nd protocol): Native REST API integration with session-based authentication (username/password), 5 GB free storage. Full StorageProvider trait: list, upload, download, mkdir, delete, move, stat, storage quota. Trash management (list/restore/permanent delete/empty). MD5 checksums, zlib compression, expiring share links. `opendrive.rs` ~1562 lines. OpenDriveTrashManager.tsx component. 4 Tauri commands for trash operations. Integrated in cloud provider factory, CLI, and AeroAgent
+- **Yandex Disk Trash Manager**: Full trash lifecycle — list, restore, permanent delete, empty trash. `YandexTrashManager.tsx` component with sky-blue theme, 4 Tauri commands (`yandex_list_trash`, `yandex_restore_from_trash`, `yandex_permanent_delete`, `yandex_empty_trash`). Context menu "View Trash" entry for Yandex Disk connections
+- **Yandex Disk OAuth in Settings**: Client ID and Client Secret configuration fields added to Settings > Cloud Providers tab with link to Yandex OAuth console
+- **Zoho WorkDrive OAuth in Settings**: Client ID and Client Secret configuration fields added to Settings > Cloud Providers tab with link to Zoho API console
+- **OpenDrive i18n**: 9 keys translated in all 47 languages (trash title, description, tooltip, auth help, username placeholder, display name, protocol label, settings label)
+
+#### Fixed
+
+- **Windows credential persistence** (critical): `secureStoreAndClean` was removing localStorage after vault write, but if the vault had transient issues on Windows (file locking, ACL), server profiles were permanently lost from both storage layers. Now localStorage is kept as a resilient write-through backup alongside the encrypted vault
+- **Server import credential loss**: `import_server_profiles` silently ignored credential storage failures (`let _ = store.store(...)`) — imported passwords and API keys were lost without any error. Now logs warnings and properly reports vault-not-ready conditions
+- **Server export silent failure**: `export_server_profiles` silently skipped credentials when vault was unavailable. Now logs warnings so users know credentials were not included
+
+#### Changed
+
+- **Protocol count updated to 22**: All references across README, snapcraft.yaml, AUR PKGBUILD, tauri.conf.json, metainfo.xml, AboutDialog, aiChatAppKnowledge, tools.ts, PROTOCOL-FEATURES.md, and 47 locale files
 
 ---
 

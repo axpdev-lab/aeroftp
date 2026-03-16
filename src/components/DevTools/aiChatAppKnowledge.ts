@@ -29,7 +29,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
             'add server', 'new server', 'configure', 'setup', 'endpoint', 'bucket',
             'password', 'key', 'certificate', 'tls', 'ssl', 'oauth', 'credential',
         ],
-        compact: 'Connections: 14 protocols (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen). Configure in Connection Screen or via Saved Servers.',
+        compact: 'Connections: 21 protocols (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, FileLu, Yandex Disk, OpenDrive). Configure in Connection Screen or via Saved Servers.',
         full: `How to connect to a remote server in AeroFTP:
 
 1. **Connection Screen**: The main screen shows a connection form. Select a protocol from the dropdown (14 available).

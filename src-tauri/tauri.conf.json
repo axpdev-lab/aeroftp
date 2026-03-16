@@ -1,12 +1,12 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "2.9.7",
+    "version": "2.9.8",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
-        "devUrl": "http://localhost:5173",
-        "beforeDevCommand": "npm run dev",
+        "devUrl": "http://127.0.0.1:5173",
+        "beforeDevCommand": "npm run dev -- --host 127.0.0.1",
         "beforeBuildCommand": "npm run build"
     },
     "app": {
@@ -54,7 +54,7 @@
             "icons/icon.ico"
         ],
         "shortDescription": "Modern Multi-Protocol File Client with AI, Encryption & Cloud Storage",
-        "longDescription": "AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, and Filen — 14 protocols, 30 presets, one app. Features include AeroVault (AES-256-GCM encrypted containers), Cryptomator vault support, AeroAgent AI assistant with 28 tools and 10 providers, Monaco code editor, integrated terminal, dual-pane file browser, AeroCloud personal sync, archive browser (ZIP/7z/TAR/RAR), 51 languages, and dark mode. Built with Rust (Tauri 2) + React 18. Open source under GPL-3.0.",
+        "longDescription": "AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive — 21 protocols, 30+ presets, one app. Features include AeroVault (AES-256-GCM encrypted containers), Cryptomator vault support, AeroAgent AI assistant with 47 tools and 19 providers, Monaco code editor, integrated terminal, dual-pane file browser, AeroCloud personal sync, archive browser (ZIP/7z/TAR/RAR), 47 languages, and dark mode. Built with Rust (Tauri 2) + React 18. Open source under GPL-3.0.",
         "category": "Utility",
         "copyright": "Copyright © 2025-2026 axpdev",
         "license": "GPL-3.0",

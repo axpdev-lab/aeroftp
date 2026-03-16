@@ -103,6 +103,7 @@ Turn **any server** into a private personal cloud. Connect to all 21 protocols t
 | **Koofr** | OAuth2 PKCE | 10GB free, EU-based (Slovenia), native REST API, trash management |
 | **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
+| **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, expiring share links |
 
 **Cloud features**: Background sync works with all 21 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 

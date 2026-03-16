@@ -65,7 +65,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
@@ -112,9 +112,8 @@ const getSavedServers = (): ServerProfile[] => {
     }
 };
 
-// Save servers to localStorage (sync) and vault (async)
+// Save servers to localStorage (sync backup) and vault (async, encrypted)
 const saveServers = (servers: ServerProfile[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
     secureStoreAndClean('server_profiles', STORAGE_KEY, servers).catch(() => {});
 };
 
@@ -212,6 +211,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         drime: 'from-green-500 to-emerald-400',
         filelu: 'from-violet-500 to-fuchsia-400',
         koofr: 'from-green-500 to-emerald-400',
+        opendrive: 'from-cyan-500 to-sky-400',
         yandexdisk: 'from-yellow-500 to-amber-400',
         fourshared: 'from-blue-500 to-cyan-400',
         zohoworkdrive: 'from-yellow-500 to-orange-400',

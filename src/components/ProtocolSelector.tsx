@@ -19,7 +19,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, YandexDiskLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -298,6 +298,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.koofrTooltip'),
     },
     {
+        type: 'opendrive',
+        name: 'OpenDrive',
+        icon: <OpenDriveLogo size={18} />,
+        description: t('protocol.opendriveDesc'),
+        defaultPort: 443,
+        badge: 'API',
+        color: 'text-cyan-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.opendriveTooltip'),
+    },
+    {
         type: 'yandexdisk',
         name: 'Yandex Disk',
         icon: <YandexDiskLogo size={18} />,
@@ -354,6 +365,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
     { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-violet-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 1 GB free' },
     { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr — Email + App Password auth' },
+    { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
     { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk — OAuth2 token auth' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
@@ -420,7 +432,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                 >
                     <span className={selectedProtocol ? '' : 'text-gray-400'}>
                         {selectedProtocol
-                            ? `${selectedProtocol.name} - ${t(`protocol.${selectedProtocol.type}Desc`)}`
+                            ? `${selectedProtocol.name} - ${selectedProtocol.description}`
                             : t('protocol.selectProtocol')}
                     </span>
                     <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -462,7 +474,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="font-medium text-sm whitespace-nowrap">{protocol.name}</div>
-                                <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
+                                <div className="text-xs text-gray-500 truncate">{protocol.description}</div>
                             </div>
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
@@ -510,7 +522,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             </div>
                             <div className="min-w-0 flex-1">
                                 <div className="font-medium text-sm whitespace-nowrap">{protocol.name}</div>
-                                <div className="text-xs text-gray-500 truncate">{t(`protocol.${protocol.type}Desc`)}</div>
+                                <div className="text-xs text-gray-500 truncate">{protocol.description}</div>
                             </div>
                             {protocol.badge && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${protocol.badge === 'Sync'
@@ -1247,6 +1259,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         filelu: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
         koofr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        opendrive: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         yandexdisk: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
     };
 

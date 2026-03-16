@@ -115,6 +115,8 @@ interface OAuthSettings {
     box: { clientId: string; clientSecret: string };
     pcloud: { clientId: string; clientSecret: string };
     fourshared: { clientId: string; clientSecret: string };
+    zohoworkdrive: { clientId: string; clientSecret: string };
+    yandexdisk: { clientId: string; clientSecret: string };
 }
 
 const defaultOAuthSettings: OAuthSettings = {
@@ -124,6 +126,8 @@ const defaultOAuthSettings: OAuthSettings = {
     box: { clientId: '', clientSecret: '' },
     pcloud: { clientId: '', clientSecret: '' },
     fourshared: { clientId: '', clientSecret: '' },
+    zohoworkdrive: { clientId: '', clientSecret: '' },
+    yandexdisk: { clientId: '', clientSecret: '' },
 };
 
 interface AppSettings {
@@ -496,8 +500,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     const handleSave = async () => {
         await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
-        localStorage.setItem(SERVERS_KEY, JSON.stringify(servers));
-        // Persist servers to vault (async, removes localStorage copy on success)
         secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
         // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
         const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
@@ -964,8 +966,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         const isJottacloud = protocol === 'jottacloud';
                                         const isDrime = protocol === 'drime';
                                         const isKoofr = protocol === 'koofr';
+                                        const isOpenDrive = protocol === 'opendrive';
                                         const isYandexDisk = protocol === 'yandexdisk';
-                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isYandexDisk;
+                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk;
                                         const needsPassword = !isOAuth;
                                         const isNewServer = !servers.some(s => s.id === editingServer.id);
                                         const logoKey = editingServer.providerId || protocol;
@@ -991,6 +994,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             { value: 'kdrive', label: 'kDrive', port: 443 },
                                             { value: 'jottacloud', label: 'Jottacloud', port: 443 },
                                             { value: 'koofr', label: 'Koofr', port: 443 },
+                                            { value: 'opendrive', label: t('settings.protocolOpendrive'), port: 443 },
                                             { value: 'yandexdisk', label: 'Yandex Disk', port: 443 },
                                             { value: 'drime', label: 'Drime Cloud', port: 443 },
                                             { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
@@ -1003,7 +1007,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 protocol: newProtocol as ProviderType,
                                                 port: opt?.port || 21,
                                                 // Clear fields that don't apply
-                                                host: (isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType)) ? '' : editingServer.host,
+                                                host: newProtocol === 'opendrive'
+                                                    ? 'dev.opendrive.com'
+                                                    : (isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType)) ? '' : editingServer.host,
                                                 username: '',
                                                 password: '',
                                                 options: {}
@@ -1318,6 +1324,38 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </>
                                                         )}
 
+                                                        {/* OpenDrive - Username + Password */}
+                                                        {isOpenDrive && (
+                                                            <>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.username')}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={t('protocol.opendriveUsernamePlaceholder')}
+                                                                        value={editingServer.username}
+                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'dev.opendrive.com', port: 443 })}
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type={showEditPassword ? 'text' : 'password'}
+                                                                            placeholder={t('settings.passwordPlaceholder')}
+                                                                            value={editingServer.password || ''}
+                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'dev.opendrive.com', port: 443 })}
+                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-xs text-gray-400">{t('protocol.opendriveAuthHelp')}</p>
+                                                            </>
+                                                        )}
+
                                                         {/* Yandex Disk - OAuth Token */}
                                                         {isYandexDisk && (
                                                             <>
@@ -1407,7 +1445,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         )}
 
                                                         {/* Password - for non-OAuth */}
-                                                        {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && (
+                                                        {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && !isOpenDrive && (
                                                             <div>
                                                                 <label className="block text-xs font-medium text-gray-500 mb-1">
                                                                     {isS3 ? t('settings.secretAccessKey') : isAzure ? t('connection.azureAccessKey') : t('settings.password')}
@@ -1595,7 +1633,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     };
                                                                     const updatedServers = [...servers, newServer];
                                                                     setServers(updatedServers);
-                                                                    localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
                                                                     secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => { });
                                                                     setEditingServer(null);
                                                                     setShowEditPassword(false);
@@ -1642,7 +1679,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 }
                                                                 setServers(updatedServers);
                                                                 // Persist immediately so changes aren't lost if user closes without Save Changes
-                                                                localStorage.setItem(SERVERS_KEY, JSON.stringify(updatedServers));
                                                                 secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => { });
                                                                 setEditingServer(null);
                                                                 setShowEditPassword(false);
@@ -2147,6 +2183,92 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     value={oauthSettings.fourshared.clientSecret}
                                                     onChange={e => updateOAuthSetting('fourshared', 'clientSecret', e.target.value)}
                                                     placeholder={t('settings.foursharedClientSecretPlaceholder')}
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Zoho WorkDrive */}
+                                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.zohoworkdrive ? <PROVIDER_LOGOS.zohoworkdrive size={18} /> : <Cloud size={16} />}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-medium">Zoho WorkDrive</h4>
+                                                    <p className="text-xs text-gray-500">{t('settings.zohoWorkDriveDesc')}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => openUrl('https://api-console.zoho.com/')}
+                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                            >
+                                                {t('settings.getCredentials')} <ExternalLink size={12} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
+                                                <input
+                                                    type="text"
+                                                    value={oauthSettings.zohoworkdrive.clientId}
+                                                    onChange={e => updateOAuthSetting('zohoworkdrive', 'clientId', e.target.value)}
+                                                    placeholder="1000.XXXXXXXXXXXXXXXXXXXX"
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
+                                                <input
+                                                    type={showOAuthSecrets ? 'text' : 'password'}
+                                                    value={oauthSettings.zohoworkdrive.clientSecret}
+                                                    onChange={e => updateOAuthSetting('zohoworkdrive', 'clientSecret', e.target.value)}
+                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Yandex Disk */}
+                                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.yandexdisk ? <PROVIDER_LOGOS.yandexdisk size={18} /> : <Cloud size={16} />}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-medium">Yandex Disk</h4>
+                                                    <p className="text-xs text-gray-500">{t('settings.yandexDiskDesc')}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => openUrl('https://oauth.yandex.com/client/new')}
+                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                            >
+                                                {t('settings.getCredentials')} <ExternalLink size={12} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
+                                                <input
+                                                    type="text"
+                                                    value={oauthSettings.yandexdisk.clientId}
+                                                    onChange={e => updateOAuthSetting('yandexdisk', 'clientId', e.target.value)}
+                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
+                                                <input
+                                                    type={showOAuthSecrets ? 'text' : 'password'}
+                                                    value={oauthSettings.yandexdisk.clientSecret}
+                                                    onChange={e => updateOAuthSetting('yandexdisk', 'clientSecret', e.target.value)}
+                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                                                     className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                                                 />
                                             </div>
@@ -3445,7 +3567,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         if (currentServers.length === 0) currentServers = servers;
                         const updated = [...currentServers, ...newServers];
                         setServers(updated);
-                        localStorage.setItem(SERVERS_KEY, JSON.stringify(updated));
                         secureStoreAndClean('server_profiles', SERVERS_KEY, updated).catch(() => { });
                         setShowExportImport(false);
                         onServersChanged?.();

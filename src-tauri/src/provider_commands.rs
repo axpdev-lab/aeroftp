@@ -49,7 +49,7 @@ impl Default for ProviderState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConnectionParams {
-    /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega"
+    /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega", "opendrive"
     pub protocol: String,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
@@ -107,6 +107,7 @@ impl ProviderConnectionParams {
             "drime" => ProviderType::DrimeCloud,
             "filelu" => ProviderType::FileLu,
             "koofr" => ProviderType::Koofr,
+            "opendrive" => ProviderType::OpenDrive,
             "yandexdisk" => ProviderType::YandexDisk,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
@@ -222,6 +223,8 @@ impl ProviderConnectionParams {
             "filelu.com".to_string()
         } else if provider_type == ProviderType::Koofr {
             "app.koofr.net".to_string()
+        } else if provider_type == ProviderType::OpenDrive {
+            "dev.opendrive.com".to_string()
         } else if provider_type == ProviderType::YandexDisk {
             "cloud-api.yandex.net".to_string()
         } else if provider_type == ProviderType::Azure {
@@ -252,6 +255,13 @@ impl ProviderConnectionParams {
 pub struct ProviderListResponse {
     pub files: Vec<RemoteEntry>,
     pub current_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenDriveTrashActionItem {
+    pub item_id: String,
+    pub is_dir: bool,
 }
 
 #[derive(Serialize)]
@@ -2913,6 +2923,194 @@ pub async fn google_drive_permanent_delete(
             .map_err(|e| format!("Permanent delete failed for {}: {}", file_id, e))?;
     }
     Ok(())
+}
+
+// ── OpenDrive Trash Operations ──────────────────────────────────────
+
+/// List items in OpenDrive Trash.
+#[tauri::command]
+pub async fn opendrive_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    opendrive.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Restore items from OpenDrive Trash.
+#[tauri::command]
+pub async fn opendrive_restore_from_trash(
+    state: State<'_, ProviderState>,
+    items: Vec<OpenDriveTrashActionItem>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    for item in &items {
+        opendrive.restore_from_trash(&item.item_id, item.is_dir).await
+            .map_err(|e| format!("Restore failed for {}: {}", item.item_id, e))?;
+    }
+    Ok(())
+}
+
+/// Permanently delete items from OpenDrive Trash.
+#[tauri::command]
+pub async fn opendrive_permanent_delete(
+    state: State<'_, ProviderState>,
+    items: Vec<OpenDriveTrashActionItem>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    for item in &items {
+        opendrive.permanent_delete_from_trash(&item.item_id, item.is_dir).await
+            .map_err(|e| format!("Permanent delete failed for {}: {}", item.item_id, e))?;
+    }
+    Ok(())
+}
+
+/// Empty OpenDrive Trash.
+#[tauri::command]
+pub async fn opendrive_empty_trash(
+    state: State<'_, ProviderState>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    opendrive.empty_trash().await
+        .map_err(|e| format!("Empty trash failed: {}", e))
+}
+
+// ─── Yandex Disk-Specific Commands ────────────────────────────────────────
+
+/// List items in Yandex Disk trash
+#[tauri::command]
+pub async fn yandex_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::YandexDisk {
+        return Err("This operation is only available for Yandex Disk".to_string());
+    }
+
+    let yandex = provider.as_any_mut()
+        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
+        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
+
+    yandex.list_trash().await
+        .map_err(|e| format!("Failed to list trash: {}", e))
+}
+
+/// Restore items from Yandex Disk trash
+#[tauri::command]
+pub async fn yandex_restore_from_trash(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::YandexDisk {
+        return Err("This operation is only available for Yandex Disk".to_string());
+    }
+
+    let yandex = provider.as_any_mut()
+        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
+        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
+
+    for path in &paths {
+        yandex.restore_from_trash(path).await
+            .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// Permanently delete items from Yandex Disk trash
+#[tauri::command]
+pub async fn yandex_permanent_delete(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::YandexDisk {
+        return Err("This operation is only available for Yandex Disk".to_string());
+    }
+
+    let yandex = provider.as_any_mut()
+        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
+        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
+
+    for path in &paths {
+        yandex.permanent_delete_from_trash(path).await
+            .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
+    }
+    Ok(())
+}
+
+/// Empty Yandex Disk trash
+#[tauri::command]
+pub async fn yandex_empty_trash(
+    state: State<'_, ProviderState>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::YandexDisk {
+        return Err("This operation is only available for Yandex Disk".to_string());
+    }
+
+    let yandex = provider.as_any_mut()
+        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
+        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
+
+    yandex.empty_trash().await
+        .map_err(|e| format!("Empty trash failed: {}", e))
 }
 
 // ─── Box-Specific Commands ────────────────────────────────────────────────

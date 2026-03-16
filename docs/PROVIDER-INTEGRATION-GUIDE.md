@@ -3,7 +3,7 @@
 > A comprehensive technical reference for implementing cloud storage providers in Rust using AeroFTP's `StorageProvider` trait architecture. Written for developers and AI agents integrating new protocols.
 
 **Version**: 2.9
-**Last Updated**: 2026-03-12
+**Last Updated**: 2026-03-15
 **Codebase**: `src-tauri/src/providers/`
 
 ---
@@ -19,7 +19,8 @@
    - 3.4 [Azure Shared Key](#34-azure-shared-key)
    - 3.5 [API Key / Bearer Token](#35-api-key--bearer-token)
    - 3.6 [HTTP Digest Authentication](#36-http-digest-authentication)
-   - 3.7 [E2E Encrypted Providers](#37-e2e-encrypted-providers)
+    - 3.7 [E2E Encrypted Providers](#37-e2e-encrypted-providers)
+    - 3.8 [Session-Based Username/Password](#38-session-based-usernamepassword)
 4. [Upload Patterns](#4-upload-patterns)
    - 4.1 [Simple Streaming Upload](#41-simple-streaming-upload)
    - 4.2 [Chunked Upload Session](#42-chunked-upload-session)
@@ -42,7 +43,7 @@
 
 ## 1. Architecture Overview
 
-AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All 20 storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and 16 cloud APIs.
+AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All 22 storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and 18 cloud APIs.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -66,7 +67,7 @@ src-tauri/src/providers/
 ├── mod.rs                  # StorageProvider trait + ProviderFactory
 ├── types.rs                # ProviderType enum, config structs, RemoteEntry, ProviderError
 ├── http_retry.rs           # HTTP retry with exponential backoff + jitter
-├── oauth2.rs               # OAuth2 PKCE flow (6 providers)
+├── oauth2.rs               # OAuth2 PKCE flow (8 providers)
 ├── oauth1.rs               # OAuth 1.0 HMAC-SHA1 (4shared)
 ├── ftp.rs                  # FTP/FTPS via suppaftp
 ├── sftp.rs                 # SFTP via russh + russh_sftp
@@ -87,7 +88,9 @@ src-tauri/src/providers/
 ├── jottacloud.rs           # Jottacloud REST API
 ├── filelu.rs               # FileLu API
 ├── koofr.rs                # Koofr REST API
-└── drime_cloud.rs          # Drime Cloud API
+├── drime_cloud.rs          # Drime Cloud API
+├── opendrive.rs            # OpenDrive REST API
+└── yandex_disk.rs          # Yandex Disk REST API
 ```
 
 ### Provider Registry
@@ -114,6 +117,8 @@ src-tauri/src/providers/
 | FileLu | `filelu.rs` | ~1,500 | API Key | REST |
 | Koofr | `koofr.rs` | ~1,750 | OAuth2 PKCE | REST |
 | Drime Cloud | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
+| OpenDrive | `opendrive.rs` | ~1,211 | Session login (user/pass) | REST |
+| Yandex Disk | `yandex_disk.rs` | ~1,237 | OAuth2 token (`Authorization: OAuth`) | REST |
 
 ---
 
@@ -284,7 +289,7 @@ impl ProviderFactory {
 ### 3.1 OAuth2 PKCE
 
 **File**: `oauth2.rs` (~1,050 lines)
-**Providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Koofr
+**Providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Koofr, Yandex Disk
 **Crate**: `oauth2 = "5"` with PKCE S256
 
 #### Flow
@@ -390,6 +395,7 @@ pub fn is_expired(&self) -> bool {
 | pCloud | `my.pcloud.com/oauth2/authorize` | `api.pcloud.com/oauth2_token` | `http://localhost:{port}/callback` | EU: `eapi.pcloud.com` |
 | Zoho | `accounts.zoho.{tld}/oauth/v2/auth` | `accounts.zoho.{tld}/oauth/v2/token` | `http://127.0.0.1:{port}/callback` | 9 regional TLDs, 8 scopes, `prompt=consent` |
 | Koofr | `app.koofr.net/oauth2/authorize` | `app.koofr.net/oauth2/token` | `http://127.0.0.1:{port}/callback` | No scopes needed |
+| Yandex Disk | `oauth.yandex.com/authorize` | `oauth.yandex.com/token` | `http://127.0.0.1:{port}/callback` | API calls use `Authorization: OAuth {token}` rather than `Bearer` |
 
 #### Callback Server
 
@@ -568,6 +574,11 @@ let response = self.client.get(&url)
     .header("X-API-Key", self.api_key.expose_secret())
     .send().await?;
 
+// OAuth token header (Yandex Disk)
+let response = self.client.get(&url)
+    .header(AUTHORIZATION, format!("OAuth {}", self.oauth_token.expose_secret()))
+    .send().await?;
+
 // Bearer Token (kDrive, Jottacloud, Drime Cloud)
 let response = self.client.get(&url)
     .header(AUTHORIZATION, format!("Bearer {}", self.token.expose_secret()))
@@ -577,6 +588,7 @@ let response = self.client.get(&url)
 | Provider | Header | Config Field |
 |----------|--------|-------------|
 | FileLu | `X-API-Key: {key}` | `api_key: SecretString` |
+| Yandex Disk | `Authorization: OAuth {token}` | `oauth_token: SecretString` |
 | kDrive | `Authorization: Bearer {token}` | `api_token: SecretString` |
 | Jottacloud | `Authorization: Bearer {token}` | `login_token: SecretString` |
 | Drime Cloud | `Authorization: Bearer {token}` | `api_token: SecretString` |
@@ -634,6 +646,32 @@ Three providers implement client-side encryption where the server never sees pla
 ```
 
 > **Key lesson**: E2E providers require downloading the entire file to decrypt. No partial reads, no server-side search, no thumbnails. Every operation is fundamentally different from cleartext REST APIs.
+
+### 3.8 Session-Based Username/Password
+
+**File**: `opendrive.rs` (~1,211 lines)
+**Provider**: OpenDrive
+**Pattern**: Session bootstrap via username/password, then `SessionID` on all subsequent requests
+
+#### Flow
+
+```
+1. POST /session/login.json
+    body: username, passwd, version, partner_id
+    -> returns SessionID
+
+2. Store SessionID in provider state
+
+3. Send session_id on all path lookup, metadata, upload, rename and delete operations
+
+4. Optional: POST /session/logout.json on disconnect
+```
+
+#### Notes
+
+- No OAuth app registration or API key is required for the standard OpenDrive personal flow.
+- Root folder uses `folder_id = 0`.
+- The live API diverges from the PDF in some cases, so robust integrations should prefer defensive fallbacks over assuming endpoint consistency.
 
 ---
 
@@ -711,6 +749,43 @@ client.post("https://content.dropboxapi.com/2/files/upload_session/finish")
     .send().await?;
 ```
 
+#### OpenDrive 4-step upload session
+
+OpenDrive uses a provider-specific session flow rather than a single PUT:
+
+```rust
+// Step 1: Create or open destination file metadata
+let created: CreateFileResponse = self.post_form(
+    "upload/create_file.json",
+    &[
+        ("session_id", self.session_id.clone()),
+        ("folder_id", folder_id),
+        ("file_name", file_name.clone()),
+        ("file_size", file_size.to_string()),
+        ("file_hash", file_hash.clone()),
+        ("open_if_exists", "1".to_string()),
+    ],
+).await?;
+
+// Step 2: Open upload session and capture TempLocation
+let opened: OpenUploadResponse = self.post_form(
+    "upload/open_file_upload.json",
+    &[
+        ("session_id", self.session_id.clone()),
+        ("file_id", file_id.clone()),
+        ("file_size", file_size.to_string()),
+        ("file_hash", file_hash.clone()),
+    ],
+).await?;
+
+// Step 3: Upload chunk payload to upload_file_chunk2
+// Server may request zlib compression via RequireCompression
+
+// Step 4: Finalize with close_file_upload.json
+```
+
+> **OpenDrive quirks**: `RequireHashOnly=true` is not sufficient reason to skip chunk upload for non-empty files in practice, and `TempLocation` from `open_file_upload` is more reliable than assuming the value from `create_file`.
+
 ### 4.3 Resumable Upload
 
 OneDrive uses a create-session-then-PUT-chunks pattern:
@@ -775,6 +850,7 @@ if file_size <= RESUMABLE_THRESHOLD {
 | Azure | 256 MB | Block upload + PutBlockList | 4 MB |
 | pCloud | Unlimited | Single PUT | — |
 | Filen | Unlimited | Encrypt + single PUT per chunk | 1 MB |
+| OpenDrive | Unlimited | `create_file` → `open_file_upload` → `upload_file_chunk2` → `close_file_upload` | Provider-defined single/few chunks |
 
 ---
 
@@ -888,6 +964,7 @@ loop {
 | FileLu | Offset | `pageNo` | 100 | 1-based page numbers |
 | Jottacloud | — | None (XML listing) | — | Full list per folder |
 | Koofr | — | None (full list) | — | Returns all files at once |
+| OpenDrive | — | None (full list) | — | Returns folders/files for a folder ID in one response |
 
 > **Lesson**: Never assume a provider returns all results in one call. Always implement pagination, even if the current test folder is small.
 
@@ -1224,6 +1301,8 @@ async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError>;
 | FileLu | X | X | X | X | X | X | | X | X | | | |
 | Koofr | X | X | X | X | X | X | | X | X | X | X | |
 | Drime Cloud | X | X | X | X | X | X | | | X | X | | |
+| OpenDrive | X | X | X | X | X | X | | | | | | |
+| Yandex Disk | X | X | X | X | X | X | | X | X | X | | X |
 
 ---
 
@@ -1602,11 +1681,21 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 16. **TLS downgrade detection**: When FTP `ExplicitIfAvailable` falls back to plaintext, set a `tls_downgraded` flag and show a security warning to the user.
 
+### Provider-Specific Quirks
+
+17. **Yandex Disk uses `Authorization: OAuth`**: The provider obtains a token through OAuth2, but the REST API rejects a standard Bearer header. Requests must send `Authorization: OAuth {token}`.
+
+18. **OpenDrive file lookup is not fully reliable**: `file/idbypath.json` can fail for existing files after upload. A resilient implementation should fall back to listing the parent folder and matching the exact filename.
+
+19. **OpenDrive file move is not fully reliable server-side**: `file/move_copy.json` can reject documented `move=true` with `Invalid value specified for \`move\`` even though `folder/move_copy.json` works correctly. A production-safe fallback is `download -> upload -> delete` for file moves between folders.
+
+20. **OpenDrive rename parameters differ by object type**: `file/rename.json` requires `new_file_name`, while `folder/rename.json` requires `folder_name`.
+
 ---
 
 ## Acknowledgments
 
-This guide documents patterns developed across 30+ releases (v1.5 → v2.9) and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across 20 storage protocols.
+This guide documents patterns developed across 30+ releases (v1.5 → v2.9) and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across 22 storage backends.
 
 ---
 

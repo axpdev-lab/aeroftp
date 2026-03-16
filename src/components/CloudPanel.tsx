@@ -60,6 +60,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'kdrive', label: 'kDrive' },
             { id: 'jottacloud', label: 'Jottacloud' },
             { id: 'koofr', label: 'Koofr' },
+            { id: 'opendrive', label: 'OpenDrive' },
             { id: 'yandexdisk', label: 'Yandex Disk' },
         ],
     },
@@ -170,6 +171,7 @@ const SetupWizard: React.FC<{
     const isOAuth = OAUTH2_PROTOCOLS.includes(selectedProtocol) || OAUTH1_PROTOCOLS.includes(selectedProtocol);
     const isServerProtocol = SERVER_PROTOCOLS.includes(selectedProtocol);
     const isEmailAuth = EMAIL_AUTH_PROTOCOLS.includes(selectedProtocol);
+    const isOpenDrive = selectedProtocol === 'opendrive';
 
     // Build connection_params for the selected protocol
     const buildConnectionParams = (): Record<string, string> => {
@@ -202,6 +204,7 @@ const SetupWizard: React.FC<{
             case 3:
                 if (isOAuth) return oauthAuthorized;
                 if (isServerProtocol) return !!serverProfile || (!!connHost && !!connUsername);
+                if (isOpenDrive) return !!connUsername && !!connPassword;
                 if (isEmailAuth) return !!connUsername && !!connPassword;
                 // S3, Azure, kDrive, Jottacloud — need at least some params
                 return true;
@@ -521,6 +524,39 @@ const SetupWizard: React.FC<{
                                 placeholder="/" className="wizard-input-editable" />
                         </div>
                         <p className="text-xs opacity-50">{t('connection.koofrHelp')}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // OpenDrive
+        if (selectedProtocol === 'opendrive') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> {t('settings.protocolOpendrive')} {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('settings.username')}</label>
+                            <input type="text" value={connUsername} onChange={(e) => {
+                                setConnUsername(e.target.value);
+                                setConnHost('dev.opendrive.com');
+                            }}
+                                placeholder={t('protocol.opendriveUsernamePlaceholder')} className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('settings.password')}</label>
+                            <input type="password" value={connPassword} onChange={(e) => {
+                                setConnPassword(e.target.value);
+                                setConnHost('dev.opendrive.com');
+                            }}
+                                className="wizard-input-editable" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="wizard-input-editable" />
+                        </div>
+                        <p className="text-xs opacity-50">{t('protocol.opendriveAuthHelp')}</p>
                     </div>
                 </div>
             );

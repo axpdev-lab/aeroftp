@@ -13,7 +13,7 @@
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, kDrive, Koofr, and FileLu. 20 protocols, 30+ presets, one app.
+      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 22 protocols, 30+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="2.9.8" date="2026-03-16">
+      <description>
+        <p>OpenDrive native REST API as 22nd protocol (5 GB free, session auth, trash management). Yandex Disk trash manager fully wired with context menu. Critical fix for Windows credential persistence — server profiles no longer disappear after saving. Import/export credential error handling improved. 9 new OpenDrive i18n keys in 47 languages.</p>
+      </description>
+    </release>
     <release version="2.9.7" date="2026-03-15">
       <description>
         <p>Share links for FTP/SFTP/WebDAV servers via configurable Public URL Base mapping. Folder scan progress toast with real-time counters during recursive delete and download. Fullscreen overlay during app update installation. Security audit: URL scheme validation, debug-level logging, path resolution fix. 15 new i18n keys in 47 languages.</p>

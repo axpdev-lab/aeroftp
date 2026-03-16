@@ -94,6 +94,7 @@ pub async fn session_connect(
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
         "filelu" => ProviderType::FileLu,
+        "opendrive" => ProviderType::OpenDrive,
         other => return Err(format!("Unknown protocol: {}", other)),
     };
 

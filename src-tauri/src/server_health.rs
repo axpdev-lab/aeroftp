@@ -106,6 +106,10 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             host: "app.koofr.net",
             probe_url: "https://app.koofr.net/api/v2/info",
         }),
+        "opendrive" => Some(CloudProviderInfo {
+            host: "dev.opendrive.com",
+            probe_url: "https://dev.opendrive.com/api/v1/branding.json",
+        }),
         "azure" => Some(CloudProviderInfo {
             host: "blob.core.windows.net",
             probe_url: "https://blob.core.windows.net/",

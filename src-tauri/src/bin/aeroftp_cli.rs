@@ -52,7 +52,7 @@ use std::time::Instant;
     name = "aeroftp",
     about = "AeroFTP CLI — Multi-protocol file transfer client",
     version,
-    long_about = "Supports FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr.\n\nURL format: protocol://user@host:port/path",
+    long_about = "Supports FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive.\n\nURL format: protocol://user@host:port/path",
     after_help = "EXAMPLES:\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@myserver.com \"/var/www/*.csv\"\n  aeroftp put sftp://user@myserver.com \"./data/*.json\" /remote/data/\n  aeroftp tree sftp://user@myserver.com /var/www/ -d 2\n  aeroftp cat sftp://user@myserver.com /etc/config.ini | grep DB_HOST\n  aeroftp sync sftp://user@myserver.com ./local/ /remote/ --dry-run\n  aeroftp batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
 )]
 struct Cli {
@@ -737,8 +737,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "jottacloud" => (ProviderType::Jottacloud, "jfs.jottacloud.com".to_string()),
         "filelu" => (ProviderType::FileLu, "filelu.com".to_string()),
         "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
+        "opendrive" => (ProviderType::OpenDrive, "dev.opendrive.com".to_string()),
         "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
-        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, yandexdisk", scheme)),
+        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk", scheme)),
     };
 
     let username = if url_obj.username().is_empty() {
@@ -5584,6 +5585,14 @@ mod tests {
         let (config, _) = url_to_provider_config("koofr://user@koofr.net", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Koofr);
         assert_eq!(config.host, "app.koofr.net");
+    }
+
+    #[test]
+    fn test_url_parsing_opendrive() {
+        let cli = Cli::parse_from(["aeroftp", "connect", "opendrive://user@dev.opendrive.com"]);
+        let (config, _) = url_to_provider_config("opendrive://user@dev.opendrive.com", &cli).unwrap();
+        assert_eq!(config.provider_type, ProviderType::OpenDrive);
+        assert_eq!(config.host, "dev.opendrive.com");
     }
 
     // ── validate_relative_path tests ──────────────────────────────────

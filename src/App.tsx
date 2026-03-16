@@ -54,6 +54,8 @@ import { BoxTagsDialog } from './components/BoxTagsDialog';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
+import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
+import { YandexTrashManager } from './components/YandexTrashManager';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
@@ -112,7 +114,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -307,6 +309,8 @@ const App: React.FC = () => {
   const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
   const [showFileLuTrash, setShowFileLuTrash] = useState(false);
   const [showKoofrTrash, setShowKoofrTrash] = useState(false);
+  const [showOpenDriveTrash, setShowOpenDriveTrash] = useState(false);
+  const [showYandexTrash, setShowYandexTrash] = useState(false);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -1790,7 +1794,7 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'yandexdisk'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk'];
   // Providers that support server-side copy (for context menu)
   const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
@@ -1814,6 +1818,8 @@ const App: React.FC = () => {
         return 'filelu.com';
       case 'koofr':
         return 'app.koofr.net';
+      case 'opendrive':
+        return 'dev.opendrive.com';
       case 'yandexdisk':
         return 'cloud-api.yandex.net';
       default:
@@ -1835,6 +1841,13 @@ const App: React.FC = () => {
       return {
         ...params,
         server: params.server || 'app.koofr.net',
+        port: params.port || 443,
+      };
+    }
+    if (protocol === 'opendrive') {
+      return {
+        ...params,
+        server: params.server || 'dev.opendrive.com',
         port: params.port || 443,
       };
     }
@@ -1996,7 +2009,7 @@ const App: React.FC = () => {
 
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'yandexdisk') || !effectiveParams.username) {
+      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk') || !effectiveParams.username) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -2018,6 +2031,8 @@ const App: React.FC = () => {
             ? 'FileLu'
           : protocol === 'koofr'
             ? `Koofr ${effectiveParams.username}`
+          : protocol === 'opendrive'
+            ? t('savedServers.opendriveDisplay', { username: effectiveParams.username })
           : protocol === 'yandexdisk'
             ? `Yandex Disk ${effectiveParams.username}`
           : protocol === 'kdrive'
@@ -4643,7 +4658,7 @@ const App: React.FC = () => {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: currentProtocol === 'zohoworkdrive' ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive'].includes(currentProtocol || '') },
+      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
       ...(currentProtocol === 'jottacloud' ? [{
         label: t('contextMenu.moveToTrash'),
@@ -4948,6 +4963,7 @@ const App: React.FC = () => {
           case 'box': return <BoxLogo size={14} />;
           case 'pcloud': return <PCloudLogo size={14} />;
           case 'filen': return <FilenLogo size={14} />;
+          case 'opendrive': return <OpenDriveLogo size={14} />;
           default: return <Share2 size={14} />;
         }
       })();
@@ -5198,6 +5214,22 @@ const App: React.FC = () => {
         label: t('contextMenu.viewTrash'),
         icon: <Trash2 size={14} className="text-green-500" />,
         action: () => setShowKoofrTrash(true),
+        divider: true,
+      });
+    }
+    if (currentProtocol === 'opendrive') {
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} className="text-cyan-500" />,
+        action: () => setShowOpenDriveTrash(true),
+        divider: true,
+      });
+    }
+    if (currentProtocol === 'yandexdisk') {
+      items.push({
+        label: t('contextMenu.viewTrash'),
+        icon: <Trash2 size={14} className="text-sky-500" />,
+        action: () => setShowYandexTrash(true),
         divider: true,
       });
     }
@@ -6424,6 +6456,18 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showOpenDriveTrash && (
+          <OpenDriveTrashManager
+            onClose={() => setShowOpenDriveTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showYandexTrash && (
+          <YandexTrashManager
+            onClose={() => setShowYandexTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
         {/* FileLu: Folder Settings Dialog */}
         {fileLuFolderSettingsDialog && (
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
@@ -6638,6 +6682,8 @@ const App: React.FC = () => {
                         ? 'FileLu'
                         : normalizedParams.protocol === 'koofr'
                           ? `Koofr ${normalizedParams.username}`
+                        : normalizedParams.protocol === 'opendrive'
+                          ? t('savedServers.opendriveDisplay', { username: normalizedParams.username })
                         : normalizedParams.protocol === 'yandexdisk'
                           ? `Yandex Disk ${normalizedParams.username}`
                         : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'

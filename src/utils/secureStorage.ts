@@ -57,14 +57,16 @@ export async function secureGetWithFallback<T>(
 }
 
 /**
- * Store in vault and remove the localStorage copy
- * Used during writes to ensure data moves to encrypted storage
+ * Store in vault and keep localStorage as resilient backup.
+ * On Windows, vault.db file locking or ACL issues can cause transient failures.
+ * Keeping localStorage ensures server profiles are never permanently lost.
  */
 export async function secureStoreAndClean(
   vaultKey: string,
   localStorageKey: string,
   value: unknown
 ): Promise<void> {
+  // Always keep localStorage as backup (write-through)
+  localStorage.setItem(localStorageKey, JSON.stringify(value));
   await secureStore(vaultKey, value);
-  localStorage.removeItem(localStorageKey);
 }
