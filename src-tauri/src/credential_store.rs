@@ -221,7 +221,7 @@ impl VaultKeyFile {
             let _ = f.sync_all();
         }
         // Rename temp → target (Windows: retry with remove-first, then direct write fallback)
-        if let Err(_) = std::fs::rename(&tmp_path, &path) {
+        if std::fs::rename(&tmp_path, &path).is_err() {
             #[cfg(windows)]
             {
                 let _ = std::fs::remove_file(&path);
@@ -233,7 +233,7 @@ impl VaultKeyFile {
             #[cfg(not(windows))]
             {
                 return Err(CredentialError::Io(
-                    std::io::Error::new(std::io::ErrorKind::Other, "rename failed")
+                    std::io::Error::other("vault.key rename failed")
                 ));
             }
         }
@@ -646,7 +646,7 @@ impl CredentialStore {
         // Rename temp → target. On Windows, rename can fail if the destination is
         // locked by a concurrent read (VAULT_WRITE_LOCK only covers writes, not reads).
         // Fallback: remove destination first, then retry rename; last resort: direct write.
-        if let Err(_) = std::fs::rename(&tmp_path, path) {
+        if std::fs::rename(&tmp_path, path).is_err() {
             #[cfg(windows)]
             {
                 // Windows: try remove + rename, then fallback to direct overwrite
@@ -661,7 +661,7 @@ impl CredentialStore {
             {
                 // On Unix rename is atomic even if destination exists — this shouldn't fail
                 return Err(CredentialError::Io(
-                    std::io::Error::new(std::io::ErrorKind::Other, "rename failed")
+                    std::io::Error::other("vault.db rename failed")
                 ));
             }
         }
