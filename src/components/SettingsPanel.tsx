@@ -440,7 +440,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                     // Load OAuth settings from secure credential store (fallback: localStorage)
                     const loadOAuthFromStore = async () => {
-                        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
+                        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
                         const loaded = { ...defaultOAuthSettings };
                         for (const p of providers) {
                             try {
@@ -502,7 +502,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
         secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
         // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
-        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared'] as const;
+        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
         for (const p of providers) {
             const creds = oauthSettings[p];
             if (creds.clientId) {

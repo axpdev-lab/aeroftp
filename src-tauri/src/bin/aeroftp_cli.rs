@@ -566,6 +566,27 @@ fn validate_relative_path(relative: &str) -> Option<&str> {
     Some(trimmed)
 }
 
+/// Verify that a resolved path stays within the expected root directory.
+/// Prevents symlink escape attacks where a pre-existing symlink in the destination
+/// tree could redirect writes outside the intended root.
+fn verify_path_within_root(path: &std::path::Path, root: &std::path::Path) -> Result<(), String> {
+    // Canonicalize parent (must exist for the check to work)
+    let parent = path.parent().unwrap_or(path);
+    if parent.exists() {
+        if let Ok(canonical_parent) = parent.canonicalize() {
+            if let Ok(canonical_root) = root.canonicalize() {
+                if !canonical_parent.starts_with(&canonical_root) {
+                    return Err(format!(
+                        "Path escapes destination root via symlink: {} resolves to {}",
+                        path.display(), canonical_parent.display()
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Sanitize a filename for terminal display — strip ANSI escape sequences.
 fn sanitize_filename(name: &str) -> String {
     let mut result = String::with_capacity(name.len());
@@ -791,6 +812,14 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     }
     if cli.trust_host_key {
         extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+
+    // Warn about secrets on command line (visible in process list)
+    if cli.token.is_some() && std::env::var("AEROFTP_TOKEN").is_err() && !cli.quiet {
+        eprintln!("Warning: --token on command line is visible in process list. Use AEROFTP_TOKEN env var instead.");
+    }
+    if cli.key_passphrase.is_some() && !cli.quiet {
+        eprintln!("Warning: --key-passphrase on command line is visible in process list. Consider using ssh-agent instead.");
     }
 
     // FTP TLS
@@ -1212,10 +1241,21 @@ async fn try_create_oauth_provider(
         }
         "zohoworkdrive" => {
             let oauth_settings = load_oauth_client_config(store, "zohoworkdrive");
-            let region = store.get("oauth_zoho_region").unwrap_or_else(|_| "us".to_string());
+            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
             (OAuthProvider::ZohoWorkdrive, Box::new(move |_| {
                 let config = ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
                 Ok(Box::new(ZohoWorkdriveProvider::new(config)) as Box<dyn StorageProvider>)
+            }))
+        }
+        "yandexdisk" => {
+            // Yandex uses OAuth2 but creates provider with raw token
+            (OAuthProvider::YandexDisk, Box::new(move |_| {
+                let manager = OAuth2Manager::new();
+                let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
+                    .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
+                Ok(Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
+                    tokens.access_token, None
+                )) as Box<dyn StorageProvider>)
             }))
         }
         _ => return None,
@@ -1287,19 +1327,37 @@ async fn create_and_connect(
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
     // Check if --profile points to an OAuth provider — handle separately
+    // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(ref profile_name) = cli.profile {
         if let Ok(store) = open_vault(cli) {
             if let Ok(profiles_json) = store.get("config_server_profiles") {
                 if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json) {
                     let profile_lower = profile_name.to_lowercase();
                     let matched = if let Ok(idx) = profile_name.parse::<usize>() {
-                        profiles.get(idx.saturating_sub(1))
+                        profiles.get(idx.saturating_sub(1)).cloned()
                     } else {
-                        profiles.iter().find(|p| {
-                            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            name.to_lowercase().contains(&profile_lower) || id == profile_name
-                        })
+                        // Exact name → exact ID → disambiguated substring (same as profile_to_provider_config)
+                        let exact = profiles.iter().find(|p| {
+                            p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase() == profile_lower
+                        });
+                        if exact.is_some() {
+                            exact.cloned()
+                        } else {
+                            let by_id = profiles.iter().find(|p| {
+                                p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name.as_str()
+                            });
+                            if by_id.is_some() {
+                                by_id.cloned()
+                            } else {
+                                let matches: Vec<_> = profiles.iter().filter(|p| {
+                                    p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&profile_lower)
+                                }).collect();
+                                match matches.len() {
+                                    1 => Some(matches[0].clone()),
+                                    _ => None, // 0 or ambiguous — let profile_to_provider_config handle the error
+                                }
+                            }
+                        }
                     };
                     if let Some(profile) = matched {
                         let protocol = profile.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
@@ -1758,6 +1816,10 @@ async fn cmd_get_recursive(
             continue;
         };
         let local_dir = Path::new(local_base).join(relative);
+        if let Err(e) = verify_path_within_root(&local_dir, Path::new(local_base)) {
+            if !quiet { eprintln!("Warning: skipping directory (symlink escape): {}", e); }
+            continue;
+        }
         let _ = std::fs::create_dir_all(&local_dir);
     }
 
@@ -1793,7 +1855,13 @@ async fn cmd_get_recursive(
             if let Some(ref pb) = overall_pb { pb.inc(1); }
             continue;
         };
-        let local_path = Path::new(local_base).join(relative).to_string_lossy().to_string();
+        let local_path_buf = Path::new(local_base).join(relative);
+        if let Err(e) = verify_path_within_root(&local_path_buf, Path::new(local_base)) {
+            errors.push(format!("{}: {}", remote_path, e));
+            if let Some(ref pb) = overall_pb { pb.inc(1); }
+            continue;
+        }
+        let local_path = local_path_buf.to_string_lossy().to_string();
 
         // Ensure parent exists
         if let Some(parent) = Path::new(&local_path).parent() {
@@ -2637,11 +2705,15 @@ async fn cmd_sync(
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    // Scan local files
+    // Scan local files (bounded: max 100 levels, 500K entries)
     let local_entries: Vec<(String, u64, Option<String>)> = {
-        let walker = walkdir::WalkDir::new(local).follow_links(false);
+        let walker = walkdir::WalkDir::new(local).follow_links(false).max_depth(100);
         let mut entries = Vec::new();
         for entry in walker {
+            if entries.len() >= 500_000 {
+                eprintln!("Warning: local scan capped at 500,000 entries");
+                break;
+            }
             let entry = match entry {
                 Ok(e) => e,
                 Err(_) => continue,
@@ -3535,6 +3607,9 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: CONNECT requires a URL", line_num + 1);
                     return 5;
                 }
+                // Clear previous URL before attempting new connection
+                // Prevents stale URL reuse if CONNECT fails with ON_ERROR CONTINUE
+                current_url = None;
                 exit_code = cmd_connect(parts[1], cli, format).await;
                 if exit_code == 0 {
                     current_url = Some(parts[1].to_string());
@@ -4732,7 +4807,7 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         }
 
         "archive_compress" => {
-            // Delegate to shell — zip/tar/7z
+            // Safe: spawn tools directly with .arg() — no shell interpolation
             let paths: Vec<String> = args.get("paths")
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
@@ -4740,17 +4815,47 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let output_path = resolve_path(&get_str("output_path")?);
             let format = get_str_opt("format").unwrap_or_else(|| "zip".to_string());
             validate_path(&output_path, "output_path")?;
-            let cmd = match format.as_str() {
-                "zip" => format!("zip -r '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
-                "tar.gz" => format!("tar czf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
-                "tar.bz2" => format!("tar cjf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
-                "tar.xz" => format!("tar cJf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
-                "tar" => format!("tar cf '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
-                "7z" => format!("7z a '{}' {}", output_path, paths.iter().map(|p| format!("'{}'", p)).collect::<Vec<_>>().join(" ")),
+            for p in &paths { validate_path(p, "paths[]")?; }
+            let mut cmd = match format.as_str() {
+                "zip" => {
+                    let mut c = tokio::process::Command::new("zip");
+                    c.arg("-r").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
+                "tar.gz" => {
+                    let mut c = tokio::process::Command::new("tar");
+                    c.arg("czf").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
+                "tar.bz2" => {
+                    let mut c = tokio::process::Command::new("tar");
+                    c.arg("cjf").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
+                "tar.xz" => {
+                    let mut c = tokio::process::Command::new("tar");
+                    c.arg("cJf").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
+                "tar" => {
+                    let mut c = tokio::process::Command::new("tar");
+                    c.arg("cf").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
+                "7z" => {
+                    let mut c = tokio::process::Command::new("7z");
+                    c.arg("a").arg(&output_path);
+                    for p in &paths { c.arg(p); }
+                    c
+                }
                 _ => return Err(format!("Unsupported format: {}", format)),
             };
-            let output = tokio::process::Command::new("sh").arg("-c").arg(&cmd)
-                .output().await.map_err(|e| format!("Failed: {}", e))?;
+            let output = cmd.output().await.map_err(|e| format!("Failed: {}", e))?;
             if output.status.success() {
                 Ok(json!({ "success": true, "output": output_path, "format": format }))
             } else {
@@ -4765,23 +4870,34 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             validate_path(&output_dir, "output_dir")?;
             std::fs::create_dir_all(&output_dir).ok();
             let ext = archive_path.to_lowercase();
-            let cmd = if ext.ends_with(".zip") {
-                format!("unzip -o '{}' -d '{}'", archive_path, output_dir)
+            let mut cmd = if ext.ends_with(".zip") {
+                let mut c = tokio::process::Command::new("unzip");
+                c.arg("-o").arg(&archive_path).arg("-d").arg(&output_dir);
+                c
             } else if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
-                format!("tar xzf '{}' -C '{}'", archive_path, output_dir)
+                let mut c = tokio::process::Command::new("tar");
+                c.arg("xzf").arg(&archive_path).arg("-C").arg(&output_dir);
+                c
             } else if ext.ends_with(".tar.bz2") {
-                format!("tar xjf '{}' -C '{}'", archive_path, output_dir)
+                let mut c = tokio::process::Command::new("tar");
+                c.arg("xjf").arg(&archive_path).arg("-C").arg(&output_dir);
+                c
             } else if ext.ends_with(".tar.xz") {
-                format!("tar xJf '{}' -C '{}'", archive_path, output_dir)
+                let mut c = tokio::process::Command::new("tar");
+                c.arg("xJf").arg(&archive_path).arg("-C").arg(&output_dir);
+                c
             } else if ext.ends_with(".tar") {
-                format!("tar xf '{}' -C '{}'", archive_path, output_dir)
+                let mut c = tokio::process::Command::new("tar");
+                c.arg("xf").arg(&archive_path).arg("-C").arg(&output_dir);
+                c
             } else if ext.ends_with(".7z") {
-                format!("7z x '{}' -o'{}'", archive_path, output_dir)
+                let mut c = tokio::process::Command::new("7z");
+                c.arg("x").arg(&archive_path).arg(format!("-o{}", output_dir));
+                c
             } else {
                 return Err(format!("Unsupported archive format: {}", archive_path));
             };
-            let output = tokio::process::Command::new("sh").arg("-c").arg(&cmd)
-                .output().await.map_err(|e| format!("Failed: {}", e))?;
+            let output = cmd.output().await.map_err(|e| format!("Failed: {}", e))?;
             if output.status.success() {
                 Ok(json!({ "success": true, "output_dir": output_dir }))
             } else {
