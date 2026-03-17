@@ -14,7 +14,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::providers::{ProviderError, RemoteEntry};
 
-use super::model::{GitHubCommitter, GitHubContent, GitHubContentDelete, GitHubContentUpdate};
+use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
 
 /// Maximum file size GitHub allows via the Contents API (100 MiB)
 const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -447,7 +447,7 @@ impl GitHubProvider {
             content: encoded,
             sha: existing_sha,
             branch: Some(self.branch.clone()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let encoded_path = norm
@@ -503,7 +503,7 @@ impl GitHubProvider {
             message,
             sha,
             branch: Some(self.branch.clone()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let encoded_path = norm

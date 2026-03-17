@@ -135,6 +135,7 @@ pub struct GitHubProvider {
     /// Repository size in bytes (converted from KB on connect).
     repo_size: Option<u64>,
     repo_private: bool,
+    is_bot_token: bool,
     default_branch: String,
 }
 
@@ -169,6 +170,7 @@ impl GitHubProvider {
             account_name: None,
             repo_size: None,
             repo_private: false,
+            is_bot_token: false,
             default_branch: String::from("main"),
         }
     }
@@ -188,6 +190,15 @@ impl GitHubProvider {
     /// Whether the repository is private.
     pub fn is_private(&self) -> bool {
         self.repo_private
+    }
+
+    /// Get the committer for content operations.
+    /// - Installation token (bot mode): returns AeroFTP bot identity with rocket logo
+    /// - PAT / Device Flow: returns None (GitHub uses the authenticated user's identity)
+    /// Get the committer for content operations.
+    /// Always uses AeroFTP bot identity — shows rocket logo on all commits.
+    pub fn content_committer(&self) -> Option<GitHubCommitter> {
+        Some(GitHubCommitter::default())
     }
 
     /// Current write mode.
@@ -585,6 +596,7 @@ impl StorageProvider for GitHubProvider {
         // 3. Detect write mode
         // Installation tokens report push:false even with contents:write — override for bot tokens
         let is_installation_token = user_login.ends_with("[bot]");
+        self.is_bot_token = is_installation_token;
         let can_push = if is_installation_token {
             true // Installation tokens have the permissions granted to the app
         } else {
@@ -974,7 +986,7 @@ impl StorageProvider for GitHubProvider {
             content: b64,
             sha,
             branch: Some(self.content_branch().to_string()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -1025,7 +1037,7 @@ impl StorageProvider for GitHubProvider {
             content: String::new(), // empty file
             sha: None,
             branch: Some(self.content_branch().to_string()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let url = self.contents_mutation_url(&gitkeep_path);
@@ -1092,7 +1104,7 @@ impl StorageProvider for GitHubProvider {
             ),
             sha,
             branch: Some(self.content_branch().to_string()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -1180,7 +1192,7 @@ impl StorageProvider for GitHubProvider {
             content: b64,
             sha: None,
             branch: Some(self.content_branch().to_string()),
-            committer: Some(GitHubCommitter::default()),
+            committer: self.content_committer(),
         };
 
         let url = self.contents_mutation_url(&resolved_to);
