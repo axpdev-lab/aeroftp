@@ -6679,6 +6679,9 @@ const App: React.FC = () => {
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
               serversRefreshKey={serversRefreshKey}
+              onAeroCloud={() => setShowCloudPanel(true)}
+              isAeroCloudConfigured={true}
+              isAeroCloudConnected={sessions.some(s => s.serverName?.toLowerCase().includes('cloud'))}
               onAeroFile={async () => {
                 setShowConnectionScreen(false);
                 setActivePanel('local');

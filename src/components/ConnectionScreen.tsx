@@ -68,6 +68,9 @@ interface ConnectionScreenProps {
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
+    onAeroCloud?: () => void;
+    isAeroCloudConfigured?: boolean;
+    isAeroCloudConnected?: boolean;
     onOpenCloudPanel?: () => void;
     hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
@@ -441,6 +444,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onSavedServerConnect,
     onSkipToFileManager,
     onAeroFile,
+    onAeroCloud,
+    isAeroCloudConfigured,
+    isAeroCloudConnected,
     onOpenCloudPanel,
     hasExistingSessions = false,
     serversRefreshKey = 0,
@@ -1045,15 +1051,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 </button>
                             )}
                         </div>
-                        {onAeroFile && (
-                            <button
-                                onClick={onAeroFile}
-                                className="flex items-center p-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
-                                title="AeroFile"
-                            >
-                                <FolderOpen size={18} />
-                            </button>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                            {onAeroCloud && (
+                                <button
+                                    onClick={onAeroCloud}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                                        isAeroCloudConnected
+                                            ? 'bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-800/40 text-sky-600 dark:text-sky-400'
+                                            : isAeroCloudConfigured
+                                                ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400'
+                                                : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 dark:text-gray-500'
+                                    }`}
+                                    title={isAeroCloudConfigured ? 'AeroCloud' : 'Configure AeroCloud'}
+                                >
+                                    <Cloud size={16} />
+                                    {isAeroCloudConnected && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+                                </button>
+                            )}
+                            {onAeroFile && (
+                                <button
+                                    onClick={onAeroFile}
+                                    className="flex items-center p-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
+                                    title="AeroFile"
+                                >
+                                    <FolderOpen size={18} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="space-y-3">
                         {/* Protocol Selector - always shown */}
