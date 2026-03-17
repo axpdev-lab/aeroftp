@@ -1185,6 +1185,123 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     Ok((config, initial_path))
 }
 
+/// Run OAuth2 browser authorization flow from CLI.
+/// Opens the browser for the user to authorize, waits for the callback, saves tokens to vault.
+async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Result<(), String> {
+    use ftp_client_gui_lib::providers::{
+        OAuth2Manager, OAuthConfig,
+        oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
+    };
+
+    let oauth_settings = load_oauth_client_config(store, protocol);
+    if oauth_settings.0.is_empty() {
+        return Err(format!("No OAuth client credentials found for '{}'. Configure Client ID and Client Secret in AeroFTP GUI Settings > Cloud Providers.", protocol));
+    }
+
+    // Provider-specific fixed ports (must match registered redirect URIs)
+    let fixed_port: u16 = match protocol {
+        "box" => 9484,
+        "dropbox" => 17548,
+        "onedrive" => 27154,
+        "pcloud" => 17384,
+        "zohoworkdrive" => 18765,
+        "yandexdisk" => 19847,
+        _ => 0,
+    };
+
+    let (listener, port) = if fixed_port > 0 {
+        bind_callback_listener_on_port(fixed_port).await
+    } else {
+        bind_callback_listener().await
+    }.map_err(|e| format!("Failed to bind callback listener on port {}: {}", fixed_port, e))?;
+
+    let config = match protocol {
+        "googledrive" => OAuthConfig::google_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        "dropbox" => OAuthConfig::dropbox_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        "onedrive" => OAuthConfig::onedrive_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        "box" => OAuthConfig::box_cloud_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        "pcloud" => {
+            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
+            OAuthConfig::pcloud_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
+        }
+        "zohoworkdrive" => {
+            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
+            OAuthConfig::zoho_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
+        }
+        "yandexdisk" => OAuthConfig::yandex_disk_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        other => return Err(format!("OAuth not supported for: {}", other)),
+    };
+
+    let manager = OAuth2Manager::new();
+    let (auth_url, expected_state) = manager.start_auth_flow(&config).await
+        .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
+
+    // Try to open browser automatically
+    eprintln!("\nAuthorize in your browser:");
+    eprintln!("  {}\n", auth_url);
+    if open::that(&auth_url).is_err() {
+        eprintln!("Could not open browser automatically. Please open the URL above manually.");
+    }
+    eprintln!("Waiting for authorization... (press Ctrl+C to cancel)");
+
+    // Wait for callback with 5-minute timeout
+    let callback_handle = tokio::spawn(async move {
+        wait_for_callback(listener).await
+    });
+    let (code, state) = tokio::time::timeout(
+        tokio::time::Duration::from_secs(300),
+        callback_handle
+    ).await
+        .map_err(|_| "Timeout: no response within 5 minutes".to_string())?
+        .map_err(|e| format!("Callback error: {}", e))?
+        .map_err(|e| format!("Callback error: {}", e))?;
+
+    if state != expected_state {
+        return Err("OAuth state mismatch — possible CSRF attack".to_string());
+    }
+
+    // Exchange code for tokens
+    manager.complete_auth_flow(&config, &code, &expected_state).await
+        .map_err(|e| format!("Token exchange failed: {}", e))?;
+
+    Ok(())
+}
+
+/// Create an OAuth provider by protocol name (used for retry after re-authorization)
+fn create_oauth_provider_by_protocol(protocol: &str, store: &CredentialStore) -> Result<Box<dyn StorageProvider>, String> {
+    use ftp_client_gui_lib::providers::{
+        OAuth2Manager, OAuthProvider,
+        GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
+        ZohoWorkdriveProvider, YandexDiskProvider,
+        google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
+        onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
+        zoho_workdrive::ZohoWorkdriveConfig,
+    };
+
+    let oauth_settings = load_oauth_client_config(store, protocol);
+    match protocol {
+        "googledrive" => Ok(Box::new(GoogleDriveProvider::new(GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1)))),
+        "dropbox" => Ok(Box::new(DropboxProvider::new(DropboxConfig::new(&oauth_settings.0, &oauth_settings.1)))),
+        "onedrive" => Ok(Box::new(OneDriveProvider::new(OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1)))),
+        "box" => Ok(Box::new(BoxProvider::new(BoxConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1 }))),
+        "pcloud" => {
+            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
+            Ok(Box::new(PCloudProvider::new(PCloudConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1, region })))
+        }
+        "zohoworkdrive" => {
+            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
+            Ok(Box::new(ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region))))
+        }
+        "yandexdisk" => {
+            let manager = OAuth2Manager::new();
+            let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
+                .map_err(|e| format!("No Yandex tokens: {}", e))?;
+            Ok(Box::new(YandexDiskProvider::new(tokens.access_token, None)))
+        }
+        other => Err(format!("Unknown OAuth protocol: {}", other)),
+    }
+}
+
 /// Try to create an OAuth provider directly from vault tokens (for --profile with OAuth providers)
 async fn try_create_oauth_provider(
     protocol: &str,
@@ -1262,11 +1379,23 @@ async fn try_create_oauth_provider(
         _ => return None,
     };
 
-    // Check if tokens exist
+    // Check if tokens exist — if not, offer browser authorization
     let manager = OAuth2Manager::new();
-    if !manager.has_tokens(oauth_provider) {
-        eprintln!("Error: No OAuth tokens found for {}. Please authorize in AeroFTP GUI first.", profile_name);
-        return Some(Err(6));
+    let needs_auth = !manager.has_tokens(oauth_provider);
+
+    if needs_auth {
+        if !std::io::stdin().is_terminal() {
+            eprintln!("Error: No OAuth tokens for {}. Run interactively to authorize, or authorize from AeroFTP GUI.", profile_name);
+            return Some(Err(6));
+        }
+        eprintln!("No OAuth tokens found for {}. Starting browser authorization...", profile_name);
+        match cli_oauth_browser_auth(protocol, store).await {
+            Ok(()) => eprintln!("Authorization successful!"),
+            Err(e) => {
+                eprintln!("Error: Authorization failed: {}", e);
+                return Some(Err(6));
+            }
+        }
     }
 
     // Create provider
@@ -1282,10 +1411,36 @@ async fn try_create_oauth_provider(
         eprintln!("Using profile: {} ({} via OAuth)", profile_name, protocol.to_uppercase());
     }
 
-    // Connect
+    // Connect — if token expired, offer re-authorization
     if let Err(e) = provider.connect().await {
-        eprintln!("Error: OAuth connection failed: {}. Token may be expired — re-authorize in AeroFTP GUI.", e);
-        return Some(Err(6));
+        if !std::io::stdin().is_terminal() {
+            eprintln!("Error: OAuth connection failed: {}. Run interactively to re-authorize.", e);
+            return Some(Err(6));
+        }
+        eprintln!("Token expired or invalid. Starting browser re-authorization...");
+        match cli_oauth_browser_auth(protocol, store).await {
+            Ok(()) => {
+                eprintln!("Re-authorization successful! Reconnecting...");
+                // Recreate provider with fresh tokens
+                // We need to recreate since create_fn was consumed — rebuild inline
+                let mut retry_provider = match create_oauth_provider_by_protocol(protocol, store) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Error: Failed to recreate provider: {}", e);
+                        return Some(Err(5));
+                    }
+                };
+                if let Err(e2) = retry_provider.connect().await {
+                    eprintln!("Error: Connection failed after re-authorization: {}", e2);
+                    return Some(Err(6));
+                }
+                return Some(Ok((retry_provider, initial_path.to_string())));
+            }
+            Err(e2) => {
+                eprintln!("Error: Re-authorization failed: {}", e2);
+                return Some(Err(6));
+            }
+        }
     }
 
     Some(Ok((provider, initial_path.to_string())))
