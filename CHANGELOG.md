@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-03-17
+
+### GitHub Integration — 23rd Protocol, Custom Commit Identity & Developer Program
+
+AeroFTP enters GitHub. Browse repositories as filesystems, upload files that become commits, manage release assets, and customize your commit identity with your own GitHub App logo. The first file transfer client with native GitHub API integration across GUI, CLI, and AI agents.
+
+#### Added
+
+- **GitHub as 23rd protocol**: Full repository filesystem — browse, upload (commit), download, delete (commit), rename, mkdir, search, tree. Every write operation creates a real Git commit
+- **Three authentication modes**: Authorize with GitHub (Device Flow one-click), Personal Access Token (manual), GitHub App with .pem (bot mode with custom logo in commits)
+- **Custom commit identity**: Create your own GitHub App with your logo — commits show your app's name and avatar in the repository's contributor list. Same mechanism used by GitHub Actions and Dependabot
+- **Release asset management**: Releases as virtual directories (`.github-releases/`), asset upload as raw binary (up to 2 GiB), download, delete
+- **Branch awareness**: Direct push on writable branches, automatic working branch (`aeroftp/{user}/{base}`) for protected branches, read-only mode detection. Write mode indicator in status bar
+- **GitHub-specific GUI**: Branch selector dropdown in toolbar, write mode indicator, commit message dialog for uploads/deletes, batch commit prompt (single message for multi-file operations), branch protection info box
+- **Context menu**: "View on GitHub", "Copy Raw URL", "File History" with working branch awareness
+- **Protocol selector reorganized**: "Protocols" section (FTP, SFTP, WebDAV, S3, Azure) + "Services" section (GitHub first, then cloud providers)
+- **AeroCloud dynamic button**: Cloud icon with green LED in Quick Connect header — opens AeroCloud if configured, setup wizard if not
+- **GitHub App created**: [github.com/apps/aeroftp](https://github.com/apps/aeroftp) — official AeroFTP GitHub App for Device Flow authorization
+- **GitHub provider documentation**: [docs/GITHUB-INTEGRATION.md](docs/GITHUB-INTEGRATION.md) — comprehensive guide for all three auth modes, custom identity, and technical details
+- **47 new i18n keys**: GitHub auth, commit dialog, branch selector, write mode, protection info — translated in all 47 languages
+- **CLI `github://` URL scheme**: `aeroftp ls github://token@owner/repo /path/`
+- **CLI `--profile` for GitHub**: Connect to saved GitHub repos without exposing tokens
+- **`agent-info` command**: Structured JSON capability discovery for AI agents, includes GitHub in supported protocols
+- **`AGENTS.md`**: Complete integration guide for AI coding agents with GitHub workflows
+
+#### Fixed
+
+- **FTP/TLS upload truncation** (critical): Files >8KB silently truncated. Fix: flush + drain delay before TLS close_notify
+- **WebDAV HTTP upload 0 bytes** (critical): Streaming with Content-Length header
+- **WebDAV OOM on large files**: Stream from file instead of reading into memory
+- **CLI shell injection**: Archive tools now use `Command::new` with `.arg()`, no `sh -c`
+- **CLI symlink escape**: `verify_path_within_root()` prevents symlink-based directory escape in recursive downloads
+- **CLI profile disambiguation**: Exact match priority, ambiguous matches show candidates
+- **Master password hidden input**: `rpassword` instead of visible `stdin.read_line()`
+- **Partial download cleanup**: Failed downloads remove partial file
+- **kDrive CLI mapping**: Added missing protocol mapping
+- **Path encoding fix**: GitHub Contents API URLs encode segments individually, not slashes
+- **Installation token permissions**: Override `push:false` bug in GitHub API for bot tokens
+
+#### Security (Dual 10-auditor review: Claude Opus 4.6 + GPT 5.4)
+
+- 83+ findings from 5 Claude auditors (security, performance, UX, Rust quality, OAuth)
+- 7 findings from GPT 5.4 full integration review (4 HIGH, 3 MEDIUM — all resolved)
+- Shell injection eliminated, symlink escape protection, token detection hardened
+- `.pem` private key read in Rust backend only — path crosses IPC, never key content
+- Committer identity conditional: bot for installation tokens, user identity for PAT/Device Flow
+
+---
+
 ## [2.9.9] - 2026-03-17
 
 ### CLI Vault Profiles, FTP/TLS Upload Fix & 5-Auditor Security Hardening

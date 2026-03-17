@@ -2,7 +2,7 @@
 # https://github.com/axpnet/aeroftp
 
 pkgname=aeroftp-bin
-pkgver=2.9.8
+pkgver=3.0.0
 pkgrel=1
 pkgdesc="Modern multi-protocol file client with AI, encryption and cloud storage (FTP, SFTP, WebDAV, S3, 22 protocols)"
 arch=('x86_64')
