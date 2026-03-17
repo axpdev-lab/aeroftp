@@ -104,6 +104,9 @@ export interface ProviderOptions {
   githubAuthMode?: 'authorize' | 'pat' | 'app';
   githubAppId?: string;          // GitHub App ID (for bot mode)
   githubInstallationId?: string; // GitHub App Installation ID (for bot mode)
+  githubPemPath?: string;        // Local PEM path used to refresh installation tokens
+  githubTokenExpiresAt?: string; // ISO timestamp returned by GitHub for installation token expiry
+  githubBranch?: string;         // Optional branch override for repository browsing
 }
 
 export interface ConnectionParams {

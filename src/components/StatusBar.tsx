@@ -16,6 +16,7 @@ interface StorageQuota {
 interface StatusBarProps {
     isConnected: boolean;
     serverInfo?: string;
+    gitHubStatus?: React.ReactNode;
     remotePath?: string;
     localPath?: string;
     remoteFileCount?: number;
@@ -49,6 +50,7 @@ interface StatusBarProps {
 export const StatusBar: React.FC<StatusBarProps> = ({
     isConnected,
     serverInfo,
+    gitHubStatus,
     remotePath,
     localPath,
     remoteFileCount = 0,
@@ -136,6 +138,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         <span className="font-medium text-[11px]">{secureProtocol}</span>
                     </div>
                 )}
+
+                {isConnected && gitHubStatus}
 
                 {/* Update Available Button */}
                 {updateAvailable?.has_update && (

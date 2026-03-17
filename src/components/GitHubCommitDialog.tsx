@@ -38,7 +38,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
     if (isOpen) {
       const fileName = files.length === 1
         ? files[0].remote.split('/').pop() || files[0].remote
-        : `${files.length} files`;
+        : `${files.length} items`;
       const verb = operation === 'delete' ? 'Delete' : 'Update';
       setMessage(`${verb} ${fileName} via AeroFTP`);
       setTimeout(() => inputRef.current?.select(), 100);
@@ -210,7 +210,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
             onChange={e => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isReadOnly}
-            placeholder={t('github.commitPlaceholder') || 'Describe your changes...'}
+            placeholder={t('github.commitMessagePlaceholder') || 'Update via AeroFTP'}
             className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               backgroundColor: 'var(--color-bg-primary)',

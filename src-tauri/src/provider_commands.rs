@@ -85,6 +85,18 @@ pub struct ProviderConnectionParams {
     pub verify_cert: Option<bool>,
     /// Filen: Optional TOTP 2FA code
     pub two_factor_code: Option<String>,
+    /// GitHub: auth mode used to obtain the token
+    pub github_auth_mode: Option<String>,
+    /// GitHub: App ID for installation-token mode
+    pub github_app_id: Option<String>,
+    /// GitHub: Installation ID for installation-token mode
+    pub github_installation_id: Option<String>,
+    /// GitHub: Local PEM path for installation-token refresh
+    pub github_pem_path: Option<String>,
+    /// GitHub: Installation token expiry (ISO 8601)
+    pub github_token_expires_at: Option<String>,
+    /// GitHub: optional branch override
+    pub github_branch: Option<String>,
 }
 
 impl ProviderConnectionParams {
@@ -170,6 +182,39 @@ impl ProviderConnectionParams {
             if let Some(ref code) = self.two_factor_code {
                 if !code.is_empty() {
                     extra.insert("two_factor_code".to_string(), code.clone());
+                }
+            }
+        }
+
+        if provider_type == ProviderType::GitHub {
+            if let Some(ref auth_mode) = self.github_auth_mode {
+                if !auth_mode.is_empty() {
+                    extra.insert("github_auth_mode".to_string(), auth_mode.clone());
+                }
+            }
+            if let Some(ref app_id) = self.github_app_id {
+                if !app_id.is_empty() {
+                    extra.insert("github_app_id".to_string(), app_id.clone());
+                }
+            }
+            if let Some(ref installation_id) = self.github_installation_id {
+                if !installation_id.is_empty() {
+                    extra.insert("github_installation_id".to_string(), installation_id.clone());
+                }
+            }
+            if let Some(ref pem_path) = self.github_pem_path {
+                if !pem_path.is_empty() {
+                    extra.insert("github_pem_path".to_string(), pem_path.clone());
+                }
+            }
+            if let Some(ref expires_at) = self.github_token_expires_at {
+                if !expires_at.is_empty() {
+                    extra.insert("github_token_expires_at".to_string(), expires_at.clone());
+                }
+            }
+            if let Some(ref branch) = self.github_branch {
+                if !branch.is_empty() {
+                    extra.insert("branch".to_string(), branch.clone());
                 }
             }
         }
@@ -842,6 +887,7 @@ pub async fn provider_upload_file(
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
+    commit_message: Option<String>,
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
     
@@ -854,9 +900,17 @@ pub async fn provider_upload_file(
         .unwrap_or_else(|| "file".to_string());
     
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
-    
-    provider.upload(&local_path, &remote_path, None).await
-        .map_err(|e| format!("Upload failed: {}", e))?;
+
+    if provider.provider_type() == ProviderType::GitHub {
+        let github = provider.as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+        github.upload_file(&local_path, &remote_path, commit_message.as_deref()).await
+            .map_err(|e| format!("Upload failed: {}", e))?;
+    } else {
+        provider.upload(&local_path, &remote_path, None).await
+            .map_err(|e| format!("Upload failed: {}", e))?;
+    }
     
     info!("Upload completed: {}", filename);
     Ok(format!("Uploaded: {}", filename))
@@ -867,6 +921,7 @@ pub async fn provider_upload_file(
 pub async fn provider_mkdir(
     state: State<'_, ProviderState>,
     path: String,
+    commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
     
@@ -874,9 +929,17 @@ pub async fn provider_mkdir(
         .ok_or("Not connected to any provider")?;
     
     info!("Creating directory: {}", path);
-    
-    provider.mkdir(&path).await
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    if provider.provider_type() == ProviderType::GitHub {
+        let github = provider.as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+        github.create_directory(&path, commit_message.as_deref()).await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    } else {
+        provider.mkdir(&path).await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
     
     Ok(())
 }
@@ -886,6 +949,7 @@ pub async fn provider_mkdir(
 pub async fn provider_delete_file(
     state: State<'_, ProviderState>,
     path: String,
+    commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
     
@@ -893,9 +957,17 @@ pub async fn provider_delete_file(
         .ok_or("Not connected to any provider")?;
     
     info!("Deleting file: {}", path);
-    
-    provider.delete(&path).await
-        .map_err(|e| format!("Failed to delete file: {}", e))?;
+
+    if provider.provider_type() == ProviderType::GitHub {
+        let github = provider.as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+        github.delete_file(&path, commit_message.as_deref()).await
+            .map_err(|e| format!("Failed to delete file: {}", e))?;
+    } else {
+        provider.delete(&path).await
+            .map_err(|e| format!("Failed to delete file: {}", e))?;
+    }
     
     Ok(())
 }
@@ -906,6 +978,7 @@ pub async fn provider_delete_dir(
     state: State<'_, ProviderState>,
     path: String,
     recursive: bool,
+    commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
     
@@ -913,8 +986,19 @@ pub async fn provider_delete_dir(
         .ok_or("Not connected to any provider")?;
     
     info!("Deleting directory: {} (recursive: {})", path, recursive);
-    
-    if recursive {
+
+    if provider.provider_type() == ProviderType::GitHub {
+        let github = provider.as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+        if recursive {
+            github.delete_directory_recursive(&path, commit_message.as_deref()).await
+                .map_err(|e| format!("Failed to delete directory: {}", e))?;
+        } else {
+            github.delete_directory_recursive(&path, commit_message.as_deref()).await
+                .map_err(|e| format!("Failed to delete directory: {}", e))?;
+        }
+    } else if recursive {
         provider.rmdir_recursive(&path).await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
@@ -4054,6 +4138,12 @@ pub async fn github_get_info(
         "repo": github.repo(),
         "branch": github.active_branch(),
         "writeMode": format!("{:?}", github.write_mode()),
+        "writeModeKind": match github.write_mode() {
+            crate::providers::github::GitHubWriteMode::Unknown => "unknown",
+            crate::providers::github::GitHubWriteMode::DirectWrite => "direct",
+            crate::providers::github::GitHubWriteMode::BranchWorkflow { .. } => "branch",
+            crate::providers::github::GitHubWriteMode::ReadOnly { .. } => "readonly",
+        },
         "workingBranch": github.working_branch(),
         "repoPrivate": github.is_private(),
     }))

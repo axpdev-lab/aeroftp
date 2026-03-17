@@ -45,6 +45,9 @@ import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
+import { GitHubCommitDialog } from './components/GitHubCommitDialog';
+import { GitHubBranchSelector } from './components/GitHubBranchSelector';
+import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
 import { FileLuTrashManager } from './components/FileLuTrashManager';
@@ -261,6 +264,15 @@ const App: React.FC = () => {
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
+  const [gitHubCommitDialog, setGitHubCommitDialog] = useState<{
+    files: { local: string; remote: string }[];
+    operation: 'upload' | 'delete';
+    branch: string;
+    writeMode: 'direct' | 'branch' | 'readonly';
+    workingBranch?: string;
+    onCommit: (message: string) => void;
+    onCancel?: () => void;
+  } | null>(null);
   const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
   const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
@@ -317,6 +329,16 @@ const App: React.FC = () => {
   const [fileLuRemoteUploadDialog, setFileLuRemoteUploadDialog] = useState<{
     destPath: string;
   } | null>(null);
+  const [gitHubRepoInfo, setGitHubRepoInfo] = useState<{
+    owner: string;
+    repo: string;
+    branch: string;
+    writeMode: string;
+    writeModeKind: 'direct' | 'branch' | 'readonly' | 'unknown';
+    workingBranch: string | null;
+    repoPrivate: boolean;
+  } | null>(null);
+  const [gitHubBranches, setGitHubBranches] = useState<Array<{ name: string; protected: boolean }>>([]);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -1871,6 +1893,196 @@ const App: React.FC = () => {
     return params;
   };
 
+  const getActiveProviderProtocol = (): ProviderType | undefined => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    return (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+  };
+
+  const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
+    let effectiveParams = normalizeProviderConnectionParams(params);
+
+    if (effectiveParams.protocol === 'github' && effectiveParams.options?.githubAuthMode === 'app') {
+      const appId = effectiveParams.options.githubAppId?.trim();
+      const installationId = effectiveParams.options.githubInstallationId?.trim();
+      const pemPath = effectiveParams.options.githubPemPath?.trim();
+      const expiresAt = effectiveParams.options.githubTokenExpiresAt;
+      const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+      const mustRefreshToken = !effectiveParams.password || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + (5 * 60 * 1000);
+
+      if (mustRefreshToken) {
+        if (!appId || !installationId || !pemPath) {
+          throw new Error('GitHub App mode requires App ID, Installation ID, and PEM path to refresh the installation token');
+        }
+
+        const tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_pem', {
+          pemPath,
+          appId,
+          installationId,
+        });
+
+        effectiveParams = {
+          ...effectiveParams,
+          password: tokenResponse.token,
+          options: {
+            ...effectiveParams.options,
+            githubPemPath: pemPath,
+            githubTokenExpiresAt: tokenResponse.expires_at,
+          },
+        };
+      }
+    }
+
+    const protocol = effectiveParams.protocol;
+    const providerParams = {
+      protocol,
+      server: effectiveParams.server,
+      port: effectiveParams.port,
+      username: effectiveParams.username,
+      password: effectiveParams.password,
+      initial_path: initialPath,
+      bucket: effectiveParams.options?.bucket,
+      region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
+      endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
+      path_style: effectiveParams.options?.pathStyle || false,
+      save_session: effectiveParams.options?.save_session,
+      session_expires_at: effectiveParams.options?.session_expires_at,
+      private_key_path: effectiveParams.options?.private_key_path || null,
+      key_passphrase: effectiveParams.options?.key_passphrase || null,
+      timeout: effectiveParams.options?.timeout || 30,
+      tls_mode: effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+      verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
+      two_factor_code: effectiveParams.options?.two_factor_code || null,
+      github_auth_mode: effectiveParams.options?.githubAuthMode || null,
+      github_app_id: effectiveParams.options?.githubAppId || null,
+      github_installation_id: effectiveParams.options?.githubInstallationId || null,
+      github_pem_path: effectiveParams.options?.githubPemPath || null,
+      github_token_expires_at: effectiveParams.options?.githubTokenExpiresAt || null,
+      github_branch: effectiveParams.options?.githubBranch || null,
+    };
+
+    return { effectiveParams, providerParams };
+  };
+
+  const refreshGitHubContext = useCallback(async (refreshBranches = false) => {
+    const protocol = getActiveProviderProtocol();
+    if (!isConnected || protocol !== 'github') {
+      setGitHubRepoInfo(null);
+      setGitHubBranches([]);
+      return;
+    }
+
+    try {
+      const info = await invoke<{
+        owner: string;
+        repo: string;
+        branch: string;
+        writeMode: string;
+        writeModeKind: 'direct' | 'branch' | 'readonly' | 'unknown';
+        workingBranch: string | null;
+        repoPrivate: boolean;
+      }>('github_get_info');
+      setGitHubRepoInfo(info);
+
+      if (refreshBranches) {
+        const branches = await invoke<Array<{ name: string; protected: boolean }>>('github_list_branches');
+        setGitHubBranches(branches);
+      }
+    } catch (error) {
+      console.warn('Failed to refresh GitHub context:', error);
+      setGitHubRepoInfo(null);
+      setGitHubBranches([]);
+    }
+  }, [activeSessionId, connectionParams.protocol, isConnected, sessions]);
+
+  const switchGitHubBranch = useCallback(async (branch: string) => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const baseParams = normalizeProviderConnectionParams((connectionParams.protocol ? connectionParams : activeSession?.connectionParams || connectionParams));
+    const nextParams: ConnectionParams = {
+      ...baseParams,
+      options: {
+        ...baseParams.options,
+        githubBranch: branch,
+      },
+    };
+
+    setLoading(true);
+    try {
+      const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
+      await invoke('provider_disconnect').catch(() => {});
+      await invoke('provider_connect', { params: providerParams });
+
+      let response: FileListResponse;
+      try {
+        response = await invoke<FileListResponse>('provider_list_files', { path: currentRemotePath || null });
+      } catch {
+        response = await invoke<FileListResponse>('provider_list_files', { path: null });
+      }
+
+      setConnectionParams(effectiveParams);
+      setRemoteFiles(response.files);
+      setCurrentRemotePath(response.current_path);
+      setSelectedRemoteFiles(new Set());
+      if (activeSessionId) {
+        setSessions(prev => prev.map(session =>
+          session.id === activeSessionId
+            ? {
+                ...session,
+                connectionParams: effectiveParams,
+                remoteFiles: response.files,
+                remotePath: response.current_path,
+              }
+            : session
+        ));
+      }
+      await refreshGitHubContext(true);
+      notify.success('GitHub', t('github.branchSwitched', { branch }));
+    } catch (error) {
+      notify.error(t('common.error'), String(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [activeSessionId, connectionParams, currentRemotePath, notify, refreshGitHubContext, sessions, t]);
+
+  const requestGitHubBatchCommitMessage = useCallback((
+    files: { local: string; remote: string }[],
+    operation: 'upload' | 'delete',
+  ): Promise<string | null> => {
+    if (!gitHubRepoInfo || gitHubRepoInfo.writeModeKind === 'unknown') {
+      return Promise.resolve(null);
+    }
+
+    const writeMode = gitHubRepoInfo.writeModeKind as 'direct' | 'branch' | 'readonly';
+
+    return new Promise((resolve) => {
+      setGitHubCommitDialog({
+        files,
+        operation,
+        branch: gitHubRepoInfo.branch,
+        writeMode,
+        workingBranch: gitHubRepoInfo.workingBranch || undefined,
+        onCommit: (message: string) => {
+          setGitHubCommitDialog(null);
+          resolve(message);
+        },
+        onCancel: () => {
+          setGitHubCommitDialog(null);
+          resolve(null);
+        },
+      });
+    });
+  }, [gitHubRepoInfo]);
+
+  useEffect(() => {
+    const protocol = getActiveProviderProtocol();
+    if (!isConnected || protocol !== 'github') {
+      setGitHubRepoInfo(null);
+      setGitHubBranches([]);
+      return;
+    }
+
+    void refreshGitHubContext(true);
+  }, [activeSessionId, connectionParams.protocol, isConnected, refreshGitHubContext, sessions]);
+
   const logConnectionSteps = async (
     server: string,
     port: number,
@@ -2068,30 +2280,10 @@ const App: React.FC = () => {
           // Ignore if not connected
         }
 
-        // Build provider connection params
-        const providerParams = {
-          protocol: protocol,
-          server: effectiveParams.server,
-          port: effectiveParams.port,
-          username: effectiveParams.username,
-          password: effectiveParams.password,
-          initial_path: quickConnectDirs.remoteDir || null,
-          bucket: effectiveParams.options?.bucket,
-          region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
-          endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
-          path_style: effectiveParams.options?.pathStyle || false,
-          save_session: effectiveParams.options?.save_session,
-          session_expires_at: effectiveParams.options?.session_expires_at,
-          // SFTP-specific options
-          private_key_path: effectiveParams.options?.private_key_path || null,
-          key_passphrase: effectiveParams.options?.key_passphrase || null,
-          timeout: effectiveParams.options?.timeout || 30,
-          // FTP/FTPS-specific options
-          tls_mode: effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
-          verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
-          // Filen-specific options
-          two_factor_code: effectiveParams.options?.two_factor_code || null,
-        };
+        const providerPayload = await buildProviderParams(effectiveParams, quickConnectDirs.remoteDir || null);
+        effectiveParams = providerPayload.effectiveParams;
+        setConnectionParams(effectiveParams);
+        const providerParams = providerPayload.providerParams;
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
@@ -2522,25 +2714,9 @@ const App: React.FC = () => {
         try { await invoke('provider_disconnect'); } catch { }
         try { await invoke('disconnect_ftp'); } catch { }
 
-        // Build provider connection params in the format expected by provider_connect
-        const providerParams = {
-          protocol: protocol,
-          server: connectParams.server,
-          port: connectParams.port,
-          username: connectParams.username,
-          password: connectParams.password,
-          initial_path: targetSession.remotePath || null,
-          bucket: connectParams.options?.bucket,
-          region: connectParams.options?.region || (connectParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
-          endpoint: connectParams.options?.endpoint || resolveS3Endpoint(connectParams.providerId, connectParams.options?.region as string) || (protocol === 's3' && connectParams.server && !connectParams.server.includes('amazonaws.com') ? connectParams.server : null),
-          path_style: connectParams.options?.pathStyle || false,
-          private_key_path: connectParams.options?.private_key_path || null,
-          key_passphrase: connectParams.options?.key_passphrase || null,
-          timeout: connectParams.options?.timeout || 30,
-          tls_mode: connectParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
-          verify_cert: connectParams.options?.verifyCert !== undefined ? connectParams.options.verifyCert : true,
-          two_factor_code: connectParams.options?.two_factor_code || null,
-        };
+        const providerPayload = await buildProviderParams(connectParams, targetSession.remotePath || null);
+        connectParams = providerPayload.effectiveParams;
+        const providerParams = providerPayload.providerParams;
 
         logger.debug('[switchSession] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null });
         // SEC-P1-06: TOFU host key check for SFTP
@@ -3260,17 +3436,18 @@ const App: React.FC = () => {
     }
   };
 
-  const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false) => {
-    const logId = humanLog.logStart('UPLOAD', { filename: fileName });
-    pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
+  const uploadFile = async (localFilePath: string, fileName: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, commitMessage?: string) => {
     const startTime = Date.now();
     try {
       // Check if we're using a Provider (get protocol from active session as fallback)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
 
       if (isDir) {
+        const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+        pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
         if (isProvider) {
           const remoteRootForFolder = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
 
@@ -3278,7 +3455,7 @@ const App: React.FC = () => {
           const processFolder = async (currentLocalPath: string, currentRemoteBase: string) => {
             // Create the directory itself first
             try {
-              await invoke('provider_mkdir', { path: currentRemoteBase });
+              await invoke('provider_mkdir', { path: currentRemoteBase, commitMessage: commitMessage || null });
             } catch (e) {
               // Ignore if already exists
             }
@@ -3294,7 +3471,7 @@ const App: React.FC = () => {
                 transferQueue.startTransfer(fileQueueId);
                 try {
                   humanLog.updateEntry(logId, { message: `Uploading ${entry.name}...` });
-                  await invoke('provider_upload_file', { localPath: entry.path, remotePath: newRemotePath });
+                  await invoke('provider_upload_file', { localPath: entry.path, remotePath: newRemotePath, commitMessage: commitMessage || null });
                   transferQueue.completeTransfer(fileQueueId);
                 } catch (e) {
                   console.error(`Failed to upload ${entry.name}:`, e);
@@ -3340,7 +3517,7 @@ const App: React.FC = () => {
           );
 
           if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
-            humanLog.updateEntry(logId, { status: 'success', message: `Skipped ${fileName}` });
+            humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
             return;
           }
 
@@ -3351,8 +3528,26 @@ const App: React.FC = () => {
 
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${targetName}`;
 
+        if (isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
+          setGitHubCommitDialog({
+            files: [{ local: localFilePath, remote: remotePath }],
+            operation: 'upload',
+            branch: gitHubRepoInfo.branch,
+            writeMode: gitHubRepoInfo.writeModeKind,
+            workingBranch: gitHubRepoInfo.workingBranch || undefined,
+            onCommit: (message: string) => {
+              setGitHubCommitDialog(null);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message);
+            },
+          });
+          return;
+        }
+
+        const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+        pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
+
         if (isProvider) {
-          await invoke('provider_upload_file', { localPath: localFilePath, remotePath });
+          await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null });
         } else {
           await invoke('upload_file', { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams });
         }
@@ -3364,7 +3559,7 @@ const App: React.FC = () => {
         humanLog.updateEntry(logId, { status: 'success', message: msg });
       }
     } catch (error) {
-      humanLog.logError('UPLOAD', { filename: fileName }, logId);
+      humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
@@ -3668,6 +3863,27 @@ const App: React.FC = () => {
       }).filter(Boolean) as { path: string; file: LocalFile }[];
 
       if (filesToUpload.length > 0) {
+        const activeSession = sessions.find(s => s.id === activeSessionId);
+        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
+        let batchCommitMessage: string | undefined;
+
+        if (isGitHubRepoMode) {
+          const commitMessage = await requestGitHubBatchCommitMessage(
+            filesToUpload.map(({ path: filePath, file }) => ({
+              local: filePath,
+              remote: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${file.name}`,
+            })),
+            'upload',
+          );
+
+          if (!commitMessage) {
+            return;
+          }
+
+          batchCommitMessage = commitMessage;
+        }
+
         // Queue shows progress - no toast needed
 
         // Add all files to queue first
@@ -3678,7 +3894,7 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage);
               transferQueue.completeTransfer(id);
             } catch (error) {
               transferQueue.failTransfer(id, String(error));
@@ -3801,7 +4017,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
               break;
@@ -4164,6 +4380,24 @@ const App: React.FC = () => {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
+      let batchCommitMessage: string | undefined;
+
+      if (isGitHubRepoMode) {
+        const selectedFiles = names
+          .map(name => remoteFiles.find(f => f.name === name))
+          .filter(Boolean) as RemoteFile[];
+        const commitMessage = await requestGitHubBatchCommitMessage(
+          selectedFiles.map((file) => ({ local: '', remote: file.path })),
+          'delete',
+        );
+
+        if (!commitMessage) {
+          return;
+        }
+
+        batchCommitMessage = commitMessage;
+      }
 
       // Only create frontend log for provider deletes — FTP/SFTP backend emits
       // transfer events (delete_start/delete_complete) that are logged by useTransferEvents
@@ -4183,9 +4417,9 @@ const App: React.FC = () => {
           try {
             if (isProvider) {
               if (file.is_dir) {
-                await invoke('provider_delete_dir', { path: file.path, recursive: true });
+                await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
               } else {
-                await invoke('provider_delete_file', { path: file.path });
+                await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
               }
             } else {
               await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
@@ -4308,22 +4542,37 @@ const App: React.FC = () => {
   };
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
-  const deleteRemoteFile = (path: string, isDir: boolean) => {
+  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
     const fileName = path.split(/[\\/]/).pop() || path;
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const isGitHubRepoMode = protocol === 'github' && !path.startsWith('/.github-releases');
+
+    if (!isDir && isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
+      setGitHubCommitDialog({
+        files: [{ local: '', remote: path }],
+        operation: 'delete',
+        branch: gitHubRepoInfo.branch,
+        writeMode: gitHubRepoInfo.writeModeKind,
+        workingBranch: gitHubRepoInfo.workingBranch || undefined,
+        onCommit: (message: string) => {
+          setGitHubCommitDialog(null);
+          deleteRemoteFile(path, isDir, message);
+        },
+      });
+      return;
+    }
 
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: path });
       try {
-        // Get protocol from active session as fallback
-        const activeSession = sessions.find(s => s.id === activeSessionId);
-        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const isProvider = !!protocol && isNonFtpProvider(protocol);
 
         if (isProvider) {
           if (isDir) {
             await invoke('provider_delete_dir', { path, recursive: true });
           } else {
-            await invoke('provider_delete_file', { path });
+            await invoke('provider_delete_file', { path, commitMessage: commitMessage || null });
           }
         } else {
           await invoke('delete_remote_file', { path, isDir });
@@ -6201,6 +6450,18 @@ const App: React.FC = () => {
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
+        {gitHubCommitDialog && (
+          <GitHubCommitDialog
+            isOpen={true}
+            files={gitHubCommitDialog.files}
+            operation={gitHubCommitDialog.operation}
+            branch={gitHubCommitDialog.branch}
+            writeMode={gitHubCommitDialog.writeMode}
+            workingBranch={gitHubCommitDialog.workingBranch}
+            onCommit={gitHubCommitDialog.onCommit}
+            onCancel={gitHubCommitDialog.onCancel || (() => setGitHubCommitDialog(null))}
+          />
+        )}
         {batchRenameDialog && (
           <BatchRenameDialog
             isOpen={true}
@@ -6770,30 +7031,9 @@ const App: React.FC = () => {
                     try { await invoke('provider_disconnect'); } catch { }
                     try { await invoke('disconnect_ftp'); } catch { }
 
-                    // Build provider connection params
-                    const providerParams = {
-                      protocol: normalizedParams.protocol,
-                      server: normalizedParams.server,
-                      port: normalizedParams.port,
-                      username: normalizedParams.username,
-                      password: normalizedParams.password,
-                      initial_path: initialPath || null,
-                      bucket: normalizedParams.options?.bucket,
-                      region: normalizedParams.options?.region || (normalizedParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
-                      endpoint: normalizedParams.options?.endpoint || resolveS3Endpoint(normalizedParams.providerId, normalizedParams.options?.region as string) || (normalizedParams.protocol === 's3' && normalizedParams.server && !normalizedParams.server.includes('amazonaws.com') ? normalizedParams.server : null),
-                      path_style: normalizedParams.options?.pathStyle || false,
-                      save_session: normalizedParams.options?.save_session,
-                      session_expires_at: normalizedParams.options?.session_expires_at,
-                      // SFTP-specific options
-                      private_key_path: normalizedParams.options?.private_key_path || null,
-                      key_passphrase: normalizedParams.options?.key_passphrase || null,
-                      timeout: normalizedParams.options?.timeout || 30,
-                      // FTP/FTPS-specific options
-                      tls_mode: normalizedParams.options?.tlsMode || (normalizedParams.protocol === 'ftps' ? 'implicit' : undefined),
-                      verify_cert: normalizedParams.options?.verifyCert !== undefined ? normalizedParams.options.verifyCert : true,
-                      // Filen-specific options
-                      two_factor_code: normalizedParams.options?.two_factor_code || null,
-                    };
+                    const providerPayload = await buildProviderParams(normalizedParams, initialPath || null);
+                    const connectedParams = providerPayload.effectiveParams;
+                    const providerParams = providerPayload.providerParams;
 
                     logger.debug('[onSavedServerConnect] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
                     // SEC-P1-06: TOFU host key check for SFTP
@@ -6801,14 +7041,16 @@ const App: React.FC = () => {
                       const accepted = await checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22);
                       if (!accepted) return;
                     }
-                    const savedConnHost = normalizedParams.server || getProviderHostFallback(normalizedParams.protocol, normalizedParams.username);
-                    const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, normalizedParams.port || 443, normalizedParams.protocol || 'ftp');
+                    const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
+                    const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp');
                     await invoke('provider_connect', { params: providerParams });
-                    if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(normalizedParams.port || 443) }) });
-                    logConnectionSuccess(normalizedParams.protocol || 'ftp', normalizedParams.username, {
-                      tlsMode: normalizedParams.options?.tlsMode,
-                      private_key_path: normalizedParams.options?.private_key_path || undefined,
+                    if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(connectedParams.port || 443) }) });
+                    logConnectionSuccess(connectedParams.protocol || 'ftp', connectedParams.username, {
+                      tlsMode: connectedParams.options?.tlsMode,
+                      private_key_path: connectedParams.options?.private_key_path || undefined,
                     });
+
+                    setConnectionParams(connectedParams);
 
                     setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
                     humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
@@ -6839,12 +7081,12 @@ const App: React.FC = () => {
 
                     createSession(
                       providerName,
-                      normalizedParams,
+                      connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
                       files
                     );
-                    fetchStorageQuota(normalizedParams.protocol);
+                    fetchStorageQuota(connectedParams.protocol);
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -7202,6 +7444,16 @@ const App: React.FC = () => {
                     >
                       <RefreshCw size={13} />
                     </button>
+                    {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (
+                      <GitHubBranchSelector
+                        currentBranch={gitHubRepoInfo.branch}
+                        branches={gitHubBranches}
+                        writeMode={gitHubRepoInfo.writeModeKind}
+                        workingBranch={gitHubRepoInfo.workingBranch || undefined}
+                        onBranchChange={(branch: string) => void switchGitHubBranch(branch)}
+                        onRefresh={() => void refreshGitHubContext(true)}
+                      />
+                    )}
                     {isConnected && (
                       <button
                         onClick={() => {
@@ -7906,6 +8158,12 @@ const App: React.FC = () => {
         {showStatusBar && (
           <StatusBar
             isConnected={isConnected}
+            gitHubStatus={isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' ? (
+              <GitHubWriteModeIndicator
+                writeMode={gitHubRepoInfo.writeModeKind}
+                workingBranch={gitHubRepoInfo.workingBranch || undefined}
+              />
+            ) : undefined}
             connectionSecurity={isConnected ? (() => {
               const activeSession = sessions.find(s => s.id === activeSessionId);
               const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;

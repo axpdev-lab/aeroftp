@@ -1,12 +1,12 @@
 # AeroFTP × GitHub Integration
 
-> Browse repositories as filesystems. Upload files that become commits. Customize your commit identity with your own GitHub App logo.
+> Browse repositories as filesystems. Upload files that become commits. Use your own GitHub App identity for bot-style commit attribution.
 
 ---
 
 ## Overview
 
-AeroFTP treats GitHub repositories as remote filesystems. Every file operation — upload, rename, delete — creates a real Git commit. You can browse code, manage release assets, and work with branches, all from the same interface you use for FTP, SFTP, S3, and 20 other protocols.
+AeroFTP treats GitHub repositories as remote filesystems. Every repository write operation — upload, rename, delete, folder creation — produces a real Git commit. You can browse code, manage release assets, and work with branches from the same interface you use for FTP, SFTP, S3, WebDAV, and the rest of AeroFTP's supported providers.
 
 This is not a Git client. AeroFTP does not clone repositories, manage staging areas, or handle merge conflicts. It is a file manager that happens to speak the GitHub API, making repository content accessible through the same workflow you already use for every other server.
 
@@ -24,6 +24,7 @@ Navigate any GitHub repository as if it were a remote directory:
 - **Delete** — remove a file, a Git commit records the deletion
 - **Rename / Move** — rename or move files between directories, each operation is a commit
 - **Create folders** — directories are created with a `.gitkeep` placeholder (Git does not track empty directories)
+- **Batch-friendly commit prompts** — in the GUI, multi-upload and multi-delete flows ask once for a commit message and reuse it across the batch
 - **Search** — find files by name pattern across the entire repository tree
 - **Tree view** — visualize the repository structure
 
@@ -34,16 +35,19 @@ GitHub Releases appear as virtual directories. Release assets (binaries, package
 - Browse releases as folders
 - Download release assets (up to 2 GiB per asset)
 - Upload new assets to existing releases
-- Create new releases
-- Delete assets
+- Delete release assets or entire existing releases
+
+In AeroFTP, releases are exposed through the virtual directory `/.github-releases/`.
 
 ### Branch Awareness
 
 AeroFTP detects whether a branch is writable:
 
 - **Direct push** — the branch accepts commits directly. Your changes are committed immediately.
-- **Protected branch** — the branch has protection rules. AeroFTP automatically creates a working branch (`aeroftp/{user}/{base-branch}`) and commits there. You can then open a Pull Request from AeroFTP to merge your changes.
+- **Protected branch** — the branch has protection rules. AeroFTP automatically creates a working branch (`aeroftp/{user}/{base-branch}`) and commits there instead of failing or pretending direct push is possible.
 - **Read-only** — the token does not have write access. You can browse and download, but not modify.
+
+The UI also exposes the current GitHub write mode and active branch so it is clear when you are writing directly, writing to a working branch, or browsing in read-only mode.
 
 ### From the CLI
 
@@ -85,14 +89,9 @@ One-click browser authorization. AeroFTP opens your browser, you authorize the a
 Generate a Fine-grained PAT at [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens/new) and paste it in AeroFTP.
 
 Required permissions:
+
 - **Contents**: Read and write
 - **Metadata**: Read-only (automatic)
-
-Optional (for full feature access):
-- **Pull requests**: Read and write
-- **Issues**: Read and write
-- **Actions**: Read-only
-- **Pages**: Read and write
 
 - Best for: automation, CI/CD, scripting
 - Commit identity: your GitHub username and avatar
@@ -115,7 +114,7 @@ Create your own GitHub App with a custom name and logo. Commits made through Aer
 
 **Result:**
 
-Your commits will show your app's name with a `[bot]` suffix and your custom logo in the repository's contributor list. This is the same mechanism used by GitHub Actions, Dependabot, and other GitHub integrations.
+Your commits will show your app's name with a `[bot]` suffix and your custom logo in the repository's contributor list. This is the same GitHub installation-token attribution model used by GitHub-native automations.
 
 - Best for: teams, branded automation, CI/CD bots, open-source projects
 - Commit identity: `yourapp[bot]` with your custom logo
@@ -125,7 +124,7 @@ Your commits will show your app's name with a `[bot]` suffix and your custom log
 
 If you create a GitHub App called "DeployBot" with a rocket logo, your commits will appear as:
 
-```
+```text
 🚀 deploybot[bot]  Create index.html    2 minutes ago
 🚀 deploybot[bot]  Update styles.css     5 minutes ago
 👤 axpnet          Fix typo in README    1 hour ago
@@ -154,34 +153,33 @@ Read more: [Credential Isolation for AI Agents](CREDENTIAL-ISOLATION.md)
 
 ### API Usage
 
-AeroFTP uses the GitHub REST API v3 and GraphQL API:
+Current public GitHub flows in AeroFTP are built primarily on the GitHub REST API v3. The provider also contains GraphQL foundations for future atomic multi-file commit workflows.
 
 | Operation | API |
-|-----------|-----|
+| --------- | --- |
 | List files | `GET /repos/{owner}/{repo}/contents/{path}` |
 | Download | Raw media type on Contents API |
 | Upload (commit) | `PUT /repos/{owner}/{repo}/contents/{path}` |
 | Delete (commit) | `DELETE /repos/{owner}/{repo}/contents/{path}` |
-| Multi-file commit | GraphQL `createCommitOnBranch` mutation |
 | Releases | `GET/POST /repos/{owner}/{repo}/releases` |
 | Release assets | Upload as raw binary stream |
 | Branches | `GET/POST /repos/{owner}/{repo}/branches` |
-| Pull requests | `GET/POST /repos/{owner}/{repo}/pulls` |
+| Pull request helper foundation | `GET/POST /repos/{owner}/{repo}/pulls` |
 
 ### Rate Limits
 
-GitHub API allows 5,000 authenticated requests per hour. AeroFTP tracks rate limit usage from response headers and warns when approaching the limit.
+GitHub API allows 5,000 authenticated requests per hour for standard authenticated traffic. AeroFTP tracks rate-limit state from GitHub response headers and exposes the remaining quota in connection information and CLI output.
 
 Typical usage per operation:
+
 - List directory: 1 request
 - Upload file: 2 requests (check existing + create/update)
-- Multi-file commit (GraphQL): 1 request regardless of file count
 - Download: 1 request
 
 ### File Size Limits
 
 | Context | Limit |
-|---------|-------|
+| ------- | ----- |
 | Repository files (read) | 100 MiB |
 | Repository files (write) | 100 MiB |
 | Release assets | 2 GiB |
@@ -191,7 +189,7 @@ Files larger than 100 MiB cannot be stored in GitHub repositories. Use Release a
 ### Commit Identity
 
 | Authentication | Author | Committer | Avatar |
-|---------------|--------|-----------|--------|
+| -------------- | ------ | --------- | ------ |
 | PAT | Authenticated user | Authenticated user | User's avatar |
 | Device Flow | Authenticated user | Authenticated user | User's avatar |
 | Installation token (.pem) | `yourapp[bot]` | `yourapp[bot]` | App's logo |
@@ -222,11 +220,11 @@ The app does not access your email, profile, or any data outside the repositorie
 AeroFTP is open source. The GitHub provider implementation is fully auditable:
 
 | Component | Source |
-|-----------|--------|
+| --------- | ------ |
 | Provider core | [src-tauri/src/providers/github/mod.rs](../src-tauri/src/providers/github/mod.rs) |
 | HTTP client | [src-tauri/src/providers/github/client.rs](../src-tauri/src/providers/github/client.rs) |
 | Repository operations | [src-tauri/src/providers/github/repo_mode.rs](../src-tauri/src/providers/github/repo_mode.rs) |
-| GraphQL batch commits | [src-tauri/src/providers/github/graphql.rs](../src-tauri/src/providers/github/graphql.rs) |
+| GraphQL batch-commit foundations | [src-tauri/src/providers/github/graphql.rs](../src-tauri/src/providers/github/graphql.rs) |
 | Release assets | [src-tauri/src/providers/github/releases_mode.rs](../src-tauri/src/providers/github/releases_mode.rs) |
 | Authentication | [src-tauri/src/providers/github/auth.rs](../src-tauri/src/providers/github/auth.rs) |
 | Error handling | [src-tauri/src/providers/github/errors.rs](../src-tauri/src/providers/github/errors.rs) |

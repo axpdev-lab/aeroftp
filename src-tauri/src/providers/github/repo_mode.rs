@@ -12,9 +12,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
 
-use crate::providers::{ProviderError, RemoteEntry};
+use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 
 use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
+use super::releases_mode::delete_release;
+use super::GitHubVirtualPath;
 
 /// Maximum file size GitHub allows via the Contents API (100 MiB)
 const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -533,6 +535,88 @@ impl GitHubProvider {
         self.sha_cache.remove(&(self.branch.clone(), norm.clone()));
 
         gh_log(&format!("delete_file complete: {}", norm));
+        Ok(())
+    }
+
+    /// Create a logical directory in the repository by writing a `.gitkeep` placeholder.
+    pub async fn create_directory(
+        &mut self,
+        path: &str,
+        commit_message: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        let norm = normalize_path(path);
+
+        if self.parse_virtual_path(&norm).is_some() {
+            return Err(ProviderError::NotSupported(
+                "Creating GitHub releases via mkdir is not supported".to_string(),
+            ));
+        }
+
+        let gitkeep_path = format!("{}/.gitkeep", norm);
+        let default_msg = format!("Create directory {} via AeroFTP", norm);
+        let message = commit_message.unwrap_or(&default_msg).to_string();
+
+        let body = GitHubContentUpdate {
+            message,
+            content: String::new(),
+            sha: None,
+            branch: Some(self.content_branch().to_string()),
+            committer: self.content_committer(),
+        };
+
+        let encoded_path = gitkeep_path
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        let url = format!(
+            "{}/repos/{}/{}/contents/{}",
+            API_BASE,
+            self.owner,
+            self.repo,
+            encoded_path
+        );
+
+        let body_json = serde_json::to_value(&body)
+            .map_err(|e| ProviderError::Other(format!("Serialize error: {}", e)))?;
+
+        self.client
+            .put_json(&url, &body_json)
+            .await
+            .map_err(ProviderError::from)?;
+
+        Ok(())
+    }
+
+    /// Delete a logical directory by removing all contained files with the same commit message.
+    pub async fn delete_directory_recursive(
+        &mut self,
+        path: &str,
+        commit_message: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+
+        if let Some(virtual_path) = self.parse_virtual_path(&resolved) {
+            return match virtual_path {
+                GitHubVirtualPath::ReleasesRoot => Err(ProviderError::NotSupported(
+                    "Recursive deletion of all releases is not supported".to_string(),
+                )),
+                GitHubVirtualPath::ReleaseTag(tag) => {
+                    delete_release(&mut self.client, &self.owner, &self.repo, &tag).await
+                }
+                GitHubVirtualPath::ReleaseAsset { .. } => self.delete_file(path, commit_message).await,
+            };
+        }
+
+        let entries = self.list(path).await?;
+        for entry in entries {
+            if entry.is_dir {
+                Box::pin(self.delete_directory_recursive(&entry.path, commit_message)).await?;
+            } else {
+                self.delete_file(&entry.path, commit_message).await?;
+            }
+        }
+
         Ok(())
     }
 
