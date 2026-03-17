@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-03-18
+
+### GitHub App Fix & Sync Timestamp Preservation
+
+Critical fix for GitHub App (.pem) authentication and comprehensive mtime preservation across all protocols to eliminate sync ping-pong.
+
+#### Fixed
+
+- **GitHub App .pem token generation panic** (critical): `jsonwebtoken` 10.x requires `rust_crypto` feature — missing feature caused thread panic on JWT signing, blocking token generation entirely
+- **GitHub App token timeout**: Added 30s timeout on all GitHub auth HTTP requests — previously hung indefinitely on network issues
+- **GitHub App error messages**: Specific error messages for 401 (invalid PEM/App ID), 403 (missing permissions), 404 (wrong Installation ID), timeout
+- **GitHub protected branch bypass**: New `DirectWriteProtected` mode — attempts direct push first when user/app has ruleset bypass, falls back to working branch only if rejected. Previously always created a working branch even when bypass was configured
+- **AeroCloud manual sync protocol support** (critical): Manual sync was hardcoded to FTP manager — failed with "Not connected to FTP server" on SFTP, WebDAV, S3, and all other protocols. Now uses the same multi-protocol factory as background sync
+- **Sync ping-pong elimination**: Removed `set_file_mtime(now)` after upload that corrupted local timestamps, causing files to be re-transferred on every sync cycle
+
+#### Added
+
+- **SFTP mtime preservation**: `setstat` after upload sets remote file mtime to match local file's original timestamp
+- **FTP MFMT support**: RFC draft `MFMT` command after upload preserves mtime on servers that support it (ProFTPD, FileZilla Server). Auto-detected via `FEAT`
+- **Universal sync mtime alignment**: After upload on any provider, `stat()` reads the server-assigned mtime and applies it to the local file — ensures both sides match for accurate timestamp comparison
+- **Download mtime preservation (provider path)**: After download via StorageProvider, remote mtime is applied to the local file
+- **Token expiry local timezone**: GitHub App token expiry displayed in user's local timezone instead of raw UTC
+- **Auth mode lock on edit**: When editing a saved GitHub connection, authentication mode buttons are locked to prevent accidental mode switching
+
+#### Changed
+
+- **GitHub App placeholder privacy**: Replaced real App ID/Installation ID in placeholder text with generic examples across all 47 locales
+- **FTP MFMT command**: Corrected from `SITE MFMT` to standalone `MFMT` command via `custom_command()` (MFMT is not a SITE sub-command)
+- **Tray Sync Now feedback**: Sync result now logged in activity log after tray-triggered sync
+
+---
+
 ## [3.0.0] - 2026-03-17
 
 ### GitHub Integration — 23rd Protocol, Custom Commit Identity & Developer Program

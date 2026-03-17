@@ -620,6 +620,23 @@ impl StorageProvider for SftpProvider {
         remote_file.shutdown().await
             .map_err(|e| ProviderError::TransferFailed(format!("Shutdown error: {}", e)))?;
 
+        // Preserve local file's mtime on the remote file via SFTP setstat.
+        // This ensures sync timestamp comparison works correctly.
+        if let Ok(local_meta) = std::fs::metadata(local_path) {
+            if let Ok(mtime) = local_meta.modified() {
+                if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                    let attrs = russh_sftp::protocol::FileAttributes {
+                        mtime: Some(duration.as_secs() as u32),
+                        atime: Some(duration.as_secs() as u32),
+                        ..Default::default()
+                    };
+                    if let Err(e) = sftp.set_metadata(&full_path, attrs).await {
+                        tracing::warn!("SFTP: could not preserve mtime on {}: {}", full_path, e);
+                    }
+                }
+            }
+        }
+
         tracing::info!("SFTP: Upload complete: {} bytes", transferred);
         Ok(())
     }

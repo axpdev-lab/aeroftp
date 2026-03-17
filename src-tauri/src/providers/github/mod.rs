@@ -46,6 +46,12 @@ pub enum GitHubWriteMode {
     Unknown,
     /// User has push access and branch is not protected — direct commits allowed.
     DirectWrite,
+    /// Branch is protected but user/app has bypass — direct commits allowed.
+    /// Falls back to BranchWorkflow if the first write is rejected.
+    DirectWriteProtected {
+        /// SHA of the protected branch tip (for fallback branch creation).
+        base_sha: String,
+    },
     /// Branch is protected; provider will auto-create a working branch.
     BranchWorkflow { branch: String },
     /// Token only has read access.
@@ -632,32 +638,16 @@ impl StorageProvider for GitHubProvider {
             {
                 Ok(branch_info) => {
                     if branch_info.protected {
-                        let workflow_branch = Self::workflow_branch_name(
-                            &user_login,
-                            self.active_branch(),
+                        // Branch is protected, but user/app might have bypass.
+                        // Use DirectWriteProtected: attempts direct push first,
+                        // falls back to BranchWorkflow if the write is rejected.
+                        log::info!(
+                            "GitHub: branch '{}' is protected — will attempt direct write (bypass), fallback to working branch if rejected",
+                            self.active_branch()
                         );
-                        match self
-                            .ensure_branch_exists_from_sha(
-                                &workflow_branch,
-                                &branch_info.commit.sha,
-                            )
-                            .await
-                        {
-                            Ok(()) => {
-                                self.write_mode = GitHubWriteMode::BranchWorkflow {
-                                    branch: workflow_branch,
-                                };
-                            }
-                            Err(error) => {
-                                self.write_mode = GitHubWriteMode::ReadOnly {
-                                    reason: format!(
-                                        "Branch '{}' is protected and AeroFTP could not create a working branch automatically: {}",
-                                        self.active_branch(),
-                                        error,
-                                    ),
-                                };
-                            }
-                        }
+                        self.write_mode = GitHubWriteMode::DirectWriteProtected {
+                            base_sha: branch_info.commit.sha,
+                        };
                     } else {
                         self.write_mode = GitHubWriteMode::DirectWrite;
                     }
@@ -1004,11 +994,48 @@ impl StorageProvider for GitHubProvider {
         let body = serde_json::to_value(&update)
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        let resp = self
+        let result = self
             .client
             .put_json(&url, &body)
-            .await
-            .map_err(ProviderError::from)?;
+            .await;
+
+        // If DirectWriteProtected and push was rejected, fallback to BranchWorkflow
+        let resp = match result {
+            Err(ref e) if matches!(self.write_mode, GitHubWriteMode::DirectWriteProtected { .. }) => {
+                let err_str = format!("{}", e);
+                if err_str.contains("protected") || err_str.contains("403") || err_str.contains("422") {
+                    log::info!("GitHub: direct push rejected on protected branch — falling back to working branch");
+                    let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } = self.write_mode {
+                        base_sha.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    let user = self.account_name.clone().unwrap_or_else(|| "aeroftp".to_string());
+                    let workflow_branch = Self::workflow_branch_name(&user, self.active_branch());
+                    self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha).await
+                        .map_err(|e2| ProviderError::TransferFailed(format!(
+                            "Cannot create working branch '{}': {}", workflow_branch, e2
+                        )))?;
+                    self.write_mode = GitHubWriteMode::BranchWorkflow { branch: workflow_branch };
+
+                    // Retry with the new branch
+                    let retry_update = GitHubContentUpdate {
+                        message: update.message.clone(),
+                        content: update.content.clone(),
+                        sha: update.sha.clone(),
+                        branch: Some(self.content_branch().to_string()),
+                        committer: self.content_committer(),
+                    };
+                    let retry_body = serde_json::to_value(&retry_update)
+                        .map_err(|e3| ProviderError::TransferFailed(e3.to_string()))?;
+                    self.client.put_json(&url, &retry_body).await.map_err(ProviderError::from)?
+                } else {
+                    return Err(ProviderError::from(result.unwrap_err()));
+                }
+            }
+            Err(e) => return Err(ProviderError::from(e)),
+            Ok(v) => v,
+        };
 
         // Update SHA cache with the new file's SHA.
         if let Some(content_obj) = resp.get("content") {
@@ -1300,6 +1327,7 @@ impl StorageProvider for GitHubProvider {
         let write_desc = match &self.write_mode {
             GitHubWriteMode::Unknown => "unknown",
             GitHubWriteMode::DirectWrite => "direct push",
+            GitHubWriteMode::DirectWriteProtected { .. } => "direct push (bypass)",
             GitHubWriteMode::BranchWorkflow { .. } => "branch workflow (protected)",
             GitHubWriteMode::ReadOnly { .. } => "read-only",
         };

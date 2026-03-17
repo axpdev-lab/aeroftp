@@ -37,7 +37,10 @@ pub struct DeviceTokenResponse {
 
 /// Request a device code from GitHub
 pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let resp = client
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
@@ -60,7 +63,10 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
 
 /// Poll for the access token after user has authorized
 pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let mut poll_interval = Duration::from_secs(interval.max(5));
     let max_attempts = 120;
 
@@ -163,9 +169,15 @@ pub async fn get_installation_token(
     app_id: &str,
     installation_id: &str,
 ) -> Result<InstallationTokenResponse, String> {
+    info!("GitHub App: generating JWT for app_id={}", app_id);
     let jwt = generate_app_jwt(pem_contents, app_id)?;
+    info!("GitHub App: JWT generated, requesting installation token for installation_id={}", installation_id);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
     let url = format!(
         "https://api.github.com/app/installations/{}/access_tokens",
         installation_id
@@ -179,12 +191,27 @@ pub async fn get_installation_token(
         .header("User-Agent", "AeroFTP")
         .send()
         .await
-        .map_err(|e| format!("Installation token request failed: {}", e))?;
+        .map_err(|e| {
+            if e.is_timeout() {
+                "GitHub API timeout after 30s — check your network connection".to_string()
+            } else if e.is_connect() {
+                format!("Cannot reach GitHub API — check your network: {}", e)
+            } else {
+                format!("Installation token request failed: {}", e)
+            }
+        })?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
+    let status = resp.status();
+    debug!("GitHub App: installation token response status={}", status);
+
+    if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("GitHub installation token failed ({}): {}", status, body));
+        return Err(match status.as_u16() {
+            401 => format!("Authentication failed (401): invalid PEM key or App ID. {}", body),
+            404 => format!("Installation not found (404): check Installation ID '{}'. {}", installation_id, body),
+            403 => format!("Forbidden (403): app may not be installed or lacks permissions. {}", body),
+            _ => format!("GitHub installation token failed ({}): {}", status, body),
+        });
     }
 
     let token_resp: InstallationTokenResponse = resp

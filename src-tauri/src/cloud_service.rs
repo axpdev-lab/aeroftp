@@ -661,11 +661,8 @@ impl CloudService {
                         .upload_file_with_progress(&local_info.path, &remote_path, local_info.size, |_| true)
                         .await
                         .map_err(|e| format!("Upload failed: {}", e))?;
-                    // After upload, update local file mtime to current time
-                    // to match the server's mtime (SFTP sets mtime to upload time).
-                    // This prevents ping-pong re-sync on next cycle.
-                    let now = filetime::FileTime::now();
-                    let _ = filetime::set_file_mtime(&local_info.path, now);
+                    // Do NOT modify local mtime after upload.
+                    // SFTP/FTP providers now preserve mtime via setstat/MFMT.
                 }
             }
             SyncAction::Download => {
@@ -890,11 +887,40 @@ impl CloudService {
                         );
                         let _ = provider.mkdir(&parent_path).await;
                     }
-                    
+
                     provider
                         .upload(&local_info.path, &remote_path, None)
                         .await
                         .map_err(|e| format!("Upload failed: {}", e))?;
+
+                    // After upload, stat the remote file to get the server-assigned mtime,
+                    // then apply it to the local file so both sides match.
+                    // This prevents ping-pong re-sync on all providers (SFTP, FTP, WebDAV, S3, cloud APIs).
+                    match provider.stat(&remote_path).await {
+                        Ok(remote_entry) => {
+                            if let Some(mtime_str) = &remote_entry.modified {
+                                // Parse and apply remote mtime to local file
+                                let remote_dt = chrono::DateTime::parse_from_rfc3339(mtime_str).ok()
+                                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                                    .or_else(|| {
+                                        let fixed = mtime_str.replacen(' ', "T", 1);
+                                        chrono::DateTime::parse_from_rfc3339(&fixed).ok()
+                                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                                    })
+                                    .or_else(|| {
+                                        chrono::NaiveDateTime::parse_from_str(mtime_str, "%Y-%m-%d %H:%M:%S").ok()
+                                            .map(|naive| naive.and_utc())
+                                    });
+                                if let Some(dt) = remote_dt {
+                                    let local_path = std::path::Path::new(&local_info.path);
+                                    crate::preserve_remote_mtime_dt(local_path, Some(dt));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!("Could not stat remote file after upload (non-fatal): {}", e);
+                        }
+                    }
                 }
             }
             SyncAction::Download => {
@@ -917,6 +943,11 @@ impl CloudService {
                         .download(&remote_info.path, &local_path.to_string_lossy(), None)
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
+                    // After download, preserve remote mtime on local file
+                    // so next sync sees them as identical.
+                    if let Some(ref mtime) = remote_info.modified {
+                        crate::preserve_remote_mtime_dt(&local_path, Some(*mtime));
+                    }
                 }
             }
             SyncAction::KeepBoth => {

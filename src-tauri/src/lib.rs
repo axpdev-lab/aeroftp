@@ -6327,51 +6327,21 @@ fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn trigger_cloud_sync(_state: tauri::State<'_, AppState>) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
-    info!("AeroCloud sync triggered");
-    info!("Config - enabled: {}, local: {:?}, remote: {}",
-        config.enabled, config.local_folder, config.remote_folder);
+    info!("AeroCloud: manual sync started");
+    info!("Config - enabled: {}, local: {:?}, remote: {}, protocol: {}",
+        config.enabled, config.local_folder, config.remote_folder, config.protocol_type);
 
     if !config.enabled {
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
     }
 
-    // Get FTP manager and perform sync
-    let mut ftp_manager = state.ftp_manager.lock().await;
+    // Use multi-protocol factory (same as background sync) — supports FTP, SFTP, S3, etc.
+    let result = perform_background_sync(&config).await;
 
-    if !ftp_manager.is_connected() {
-        return Err("Not connected to FTP server. Please connect first.".to_string());
-    }
-
-    info!("FTP connected, starting sync...");
-
-    // Save current working directory before sync — restore after to avoid
-    // corrupting the UI session's CWD (the ftp_manager is shared with the UI)
-    let saved_cwd = ftp_manager.current_path();
-
-    // First, ensure remote folder exists and navigate to it
-    if let Err(_e) = ftp_manager.change_dir(&config.remote_folder).await {
-        info!("Remote folder {} doesn't exist, creating it...", config.remote_folder);
-        // Try to create the folder
-        if let Err(e) = ftp_manager.mkdir(&config.remote_folder).await {
-            warn!("Could not create remote folder: {}", e);
-        }
-    }
-
-    // Create cloud service and run sync
-    let cloud_service = cloud_service::CloudService::new();
-    cloud_service.init(config.clone()).await;
-
-    let sync_result = cloud_service.perform_full_sync(&mut ftp_manager).await;
-
-    // Restore CWD to prevent UI state corruption
-    if let Err(e) = ftp_manager.change_dir(&saved_cwd).await {
-        warn!("Failed to restore CWD after cloud sync: {}", e);
-    }
-
-    match sync_result {
+    match result {
         Ok(result) => {
             let summary = format!(
                 "Sync complete: {} uploaded, {} downloaded, {} conflicts, {} skipped, {} errors",
@@ -6386,7 +6356,6 @@ async fn trigger_cloud_sync(state: tauri::State<'_, AppState>) -> Result<String,
             Ok(summary)
         }
         Err(e) => {
-            // Still try to restore CWD on error (already attempted above after sync)
             error!("Sync failed: {}", e);
             Err(format!("Sync failed: {}", e))
         }

@@ -1927,28 +1927,38 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="space-y-2 mt-1">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>
 
-                                            {/* Mode buttons */}
+                                            {/* Mode buttons — locked when editing a saved connection */}
                                             <div className="flex gap-1.5">
-                                                {(['authorize', 'pat', 'app'] as const).map((mode) => (
+                                                {(['authorize', 'pat', 'app'] as const).map((mode) => {
+                                                    const isActive = (connectionParams.options?.githubAuthMode || 'authorize') === mode;
+                                                    const isLocked = !!editingProfileId;
+                                                    return (
                                                     <button
                                                         key={mode}
                                                         type="button"
-                                                        onClick={() => onConnectionParamsChange({
-                                                            ...connectionParams,
-                                                            password: '',
-                                                            options: { ...connectionParams.options, githubAuthMode: mode },
-                                                        })}
+                                                        disabled={isLocked && !isActive}
+                                                        onClick={() => {
+                                                            if (isLocked) return;
+                                                            onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                password: '',
+                                                                options: { ...connectionParams.options, githubAuthMode: mode },
+                                                            });
+                                                        }}
                                                         className={`flex-1 px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
-                                                            (connectionParams.options?.githubAuthMode || 'authorize') === mode
+                                                            isActive
                                                                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
-                                                                : 'border-gray-600 text-gray-400 hover:border-gray-400'
+                                                                : isLocked
+                                                                    ? 'border-gray-700 text-gray-600 cursor-not-allowed opacity-40'
+                                                                    : 'border-gray-600 text-gray-400 hover:border-gray-400'
                                                         }`}
                                                     >
                                                         {mode === 'authorize' && 'Authorize'}
                                                         {mode === 'pat' && 'Access Token'}
                                                         {mode === 'app' && 'App (.pem)'}
                                                     </button>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
 
                                             {/* Mode: Authorize with GitHub (Device Flow) */}
@@ -2079,7 +2089,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     });
                                                                     setGitHubAlert({
                                                                         title: t('github.appTitle'),
-                                                                        message: t('github.appTokenReady', { expiresAt: result.expires_at }),
+                                                                        message: t('github.appTokenReady', { expiresAt: new Date(result.expires_at).toLocaleString() }),
                                                                         type: 'info',
                                                                     });
                                                                 }

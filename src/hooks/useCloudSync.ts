@@ -144,7 +144,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       if (action === 'cloud_sync_now') {
         try {
           al.log('INFO', tr('cloud.manualSyncStarted'), 'success');
-          await invoke('trigger_cloud_sync');
+          const result = await invoke<string>('trigger_cloud_sync');
+          al.log('INFO', result || 'AeroCloud synced', 'success');
         } catch (e) {
           al.log('INFO', tr('cloud.syncFailed', { error: String(e) }), 'error');
         }

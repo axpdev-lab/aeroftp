@@ -4141,6 +4141,7 @@ pub async fn github_get_info(
         "writeModeKind": match github.write_mode() {
             crate::providers::github::GitHubWriteMode::Unknown => "unknown",
             crate::providers::github::GitHubWriteMode::DirectWrite => "direct",
+            crate::providers::github::GitHubWriteMode::DirectWriteProtected { .. } => "direct",
             crate::providers::github::GitHubWriteMode::BranchWorkflow { .. } => "branch",
             crate::providers::github::GitHubWriteMode::ReadOnly { .. } => "readonly",
         },
@@ -4207,12 +4208,18 @@ pub async fn github_app_token_from_pem(
     app_id: String,
     installation_id: String,
 ) -> Result<serde_json::Value, String> {
+    log::info!("GitHub App token: reading PEM from {}", pem_path);
+
     // Read PEM securely in backend — key never crosses IPC
     let pem_contents = std::fs::read_to_string(&pem_path)
-        .map_err(|e| format!("Failed to read .pem file: {}", e))?;
+        .map_err(|e| format!("Failed to read .pem file '{}': {}", pem_path, e))?;
+
+    log::info!("GitHub App token: PEM read OK ({} bytes), validating...", pem_contents.len());
 
     // Validate PEM
     crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
+
+    log::info!("GitHub App token: PEM valid, requesting installation token...");
 
     // Get installation token
     let token_resp = crate::providers::github::auth::get_installation_token(

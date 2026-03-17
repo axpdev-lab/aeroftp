@@ -20,6 +20,8 @@ pub struct FtpProvider {
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
+    /// Whether server supports MFMT (RFC 3659) for setting remote file mtime
+    mfmt_supported: bool,
     /// Set to true if ExplicitIfAvailable mode fell back to plaintext
     pub tls_downgraded: bool,
 }
@@ -32,6 +34,7 @@ impl FtpProvider {
             stream: None,
             current_path: "/".to_string(),
             mlsd_supported: false,
+            mfmt_supported: false,
             tls_downgraded: false,
         }
     }
@@ -373,10 +376,17 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        // Check FEAT for MLSD support
-        self.mlsd_supported = match stream.feat().await {
-            Ok(features) => features.contains_key("MLST") || features.contains_key("MLSD"),
-            Err(_) => false,
+        // Check FEAT for MLSD and MFMT support (RFC 3659)
+        match stream.feat().await {
+            Ok(features) => {
+                self.mlsd_supported = features.contains_key("MLST") || features.contains_key("MLSD");
+                self.mfmt_supported = features.contains_key("MFMT");
+                tracing::debug!("FTP FEAT: MLSD={}, MFMT={}", self.mlsd_supported, self.mfmt_supported);
+            }
+            Err(_) => {
+                self.mlsd_supported = false;
+                self.mfmt_supported = false;
+            }
         };
 
         // Get current directory (normalize Windows backslashes from FTP servers)
@@ -666,6 +676,32 @@ impl StorageProvider for FtpProvider {
         stream.finalize_put_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        // Preserve local file's mtime on the remote file via MFMT (draft-somers-ftp-mfxx).
+        // MFMT is a standalone FTP command, NOT a SITE sub-command.
+        // Best practice: FileZilla, WinSCP, lftp all do this after upload.
+        if self.mfmt_supported {
+            if let Ok(local_meta) = std::fs::metadata(local_path) {
+                if let Ok(mtime) = local_meta.modified() {
+                    if let Ok(duration) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                        let dt = chrono::DateTime::from_timestamp(duration.as_secs() as i64, 0);
+                        if let Some(dt) = dt {
+                            let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
+                            if let Some(stream) = self.stream.as_mut() {
+                                // MFMT <time-val> <pathname> — expects 213 response
+                                let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
+                                if let Err(e) = stream.custom_command(
+                                    &cmd,
+                                    &[suppaftp::Status::File],
+                                ).await {
+                                    tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(())
     }

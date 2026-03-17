@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.1" date="2026-03-18">
+      <description>
+        <p>Critical fix for GitHub App (.pem) token generation panic. Comprehensive mtime preservation across all protocols (SFTP setstat, FTP MFMT, universal sync-level stat) to eliminate sync ping-pong. AeroCloud manual sync now works with all 23 protocols. GitHub protected branch bypass for users with ruleset permissions.</p>
+      </description>
+    </release>
     <release version="3.0.0" date="2026-03-17">
       <description>
         <p>GitHub as 23rd protocol: browse repositories as filesystem, upload files that create commits, manage release assets. Three authentication modes including custom GitHub App identity with your own logo in commits. Branch awareness with automatic working branch for protected branches. Dual 10-auditor security review. CLI vault profiles for credential-isolated AI agent workflows.</p>
