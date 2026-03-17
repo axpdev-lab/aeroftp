@@ -1890,6 +1890,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 autoFocus
                                             />
                                         </div>
+                                        <div className="flex gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 mt-1">
+                                            <Info size={14} className="text-blue-400 flex-shrink-0 mt-0.5" />
+                                            <p className="text-xs text-blue-300/80">{t('github.branchProtectionInfo')}</p>
+                                        </div>
                                         {/* GitHub Auth Mode Selector */}
                                         <div className="space-y-2 mt-1">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>

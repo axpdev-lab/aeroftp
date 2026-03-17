@@ -3212,7 +3212,8 @@
       "protectedBranch": "Branch is protected. Changes will be committed to a new branch.",
       "viewOnGithub": "View on GitHub",
       "copyRawUrl": "Copy Raw URL",
-      "fileHistory": "File History"
+      "fileHistory": "File History",
+      "branchProtectionInfo": "Uploads, renames, and deletes create Git commits. If the branch is protected, a working branch will be created automatically and you can open a Pull Request to merge your changes."
     },
     "filelu": {
       "setFilePassword": "Set File Password",
