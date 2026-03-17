@@ -4109,15 +4109,19 @@ pub async fn github_device_flow_complete(device_code: String, interval: u64) -> 
     crate::providers::github::auth::poll_for_token(&device_code, interval).await
 }
 
-/// GitHub App Bot Mode — Validate a .pem file and get installation token
-/// Returns the installation access token that makes commits with the app's identity/logo
+/// GitHub App Bot Mode — Read .pem from disk and get installation token
+/// The private key never leaves the Rust backend — only the path is received from frontend
 #[tauri::command]
 pub async fn github_app_token_from_pem(
-    pem_contents: String,
+    pem_path: String,
     app_id: String,
     installation_id: String,
 ) -> Result<serde_json::Value, String> {
-    // Validate PEM first
+    // Read PEM securely in backend — key never crosses IPC
+    let pem_contents = std::fs::read_to_string(&pem_path)
+        .map_err(|e| format!("Failed to read .pem file: {}", e))?;
+
+    // Validate PEM
     crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
 
     // Get installation token

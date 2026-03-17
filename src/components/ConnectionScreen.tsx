@@ -2048,8 +2048,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     multiple: false,
                                                                 });
                                                                 if (selected) {
-                                                                    const { readTextFile } = await import('@tauri-apps/plugin-fs');
-                                                                    const pemContent = await readTextFile(selected as string);
                                                                     const appId = connectionParams.options?.githubAppId || '';
                                                                     const installId = connectionParams.options?.githubInstallationId || '';
                                                                     if (!appId || !installId) {
@@ -2057,8 +2055,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                         return;
                                                                     }
                                                                     const { invoke } = await import('@tauri-apps/api/core');
+                                                                    // PEM read securely in backend — only path crosses IPC
                                                                     const result = await invoke('github_app_token_from_pem', {
-                                                                        pemContents: pemContent,
+                                                                        pemPath: selected as string,
                                                                         appId,
                                                                         installationId: installId,
                                                                     }) as { token: string; expires_at: string };

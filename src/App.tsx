@@ -5251,8 +5251,9 @@ const App: React.FC = () => {
         // Resolve branch asynchronously in each action via github_get_info
         const getGhBranch = async (): Promise<string> => {
           try {
-            const info = await invoke<{ branch: string }>('github_get_info');
-            return info.branch || 'main';
+            const info = await invoke<{ branch: string; workingBranch: string | null }>('github_get_info');
+            // Use workingBranch if in branch workflow mode, otherwise base branch
+            return info.workingBranch || info.branch || 'main';
           } catch {
             return 'main';
           }

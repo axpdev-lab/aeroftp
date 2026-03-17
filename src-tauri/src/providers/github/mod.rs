@@ -193,12 +193,14 @@ impl GitHubProvider {
     }
 
     /// Get the committer for content operations.
-    /// - Installation token (bot mode): returns AeroFTP bot identity with rocket logo
-    /// - PAT / Device Flow: returns None (GitHub uses the authenticated user's identity)
-    /// Get the committer for content operations.
-    /// Always uses AeroFTP bot identity — shows rocket logo on all commits.
+    /// - Installation token (.pem): returns AeroFTP bot identity with rocket logo
+    /// - PAT / Device Flow: returns None, GitHub uses the authenticated user's identity and avatar
     pub fn content_committer(&self) -> Option<GitHubCommitter> {
-        Some(GitHubCommitter::default())
+        if self.is_bot_token {
+            Some(GitHubCommitter::default())
+        } else {
+            None
+        }
     }
 
     /// Current write mode.
@@ -567,10 +569,19 @@ impl StorageProvider for GitHubProvider {
                 self.account_name = user.name.clone();
                 self.account_email = user.email.clone().or(Some(user.login.clone()));
             }
-            Err(_) => {
-                // Installation token — GET /user fails, verify via GET /repos/{owner}/{repo}
-                // Installation tokens can access repos but not /user or /app
-                log::info!("GitHub: user token failed, trying as installation token...");
+            Err(e) => {
+                // Distinguish: 401 Unauthorized → likely installation token
+                // Other errors (network, rate limit) → propagate
+                let is_auth_error = matches!(&e,
+                    GitHubError::Unauthorized |
+                    GitHubError::InsufficientPermissions(_)
+                );
+                if !is_auth_error {
+                    // Network error, rate limit, etc. — not a token type issue
+                    return Err(ProviderError::from(e));
+                }
+                // Installation token — GET /user returns 401, but repo access works
+                log::info!("GitHub: user endpoint returned 401, treating as installation token");
                 user_login = "aeroftp[bot]".to_string();
                 self.account_name = Some("AeroFTP App".to_string());
                 self.account_email = Some("aeroftp[bot]@users.noreply.github.com".to_string());
