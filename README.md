@@ -290,6 +290,20 @@ AEROFTP_MASTER_PASSWORD=$SECRET aeroftp put --profile "Deploy" ./dist/ /www/ -r
 
 > AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool — listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
 
+#### Credential Isolation for AI Agents
+
+As of March 2026, no other file transfer client, cloud storage CLI, or multi-protocol transfer tool provides native credential isolation for AI agents operating on remote servers.
+
+Existing tools in this category — including multi-cloud CLIs, FTP/SFTP clients with command-line interfaces, S3 utilities, and IDE deployment extensions — store server credentials either in plaintext configuration files, in reversible encoding schemes, or in OS keystores accessible to any process running under the same user. When an AI coding agent needs to transfer files to a remote server, it must either receive the credentials directly (via environment variables, command arguments, or configuration files it can read) or rely on external credential proxy services that only support HTTP APIs and cannot handle native file transfer protocols.
+
+AeroFTP solves this at the architecture level. The CLI `--profile` flag and the AeroAgent `server_exec` tool both resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault derived with Argon2id. The credential material never crosses the IPC boundary to the frontend, never appears in the AI model context, and never surfaces in command-line arguments, environment variables, shell history, or process listings. The agent receives only the operation result — a directory listing, a transfer confirmation, a file content — without any access to the authentication material that produced it.
+
+This architecture works across all 22 supported protocols: FTP, FTPS, SFTP, WebDAV, S3-compatible storage, and OAuth-authenticated cloud providers including Google Drive, Dropbox, OneDrive, Box, pCloud, and others. It is not limited to HTTP-based services.
+
+The practical implication is straightforward: a developer can give an AI agent full operational access to their servers — upload, download, sync, search, delete — while maintaining a strict credential boundary. The agent can deploy a website, synchronize a build folder, or inspect remote logs without ever being able to extract, forward, or inadvertently expose the underlying passwords, API keys, or OAuth tokens.
+
+AeroFTP is open source (GPL-3.0). The implementation is fully auditable in [`src-tauri/src/ai_tools.rs`](src-tauri/src/ai_tools.rs) (server_exec), [`src-tauri/src/credential_store.rs`](src-tauri/src/credential_store.rs) (vault), and [`src-tauri/src/bin/aeroftp_cli.rs`](src-tauri/src/bin/aeroftp_cli.rs) (--profile).
+
 ---
 
 ### AeroPlayer — Media Engine
