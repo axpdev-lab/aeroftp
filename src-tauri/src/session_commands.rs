@@ -95,6 +95,7 @@ pub async fn session_connect(
         "s3" => ProviderType::S3,
         "filelu" => ProviderType::FileLu,
         "opendrive" => ProviderType::OpenDrive,
+        "github" => ProviderType::GitHub,
         other => return Err(format!("Unknown protocol: {}", other)),
     };
 

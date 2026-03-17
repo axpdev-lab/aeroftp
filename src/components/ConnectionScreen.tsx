@@ -1902,14 +1902,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: 443,
                                                     })}
                                                     className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                                                    placeholder="ghp_xxxxxxxxxxxx"
+                                                    placeholder="github_pat_xxxxxxxxxxxx"
                                                 />
                                                 <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-2">{t('protocol.githubAuthHelp')}</p>
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            {t('protocol.githubAuthHelp')}{' '}
+                                            <a
+                                                href="https://github.com/settings/personal-access-tokens/new"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-[var(--color-accent)] hover:underline cursor-pointer"
+                                            >
+                                                Generate token
+                                            </a>
+                                        </p>
 
                                         <div className="pt-2">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">

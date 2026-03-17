@@ -83,7 +83,8 @@ interface ProtocolInfo {
     badge?: string;
     isOAuth?: boolean;
     color?: string;
-    isCloudStorage?: boolean;  // For cloud providers (AeroCloud, OAuth, etc.)
+    isCloudStorage?: boolean;  // Legacy — use category instead
+    category?: 'aerocloud' | 'protocol' | 'service';  // Section grouping
     tooltip?: string;  // Tooltip on hover
     disabled?: boolean;  // If true, show as coming soon
 }
@@ -142,17 +143,18 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
     },
-    // Cloud Storage Providers (AeroCloud FIRST!)
+    // Service Providers (GitHub first, then cloud services)
     {
-        type: 'aerocloud',
-        name: 'AeroCloud',
-        icon: <Cloud size={18} className="text-sky-400" />,
-        description: t('protocol.aerocloudDesc'),
-        defaultPort: 21,
-        badge: 'Sync',
-        color: 'text-sky-500',
+        type: 'github',
+        name: 'GitHub',
+        icon: <GitHubLogo size={18} />,
+        description: t('protocol.githubDesc'),
+        defaultPort: 443,
+        badge: 'API',
+        color: 'text-gray-400',
         isCloudStorage: true,
-        tooltip: t('protocol.aerocloudTooltip'),
+        category: 'service',
+        tooltip: t('protocol.githubTooltip'),
     },
     {
         type: 'googledrive',
@@ -320,17 +322,6 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.yandexdiskTooltip'),
     },
     {
-        type: 'github',
-        name: 'GitHub',
-        icon: <GitHubLogo size={18} />,
-        description: t('protocol.githubDesc'),
-        defaultPort: 443,
-        badge: 'API',
-        color: 'text-gray-400',
-        isCloudStorage: true,
-        tooltip: t('protocol.githubTooltip'),
-    },
-    {
         type: 'internxt',
         name: 'Internxt',
         icon: <InternxtLogo size={18} />,
@@ -457,9 +448,9 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
             {/* Protocol Grid (always visible when no selection or dropdown open) */}
             {(isOpen || !value) && (
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                    {/* Traditional Server Protocols */}
+                    {/* Server Protocols */}
                     <div className="col-span-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('protocol.servers')}</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Protocols</p>
                     </div>
                     {PROTOCOLS.filter(p => !p.isCloudStorage).map((protocol) => (
                         <button
@@ -503,9 +494,9 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                         </button>
                     ))}
 
-                    {/* Cloud Storage Providers (AeroCloud first!) */}
+                    {/* Service Providers */}
                     <div className="col-span-2 mt-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{t('protocol.cloudStorage')}</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Services</p>
                     </div>
                     {PROTOCOLS.filter(p => p.isCloudStorage).map((protocol) => (
                         <button

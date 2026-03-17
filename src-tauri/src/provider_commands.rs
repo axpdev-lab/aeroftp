@@ -109,6 +109,7 @@ impl ProviderConnectionParams {
             "koofr" => ProviderType::Koofr,
             "opendrive" => ProviderType::OpenDrive,
             "yandexdisk" => ProviderType::YandexDisk,
+            "github" => ProviderType::GitHub,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 

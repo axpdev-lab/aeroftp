@@ -14,7 +14,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::providers::{ProviderError, RemoteEntry};
 
-use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
+use super::model::{GitHubCommitter, GitHubContent, GitHubContentDelete, GitHubContentUpdate};
 
 /// Maximum file size GitHub allows via the Contents API (100 MiB)
 const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -131,14 +131,21 @@ impl GitHubProvider {
                 API_BASE, self.owner, self.repo, self.branch
             )
         } else {
-            format!(
-                "{}/repos/{}/{}/contents/{}?ref={}",
-                API_BASE,
-                self.owner,
-                self.repo,
-                urlencoding::encode(&norm),
-                self.branch
-            )
+            {
+                let encoded_path = norm
+                    .split('/')
+                    .map(|seg| urlencoding::encode(seg).into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                format!(
+                    "{}/repos/{}/{}/contents/{}?ref={}",
+                    API_BASE,
+                    self.owner,
+                    self.repo,
+                    encoded_path,
+                    self.branch
+                )
+            }
         }
     }
 
@@ -440,14 +447,20 @@ impl GitHubProvider {
             content: encoded,
             sha: existing_sha,
             branch: Some(self.branch.clone()),
+            committer: Some(GitHubCommitter::default()),
         };
 
+        let encoded_path = norm
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
         let url = format!(
             "{}/repos/{}/{}/contents/{}",
             API_BASE,
             self.owner,
             self.repo,
-            urlencoding::encode(&norm)
+            encoded_path
         );
 
         gh_log(&format!("upload_file: {} ({} bytes)", url, file_size));
@@ -490,14 +503,20 @@ impl GitHubProvider {
             message,
             sha,
             branch: Some(self.branch.clone()),
+            committer: Some(GitHubCommitter::default()),
         };
 
+        let encoded_path = norm
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
         let url = format!(
             "{}/repos/{}/{}/contents/{}",
             API_BASE,
             self.owner,
             self.repo,
-            urlencoding::encode(&norm)
+            encoded_path
         );
 
         gh_log(&format!("delete_file: {}", url));

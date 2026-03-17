@@ -253,20 +253,32 @@ impl GitHubProvider {
                 self.encoded_content_branch_for_query(),
             )
         } else {
+            // Encode each path segment individually — do NOT encode the slashes
+            let encoded_path = resolved
+                .split('/')
+                .map(|seg| urlencoding::encode(seg).into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
             format!(
                 "{}/contents/{}?ref={}",
                 self.repo_url(),
-                urlencoding::encode(&resolved),
+                encoded_path,
                 self.encoded_content_branch_for_query(),
             )
         }
     }
 
     fn contents_mutation_url(&self, path: &str) -> String {
+        let normalised = Self::normalise_path(path);
+        let encoded_path = normalised
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
         format!(
             "{}/contents/{}",
             self.repo_url(),
-            urlencoding::encode(&Self::normalise_path(path)),
+            encoded_path,
         )
     }
 
@@ -947,6 +959,7 @@ impl StorageProvider for GitHubProvider {
             content: b64,
             sha,
             branch: Some(self.content_branch().to_string()),
+            committer: Some(GitHubCommitter::default()),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -997,6 +1010,7 @@ impl StorageProvider for GitHubProvider {
             content: String::new(), // empty file
             sha: None,
             branch: Some(self.content_branch().to_string()),
+            committer: Some(GitHubCommitter::default()),
         };
 
         let url = self.contents_mutation_url(&gitkeep_path);
@@ -1063,6 +1077,7 @@ impl StorageProvider for GitHubProvider {
             ),
             sha,
             branch: Some(self.content_branch().to_string()),
+            committer: Some(GitHubCommitter::default()),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -1150,6 +1165,7 @@ impl StorageProvider for GitHubProvider {
             content: b64,
             sha: None,
             branch: Some(self.content_branch().to_string()),
+            committer: Some(GitHubCommitter::default()),
         };
 
         let url = self.contents_mutation_url(&resolved_to);

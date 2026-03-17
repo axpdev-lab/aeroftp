@@ -44,12 +44,12 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk'].includes(type);
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt', 'jottacloud', 'filelu', 'koofr', 'opendrive', 'yandexdisk'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt', 'jottacloud', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode

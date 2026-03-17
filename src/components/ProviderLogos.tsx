@@ -358,6 +358,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,
+    'github': GitHubLogo,
     'box': BoxLogo,
     'pcloud': PCloudLogo,
     'azure': AzureLogo,

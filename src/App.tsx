@@ -114,7 +114,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -1794,7 +1794,7 @@ const App: React.FC = () => {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'];
   // Providers that support server-side copy (for context menu)
   const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
@@ -1822,6 +1822,8 @@ const App: React.FC = () => {
         return 'dev.opendrive.com';
       case 'yandexdisk':
         return 'cloud-api.yandex.net';
+      case 'github':
+        return 'api.github.com';
       default:
         return 'localhost';
     }
@@ -1856,6 +1858,14 @@ const App: React.FC = () => {
         ...params,
         server: params.server || 'cloud-api.yandex.net',
         port: params.port || 443,
+      };
+    }
+    if (protocol === 'github') {
+      return {
+        ...params,
+        server: params.server || '',
+        port: params.port || 443,
+        username: params.username || 'token',
       };
     }
     return params;
@@ -2009,7 +2019,7 @@ const App: React.FC = () => {
 
     // S3, WebDAV and MEGA use provider_connect
     if (isProvider) {
-      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk') || !effectiveParams.username) {
+      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github') || (!effectiveParams.username && protocol !== 'github')) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -4964,6 +4974,7 @@ const App: React.FC = () => {
           case 'pcloud': return <PCloudLogo size={14} />;
           case 'filen': return <FilenLogo size={14} />;
           case 'opendrive': return <OpenDriveLogo size={14} />;
+          case 'github': return <GitHubLogo size={14} />;
           default: return <Share2 size={14} />;
         }
       })();

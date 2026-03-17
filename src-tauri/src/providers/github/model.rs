@@ -166,6 +166,22 @@ pub struct GitHubArtifact {
     pub expired: bool,
 }
 
+/// Git committer/author identity for AeroFTP-signed commits
+#[derive(Debug, Serialize, Clone)]
+pub struct GitHubCommitter {
+    pub name: String,
+    pub email: String,
+}
+
+impl Default for GitHubCommitter {
+    fn default() -> Self {
+        Self {
+            name: "AeroFTP".to_string(),
+            email: "aeroftp@users.noreply.github.com".to_string(),
+        }
+    }
+}
+
 /// Request body for creating/updating a file via the Contents API
 #[derive(Debug, Serialize)]
 pub struct GitHubContentUpdate {
@@ -177,6 +193,9 @@ pub struct GitHubContentUpdate {
     pub sha: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// Committer identity — defaults to AeroFTP
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub committer: Option<GitHubCommitter>,
 }
 
 /// Request body for deleting a file via the Contents API
@@ -186,4 +205,7 @@ pub struct GitHubContentDelete {
     pub sha: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// Committer identity — defaults to AeroFTP
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub committer: Option<GitHubCommitter>,
 }

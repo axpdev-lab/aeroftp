@@ -65,7 +65,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';
