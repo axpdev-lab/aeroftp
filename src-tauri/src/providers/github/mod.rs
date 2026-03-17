@@ -543,15 +543,28 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // 1. Validate token via GET /user
-        let user: GitHubUser = self
+        // 1. Validate token — try GET /user first (PAT/Device Flow),
+        //    fallback to GET /app for installation tokens
+        let user_login: String;
+        match self
             .client
-            .get_json(&format!("{}/user", self.client.api_base()))
+            .get_json::<GitHubUser>(&format!("{}/user", self.client.api_base()))
             .await
-            .map_err(ProviderError::from)?;
-
-        self.account_name = user.name.clone();
-        self.account_email = user.email.clone().or(Some(user.login.clone()));
+        {
+            Ok(user) => {
+                user_login = user.login.clone();
+                self.account_name = user.name.clone();
+                self.account_email = user.email.clone().or(Some(user.login.clone()));
+            }
+            Err(_) => {
+                // Installation token — GET /user fails, verify via GET /repos/{owner}/{repo}
+                // Installation tokens can access repos but not /user or /app
+                log::info!("GitHub: user token failed, trying as installation token...");
+                user_login = "aeroftp[bot]".to_string();
+                self.account_name = Some("AeroFTP App".to_string());
+                self.account_email = Some("aeroftp[bot]@users.noreply.github.com".to_string());
+            }
+        }
 
         // 2. Resolve repo via GET /repos/{owner}/{repo}
         let repo: GitHubRepo = self
@@ -570,11 +583,13 @@ impl StorageProvider for GitHubProvider {
         }
 
         // 3. Detect write mode
-        let can_push = repo
-            .permissions
-            .as_ref()
-            .map(|p| p.push)
-            .unwrap_or(false);
+        // Installation tokens report push:false even with contents:write — override for bot tokens
+        let is_installation_token = user_login.ends_with("[bot]");
+        let can_push = if is_installation_token {
+            true // Installation tokens have the permissions granted to the app
+        } else {
+            repo.permissions.as_ref().map(|p| p.push).unwrap_or(false)
+        };
 
         if !can_push {
             self.write_mode = GitHubWriteMode::ReadOnly {
@@ -595,7 +610,7 @@ impl StorageProvider for GitHubProvider {
                 Ok(branch_info) => {
                     if branch_info.protected {
                         let workflow_branch = Self::workflow_branch_name(
-                            &user.login,
+                            &user_login,
                             self.active_branch(),
                         );
                         match self
@@ -645,7 +660,7 @@ impl StorageProvider for GitHubProvider {
         log::info!(
             "GitHub: connected to {} as {} (branch: {}, write_mode: {:?}, size: {} KB, private: {})",
             self.repo_slug(),
-            user.login,
+            user_login,
             self.content_branch(),
             self.write_mode,
             repo.size,

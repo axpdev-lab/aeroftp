@@ -177,7 +177,7 @@ impl Default for GitHubCommitter {
     fn default() -> Self {
         Self {
             name: "aeroftp[bot]".to_string(),
-            email: "3115847+aeroftp[bot]@users.noreply.github.com".to_string(),
+            email: "268949222+aeroftp[bot]@users.noreply.github.com".to_string(),
         }
     }
 }
