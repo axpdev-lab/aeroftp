@@ -1,6 +1,6 @@
 # Credential Isolation for AI Agents
 
-> How AeroFTP enables AI coding agents to operate on remote servers across 22 protocols without exposing credentials.
+> How AeroFTP enables AI coding agents to operate on remote servers across 23 protocols without exposing credentials.
 
 ---
 
@@ -93,9 +93,9 @@ This means a developer can instruct AeroAgent: *"Upload the build folder to the 
 
 ### Protocol Coverage
 
-The credential isolation architecture is not limited to a single protocol or service type. It works across all 22 protocols supported by AeroFTP:
+The credential isolation architecture is not limited to a single protocol or service type. It works across all 23 protocols supported by AeroFTP:
 
-**Direct authentication**: FTP, FTPS, SFTP, WebDAV/WebDAVS, S3 (AWS, Backblaze, Wasabi, Cloudflare R2, MinIO, and other compatible services), Azure Blob Storage, MEGA, Filen, Internxt Drive, kDrive, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk
+**Direct authentication**: FTP, FTPS, SFTP, WebDAV/WebDAVS, S3 (AWS, Backblaze, Wasabi, Cloudflare R2, MinIO, and other compatible services), GitHub (repository filesystem, releases, branch workflow), Azure Blob Storage, MEGA, Filen, Internxt Drive, kDrive, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk
 
 **OAuth-authenticated providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive (authorize once in the GUI; the CLI reuses the stored tokens with automatic refresh)
 

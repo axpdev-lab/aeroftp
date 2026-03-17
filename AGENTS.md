@@ -172,6 +172,26 @@ aeroftp ls --profile "prod" /
 aeroftp ls --profile 1 /
 ```
 
+## GitHub Integration
+
+AeroFTP treats GitHub repositories as filesystems. Every upload creates a Git commit.
+
+```bash
+# Browse repo
+aeroftp ls --profile "GitHub/myproject" /src/ -l
+
+# Upload file → creates commit
+aeroftp put --profile "GitHub/myproject" ./fix.py /src/fix.py
+
+# Read file
+aeroftp cat --profile "GitHub/myproject" /README.md
+
+# Delete → creates commit
+aeroftp rm --profile "GitHub/myproject" /old-file.txt
+```
+
+For protected branches, AeroFTP auto-creates a working branch and offers PR creation. The token never leaves the vault.
+
 ## Common Workflows
 
 ### Deploy a website
@@ -203,9 +223,9 @@ aeroftp df --profile "Production" --json
 
 ## Supported Protocols
 
-22 protocols, all accessible via `--profile`:
+23 protocols, all accessible via `--profile`:
 
-**Direct auth** (work immediately): FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, MEGA, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob
+**Direct auth** (work immediately): FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, MEGA, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob
 
 **OAuth** (browser auth on first use, then automatic): Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive
 

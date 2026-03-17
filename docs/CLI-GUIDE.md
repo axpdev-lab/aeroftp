@@ -8,7 +8,7 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, supporting 22 protocols through a single binary with consistent behavior across all of them.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, supporting 23 protocols through a single binary with consistent behavior across all of them.
 
 ### Supported Protocols
 
@@ -27,6 +27,7 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 | FileLu | `filelu://` | API Key |
 | Koofr | `koofr://` | OAuth2 Token |
 | OpenDrive | `opendrive://` | Password |
+| GitHub | `github://` | PAT / Device Flow |
 | Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
 | Google Drive | — | OAuth2 (via `--profile`) |
 | Dropbox | — | OAuth2 (via `--profile`) |
@@ -525,6 +526,37 @@ aeroftp batch deploy.aeroftp --quiet   # Errors only
 ---
 
 ## Protocol-Specific Notes
+
+### GitHub
+
+```bash
+# Browse repository as filesystem
+aeroftp ls github://token:YOUR_PAT@owner/repo /src/ -l
+
+# Specific branch
+aeroftp ls github://token:YOUR_PAT@owner/repo@develop /
+
+# Upload file → creates Git commit
+aeroftp put github://token:YOUR_PAT@owner/repo ./fix.py /src/fix.py
+
+# Read file to stdout
+aeroftp cat github://token:YOUR_PAT@owner/repo /README.md
+
+# Delete file → creates Git commit
+aeroftp rm github://token:YOUR_PAT@owner/repo /old-file.txt
+
+# Using saved profile (recommended — no token exposed)
+aeroftp ls --profile "My GitHub Repo" /src/ -l
+aeroftp put --profile "My GitHub Repo" ./app.js /dist/app.js
+
+# Connection info (shows branch, write mode, rate limit)
+aeroftp connect --profile "My GitHub Repo"
+```
+
+Every upload and delete creates a real Git commit. For protected branches, AeroFTP automatically creates a working branch (`aeroftp/{user}/{base}`) and offers PR creation.
+
+Generate a Fine-grained PAT at: https://github.com/settings/personal-access-tokens/new
+Required permissions: `Contents: Read and write`, `Metadata: Read`.
 
 ### SFTP
 
