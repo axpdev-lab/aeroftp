@@ -44,6 +44,7 @@ pub mod filelu;
 pub mod koofr;
 pub mod opendrive;
 pub mod yandex_disk;
+pub mod github;
 pub mod http_retry;
 
 pub use types::*;
@@ -72,6 +73,7 @@ pub use filelu::FileLuProvider;
 pub use koofr::KoofrProvider;
 pub use opendrive::OpenDriveProvider;
 pub use yandex_disk::YandexDiskProvider;
+pub use github::GitHubProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -595,6 +597,10 @@ impl ProviderFactory {
                 let initial_path = config.initial_path.clone();
                 Ok(Box::new(YandexDiskProvider::new(token, initial_path)))
             }
+            ProviderType::GitHub => {
+                let gh_config = github::GitHubConfig::from_provider_config(config)?;
+                Ok(Box::new(GitHubProvider::new(gh_config)))
+            }
         }
     }
     
@@ -625,6 +631,7 @@ impl ProviderFactory {
             ProviderType::Koofr,
             ProviderType::OpenDrive,
             ProviderType::YandexDisk,
+            ProviderType::GitHub,
         ]
     }
 }

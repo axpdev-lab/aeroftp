@@ -772,7 +772,36 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
         "opendrive" => (ProviderType::OpenDrive, "dev.opendrive.com".to_string()),
         "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
-        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk", scheme)),
+        "github" => {
+            let (github_host, github_branch) = parse_github_target(&url_obj)?;
+            let mut extra = HashMap::new();
+            if let Some(branch_name) = github_branch {
+                extra.insert("branch".to_string(), branch_name);
+            }
+
+            let username = if url_obj.username().is_empty() {
+                String::new()
+            } else {
+                urlencoding::decode(url_obj.username())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| url_obj.username().to_string())
+            };
+            let password = resolve_password(&url_obj, &ProviderType::GitHub, cli)?;
+
+            let config = ProviderConfig {
+                name: "GitHub CLI".to_string(),
+                provider_type: ProviderType::GitHub,
+                host: github_host,
+                port: url_obj.port(),
+                username: Some(username),
+                password: Some(password),
+                initial_path: Some("/".to_string()),
+                extra,
+            };
+
+            return Ok((config, "/".to_string()));
+        }
+        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk, github", scheme)),
     };
 
     let username = if url_obj.username().is_empty() {
@@ -790,9 +819,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
     let port = url_obj.port();
 
-    // For WebDAV, the URL path is already part of the host — initial_path is always /
+    // For WebDAV/GitHub, the URL path is part of the host — initial_path is always /
     let url_path = match provider_type {
-        ProviderType::WebDav => "/".to_string(),
+        ProviderType::WebDav | ProviderType::GitHub => "/".to_string(),
         _ => {
             if url_obj.path().is_empty() || url_obj.path() == "/" {
                 "/".to_string()
@@ -869,6 +898,46 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     };
 
     Ok((config, url_path))
+}
+
+fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
+    let host = url_obj
+        .host_str()
+        .ok_or_else(|| "Missing GitHub owner/repository in URL".to_string())?;
+
+    let segments: Vec<&str> = url_obj
+        .path_segments()
+        .map(|segments| segments.filter(|segment| !segment.is_empty()).collect())
+        .unwrap_or_default();
+
+    let (owner, repo_with_branch) = if host.eq_ignore_ascii_case("github.com") {
+        if segments.len() < 2 {
+            return Err(
+                "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string(),
+            );
+        }
+        (segments[0], segments[1])
+    } else {
+        let repo_segment = segments.first().copied().ok_or_else(|| {
+            "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string()
+        })?;
+        (host, repo_segment)
+    };
+
+    let (repo, branch) = match repo_with_branch.rsplit_once('@') {
+        Some((repo_name, branch_name)) if !repo_name.is_empty() && !branch_name.is_empty() => {
+            (repo_name, Some(branch_name.to_string()))
+        }
+        _ => (repo_with_branch, None),
+    };
+
+    if owner.is_empty() || repo.is_empty() {
+        return Err(
+            "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string(),
+        );
+    }
+
+    Ok((format!("{}/{}", owner, repo), branch))
 }
 
 // ── Vault Profile Support ─────────────────────────────────────────
@@ -1204,6 +1273,7 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         "koofr" => ProviderType::Koofr,
         "opendrive" => ProviderType::OpenDrive,
         "kdrive" => ProviderType::KDrive,
+        "github" => ProviderType::GitHub,
         "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" => ProviderType::GoogleDrive,
         "dropbox" => ProviderType::Dropbox,
@@ -6441,6 +6511,56 @@ mod tests {
         let (config, _) = url_to_provider_config("opendrive://user@dev.opendrive.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::OpenDrive);
         assert_eq!(config.host, "dev.opendrive.com");
+    }
+
+    #[test]
+    fn test_url_parsing_github_repo() {
+        let cli = Cli::parse_from([
+            "aeroftp",
+            "connect",
+            "github://token:secret@axpnet/aeroftp-test-playground",
+        ]);
+        let (config, path) = url_to_provider_config(
+            "github://token:secret@axpnet/aeroftp-test-playground",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.provider_type, ProviderType::GitHub);
+        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
+        assert_eq!(config.extra.get("branch"), None);
+        assert_eq!(path, "/");
+    }
+
+    #[test]
+    fn test_url_parsing_github_branch_suffix() {
+        let cli = Cli::parse_from([
+            "aeroftp",
+            "connect",
+            "github://token:secret@axpnet/aeroftp-test-playground@main",
+        ]);
+        let (config, _) = url_to_provider_config(
+            "github://token:secret@axpnet/aeroftp-test-playground@main",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
+        assert_eq!(config.extra.get("branch").map(|s| s.as_str()), Some("main"));
+    }
+
+    #[test]
+    fn test_url_parsing_github_token_placeholder() {
+        let cli = Cli::parse_from([
+            "aeroftp",
+            "connect",
+            "github://token:secret@axpnet/aeroftp-test-playground",
+        ]);
+        let (config, _) = url_to_provider_config(
+            "github://token:secret@axpnet/aeroftp-test-playground",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.provider_type, ProviderType::GitHub);
+        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
     }
 
     // ── validate_relative_path tests ──────────────────────────────────

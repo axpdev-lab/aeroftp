@@ -59,6 +59,8 @@ pub enum ProviderType {
     OpenDrive,
     /// Yandex Disk (Russian cloud, 5 GB free)
     YandexDisk,
+    /// GitHub (Repository & Releases browser)
+    GitHub,
 }
 
 impl fmt::Display for ProviderType {
@@ -88,6 +90,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Koofr => write!(f, "Koofr"),
             ProviderType::OpenDrive => write!(f, "OpenDrive"),
             ProviderType::YandexDisk => write!(f, "Yandex Disk"),
+            ProviderType::GitHub => write!(f, "GitHub"),
         }
     }
 }
@@ -120,6 +123,7 @@ impl ProviderType {
             ProviderType::Koofr => 443,
             ProviderType::OpenDrive => 443,
             ProviderType::YandexDisk => 443,
+            ProviderType::GitHub => 443,
         }
     }
     
@@ -149,7 +153,8 @@ impl ProviderType {
             ProviderType::FileLu |
             ProviderType::Koofr |
             ProviderType::OpenDrive |
-            ProviderType::YandexDisk
+            ProviderType::YandexDisk |
+            ProviderType::GitHub
         )
     }
 
