@@ -376,7 +376,11 @@
       "opendriveAuthHelp": "OpenDrive usa il login diretto con username/password su dev.opendrive.com. Non serve alcuna app key.",
       "opendriveUsernamePlaceholder": "username o email",
       "yandexdiskDesc": "Yandex Disk (5 GB gratis)",
-      "yandexdiskTooltip": "Yandex Disk - Cloud russo con 5GB gratis, autenticazione tramite token OAuth2"
+      "yandexdiskTooltip": "Yandex Disk - Cloud russo con 5GB gratis, autenticazione tramite token OAuth2",
+      "githubDesc": "Repository GitHub (esplora, commit, release)",
+      "githubTooltip": "Esplora i repository GitHub come filesystem. I caricamenti creano commit Git. Asset delle release fino a 2 GiB.",
+      "githubAuthHelp": "Usa un Fine-grained Personal Access Token da github.com/settings/personal-access-tokens. Permessi richiesti: Contents (Read & Write), Metadata (Read).",
+      "githubOwnerRepoPlaceholder": "owner/repo (es. axpnet/aeroftp)"
     },
     "browser": {
       "remote": "Remoto",
@@ -3308,6 +3312,21 @@
       "copyResults": "Copia risultati",
       "copied": "Copiato!",
       "batchChecking": "Verifica di {count} server in corso, attendere..."
+    },
+    "github": {
+      "ownerRepo": "Proprietario / Repository",
+      "personalAccessToken": "Personal Access Token",
+      "commitMessage": "Messaggio di commit",
+      "commitMessagePlaceholder": "Aggiornamento tramite AeroFTP",
+      "commitFiles": "Committa {count} file",
+      "branchSelector": "Branch",
+      "writeModeDirect": "Push diretto",
+      "writeModeBranch": "Branch: {branch}",
+      "writeModeReadOnly": "Sola lettura",
+      "protectedBranch": "Il branch è protetto. Le modifiche verranno committate su un nuovo branch.",
+      "viewOnGithub": "Visualizza su GitHub",
+      "copyRawUrl": "Copia URL raw",
+      "fileHistory": "Cronologia file"
     }
   }
 }
