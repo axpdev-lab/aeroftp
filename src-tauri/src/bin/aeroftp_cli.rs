@@ -52,8 +52,8 @@ use std::time::Instant;
     name = "aeroftp",
     about = "AeroFTP CLI — Multi-protocol file transfer client",
     version,
-    long_about = "Supports FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive.\n\nURL format: protocol://user@host:port/path",
-    after_help = "EXAMPLES:\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@myserver.com \"/var/www/*.csv\"\n  aeroftp put sftp://user@myserver.com \"./data/*.json\" /remote/data/\n  aeroftp tree sftp://user@myserver.com /var/www/ -d 2\n  aeroftp cat sftp://user@myserver.com /etc/config.ini | grep DB_HOST\n  aeroftp sync sftp://user@myserver.com ./local/ /remote/ --dry-run\n  aeroftp batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
+    long_about = "Supports 22 protocols: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk + OAuth (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho).\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-info --json' for structured capability discovery.",
+    after_help = "EXAMPLES (profiles — no credentials needed):\n  aeroftp profiles                                    List saved servers\n  aeroftp ls --profile \"My Server\" /var/www/ -l        List files\n  aeroftp put --profile \"Production\" ./app.js /www/    Upload file\n  aeroftp get --profile \"NAS\" /backups/db.sql ./       Download file\n  aeroftp sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp agent-info --json                            AI agent discovery\n\nEXAMPLES (URL mode):\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@host \"/data/*.csv\"\n  aeroftp cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
 )]
 struct Cli {
     /// Output format
@@ -349,6 +349,8 @@ enum Commands {
     },
     /// List saved server profiles from the encrypted vault
     Profiles,
+    /// Show CLI capabilities for AI agent discovery (always JSON)
+    AgentInfo,
 }
 
 // ── Serializable Output Types ──────────────────────────────────────
@@ -976,6 +978,94 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
         eprintln!("\n{} profile(s). Use: aeroftp ls --profile \"Name\" [path]", profiles.len());
     }
 
+    0
+}
+
+fn cmd_agent_info(cli: &Cli) -> i32 {
+    let profiles = if let Ok(store) = open_vault(cli) {
+        if let Ok(json) = store.get("config_server_profiles") {
+            if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
+                profiles.iter().map(|p| {
+                    serde_json::json!({
+                        "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                        "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                        "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                        "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                    })
+                }).collect::<Vec<_>>()
+            } else { vec![] }
+        } else { vec![] }
+    } else { vec![] };
+
+    let info = serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "description": "AeroFTP CLI — multi-protocol file transfer with encrypted vault profiles",
+        "usage": "aeroftp <command> --profile \"Server Name\" [args]",
+        "credential_model": "Use --profile to connect via encrypted vault. Never pass passwords directly.",
+        "profiles": {
+            "count": profiles.len(),
+            "list_command": "aeroftp profiles --json",
+            "servers": profiles,
+        },
+        "commands": {
+            "safe": [
+                {"name": "ls", "syntax": "aeroftp ls --profile NAME /path/ [-l] [--json]", "description": "List directory"},
+                {"name": "cat", "syntax": "aeroftp cat --profile NAME /path/file", "description": "Print file to stdout"},
+                {"name": "stat", "syntax": "aeroftp stat --profile NAME /path/ [--json]", "description": "File metadata"},
+                {"name": "find", "syntax": "aeroftp find --profile NAME /path/ \"*.ext\" [--json]", "description": "Search files"},
+                {"name": "tree", "syntax": "aeroftp tree --profile NAME /path/ [-d N] [--json]", "description": "Directory tree"},
+                {"name": "df", "syntax": "aeroftp df --profile NAME [--json]", "description": "Storage quota"},
+                {"name": "connect", "syntax": "aeroftp connect --profile NAME", "description": "Test connection"},
+                {"name": "profiles", "syntax": "aeroftp profiles [--json]", "description": "List saved servers"},
+                {"name": "get", "syntax": "aeroftp get --profile NAME /remote/file [./local]", "description": "Download file"},
+                {"name": "get -r", "syntax": "aeroftp get --profile NAME /remote/dir/ ./local/ -r", "description": "Download directory"},
+            ],
+            "modify": [
+                {"name": "put", "syntax": "aeroftp put --profile NAME ./local /remote/path", "description": "Upload file"},
+                {"name": "put -r", "syntax": "aeroftp put --profile NAME ./local/ /remote/ -r", "description": "Upload directory"},
+                {"name": "mkdir", "syntax": "aeroftp mkdir --profile NAME /remote/dir", "description": "Create directory"},
+                {"name": "mv", "syntax": "aeroftp mv --profile NAME /old /new", "description": "Move/rename"},
+                {"name": "sync", "syntax": "aeroftp sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
+            ],
+            "destructive": [
+                {"name": "rm", "syntax": "aeroftp rm --profile NAME /path", "description": "Delete file (confirm with user)"},
+                {"name": "rm -rf", "syntax": "aeroftp rm --profile NAME /dir/ -rf", "description": "Delete directory (always confirm)"},
+                {"name": "sync --delete", "syntax": "aeroftp sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (always confirm)"},
+            ],
+        },
+        "output": {
+            "json_flag": "--json",
+            "stdout": "data only (file listings, file content, JSON)",
+            "stderr": "status messages, progress, warnings",
+            "tip": "Use --json 2>/dev/null for clean machine-readable output"
+        },
+        "exit_codes": {
+            "0": "success",
+            "1": "connection error",
+            "2": "not found",
+            "3": "permission denied",
+            "4": "transfer failed",
+            "5": "invalid usage",
+            "6": "auth failed",
+            "7": "not supported",
+            "8": "timeout",
+            "99": "unknown"
+        },
+        "protocols": [
+            "ftp", "ftps", "sftp", "webdav", "webdavs", "s3",
+            "mega", "filen", "internxt", "kdrive", "koofr",
+            "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
+            "googledrive", "dropbox", "onedrive", "box", "pcloud", "zohoworkdrive"
+        ],
+        "safety_rules": [
+            "Always use --profile instead of passwords in URLs",
+            "Use --dry-run before sync operations",
+            "Confirm with user before rm, rm -rf, or sync --delete",
+            "Use --json for all programmatic parsing"
+        ]
+    });
+
+    println!("{}", serde_json::to_string_pretty(&info).unwrap_or_default());
     0
 }
 
@@ -6173,6 +6263,7 @@ async fn main() {
             .await
         }
         Commands::Profiles => list_vault_profiles(&cli, format),
+        Commands::AgentInfo => cmd_agent_info(&cli),
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Agent {
             message,
