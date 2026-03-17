@@ -99,6 +99,11 @@ export interface ProviderOptions {
 
   // kDrive-specific
   drive_id?: string;  // Infomaniak kDrive numeric ID
+
+  // GitHub-specific
+  githubAuthMode?: 'authorize' | 'pat' | 'app';
+  githubAppId?: string;          // GitHub App ID (for bot mode)
+  githubInstallationId?: string; // GitHub App Installation ID (for bot mode)
 }
 
 export interface ConnectionParams {

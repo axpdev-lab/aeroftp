@@ -176,8 +176,8 @@ pub struct GitHubCommitter {
 impl Default for GitHubCommitter {
     fn default() -> Self {
         Self {
-            name: "AeroFTP".to_string(),
-            email: "aeroftp@users.noreply.github.com".to_string(),
+            name: "aeroftp[bot]".to_string(),
+            email: "3115847+aeroftp[bot]@users.noreply.github.com".to_string(),
         }
     }
 }

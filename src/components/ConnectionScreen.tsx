@@ -1890,36 +1890,177 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 autoFocus
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('github.personalAccessToken')}</label>
-                                            <div className="relative">
-                                                <input
-                                                    type={showPassword ? 'text' : 'password'}
-                                                    value={connectionParams.password}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        password: e.target.value,
-                                                        port: 443,
-                                                    })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                                                    placeholder="github_pat_xxxxxxxxxxxx"
-                                                />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
+                                        {/* GitHub Auth Mode Selector */}
+                                        <div className="space-y-2 mt-1">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>
+
+                                            {/* Mode buttons */}
+                                            <div className="flex gap-1.5">
+                                                {(['authorize', 'pat', 'app'] as const).map((mode) => (
+                                                    <button
+                                                        key={mode}
+                                                        type="button"
+                                                        onClick={() => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: '',
+                                                            options: { ...connectionParams.options, githubAuthMode: mode },
+                                                        })}
+                                                        className={`flex-1 px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                                                            (connectionParams.options?.githubAuthMode || 'authorize') === mode
+                                                                ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                                                                : 'border-gray-600 text-gray-400 hover:border-gray-400'
+                                                        }`}
+                                                    >
+                                                        {mode === 'authorize' && 'Authorize'}
+                                                        {mode === 'pat' && 'Access Token'}
+                                                        {mode === 'app' && 'App (.pem)'}
+                                                    </button>
+                                                ))}
                                             </div>
+
+                                            {/* Mode: Authorize with GitHub (Device Flow) */}
+                                            {(connectionParams.options?.githubAuthMode || 'authorize') === 'authorize' && (
+                                                <div className="pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const { invoke } = await import('@tauri-apps/api/core');
+                                                                const result = await invoke('github_device_flow_start') as { user_code: string; verification_uri: string; device_code: string; interval: number };
+                                                                const confirmed = window.confirm(
+                                                                    `Enter this code on GitHub:\n\n${result.user_code}\n\nBrowser should open automatically.\nClick OK after you authorize.`
+                                                                );
+                                                                if (confirmed) {
+                                                                    const token = await invoke('github_device_flow_complete', {
+                                                                        deviceCode: result.device_code,
+                                                                        interval: result.interval
+                                                                    }) as string;
+                                                                    onConnectionParamsChange({ ...connectionParams, password: token });
+                                                                }
+                                                            } catch (err) {
+                                                                console.error('Device Flow failed:', err);
+                                                                alert(`Authorization failed: ${err}`);
+                                                            }
+                                                        }}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium rounded-xl border border-gray-600 hover:border-gray-400 hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                                                        Authorize with GitHub
+                                                    </button>
+                                                    <p className="text-xs text-gray-500 mt-1.5 text-center">Opens browser for one-click authorization</p>
+                                                    {connectionParams.password && (
+                                                        <p className="text-xs text-green-500 mt-1 text-center flex items-center justify-center gap-1">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                            Authorized
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Mode: Personal Access Token */}
+                                            {connectionParams.options?.githubAuthMode === 'pat' && (
+                                                <div className="pt-1">
+                                                    <div className="relative">
+                                                        <input
+                                                            type={showPassword ? 'text' : 'password'}
+                                                            value={connectionParams.password}
+                                                            onChange={(e) => onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                password: e.target.value,
+                                                                port: 443,
+                                                            })}
+                                                            className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                            placeholder="github_pat_xxxxxxxxxxxx"
+                                                        />
+                                                        <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-xs text-gray-400 mt-1.5">
+                                                        Fine-grained PAT with Contents (Read & Write).{' '}
+                                                        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] hover:underline">
+                                                            Generate token
+                                                        </a>
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Mode: App Installation (Bot mode with .pem) */}
+                                            {connectionParams.options?.githubAuthMode === 'app' && (
+                                                <div className="pt-1 space-y-2">
+                                                    <p className="text-xs text-gray-400">Commits will show your GitHub App identity and logo.</p>
+                                                    <input
+                                                        type="text"
+                                                        value={connectionParams.options?.githubAppId || ''}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            options: { ...connectionParams.options, githubAppId: e.target.value },
+                                                        })}
+                                                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        placeholder="App ID (e.g. 3115847)"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={connectionParams.options?.githubInstallationId || ''}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            options: { ...connectionParams.options, githubInstallationId: e.target.value },
+                                                        })}
+                                                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        placeholder="Installation ID (e.g. 117087346)"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const { open } = await import('@tauri-apps/plugin-dialog');
+                                                                const selected = await open({
+                                                                    title: 'Select GitHub App Private Key (.pem)',
+                                                                    filters: [{ name: 'PEM Key', extensions: ['pem'] }],
+                                                                    multiple: false,
+                                                                });
+                                                                if (selected) {
+                                                                    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+                                                                    const pemContent = await readTextFile(selected as string);
+                                                                    const appId = connectionParams.options?.githubAppId || '';
+                                                                    const installId = connectionParams.options?.githubInstallationId || '';
+                                                                    if (!appId || !installId) {
+                                                                        alert('Please enter App ID and Installation ID first.');
+                                                                        return;
+                                                                    }
+                                                                    const { invoke } = await import('@tauri-apps/api/core');
+                                                                    const result = await invoke('github_app_token_from_pem', {
+                                                                        pemContents: pemContent,
+                                                                        appId,
+                                                                        installationId: installId,
+                                                                    }) as { token: string; expires_at: string };
+                                                                    onConnectionParamsChange({ ...connectionParams, password: result.token });
+                                                                    alert(`Token obtained! Expires: ${result.expires_at}`);
+                                                                }
+                                                            } catch (err) {
+                                                                console.error('PEM auth failed:', err);
+                                                                alert(`Failed: ${err}`);
+                                                            }
+                                                        }}
+                                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl border border-gray-600 hover:border-gray-400 hover:bg-gray-700 transition-colors"
+                                                    >
+                                                        <KeyRound size={14} />
+                                                        Import .pem and Get Token
+                                                    </button>
+                                                    {connectionParams.password && (
+                                                        <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                            Installation token ready (expires in ~1h)
+                                                        </p>
+                                                    )}
+                                                    <p className="text-xs text-gray-500">
+                                                        <a href="https://github.com/settings/apps" target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] hover:underline">
+                                                            Manage GitHub Apps
+                                                        </a>
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            {t('protocol.githubAuthHelp')}{' '}
-                                            <a
-                                                href="https://github.com/settings/personal-access-tokens/new"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-[var(--color-accent)] hover:underline cursor-pointer"
-                                            >
-                                                Generate token
-                                            </a>
-                                        </p>
 
                                         <div className="pt-2">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">

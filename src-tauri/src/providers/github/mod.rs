@@ -7,7 +7,7 @@
 //!
 //! Authentication uses a GitHub Personal Access Token (classic or fine-grained).
 
-mod auth;
+pub mod auth;
 mod client;
 mod errors;
 #[allow(dead_code)]

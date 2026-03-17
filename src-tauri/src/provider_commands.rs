@@ -4083,3 +4083,52 @@ pub async fn github_create_pr(
 
     Ok(pr.html_url)
 }
+
+/// GitHub Device Flow — Step 1: Request device code
+/// Returns user_code and verification_uri for the user to authorize in browser
+#[tauri::command]
+pub async fn github_device_flow_start() -> Result<serde_json::Value, String> {
+    let response = crate::providers::github::auth::request_device_code().await?;
+
+    // Try to open browser automatically
+    let _ = open::that(&response.verification_uri);
+
+    Ok(serde_json::json!({
+        "user_code": response.user_code,
+        "verification_uri": response.verification_uri,
+        "device_code": response.device_code,
+        "expires_in": response.expires_in,
+        "interval": response.interval,
+    }))
+}
+
+/// GitHub Device Flow — Step 2: Poll for token
+/// Blocks until user authorizes or timeout
+#[tauri::command]
+pub async fn github_device_flow_complete(device_code: String, interval: u64) -> Result<String, String> {
+    crate::providers::github::auth::poll_for_token(&device_code, interval).await
+}
+
+/// GitHub App Bot Mode — Validate a .pem file and get installation token
+/// Returns the installation access token that makes commits with the app's identity/logo
+#[tauri::command]
+pub async fn github_app_token_from_pem(
+    pem_contents: String,
+    app_id: String,
+    installation_id: String,
+) -> Result<serde_json::Value, String> {
+    // Validate PEM first
+    crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
+
+    // Get installation token
+    let token_resp = crate::providers::github::auth::get_installation_token(
+        &pem_contents,
+        &app_id,
+        &installation_id,
+    ).await?;
+
+    Ok(serde_json::json!({
+        "token": token_resp.token,
+        "expires_at": token_resp.expires_at,
+    }))
+}
