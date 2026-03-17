@@ -19,7 +19,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -320,6 +320,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.yandexdiskTooltip'),
     },
     {
+        type: 'github',
+        name: 'GitHub',
+        icon: <GitHubLogo size={18} />,
+        description: t('protocol.githubDesc'),
+        defaultPort: 443,
+        badge: 'API',
+        color: 'text-gray-400',
+        isCloudStorage: true,
+        tooltip: t('protocol.githubTooltip'),
+    },
+    {
         type: 'internxt',
         name: 'Internxt',
         icon: <InternxtLogo size={18} />,
@@ -367,6 +378,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr — Email + App Password auth' },
     { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
     { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk — OAuth2 token auth' },
+    { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
 ];
@@ -1261,6 +1273,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         koofr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         opendrive: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         yandexdisk: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
+        github: 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300',
     };
 
     return (

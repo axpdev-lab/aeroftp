@@ -4007,3 +4007,78 @@ pub async fn provider_cancel_folder_size() -> Result<(), String> {
     FOLDER_SIZE_CANCEL.store(true, Ordering::Relaxed);
     Ok(())
 }
+
+// ── GitHub-specific commands ──────────────────────────────────────
+
+/// List all branches of the connected GitHub repository
+#[tauri::command]
+pub async fn github_list_branches(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github.list_branches().await
+        .map_err(|e| format!("Failed to list branches: {}", e))
+}
+
+/// Get info about the connected GitHub repository
+#[tauri::command]
+pub async fn github_get_info(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    Ok(serde_json::json!({
+        "owner": github.owner(),
+        "repo": github.repo(),
+        "branch": github.active_branch(),
+        "writeMode": format!("{:?}", github.write_mode()),
+        "workingBranch": github.working_branch(),
+        "repoPrivate": github.is_private(),
+    }))
+}
+
+/// Create a pull request on the connected GitHub repository
+#[tauri::command]
+pub async fn github_create_pr(
+    state: State<'_, ProviderState>,
+    title: String,
+    body: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let pr = github.ensure_pull_request(&title, Some(&body), false).await
+        .map_err(|e| format!("Failed to create PR: {}", e))?;
+
+    Ok(pr.html_url)
+}

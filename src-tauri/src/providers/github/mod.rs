@@ -173,6 +173,39 @@ impl GitHubProvider {
         }
     }
 
+    // ── Public accessors for Tauri commands ──────────────────────────
+
+    /// Repository owner.
+    pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    /// Repository name.
+    pub fn repo(&self) -> &str {
+        &self.repo
+    }
+
+    /// Whether the repository is private.
+    pub fn is_private(&self) -> bool {
+        self.repo_private
+    }
+
+    /// Current write mode.
+    pub fn write_mode(&self) -> &GitHubWriteMode {
+        &self.write_mode
+    }
+
+    /// List all branches of the repository.
+    pub async fn list_branches(&mut self) -> Result<Vec<serde_json::Value>, ProviderError> {
+        let url = format!("{}/branches?per_page=100", self.repo_url());
+        let branches: Vec<serde_json::Value> = self
+            .client
+            .get_json(&url)
+            .await
+            .map_err(ProviderError::from)?;
+        Ok(branches)
+    }
+
     /// Full `{owner}/{repo}` slug.
     fn repo_slug(&self) -> String {
         format!("{}/{}", self.owner, self.repo)
@@ -283,7 +316,7 @@ impl GitHubProvider {
     }
 
     /// Active branch (falls back to default_branch if none specified).
-    fn active_branch(&self) -> &str {
+    pub fn active_branch(&self) -> &str {
         if self.branch.is_empty() {
             &self.default_branch
         } else {

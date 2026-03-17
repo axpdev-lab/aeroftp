@@ -5233,6 +5233,56 @@ const App: React.FC = () => {
         divider: true,
       });
     }
+    // GitHub: View on GitHub, Copy Raw URL, File History
+    if (currentProtocol === 'github' && currentServer) {
+      const [ghOwner, ghRepo] = (currentServer || '').split('/');
+      if (ghOwner && ghRepo) {
+        // Resolve branch asynchronously in each action via github_get_info
+        const getGhBranch = async (): Promise<string> => {
+          try {
+            const info = await invoke<{ branch: string }>('github_get_info');
+            return info.branch || 'main';
+          } catch {
+            return 'main';
+          }
+        };
+        items.push({
+          label: t('github.viewOnGithub') || 'View on GitHub',
+          icon: <ExternalLink size={14} />,
+          action: async () => {
+            const ghBranch = await getGhBranch();
+            const filePath = file.path.replace(/^\//, '');
+            window.open(`https://github.com/${ghOwner}/${ghRepo}/blob/${ghBranch}/${filePath}`, '_blank');
+          },
+          divider: true,
+        });
+        items.push({
+          label: t('github.copyRawUrl') || 'Copy Raw URL',
+          icon: <Link2 size={14} />,
+          action: async () => {
+            const ghBranch = await getGhBranch();
+            const filePath = file.path.replace(/^\//, '');
+            const url = `https://raw.githubusercontent.com/${ghOwner}/${ghRepo}/${ghBranch}/${filePath}`;
+            try {
+              await navigator.clipboard.writeText(url);
+            } catch {
+              await invoke('copy_to_clipboard', { text: url });
+            }
+            notify.success(t('github.rawUrlCopied') || 'Raw URL copied');
+          },
+        });
+        items.push({
+          label: t('github.fileHistory') || 'File History',
+          icon: <History size={14} />,
+          action: async () => {
+            const ghBranch = await getGhBranch();
+            const filePath = file.path.replace(/^\//, '');
+            window.open(`https://github.com/${ghOwner}/${ghRepo}/commits/${ghBranch}/${filePath}`, '_blank');
+          },
+        });
+      }
+    }
+
     if (currentProtocol === 'googledrive') {
       // Google Drive: Star/Unstar (single file)
       if (filesToUse.length === 1) {

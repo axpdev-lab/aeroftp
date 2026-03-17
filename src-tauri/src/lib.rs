@@ -7948,6 +7948,10 @@ pub fn run() {
             provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
+            // GitHub-specific commands
+            provider_commands::github_list_branches,
+            provider_commands::github_get_info,
+            provider_commands::github_create_pr,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
             provider_commands::provider_get_speed_limit,

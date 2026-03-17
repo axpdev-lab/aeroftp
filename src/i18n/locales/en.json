@@ -1903,6 +1903,10 @@
       "opendriveUsernamePlaceholder": "username or email",
       "yandexdiskDesc": "Yandex Disk (5 GB free)",
       "yandexdiskTooltip": "Yandex Disk - Russian cloud storage with 5GB free, OAuth2 token authentication",
+      "githubDesc": "GitHub Repository (browse, commit, releases)",
+      "githubTooltip": "Browse GitHub repos as filesystem. Uploads create Git commits. Release assets up to 2 GiB.",
+      "githubAuthHelp": "Use a Fine-grained Personal Access Token from github.com/settings/personal-access-tokens. Required permissions: Contents (Read & Write), Metadata (Read).",
+      "githubOwnerRepoPlaceholder": "owner/repo (e.g. axpnet/aeroftp)",
       "fileluFtpDesc": "FileLu via FTP",
       "fileluFtpsDesc": "FileLu via secure FTPS",
       "fileluWebdavDesc": "FileLu via WebDAV",
@@ -3194,6 +3198,21 @@
       "grid": "Icons",
       "large": "Large Icons",
       "list": "List"
+    },
+    "github": {
+      "ownerRepo": "Owner / Repository",
+      "personalAccessToken": "Personal Access Token",
+      "commitMessage": "Commit message",
+      "commitMessagePlaceholder": "Update via AeroFTP",
+      "commitFiles": "Commit {count} file(s)",
+      "branchSelector": "Branch",
+      "writeModeDirect": "Direct push",
+      "writeModeBranch": "Branch: {branch}",
+      "writeModeReadOnly": "Read-only",
+      "protectedBranch": "Branch is protected. Changes will be committed to a new branch.",
+      "viewOnGithub": "View on GitHub",
+      "copyRawUrl": "Copy Raw URL",
+      "fileHistory": "File History"
     },
     "filelu": {
       "setFilePassword": "Set File Password",
