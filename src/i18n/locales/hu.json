@@ -2737,7 +2737,9 @@
             "copy": "Másolás",
             "paste": "Beillesztés",
             "checkForUpdates": "Frissítések keresése",
-            "providers": "Szolgáltatók"
+            "providers": "Szolgáltatók",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",

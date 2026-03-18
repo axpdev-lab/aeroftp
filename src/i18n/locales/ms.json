@@ -2737,7 +2737,9 @@
             "copy": "Salin",
             "paste": "Tampal",
             "checkForUpdates": "Semak Kemas Kini",
-            "providers": "Pembekal"
+            "providers": "Pembekal",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",

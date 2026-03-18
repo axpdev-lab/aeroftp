@@ -2737,7 +2737,9 @@
             "copy": "Kopiatu",
             "paste": "Itsatsi",
             "checkForUpdates": "Eguneraketak bilatu",
-            "providers": "Hornitzaileak"
+            "providers": "Hornitzaileak",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",

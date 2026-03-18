@@ -2737,7 +2737,9 @@
             "copy": "Afrita",
             "paste": "Líma",
             "checkForUpdates": "Leita að uppfærslum",
-            "providers": "Veitendur"
+            "providers": "Veitendur",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",

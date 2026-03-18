@@ -2737,7 +2737,9 @@
             "copy": "Αντιγραφή",
             "paste": "Επικόλληση",
             "checkForUpdates": "Έλεγχος για ενημερώσεις",
-            "providers": "Πάροχοι"
+            "providers": "Πάροχοι",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Αναμονή εντολών...",

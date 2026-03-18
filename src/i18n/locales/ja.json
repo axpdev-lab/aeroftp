@@ -2702,7 +2702,9 @@
             "copy": "コピー",
             "paste": "貼り付け",
             "checkForUpdates": "アップデートを確認",
-            "providers": "プロバイダー"
+            "providers": "プロバイダー",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",

@@ -2738,7 +2738,9 @@
             "copy": "Kopiuj",
             "paste": "Wklej",
             "checkForUpdates": "Sprawdź aktualizacje",
-            "providers": "Dostawcy"
+            "providers": "Dostawcy",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Oczekiwanie na polecenia...",

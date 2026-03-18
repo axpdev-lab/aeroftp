@@ -2737,7 +2737,9 @@
             "copy": "Kopiraj",
             "paste": "Zalijepi",
             "checkForUpdates": "Provjeri ažuriranja",
-            "providers": "Pružatelji"
+            "providers": "Pružatelji",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",

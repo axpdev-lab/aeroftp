@@ -2737,7 +2737,9 @@
             "copy": "অনুলিপি করুন",
             "paste": "আটকান",
             "checkForUpdates": "আপডেট পরীক্ষা করুন",
-            "providers": "প্রদানকারী"
+            "providers": "প্রদানকারী",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",

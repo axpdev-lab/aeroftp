@@ -2730,7 +2730,9 @@
             "copy": "Պատճենել",
             "paste": "Տեղադրել",
             "checkForUpdates": "Ձտնել թարմացումները",
-            "providers": "Մատակարարներ"
+            "providers": "Մատակարարներ",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",

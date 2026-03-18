@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.3" date="2026-03-18">
+      <description>
+        <p>Comprehensive AeroAgent fixes: all 47 tools now correctly resolve relative paths, recursive directory upload with per-level mkdir, fixed Cohere and Perplexity streaming compatibility, server_exec credential lookup and TLS retry, empty message handling for reasoning models. Added Website and Documentation links in Help menu. AUR package switched from AppImage to .deb extraction to resolve EGL errors on Arch Linux.</p>
+      </description>
+    </release>
     <release version="3.0.2" date="2026-03-18">
       <description>
         <p>Critical hotfix: folder upload with smart comparison (overwrite-if-newer) no longer navigates remote panel into last subdirectory. Settings changes apply immediately without requiring a file transfer to propagate. Session tabs locked during active transfers to prevent accidental server switching. Save button shows spinner feedback during vault write. Windows installer now auto-installs VC++ Runtime on clean systems, fixing STATUS_DLL_NOT_FOUND crash.</p>

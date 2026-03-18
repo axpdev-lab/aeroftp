@@ -2737,7 +2737,9 @@
             "copy": "कॉपी करें",
             "paste": "चिपकाएँ",
             "checkForUpdates": "अपडेट की जांच करें",
-            "providers": "प्रदाता"
+            "providers": "प्रदाता",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",

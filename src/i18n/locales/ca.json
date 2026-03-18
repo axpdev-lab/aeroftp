@@ -2737,7 +2737,9 @@
             "copy": "Copia",
             "paste": "Enganxa",
             "checkForUpdates": "Comprovar actualitzacions",
-            "providers": "Proveïdors"
+            "providers": "Proveïdors",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",

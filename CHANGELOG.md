@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.3] - 2026-03-18
+
+### AeroAgent Tool Fixes & Provider Improvements
+
+Comprehensive fixes to AeroAgent tool execution, AI provider compatibility, and recursive directory operations. All 47 tools now correctly handle relative paths and work reliably across providers.
+
+#### Fixed
+
+- **AeroAgent relative path resolution**: All local file tools (`local_read`, `local_write`, `local_edit`, `local_list`, `local_search`, `local_rename`, `local_copy_files`, `local_move_files`, `archive_compress`, `archive_decompress`, `upload_files`, `download_files`) now correctly resolve relative paths against the current local directory context
+- **AeroAgent tool validation**: Pre-execution validation no longer falsely reports "file not found" or "parent directory does not exist" for relative paths that will be resolved at execution time
+- **AeroAgent upload_files recursive**: Directories passed to `upload_files` are now expanded recursively with per-level remote `mkdir`, enabling full directory tree upload to remote servers
+- **AeroAgent server_exec credentials**: Fixed credential lookup from vault — reads password from `server_{id}` key and profile data from `config_server_profiles`, matching the frontend's storage format
+- **AeroAgent server_exec TLS**: Automatic retry with `verify_cert=false` when FTP/TLS connection fails due to hostname mismatch or self-signed certificates (common on shared hosting)
+- **AeroAgent server_exec active session**: Detects when the target server is already connected in the active session and returns an informative message suggesting `remote_list`/`upload_files` instead
+- **AeroAgent Cohere streaming**: Excluded `stream_options` field from Cohere and Perplexity API requests — these providers reject unknown fields with HTTP 400
+- **AeroAgent empty messages**: Assistant messages containing only thinking/tool calls (no visible text) now include a `(tool execution)` placeholder, preventing Cohere from rejecting the conversation history
+- **AeroAgent local_copy_files**: Single file-to-file copy now works correctly (e.g., copy `test.txt` as `backup.txt`) instead of treating destination as directory
+- **Cohere API endpoint**: Fixed from `/compatibility` to `/compatibility/v1`
+- **DeepSeek API endpoint**: Updated to `https://api.deepseek.com` (official, without `/v1` suffix)
+
+#### Added
+
+- **Website and Documentation links**: Help menu now includes Website (aeroftp.app) and Documentation (docs.aeroftp.app) entries. About dialog shows both links
+- **Cohere Command A model registry**: `command-a-reasoning` and `command-a` added with vision, thinking, and tool capabilities
+- **AeroAgent capabilities document**: Public documentation with tool matrix, provider compatibility, and test results
+- **FtpManager.connected_host()**: Public getter for active FTP connection hostname
+
+#### Changed
+
+- **Default model capabilities**: Models added from provider's model list now default to `supportsTools: true` — previously defaulted to false, causing tools to be silently disabled
+- **Hardcoded DEFAULT_MODELS removed**: Provider model presets cleared — models change too frequently, users select from live provider catalog via the Models button
+- **About dialog**: Protocol count updated to 22
+- **Snapcraft**: Website field updated to `https://aeroftp.app`
+- **AUR PKGBUILD**: Switched from AppImage to .deb extraction — resolves `EGL_BAD_PARAMETER` error on Arch Linux with certain GPU drivers
+- **Tool error messages**: Improved pattern matching for tool-related errors with informative hints
+
+---
+
 ## [3.0.2] - 2026-03-18
 
 ### Transfer & Settings Hotfix

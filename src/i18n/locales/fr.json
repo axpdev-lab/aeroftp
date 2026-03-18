@@ -2737,7 +2737,9 @@
             "copy": "Copier",
             "paste": "Coller",
             "checkForUpdates": "Vérifier les mises à jour",
-            "providers": "Fournisseurs"
+            "providers": "Fournisseurs",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "En attente de commandes...",

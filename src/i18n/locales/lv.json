@@ -2737,7 +2737,9 @@
             "copy": "Kopēt",
             "paste": "Ielīmēt",
             "checkForUpdates": "Pārbaudīt atjauninājumus",
-            "providers": "Pakalpojumu sniedzēji"
+            "providers": "Pakalpojumu sniedzēji",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",

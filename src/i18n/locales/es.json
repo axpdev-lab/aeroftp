@@ -2737,7 +2737,9 @@
             "copy": "Copiar",
             "paste": "Pegar",
             "checkForUpdates": "Buscar actualizaciones",
-            "providers": "Proveedores"
+            "providers": "Proveedores",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Esperando comandos...",

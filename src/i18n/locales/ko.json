@@ -2737,7 +2737,9 @@
             "copy": "복사",
             "paste": "붙여넣기",
             "checkForUpdates": "업데이트 확인",
-            "providers": "공급자"
+            "providers": "공급자",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",

@@ -2737,7 +2737,9 @@
             "copy": "Kopeeri",
             "paste": "Kleebi",
             "checkForUpdates": "Otsi värskendusi",
-            "providers": "Teenusepakkujad"
+            "providers": "Teenusepakkujad",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",

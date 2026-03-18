@@ -2738,7 +2738,9 @@
             "copy": "Kopiera",
             "paste": "Klistra in",
             "checkForUpdates": "Sök efter uppdateringar",
-            "providers": "Leverantörer"
+            "providers": "Leverantörer",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",

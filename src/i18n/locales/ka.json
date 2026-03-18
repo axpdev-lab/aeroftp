@@ -2737,7 +2737,9 @@
             "copy": "კოპირება",
             "paste": "ჩასმა",
             "checkForUpdates": "განახლებების შემოწმება",
-            "providers": "პროვაიდერები"
+            "providers": "პროვაიდერები",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "ბრძანებების მოლოდინში...",

@@ -2737,7 +2737,9 @@
             "copy": "ចម្លង",
             "paste": "បិទភ្ជាប់",
             "checkForUpdates": "ពិនិត្យមើលការអាបដេត",
-            "providers": "អ្នកផ្តល់សេវា"
+            "providers": "អ្នកផ្តល់សេវា",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",

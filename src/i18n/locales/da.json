@@ -2737,7 +2737,9 @@
             "copy": "Kopiér",
             "paste": "Indsæt",
             "checkForUpdates": "Søg efter opdateringer",
-            "providers": "Udbydere"
+            "providers": "Udbydere",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",

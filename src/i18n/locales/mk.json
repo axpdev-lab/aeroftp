@@ -2737,7 +2737,9 @@
             "copy": "Копирај",
             "paste": "Залепи",
             "checkForUpdates": "Проверете за ажурирања",
-            "providers": "Провајдери"
+            "providers": "Провајдери",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Чека команди...",

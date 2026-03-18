@@ -2737,7 +2737,9 @@
             "copy": "Kopírovat",
             "paste": "Vložit",
             "checkForUpdates": "Zkontrolovat aktualizace",
-            "providers": "Poskytovatelé"
+            "providers": "Poskytovatelé",
+            "website": "[NEEDS TRANSLATION] Website",
+            "documentation": "[NEEDS TRANSLATION] Documentation"
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
