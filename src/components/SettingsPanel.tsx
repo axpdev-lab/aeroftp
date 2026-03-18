@@ -499,41 +499,53 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     };
 
     const handleSave = async () => {
-        await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
-        secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
-        // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
-        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
-        for (const p of providers) {
-            const creds = oauthSettings[p];
-            if (creds.clientId) {
-                await invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
-            }
-            if (creds.clientSecret) {
-                await invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
-            }
-        }
-        // Remove legacy OAuth settings from localStorage
-        localStorage.removeItem(OAUTH_SETTINGS_KEY);
-        localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
-        // Apply system menu setting immediately
-        invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
-        // Apply autostart setting (idempotent — no pre-check needed)
+        if (saveState === 'saving') return; // prevent double-click
+        setSaveState('saving');
         try {
-            if (settings.launchOnStartup) {
-                await enableAutostart();
-            } else {
-                await disableAutostart();
+            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
+            secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
+            // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
+            const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
+            for (const p of providers) {
+                const creds = oauthSettings[p];
+                if (creds.clientId) {
+                    await invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
+                }
+                if (creds.clientSecret) {
+                    await invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
+                }
             }
+            // Remove legacy OAuth settings from localStorage
+            localStorage.removeItem(OAUTH_SETTINGS_KEY);
+            localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
+            // Apply system menu setting immediately
+            invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
+            // Apply autostart setting (idempotent — no pre-check needed)
+            try {
+                if (settings.launchOnStartup) {
+                    await enableAutostart();
+                } else {
+                    await disableAutostart();
+                }
+            } catch (e) {
+                logger.debug('Autostart toggle failed:', e);
+                // Revert UI to actual OS state on next open
+                const actual = await isAutostartEnabled().catch(() => false);
+                setSettings(prev => ({ ...prev, launchOnStartup: actual }));
+            }
+            // Notify App.tsx of settings change with inline payload for immediate sync
+            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: settings }));
+            setHasChanges(false);
+            setSaveState('saved');
+            // Brief "saved" feedback then close
+            setTimeout(() => {
+                setSaveState('idle');
+                onClose();
+            }, 600);
         } catch (e) {
-            logger.debug('Autostart toggle failed:', e);
-            // Revert UI to actual OS state on next open
-            const actual = await isAutostartEnabled().catch(() => false);
-            setSettings(prev => ({ ...prev, launchOnStartup: actual }));
+            logger.debug('Settings save failed:', e);
+            setSaveState('idle');
         }
-        // Notify App.tsx of settings change (for compactMode etc)
-        window.dispatchEvent(new CustomEvent('aeroftp-settings-changed'));
-        setHasChanges(false);
-        onClose();
     };
 
     const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -580,13 +592,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg bg-gradient-to-br ${appThemeProp === 'tokyo' ? 'from-purple-600 to-violet-500' :
-                                    appThemeProp === 'cyber' ? 'from-emerald-600 to-cyan-500' :
-                                        'from-blue-500 to-cyan-500'
-                                }`}>
-                                <Settings size={20} className="text-white" />
-                            </div>
+                        <div className="flex items-center gap-2">
+                            <Settings size={20} />
                             <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
@@ -3520,7 +3527,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         </button>
                         <button
                             onClick={handleSave}
-                            disabled={!hasChanges && saveState === 'idle'}
+                            disabled={(!hasChanges && saveState === 'idle') || saveState === 'saving'}
                             className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 flex items-center gap-2 min-w-[140px] justify-center ${saveState === 'saving'
                                     ? 'bg-blue-500 text-white'
                                     : saveState === 'saved'

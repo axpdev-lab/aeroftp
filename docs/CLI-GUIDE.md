@@ -1,6 +1,6 @@
 # AeroFTP CLI — User Guide
 
-> **Version**: 2.9.9
+> **Version**: 3.0.2
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
 > **License**: GPL-3.0
 

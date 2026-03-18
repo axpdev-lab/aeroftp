@@ -3347,7 +3347,7 @@ const App: React.FC = () => {
         },
       });
     });
-  }, [localFiles, remoteFiles]);
+  }, [localFiles, remoteFiles, fileExistsAction]);
 
   const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false) => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
@@ -7193,6 +7193,7 @@ const App: React.FC = () => {
                 } : undefined}
                 onCloudTabClick={handleCloudTabClick}
                 onReorder={setSessions}
+                transferLocked={hasQueueActivity}
                 localTabs={(!isConnected || !showRemotePanel) ? localTabs : undefined}
                 activeLocalTabId={(!isConnected || !showRemotePanel) ? activeLocalTabId : undefined}
                 onLocalTabClick={(!isConnected || !showRemotePanel) ? switchLocalTab : undefined}

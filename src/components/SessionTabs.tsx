@@ -33,6 +33,8 @@ interface SessionTabsProps {
     onLocalNewTab?: () => void;
     onLocalReorder?: (tabs: LocalTab[]) => void;
     maxLocalTabs?: number;
+    // Lock tabs during active transfers to prevent accidental session switch
+    transferLocked?: boolean;
 }
 
 // Status config factory (requires t() call, so moved inside component)
@@ -190,6 +192,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     onLocalNewTab,
     onLocalReorder,
     maxLocalTabs = 12,
+    transferLocked = false,
 }) => {
     const t = useTranslation();
     const statusConfig = createStatusConfig(t);
@@ -313,29 +316,33 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 const isConnected = session.status === 'connected';
                 const status = statusConfig[session.status];
                 const isDragTarget = overIdx === idx && dragIdx !== null && dragIdx !== idx;
+                const isLocked = transferLocked && !isActive;
 
                 return (
                     <div
                         key={session.id}
-                        draggable={!!onReorder}
-                        onDragStart={(e) => handleTabDragStart(e, idx)}
+                        draggable={!!onReorder && !isLocked}
+                        onDragStart={(e) => { if (isLocked) { e.preventDefault(); return; } handleTabDragStart(e, idx); }}
                         onDragOver={(e) => handleTabDragOver(e, idx)}
                         onDrop={(e) => handleTabDrop(e, idx)}
                         onDragEnd={handleTabDragEnd}
-                        className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[200px] ${isActive
-                            ? 'bg-white dark:bg-gray-700 shadow-sm'
-                            : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
+                        className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all min-w-0 max-w-[200px] ${isActive
+                            ? 'bg-white dark:bg-gray-700 shadow-sm cursor-default'
+                            : isLocked
+                                ? 'opacity-40 cursor-not-allowed'
+                                : 'hover:bg-gray-200 dark:hover:bg-gray-700/50 cursor-pointer'
                             } ${dragIdx === idx ? 'scale-95' : ''} ${isDragTarget ? 'border-l-2 border-blue-500' : ''}`}
-                        onClick={() => onTabClick(session.id)}
+                        onClick={() => { if (!isLocked) onTabClick(session.id); }}
                         onContextMenu={(e) => {
                             e.preventDefault();
-                            setContextMenu({ x: e.clientX, y: e.clientY, sessionId: session.id });
+                            if (!isLocked) setContextMenu({ x: e.clientX, y: e.clientY, sessionId: session.id });
                         }}
+                        title={isLocked ? t('ui.session.transferInProgress') : undefined}
                     >
                         {/* Status/Provider indicator */}
-                        <span 
-                            className={`shrink-0 ${isProvider ? getProviderColor(protocol) : status.color}`} 
-                            title={`${isProvider ? protocol?.toUpperCase() : 'FTP'} - ${status.title}`}
+                        <span
+                            className={`shrink-0 ${isProvider ? getProviderColor(protocol) : status.color}`}
+                            title={isLocked ? undefined : `${isProvider ? protocol?.toUpperCase() : 'FTP'} - ${status.title}`}
                         >
                             {session.status === 'connecting' ? (
                                 <Loader2 size={14} className="animate-spin" />
@@ -355,17 +362,19 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                             {session.serverName}
                         </span>
 
-                        {/* Close button */}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onTabClose(session.id);
-                            }}
-                            className="shrink-0 p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title={t('ui.session.closeTab')}
-                        >
-                            <X size={12} />
-                        </button>
+                        {/* Close button — hidden during transfer lock */}
+                        {!isLocked && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onTabClose(session.id);
+                                }}
+                                className="shrink-0 p-0.5 rounded hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title={t('ui.session.closeTab')}
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
                     </div>
                 );
             })}

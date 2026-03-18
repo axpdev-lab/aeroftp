@@ -12,12 +12,16 @@
   The modern FTP client that grew into a complete file management platform. 23 protocols, 6 integrated product modules, 47 languages, one app.
 </p>
 
+<p align="center">
+  <a href="https://aeroftp.app">Website</a> · <a href="https://docs.aeroftp.app">Documentation</a> · <a href="https://github.com/axpnet/aeroftp/releases">Download</a>
+</p>
+
 <!-- Row 1: Project Identity -->
 <p align="center">
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-21-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/protocols-22-green" alt="Protocols" />
   <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />

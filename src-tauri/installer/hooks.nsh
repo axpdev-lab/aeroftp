@@ -2,6 +2,25 @@
 ; Post-install and pre-uninstall actions for Windows.
 
 !macro CUSTOM_POST_INSTALL
+    ; --- VC++ Runtime dependency check ---
+    ; Tauri (MSVC toolchain) requires vcruntime140.dll / vcruntime140_1.dll.
+    ; On clean Windows installs without VC++ Redistributable, the app crashes
+    ; with STATUS_DLL_NOT_FOUND (0xC0000135). This block checks for the DLL
+    ; and silently installs the redistributable if missing.
+    ; Uses NSISdl (built-in NSIS plugin, same as Tauri's WebView2 bootstrapper download).
+    IfFileExists "$SYSDIR\vcruntime140.dll" _vcredist_done 0
+        DetailPrint "Installing Visual C++ Runtime..."
+        NSISdl::download "https://aka.ms/vs/17/release/vc_redist.x64.exe" "$TEMP\vc_redist.x64.exe"
+        Pop $0
+        StrCmp $0 "success" 0 _vcredist_dl_failed
+            ExecWait '"$TEMP\vc_redist.x64.exe" /install /quiet /norestart' $1
+            DetailPrint "VC++ Runtime installer exited with code: $1"
+            Delete "$TEMP\vc_redist.x64.exe"
+            Goto _vcredist_done
+        _vcredist_dl_failed:
+            DetailPrint "VC++ Runtime download failed ($0) — install manually from https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    _vcredist_done:
+
     ; Register .aerovault file association
     WriteRegStr HKLM "Software\Classes\.aerovault" "" "AeroFTP.AeroVault"
     WriteRegStr HKLM "Software\Classes\.aerovault" "Content Type" "application/x-aerovault"

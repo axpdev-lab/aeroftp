@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 17 March 2026
-> Version: v3.0.0 (GitHub Integration — 23rd Protocol)
+> Last Updated: 18 March 2026
+> Version: v3.0.2
 >
 > **Note**: GitHub (23rd protocol) supports repository filesystem (list, upload/commit, download, delete/commit, tree, search), release asset management (up to 2 GiB), automatic branch workflow for protected branches, and PR creation. Feature matrix tables below will be updated in a future pass to include GitHub columns.
 

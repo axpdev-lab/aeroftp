@@ -1731,7 +1731,8 @@
         "closeTab": "Chiudi scheda",
         "closeOthers": "Chiudi le altre schede",
         "closeAll": "Chiudi tutte le schede",
-        "newConnection": "Nuova connessione"
+        "newConnection": "Nuova connessione",
+        "transferInProgress": "Trasferimento in corso — cambio scheda disabilitato"
       }
     },
     "update": {

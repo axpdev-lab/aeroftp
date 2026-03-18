@@ -2972,7 +2972,8 @@
         "connecting": "Connecting...",
         "disconnected": "Disconnected",
         "newConnection": "New connection",
-        "syncing": "Syncing..."
+        "syncing": "Syncing...",
+        "transferInProgress": "Transfer in progress — tab switching disabled"
       },
       "sessionExpired": "Session expired (24h)",
       "showSystemMenu": "Show system menu bar",

@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.2" date="2026-03-18">
+      <description>
+        <p>Critical hotfix: folder upload with smart comparison (overwrite-if-newer) no longer navigates remote panel into last subdirectory. Settings changes apply immediately without requiring a file transfer to propagate. Session tabs locked during active transfers to prevent accidental server switching. Save button shows spinner feedback during vault write. Windows installer now auto-installs VC++ Runtime on clean systems, fixing STATUS_DLL_NOT_FOUND crash.</p>
+      </description>
+    </release>
     <release version="3.0.1" date="2026-03-18">
       <description>
         <p>Critical fix for GitHub App (.pem) token generation panic. Comprehensive mtime preservation across all protocols (SFTP setstat, FTP MFMT, universal sync-level stat) to eliminate sync ping-pong. AeroCloud manual sync now works with all 23 protocols. GitHub protected branch bypass for users with ruleset permissions.</p>

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-03-18
+
+### Transfer & Settings Hotfix
+
+Critical fixes for folder upload navigation, settings propagation, and session tab safety during transfers.
+
+#### Fixed
+
+- **Folder upload remote panel navigation** (critical): Uploading a folder with subfolders while using smart comparison modes (overwrite-if-newer, overwrite-if-different, skip-if-identical) caused the remote panel to navigate into the last subdirectory after upload completed. Root cause: FTP `change_dir()` during metadata collection phase was not restored to original directory
+- **Settings not applied on first transfer**: Changing file handling settings (e.g. from "Ask" to "Overwrite if newer") required two transfer attempts before taking effect. Root cause: `checkFolderOverwrite` useCallback had stale closure — missing `fileExistsAction` in dependency array
+- **Settings save lag and double-click**: Save Changes button had no visual feedback during async vault write, causing users to click multiple times. Now shows spinner while saving, checkmark on success, and auto-closes after brief confirmation
+- **Settings sync delay**: Settings changes dispatched via custom event required async vault re-read before propagating to App.tsx. Now passes settings inline in CustomEvent detail for immediate synchronous application
+
+#### Changed
+
+- **Session tabs locked during transfers**: Non-active server tabs are visually dimmed (opacity 40%) and completely non-interactive during active file transfers — prevents accidental session switching that would queue a reconnection and confuse users during long batch transfers
+- **Settings panel header**: Removed gradient badge icon, replaced with plain icon to match other modal dialogs
+- **Windows NSIS installer**: Auto-downloads and installs VC++ Redistributable 2015-2022 if `vcruntime140.dll` is missing — fixes `STATUS_DLL_NOT_FOUND` crash on clean Windows installs. Uses `NSISdl` (same built-in plugin as Tauri's WebView2 bootstrapper)
+- **README**: Added website and documentation links (aeroftp.app, docs.aeroftp.app)
+
+---
+
 ## [3.0.1] - 2026-03-18
 
 ### GitHub App Fix & Sync Timestamp Preservation

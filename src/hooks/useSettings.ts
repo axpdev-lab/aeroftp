@@ -135,7 +135,16 @@ export const useSettings = () => {
       }
     };
 
-    const handleSettingsChange = () => {
+    const handleSettingsChange = (e: Event) => {
+      // Use inline payload from CustomEvent for immediate sync (no async vault read)
+      const detail = (e as CustomEvent)?.detail as Record<string, unknown> | undefined;
+      if (detail) {
+        applySettings(detail);
+        const showMenu = typeof detail.showSystemMenu === 'boolean' ? detail.showSystemMenu : false;
+        setSystemMenuVisible(showMenu);
+        return;
+      }
+      // Fallback: re-read from vault (for storage events or legacy callers)
       void (async () => {
         try {
           const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);

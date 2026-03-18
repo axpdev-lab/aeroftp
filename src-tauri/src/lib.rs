@@ -1799,6 +1799,8 @@ async fn upload_folder(
 
     if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
         info!("Phase 2.5: Listing remote files for comparison (action: {})...", file_exists_action);
+        // Save current directory so we can restore it after scanning
+        let saved_path = ftp_manager.current_path();
         for remote_dir in &dirs_sorted {
             // Change to directory and list files
             if ftp_manager.change_dir(remote_dir).await.is_ok() {
@@ -1818,6 +1820,10 @@ async fn upload_folder(
                     }
                 }
             }
+        }
+        // Restore original directory to prevent panel navigation after upload
+        if let Err(e) = ftp_manager.change_dir(&saved_path).await {
+            warn!("Could not restore directory to {}: {}", saved_path, e);
         }
         info!("Phase 2.5 complete: {} remote files indexed for comparison", remote_index.len());
     }
