@@ -353,8 +353,8 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     'sonar': { displayName: 'Sonar', maxTokens: 8192, maxContextTokens: 128000, inputCostPer1k: 0.001, outputCostPer1k: 0.001, supportsStreaming: true, supportsTools: false, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 1, bestFor: ['search', 'fast'] },
 
     // Cohere
-    'command-r-plus': { displayName: 'Command R+', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.0025, outputCostPer1k: 0.01, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 3, bestFor: ['general', 'rag'] },
-    'command-r': { displayName: 'Command R', maxTokens: 4096, maxContextTokens: 131072, inputCostPer1k: 0.00015, outputCostPer1k: 0.0006, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 2, bestFor: ['fast', 'rag'] },
+    'command-a-reasoning': { displayName: 'Command A Reasoning', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0025, outputCostPer1k: 0.01, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: true, supportsParallelTools: false, toolCallQuality: 4, bestFor: ['reasoning', 'rag'] },
+    'command-a': { displayName: 'Command A', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.0025, outputCostPer1k: 0.01, supportsStreaming: true, supportsTools: true, supportsVision: true, supportsThinking: false, supportsParallelTools: false, toolCallQuality: 4, bestFor: ['general', 'rag'] },
 
     // Together AI
     'meta-llama/Llama-3.3-70B-Instruct': { displayName: 'Llama 3.3 70B (Together)', maxTokens: 8192, maxContextTokens: 131072, inputCostPer1k: 0.00054, outputCostPer1k: 0.00054, supportsStreaming: true, supportsTools: true, supportsVision: false, supportsThinking: false, supportsParallelTools: true, toolCallQuality: 3, bestFor: ['general', 'code'] },

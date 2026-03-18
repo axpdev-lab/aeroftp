@@ -1370,6 +1370,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             const useNativeTools = modelDef?.supportsTools === true;
             const useStreaming = modelDef?.supportsStreaming === true;
 
+            // Warn user if tools are disabled on current model
+            if (!useNativeTools) {
+                console.warn('[AeroAgent] Tools disabled for model:', activeModel.modelName, '— file operations will not work. Enable "Tools" in AI Settings > Models.');
+            }
+
             // Prepare model info for message signature
             const modelInfo = {
                 modelName: activeModel.displayName,

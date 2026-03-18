@@ -345,7 +345,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                     Google Drive / Dropbox / OneDrive / MEGA / Box / Filen
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono mt-1">
-                                    21 protocols &middot; 47 languages &middot; AES-256 archives
+                                    22 protocols &middot; 47 languages &middot; AES-256 archives
                                 </p>
                             </div>
 
@@ -443,14 +443,21 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 </button>
                             </div>
 
-                            {/* Website */}
-                            <div className="text-center">
+                            {/* Website & Docs */}
+                            <div className="flex justify-center gap-4">
                                 <button
-                                    onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                    onClick={() => openUrl('https://aeroftp.app')}
                                     className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono"
                                 >
                                     <ExternalLink size={12} />
-                                    github.com/axpnet/aeroftp
+                                    aeroftp.app
+                                </button>
+                                <button
+                                    onClick={() => openUrl('https://docs.aeroftp.app')}
+                                    className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono"
+                                >
+                                    <ExternalLink size={12} />
+                                    docs.aeroftp.app
                                 </button>
                             </div>
 

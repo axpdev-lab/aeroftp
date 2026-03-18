@@ -1561,7 +1561,9 @@
       "toggleTheme": "Toggle Theme",
       "view": "View",
       "checkForUpdates": "Check for Updates",
-      "providers": "Providers"
+      "providers": "Providers",
+      "website": "Website",
+      "documentation": "Documentation"
     },
     "migration": {
       "checking": "Checking security status...",

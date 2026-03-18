@@ -2,6 +2,7 @@ import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { openUrl } from '../utils/openUrl';
 import { ThemeToggle } from '../hooks/useTheme';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
 
@@ -228,6 +229,9 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
     const helpMenu: MenuEntry[] = [
         { label: t('menu.shortcuts'), shortcut: 'F1', onClick: onShowShortcuts },
+        { separator: true },
+        { label: t('menu.website'), onClick: () => openUrl('https://aeroftp.app') },
+        { label: t('menu.documentation'), onClick: () => openUrl('https://docs.aeroftp.app') },
         { separator: true },
         { label: t('menu.checkForUpdates'), onClick: onCheckForUpdates },
         { separator: true },

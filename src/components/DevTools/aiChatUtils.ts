@@ -126,10 +126,12 @@ export function buildMessageWindow(
     // If all messages fit, return them as-is
     if (lastIncludedIndex === 0) {
         return {
-            messages: allMessages.map(m => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: m.content,
-            })),
+            messages: allMessages
+                .map(m => ({
+                    role: m.role === 'user' ? 'user' : 'assistant',
+                    content: m.content || (m.role === 'assistant' ? '(tool execution)' : ''),
+                }))
+                .filter(m => m.content.length > 0),
             summarized: false,
             historyTokens: usedTokens,
         };
@@ -175,13 +177,17 @@ export function buildMessageWindow(
 
     for (const m of includedMessages) {
         const msgIdx = allMessages.indexOf(m);
-        const content = truncatedIndices.has(msgIdx)
+        let content = truncatedIndices.has(msgIdx)
             ? m.content.slice(0, Math.floor(m.content.length * 0.5)) + '\n[...truncated]'
             : m.content;
-        result.push({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content,
-        });
+        // Ensure assistant messages are never empty (some models reject empty content)
+        if (!content && m.role === 'assistant') content = '(tool execution)';
+        if (content) {
+            result.push({
+                role: m.role === 'user' ? 'user' : 'assistant',
+                content,
+            });
+        }
     }
 
     return { messages: result, summarized: true, historyTokens: usedTokens };
@@ -566,7 +572,9 @@ export function formatProviderError(
         hint = t('ai.errorServiceUnavailable');
     } else if (httpCode === 504) {
         hint = t('ai.errorTimeout');
-    } else if (errLower.includes('tool use') || errLower.includes('tool_use') || errLower.includes('function calling')) {
+    } else if (errLower.includes('tool use') || errLower.includes('tool_use') || errLower.includes('function calling') || errLower.includes('tools are not supported') || errLower.includes('does not support tools') || errLower.includes('does not support function')) {
+        hint = t('ai.errorToolUse');
+    } else if (errLower.includes('tool') && (errLower.includes('not supported') || errLower.includes('not available') || errLower.includes('invalid'))) {
         hint = t('ai.errorToolUse');
     } else if (errLower.includes('unauthorized') || errLower.includes('auth')) {
         hint = t('ai.errorAuth');

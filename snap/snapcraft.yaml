@@ -1,5 +1,5 @@
 name: aeroftp
-version: '3.0.2'
+version: '3.0.3'
 summary: Modern File Transfer & Cloud Client — 22 Protocols, AI Assistant
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -58,7 +58,7 @@ compression: lzo
 contact: https://github.com/axpnet/aeroftp/discussions
 issues: https://github.com/axpnet/aeroftp/issues
 source-code: https://github.com/axpnet/aeroftp
-website: https://github.com/axpnet/aeroftp
+website: https://aeroftp.app
 license: GPL-3.0
 
 architectures:

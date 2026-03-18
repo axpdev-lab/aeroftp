@@ -61,6 +61,11 @@ impl FtpManager {
         }
     }
 
+    /// Get the currently connected server hostname (if any)
+    pub fn connected_host(&self) -> Option<&str> {
+        self.server.as_deref()
+    }
+
     /// Connect to FTP server
     pub async fn connect(&mut self, server: &str) -> Result<()> {
         info!("Connecting to FTP server: {}", server);

@@ -170,7 +170,14 @@ async fn stream_openai(
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { format!("Failed to serialize request: {}", e).into() })?;
 
     // Request token usage in the final streaming chunk (OpenAI-compat providers)
-    body["stream_options"] = serde_json::json!({ "include_usage": true });
+    // Note: some providers (Cohere, Perplexity) reject unknown fields like stream_options
+    let supports_stream_options = !matches!(
+        request.provider_type,
+        AIProviderType::Cohere | AIProviderType::Perplexity
+    );
+    if supports_stream_options {
+        body["stream_options"] = serde_json::json!({ "include_usage": true });
+    }
 
     // OpenAI o3/o3-mini thinking support: map budget to reasoning_effort levels
     if let Some(budget) = request.thinking_budget {

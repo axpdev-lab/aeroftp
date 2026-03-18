@@ -643,6 +643,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             displayName: modelName.split('/').pop()?.split(':')[0]?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || modelName,
             maxTokens: 4096,
             supportsStreaming: true,
+            supportsTools: true,
             supportsVision: false,
             isEnabled: true,
             isDefault: noExisting,
@@ -1846,7 +1847,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <div className="flex items-center gap-2">
                                     <List size={16} className="text-indigo-400" />
                                     <span className="font-medium text-sm">{t('ai.settings.fetchModelsTitle')}</span>
-                                    {provider && <span className="text-xs text-gray-500">({provider.type})</span>}
+                                    {provider && <span className="text-xs text-indigo-400">({provider.type})</span>}
                                 </div>
                                 <button onClick={() => { setAvailableModels(null); setModelFilter(''); }} className="p-1 hover:bg-gray-700 rounded transition-colors">
                                     <X size={16} />
@@ -1888,7 +1889,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     })
                                 )}
                             </div>
-                            <div className="px-4 py-2 border-t border-gray-700/50 text-xs text-gray-500">
+                            <div className="px-4 py-2 border-t border-gray-700/50 text-xs text-indigo-400 font-medium">
                                 {t('ai.settings.modelsAvailable', { count: availableModels.models.length })}
                             </div>
                         </div>

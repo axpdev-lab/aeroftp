@@ -197,25 +197,29 @@ pub async fn validate_tool_args(
         "local_read" | "local_edit" | "local_search" | "local_list" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let p = std::path::Path::new(path);
-                if tool_name == "local_list" || tool_name == "local_search" {
-                    if !p.is_dir() {
-                        errors.push(format!("Directory not found: {}", path));
-                    }
-                } else if !p.exists() {
-                    errors.push(format!("File not found: {}", path));
-                } else if p.is_dir() {
-                    errors.push(format!("Path is a directory, not a file: {}", path));
-                } else if let Ok(meta) = p.metadata() {
-                    let size = meta.len();
-                    if size > 5_242_880 {
-                        warnings.push(format!(
-                            "File is large ({:.1} MB). Edit operations may be slow.",
-                            size as f64 / 1_048_576.0
-                        ));
-                    }
-                    // Check read-only for edit tools
-                    if tool_name == "local_edit" && meta.permissions().readonly() {
-                        errors.push(format!("File is read-only: {}", path));
+                // Skip existence checks for relative paths — they will be resolved
+                // against context_local_path at execution time
+                if p.is_absolute() {
+                    if tool_name == "local_list" || tool_name == "local_search" {
+                        if !p.is_dir() {
+                            errors.push(format!("Directory not found: {}", path));
+                        }
+                    } else if !p.exists() {
+                        errors.push(format!("File not found: {}", path));
+                    } else if p.is_dir() {
+                        errors.push(format!("Path is a directory, not a file: {}", path));
+                    } else if let Ok(meta) = p.metadata() {
+                        let size = meta.len();
+                        if size > 5_242_880 {
+                            warnings.push(format!(
+                                "File is large ({:.1} MB). Edit operations may be slow.",
+                                size as f64 / 1_048_576.0
+                            ));
+                        }
+                        // Check read-only for edit tools
+                        if tool_name == "local_edit" && meta.permissions().readonly() {
+                            errors.push(format!("File is read-only: {}", path));
+                        }
                     }
                 }
             }
@@ -231,13 +235,16 @@ pub async fn validate_tool_args(
         "local_write" | "local_mkdir" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let p = std::path::Path::new(path);
-                // Check parent exists
-                if let Some(parent) = p.parent() {
-                    if !parent.exists() {
-                        warnings.push(format!(
-                            "Parent directory does not exist: {}",
-                            parent.display()
-                        ));
+                // Check parent exists (only for absolute paths — relative paths
+                // will be resolved against context_local_path at execution time)
+                if p.is_absolute() {
+                    if let Some(parent) = p.parent() {
+                        if !parent.exists() {
+                            warnings.push(format!(
+                                "Parent directory does not exist: {}",
+                                parent.display()
+                            ));
+                        }
                     }
                 }
                 // Check if path is read-only
@@ -279,7 +286,7 @@ pub async fn validate_tool_args(
             } else if let Some(arr) = paths {
                 for p in arr.iter().filter_map(|v| v.as_str()) {
                     let path = std::path::Path::new(p);
-                    if !path.exists() {
+                    if path.is_absolute() && !path.exists() {
                         warnings.push(format!("Source file not found: {}", p));
                     }
                 }
@@ -297,7 +304,7 @@ pub async fn validate_tool_args(
             } else if let Some(arr) = paths {
                 for p in arr.iter().filter_map(|v| v.as_str()) {
                     let path = std::path::Path::new(p);
-                    if !path.exists() {
+                    if path.is_absolute() && !path.exists() {
                         warnings.push(format!("Source not found: {}", p));
                     }
                 }
@@ -343,7 +350,7 @@ pub async fn validate_tool_args(
                     errors.push(e);
                 }
                 let p = std::path::Path::new(path);
-                if !p.exists() {
+                if p.is_absolute() && !p.exists() {
                     errors.push(format!("Archive not found: {}", path));
                 }
             } else {
@@ -808,9 +815,19 @@ async fn create_temp_provider(
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    let creds_json = store
-        .get(&format!("server_{}", server.id))
-        .map_err(|_| format!("No credentials stored for server '{}'. Re-save the server with password.", server.name))?;
+    // Server profiles are stored as an array in "config_server_profiles" vault key
+    // (frontend uses VAULT_PREFIX="config_" + "server_profiles")
+    let profiles_json = store
+        .get("config_server_profiles")
+        .map_err(|_| "No server profiles found in vault. Re-save the server with password.".to_string())?;
+
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
+        .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
+
+    // Find the matching server by ID and extract password
+    let profile = profiles.iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(&server.id))
+        .ok_or_else(|| format!("Server '{}' not found in vault profiles. Re-save with password.", server.name))?;
 
     #[derive(serde::Deserialize)]
     struct SavedCreds {
@@ -822,8 +839,19 @@ async fn create_temp_provider(
         password: String,
     }
 
-    let creds: SavedCreds = serde_json::from_str(&creds_json)
-        .map_err(|e| format!("Failed to parse credentials for '{}': {}", server.name, e))?;
+    // Password is stored separately in credential store with key "server_{id}"
+    // (migrated from inline password in profile — see ServerProfile.password DEPRECATED)
+    let password = store.get(&format!("server_{}", server.id))
+        .unwrap_or_else(|_| {
+            // Fallback: check inline password in profile (legacy/pre-migration)
+            profile.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string()
+        });
+
+    let creds = SavedCreds {
+        server: profile.get("server").or(profile.get("host")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        username: profile.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        password,
+    };
 
     use crate::providers::ProviderType;
     let provider_type = match server.protocol.as_str() {
@@ -876,13 +904,32 @@ async fn create_temp_provider(
 
     let mut provider = crate::providers::ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
-    // A3-05: Zeroize password after it has been consumed by the provider
-    provider_config.zeroize_password();
 
-    provider.connect().await
-        .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))?;
-
-    Ok(provider)
+    match provider.connect().await {
+        Ok(()) => {
+            provider_config.zeroize_password();
+            Ok(provider)
+        }
+        Err(e) => {
+            let err_str = e.to_string();
+            // Retry with verify_cert=false on TLS certificate errors (hostname mismatch, self-signed)
+            let is_tls_err = err_str.contains("certificate verify failed")
+                || err_str.contains("hostname mismatch")
+                || err_str.contains("InvalidCertificate");
+            if is_tls_err && provider_config.extra.get("verify_cert").map(|v| v.as_str()) != Some("false") {
+                provider_config.extra.insert("verify_cert".to_string(), "false".to_string());
+                let mut provider2 = crate::providers::ProviderFactory::create(&provider_config)
+                    .map_err(|e2| format!("Failed to create provider (retry): {}", e2))?;
+                provider_config.zeroize_password();
+                provider2.connect().await
+                    .map_err(|e2| format!("Connection to '{}' failed: {}", server.name, e2))?;
+                Ok(provider2)
+            } else {
+                provider_config.zeroize_password();
+                Err(format!("Connection to '{}' failed: {}", server.name, err_str))
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -1528,6 +1575,24 @@ pub async fn execute_ai_tool(
                 return Err("'paths' array is empty".to_string());
             }
 
+            // If single file and destination looks like a file (has extension), do file-to-file copy
+            let dest_path = std::path::Path::new(&destination);
+            if paths.len() == 1 && dest_path.extension().is_some() && !dest_path.is_dir() {
+                let source = &paths[0];
+                std::fs::copy(source, &destination)
+                    .map_err(|e| format!("Failed to copy {} to {}: {}", source, destination, e))?;
+                let filename = dest_path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| destination.clone());
+                return Ok(json!({
+                    "copied": 1,
+                    "failed": 0,
+                    "total": 1,
+                    "files": [filename],
+                    "errors": [],
+                }));
+            }
+
             std::fs::create_dir_all(&destination)
                 .map_err(|e| format!("Failed to create destination directory: {}", e))?;
 
@@ -1937,17 +2002,73 @@ pub async fn execute_ai_tool(
 
             let mut uploaded = Vec::new();
             let mut errors = Vec::new();
-            let total = local_paths.len();
 
-            for (idx, local_path) in local_paths.iter().enumerate() {
+            // Expand directories into individual file paths (recursive)
+            let mut expanded_paths: Vec<(String, String)> = Vec::new(); // (local_path, relative_remote_path)
+            for raw_path in &local_paths {
+                let local_path = resolve_local_path(raw_path, context_local_path.as_deref());
+                let p = std::path::Path::new(&local_path);
+                if p.is_dir() {
+                    // Walk directory recursively
+                    let base = p.to_path_buf();
+                    let mut stack = vec![base.clone()];
+                    while let Some(dir) = stack.pop() {
+                        let entries = std::fs::read_dir(&dir)
+                            .map_err(|e| format!("Failed to read directory {}: {}", dir.display(), e))?;
+                        for entry in entries {
+                            let entry = entry.map_err(|e| format!("Directory entry error: {}", e))?;
+                            let entry_path = entry.path();
+                            if entry_path.is_dir() {
+                                stack.push(entry_path);
+                            } else {
+                                let rel = entry_path.strip_prefix(&base)
+                                    .map(|r| r.to_string_lossy().to_string())
+                                    .unwrap_or_else(|_| entry_path.file_name().unwrap_or_default().to_string_lossy().to_string());
+                                let dir_name = base.file_name().unwrap_or_default().to_string_lossy().to_string();
+                                let remote_rel = format!("{}/{}", dir_name, rel);
+                                expanded_paths.push((entry_path.to_string_lossy().to_string(), remote_rel));
+                            }
+                        }
+                    }
+                } else {
+                    let filename = p.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "file".to_string());
+                    expanded_paths.push((local_path, filename));
+                }
+            }
+
+            let total = expanded_paths.len();
+            for (idx, (local_path, rel_path)) in expanded_paths.iter().enumerate() {
                 validate_path(local_path, "path").map_err(|e| e.to_string())?;
-                let filename = std::path::Path::new(local_path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "file".to_string());
-                let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), filename);
+                let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
 
-                emit_tool_progress(&app, "upload_files", idx as u32 + 1, total as u32, &filename);
+                // Ensure remote parent directory exists (create each level)
+                if let Some(parent) = std::path::Path::new(&remote_path).parent() {
+                    let parent_str = parent.to_string_lossy().to_string();
+                    let base = remote_dir.trim_end_matches('/');
+                    if parent_str != base {
+                        // Build list of directories to create, from shallowest to deepest
+                        let rel_to_base = parent_str.strip_prefix(base).unwrap_or(&parent_str);
+                        let parts: Vec<&str> = rel_to_base.split('/').filter(|s| !s.is_empty()).collect();
+                        let mut current = base.to_string();
+                        for part in &parts {
+                            current = format!("{}/{}", current, part);
+                            if has_provider(&state).await {
+                                let mut provider = state.provider.lock().await;
+                                if let Some(p) = provider.as_mut() {
+                                    let _ = p.mkdir(&current).await;
+                                }
+                            } else if has_ftp(&app_state).await {
+                                let mut manager = app_state.ftp_manager.lock().await;
+                                let _ = manager.mkdir(&current).await;
+                            }
+                        }
+                    }
+                }
+
+                let display_name = rel_path.clone();
+                emit_tool_progress(&app, "upload_files", idx as u32 + 1, total as u32, &display_name);
 
                 let result = if has_provider(&state).await {
                     let mut provider = state.provider.lock().await;
@@ -1964,8 +2085,8 @@ pub async fn execute_ai_tool(
                 };
 
                 match result {
-                    Ok(_) => uploaded.push(filename),
-                    Err(e) => errors.push(json!({ "file": filename, "error": e })),
+                    Ok(_) => uploaded.push(display_name),
+                    Err(e) => errors.push(json!({ "file": display_name, "error": e })),
                 }
             }
 
@@ -1982,7 +2103,7 @@ pub async fn execute_ai_tool(
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                 .ok_or("Missing 'paths' array parameter")?;
-            let local_dir = get_str(&args, "local_dir")?;
+            let local_dir = resolve_local_path(&get_str(&args, "local_dir")?, context_local_path.as_deref());
             validate_path(&local_dir, "local_dir")?;
 
             // Ensure local dir exists
@@ -2112,11 +2233,12 @@ pub async fn execute_ai_tool(
         }
 
         "archive_compress" => {
+            let base = context_local_path.as_deref();
             let paths: Vec<String> = args.get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| resolve_local_path(s, base))).collect())
                 .ok_or("Missing 'paths' array parameter")?;
-            let output_path = get_str(&args, "output_path")?;
+            let output_path = resolve_local_path(&get_str(&args, "output_path")?, base);
             let format = get_str_opt(&args, "format").unwrap_or_else(|| "zip".to_string());
             let password = get_str_opt(&args, "password");
             let compression_level = args.get("compression_level").and_then(|v| v.as_i64());
@@ -2151,8 +2273,9 @@ pub async fn execute_ai_tool(
         }
 
         "archive_decompress" => {
-            let archive_path = get_str(&args, "archive_path")?;
-            let output_dir = get_str(&args, "output_dir")?;
+            let base = context_local_path.as_deref();
+            let archive_path = resolve_local_path(&get_str(&args, "archive_path")?, base);
+            let output_dir = resolve_local_path(&get_str(&args, "output_dir")?, base);
             let password = get_str_opt(&args, "password");
             let create_subfolder = args.get("create_subfolder").and_then(|v| v.as_bool()).unwrap_or(true);
             validate_path(&archive_path, "archive_path")?;
@@ -3124,6 +3247,22 @@ pub async fn execute_ai_tool(
 
             let servers = load_saved_servers()?;
             let server = find_server_by_name_or_id(&servers, &server_query)?;
+
+            // Check if this server is already connected via the active FTP session
+            // to avoid FTP "Data connection already open" conflicts from dual connections
+            if has_ftp(&app_state).await {
+                let manager = app_state.ftp_manager.lock().await;
+                if let Some(active_server) = manager.connected_host() {
+                    let active_host = active_server.trim_start_matches("ftp.").to_lowercase();
+                    let target_host = server.host.trim_start_matches("ftp.").to_lowercase();
+                    if active_host == target_host || active_server.contains(&server.host) || server.host.contains(active_server) {
+                        return Err(format!(
+                            "Server '{}' is already connected in the active session. Use remote_list, remote_read, upload_files, download_files instead of server_exec for the currently connected server.",
+                            server.name
+                        ));
+                    }
+                }
+            }
 
             let mut provider = create_temp_provider(&server).await?;
 
