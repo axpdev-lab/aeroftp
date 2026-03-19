@@ -172,7 +172,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
     } catch (err) {
       setError(String(err));
     }
-  }, [expandedTag]);
+  }, [confirmDelete, expandedTag]);
 
   const handleCreate = useCallback(async () => {
     if (!formTag.trim()) return;
@@ -181,8 +181,8 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
     try {
       await invoke('github_create_release', {
         tag: formTag.trim(),
-        name: formName.trim() || null,
-        body: formBody.trim() || null,
+        name: formName.trim() || formTag.trim(),
+        body: formBody.trim(),
         draft: formDraft,
         prerelease: formPrerelease,
       });
