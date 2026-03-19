@@ -3369,7 +3369,26 @@
             "filesToDelete": "{count} elementov za brisanje",
             "filesToUpload": "{count} elementov za nalaganje",
             "andMore": "in še {count}",
-            "branchProtectionInfo": "Nalaganja, preimenovanja in brisanja ustvarjajo commite Git. Če je veja zaščitena, bo samodejno ustvarjena delovna veja in lahko odprete Pull Request za združitev sprememb."
+            "branchProtectionInfo": "Nalaganja, preimenovanja in brisanja ustvarjajo commite Git. Če je veja zaščitena, bo samodejno ustvarjena delovna veja in lahko odprete Pull Request za združitev sprememb.",
+            "releases": "[NEEDS TRANSLATION] GitHub Releases",
+            "createRelease": "[NEEDS TRANSLATION] Create Release",
+            "noReleases": "[NEEDS TRANSLATION] No releases found",
+            "tagName": "[NEEDS TRANSLATION] Tag name",
+            "releaseName": "[NEEDS TRANSLATION] Release name",
+            "releaseNamePlaceholder": "[NEEDS TRANSLATION] Release title",
+            "releaseDescription": "[NEEDS TRANSLATION] Description",
+            "releaseDescriptionPlaceholder": "[NEEDS TRANSLATION] Describe this release...",
+            "draft": "[NEEDS TRANSLATION] Draft",
+            "prerelease": "[NEEDS TRANSLATION] Pre-release",
+            "assetName": "[NEEDS TRANSLATION] Name",
+            "assetSize": "[NEEDS TRANSLATION] Size",
+            "assetDownloads": "[NEEDS TRANSLATION] Downloads",
+            "downloadAsset": "[NEEDS TRANSLATION] Download",
+            "noAssets": "[NEEDS TRANSLATION] No assets",
+            "deleteRelease": "[NEEDS TRANSLATION] Delete release",
+            "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
+            "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
         }
     }
 }

@@ -3368,7 +3368,26 @@
             "filesToDelete": "{count}টি আইটেম মুছতে হবে",
             "filesToUpload": "{count}টি আইটেম আপলোড করতে হবে",
             "andMore": "এবং আরো {count}টি",
-            "branchProtectionInfo": "আপলোড, পুনর্নামকরণ এবং মুছে ফেলা Git কমিট তৈরি করে। শাখাটি সুরক্ষিত থাকলে, স্বয়ংক্রিয়ভাবে একটি কার্যকরী শাখা তৈরি হবে এবং আপনি পরিবর্তনগুলি মার্জ করতে Pull Request খুলতে পারবেন।"
+            "branchProtectionInfo": "আপলোড, পুনর্নামকরণ এবং মুছে ফেলা Git কমিট তৈরি করে। শাখাটি সুরক্ষিত থাকলে, স্বয়ংক্রিয়ভাবে একটি কার্যকরী শাখা তৈরি হবে এবং আপনি পরিবর্তনগুলি মার্জ করতে Pull Request খুলতে পারবেন।",
+            "releases": "[NEEDS TRANSLATION] GitHub Releases",
+            "createRelease": "[NEEDS TRANSLATION] Create Release",
+            "noReleases": "[NEEDS TRANSLATION] No releases found",
+            "tagName": "[NEEDS TRANSLATION] Tag name",
+            "releaseName": "[NEEDS TRANSLATION] Release name",
+            "releaseNamePlaceholder": "[NEEDS TRANSLATION] Release title",
+            "releaseDescription": "[NEEDS TRANSLATION] Description",
+            "releaseDescriptionPlaceholder": "[NEEDS TRANSLATION] Describe this release...",
+            "draft": "[NEEDS TRANSLATION] Draft",
+            "prerelease": "[NEEDS TRANSLATION] Pre-release",
+            "assetName": "[NEEDS TRANSLATION] Name",
+            "assetSize": "[NEEDS TRANSLATION] Size",
+            "assetDownloads": "[NEEDS TRANSLATION] Downloads",
+            "downloadAsset": "[NEEDS TRANSLATION] Download",
+            "noAssets": "[NEEDS TRANSLATION] No assets",
+            "deleteRelease": "[NEEDS TRANSLATION] Delete release",
+            "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
+            "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
         }
     }
 }

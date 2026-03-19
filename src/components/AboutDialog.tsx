@@ -339,13 +339,13 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             {/* Protocols & Providers */}
                             <div className="text-center py-2 border-t border-gray-200 dark:border-gray-800">
                                 <p className="text-[11px] text-gray-500 font-mono">
-                                    FTP / FTPS / SFTP / WebDAV / S3
+                                    FTP / FTPS / SFTP / WebDAV / S3 / GitHub
                                 </p>
                                 <p className="text-[11px] text-gray-500 font-mono">
                                     Google Drive / Dropbox / OneDrive / MEGA / Box / Filen
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono mt-1">
-                                    22 protocols &middot; 47 languages &middot; AES-256 archives
+                                    23 protocols &middot; 47 languages &middot; AES-256 archives
                                 </p>
                             </div>
 

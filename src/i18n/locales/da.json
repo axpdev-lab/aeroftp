@@ -3368,7 +3368,26 @@
             "filesToDelete": "{count} element(er) at slette",
             "filesToUpload": "{count} element(er) at uploade",
             "andMore": "og {count} mere",
-            "branchProtectionInfo": "Uploads, omdøbninger og sletninger opretter Git-commits. Hvis grenen er beskyttet, oprettes automatisk en arbejdsgren, og du kan åbne en Pull Request for at flette dine ændringer."
+            "branchProtectionInfo": "Uploads, omdøbninger og sletninger opretter Git-commits. Hvis grenen er beskyttet, oprettes automatisk en arbejdsgren, og du kan åbne en Pull Request for at flette dine ændringer.",
+            "releases": "[NEEDS TRANSLATION] GitHub Releases",
+            "createRelease": "[NEEDS TRANSLATION] Create Release",
+            "noReleases": "[NEEDS TRANSLATION] No releases found",
+            "tagName": "[NEEDS TRANSLATION] Tag name",
+            "releaseName": "[NEEDS TRANSLATION] Release name",
+            "releaseNamePlaceholder": "[NEEDS TRANSLATION] Release title",
+            "releaseDescription": "[NEEDS TRANSLATION] Description",
+            "releaseDescriptionPlaceholder": "[NEEDS TRANSLATION] Describe this release...",
+            "draft": "[NEEDS TRANSLATION] Draft",
+            "prerelease": "[NEEDS TRANSLATION] Pre-release",
+            "assetName": "[NEEDS TRANSLATION] Name",
+            "assetSize": "[NEEDS TRANSLATION] Size",
+            "assetDownloads": "[NEEDS TRANSLATION] Downloads",
+            "downloadAsset": "[NEEDS TRANSLATION] Download",
+            "noAssets": "[NEEDS TRANSLATION] No assets",
+            "deleteRelease": "[NEEDS TRANSLATION] Delete release",
+            "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
+            "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
         }
     }
 }

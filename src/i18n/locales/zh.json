@@ -3359,7 +3359,26 @@
             "filesToDelete": "{count} 个项目待删除",
             "filesToUpload": "{count} 个项目待上传",
             "andMore": "以及另外 {count} 个",
-            "branchProtectionInfo": "上传、重命名和删除会创建 Git 提交。如果分支受保护，将自动创建工作分支，您可以打开 Pull Request 来合并更改。"
+            "branchProtectionInfo": "上传、重命名和删除会创建 Git 提交。如果分支受保护，将自动创建工作分支，您可以打开 Pull Request 来合并更改。",
+            "releases": "[NEEDS TRANSLATION] GitHub Releases",
+            "createRelease": "[NEEDS TRANSLATION] Create Release",
+            "noReleases": "[NEEDS TRANSLATION] No releases found",
+            "tagName": "[NEEDS TRANSLATION] Tag name",
+            "releaseName": "[NEEDS TRANSLATION] Release name",
+            "releaseNamePlaceholder": "[NEEDS TRANSLATION] Release title",
+            "releaseDescription": "[NEEDS TRANSLATION] Description",
+            "releaseDescriptionPlaceholder": "[NEEDS TRANSLATION] Describe this release...",
+            "draft": "[NEEDS TRANSLATION] Draft",
+            "prerelease": "[NEEDS TRANSLATION] Pre-release",
+            "assetName": "[NEEDS TRANSLATION] Name",
+            "assetSize": "[NEEDS TRANSLATION] Size",
+            "assetDownloads": "[NEEDS TRANSLATION] Downloads",
+            "downloadAsset": "[NEEDS TRANSLATION] Download",
+            "noAssets": "[NEEDS TRANSLATION] No assets",
+            "deleteRelease": "[NEEDS TRANSLATION] Delete release",
+            "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
+            "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
         }
     }
 }

@@ -3369,7 +3369,26 @@
             "filesToDelete": "{count} objekt att ta bort",
             "filesToUpload": "{count} objekt att ladda upp",
             "andMore": "och {count} till",
-            "branchProtectionInfo": "Uppladdningar, namnbyten och borttagningar skapar Git-commits. Om grenen är skyddad skapas automatiskt en arbetsgren och du kan öppna en Pull Request för att slå samman ändringarna."
+            "branchProtectionInfo": "Uppladdningar, namnbyten och borttagningar skapar Git-commits. Om grenen är skyddad skapas automatiskt en arbetsgren och du kan öppna en Pull Request för att slå samman ändringarna.",
+            "releases": "[NEEDS TRANSLATION] GitHub Releases",
+            "createRelease": "[NEEDS TRANSLATION] Create Release",
+            "noReleases": "[NEEDS TRANSLATION] No releases found",
+            "tagName": "[NEEDS TRANSLATION] Tag name",
+            "releaseName": "[NEEDS TRANSLATION] Release name",
+            "releaseNamePlaceholder": "[NEEDS TRANSLATION] Release title",
+            "releaseDescription": "[NEEDS TRANSLATION] Description",
+            "releaseDescriptionPlaceholder": "[NEEDS TRANSLATION] Describe this release...",
+            "draft": "[NEEDS TRANSLATION] Draft",
+            "prerelease": "[NEEDS TRANSLATION] Pre-release",
+            "assetName": "[NEEDS TRANSLATION] Name",
+            "assetSize": "[NEEDS TRANSLATION] Size",
+            "assetDownloads": "[NEEDS TRANSLATION] Downloads",
+            "downloadAsset": "[NEEDS TRANSLATION] Download",
+            "noAssets": "[NEEDS TRANSLATION] No assets",
+            "deleteRelease": "[NEEDS TRANSLATION] Delete release",
+            "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
+            "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
         }
     }
 }
