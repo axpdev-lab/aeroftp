@@ -10,7 +10,6 @@
 pub mod auth;
 mod client;
 mod errors;
-#[allow(dead_code)]
 mod graphql;
 mod model;
 mod rate_limit;
@@ -288,6 +287,44 @@ impl GitHubProvider {
     /// Get release metadata.
     pub async fn get_release(&mut self, tag: &str) -> Result<GitHubRelease, ProviderError> {
         get_release_info(&mut self.client, &self.owner, &self.repo, tag).await
+    }
+
+    /// Atomic multi-file commit via GraphQL `createCommitOnBranch`.
+    ///
+    /// Accepts UTF-8 string content for additions. The content is converted to
+    /// bytes internally and base64-encoded for the GraphQL mutation.
+    ///
+    /// Returns the new commit SHA on success.
+    pub async fn batch_commit(
+        &mut self,
+        branch: &str,
+        message: &str,
+        additions: &[(String, String)],
+        deletions: &[String],
+    ) -> Result<String, ProviderError> {
+        let head_oid =
+            graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, branch)
+                .await
+                .map_err(ProviderError::from)?;
+
+        let additions_bytes: Vec<(String, Vec<u8>)> = additions
+            .iter()
+            .map(|(path, content)| (path.clone(), content.as_bytes().to_vec()))
+            .collect();
+
+        let params = graphql::BatchCommitParams {
+            owner: &self.owner,
+            repo: &self.repo,
+            branch,
+            head_oid: &head_oid,
+            message,
+            additions: &additions_bytes,
+            deletions,
+        };
+
+        graphql::batch_commit(&mut self.client, &params)
+            .await
+            .map_err(ProviderError::from)
     }
 
     /// List all branches of the repository.

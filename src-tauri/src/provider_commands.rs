@@ -4502,3 +4502,55 @@ pub async fn github_get_release(
         "asset_count": assets.len(),
     }))
 }
+
+/// Atomic multi-file commit via GraphQL createCommitOnBranch
+#[tauri::command]
+pub async fn github_batch_commit(
+    state: State<'_, ProviderState>,
+    branch: String,
+    message: String,
+    additions: Vec<serde_json::Value>,
+    deletions: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    // Parse additions: [{path: String, content: String}]
+    let parsed_additions: Vec<(String, String)> = additions
+        .iter()
+        .map(|v| {
+            let path = v
+                .get("path")
+                .and_then(|p| p.as_str())
+                .ok_or_else(|| "Each addition must have a 'path' string field".to_string())?;
+            let content = v
+                .get("content")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Each addition must have a 'content' string field".to_string())?;
+            Ok((path.to_string(), content.to_string()))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let oid = github
+        .batch_commit(&branch, &message, &parsed_additions, &deletions)
+        .await
+        .map_err(|e| format!("Batch commit failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "commit_sha": oid,
+        "branch": branch,
+        "additions_count": parsed_additions.len(),
+        "deletions_count": deletions.len(),
+    }))
+}
