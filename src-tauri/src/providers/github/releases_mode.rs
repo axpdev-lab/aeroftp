@@ -329,14 +329,28 @@ async fn get_release_by_tag(
     tag: &str,
 ) -> Result<GitHubRelease, ProviderError> {
     let path = release_by_tag_path(owner, repo, tag);
-    let release: GitHubRelease = client.get_json(&path).await.map_err(|e| {
-        if matches!(e, GitHubError::PathNotFound(_) | GitHubError::RepoNotFound) {
-            ProviderError::NotFound(format!("Release not found: {tag}"))
-        } else {
-            ProviderError::ServerError(e.to_string())
+    match client.get_json::<GitHubRelease>(&path).await {
+        Ok(release) => Ok(release),
+        Err(GitHubError::PathNotFound(_)) => {
+            // Tag endpoint doesn't find draft releases — fall back to listing all
+            let all_path = format!("/repos/{owner}/{repo}/releases?per_page=100");
+            let releases: Vec<GitHubRelease> = client
+                .get_json(&all_path)
+                .await
+                .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            releases
+                .into_iter()
+                .find(|r| r.tag_name == tag)
+                .ok_or_else(|| ProviderError::NotFound(format!("Release not found: {tag}")))
         }
-    })?;
-    Ok(release)
+        Err(e) => {
+            if matches!(e, GitHubError::RepoNotFound) {
+                Err(ProviderError::NotFound(format!("Release not found: {tag}")))
+            } else {
+                Err(ProviderError::ServerError(e.to_string()))
+            }
+        }
+    }
 }
 
 fn release_by_tag_path(owner: &str, repo: &str, tag: &str) -> String {
