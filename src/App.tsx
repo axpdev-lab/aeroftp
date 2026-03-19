@@ -48,6 +48,7 @@ import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog'
 import { GitHubCommitDialog } from './components/GitHubCommitDialog';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
+import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
 import { FileLuTrashManager } from './components/FileLuTrashManager';
@@ -84,7 +85,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package
 } from 'lucide-react';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
@@ -339,6 +340,7 @@ const App: React.FC = () => {
     repoPrivate: boolean;
   } | null>(null);
   const [gitHubBranches, setGitHubBranches] = useState<Array<{ name: string; protected: boolean }>>([]);
+  const [showGitHubReleaseBrowser, setShowGitHubReleaseBrowser] = useState(false);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -6462,6 +6464,10 @@ const App: React.FC = () => {
             onCancel={gitHubCommitDialog.onCancel || (() => setGitHubCommitDialog(null))}
           />
         )}
+        <GitHubReleaseBrowser
+          isOpen={showGitHubReleaseBrowser}
+          onClose={() => setShowGitHubReleaseBrowser(false)}
+        />
         {batchRenameDialog && (
           <BatchRenameDialog
             isOpen={true}
@@ -7454,6 +7460,15 @@ const App: React.FC = () => {
                         onBranchChange={(branch: string) => void switchGitHubBranch(branch)}
                         onRefresh={() => void refreshGitHubContext(true)}
                       />
+                    )}
+                    {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && (
+                      <button
+                        onClick={() => setShowGitHubReleaseBrowser(true)}
+                        className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        title="Releases"
+                      >
+                        <Package size={13} />
+                      </button>
                     )}
                     {isConnected && (
                       <button
