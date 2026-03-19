@@ -7937,6 +7937,7 @@ pub fn run() {
             provider_commands::github_upload_release_asset,
             provider_commands::github_delete_release,
             provider_commands::github_delete_release_asset,
+            provider_commands::github_download_release_asset,
             provider_commands::github_get_release,
             provider_commands::github_batch_commit,
             provider_commands::provider_find,

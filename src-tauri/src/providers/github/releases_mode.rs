@@ -510,6 +510,8 @@ mod tests {
             assets: vec![],
             upload_url: String::new(),
             body: Some("First release!".into()),
+            zipball_url: None,
+            tarball_url: None,
         };
         let entry = release_to_entry(&release);
         assert!(entry.is_dir);

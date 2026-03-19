@@ -289,6 +289,16 @@ impl GitHubProvider {
         get_release_info(&mut self.client, &self.owner, &self.repo, tag).await
     }
 
+    /// Download a release asset to a local file path.
+    pub async fn download_asset(
+        &mut self,
+        tag: &str,
+        asset_name: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        download_release_asset(&mut self.client, &self.owner, &self.repo, tag, asset_name, local_path).await
+    }
+
     /// Atomic multi-file commit via GraphQL `createCommitOnBranch`.
     ///
     /// Accepts UTF-8 string content for additions. The content is converted to

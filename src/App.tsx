@@ -7464,7 +7464,7 @@ const App: React.FC = () => {
                     {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && (
                       <button
                         onClick={() => setShowGitHubReleaseBrowser(true)}
-                        className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        className="flex-shrink-0 p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
                         title="Releases"
                       >
                         <Package size={13} />

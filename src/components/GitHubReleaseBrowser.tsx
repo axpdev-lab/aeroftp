@@ -7,9 +7,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, X, Plus, ArrowLeft, Trash2, ChevronDown, ChevronRight,
-  FileDown, Loader2, ExternalLink, Tag, Calendar, FileBox,
+  FileDown, Download, Loader2, Tag, Calendar, FileBox,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 
@@ -519,7 +520,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                               className="px-3 py-1.5 text-right whitespace-nowrap"
                               style={{ color: 'var(--color-text-secondary)' }}
                             >
-                              {formatBytes(asset.size)}
+                              {asset.size > 0 ? formatBytes(asset.size) : '-'}
                             </td>
                             <td
                               className="px-3 py-1.5 text-right whitespace-nowrap"
@@ -529,17 +530,32 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                             </td>
                             <td className="px-2 py-1.5">
                               <div className="flex items-center justify-end gap-1">
-                                <a
-                                  href={asset.browser_download_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      const defaultName = asset.name.replace(/[()]/g, '').replace(/\s+/g, '-');
+                                      const savePath = await save({
+                                        defaultPath: defaultName,
+                                        title: `Download ${asset.name}`,
+                                      });
+                                      if (savePath) {
+                                        await invoke('github_download_release_asset', {
+                                          tag: release.tag,
+                                          assetName: asset.name,
+                                          localPath: savePath,
+                                        });
+                                      }
+                                    } catch (err) {
+                                      alert(`Download failed: ${err}`);
+                                    }
+                                  }}
                                   className="p-1 rounded transition-colors hover:opacity-80"
                                   style={{ color: 'var(--color-accent)' }}
                                   title={t('github.downloadAsset') || 'Download'}
-                                  onClick={e => e.stopPropagation()}
                                 >
-                                  <ExternalLink size={12} />
-                                </a>
+                                  <Download size={12} />
+                                </button>
                                 <button
                                   onClick={e => {
                                     e.stopPropagation();

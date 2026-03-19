@@ -4448,6 +4448,36 @@ pub async fn github_delete_release_asset(
     Ok(serde_json::json!({ "tag": tag, "asset": asset_name, "status": "deleted" }))
 }
 
+/// Download a release asset to a local file
+#[tauri::command]
+pub async fn github_download_release_asset(
+    state: State<'_, ProviderState>,
+    tag: String,
+    asset_name: String,
+    local_path: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github
+        .download_asset(&tag, &asset_name, &local_path)
+        .await
+        .map_err(|e| format!("Failed to download release asset: {}", e))?;
+
+    Ok(serde_json::json!({ "tag": tag, "asset": asset_name, "path": local_path, "status": "downloaded" }))
+}
+
 /// Get detailed release information by tag
 #[tauri::command]
 pub async fn github_get_release(
