@@ -3378,7 +3378,14 @@
             "deleteRelease": "[NEEDS TRANSLATION] Delete release",
             "deleteAsset": "[NEEDS TRANSLATION] Delete asset",
             "confirmDeleteRelease": "[NEEDS TRANSLATION] Delete this release? This cannot be undone.",
-            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone."
+            "confirmDeleteAsset": "[NEEDS TRANSLATION] Delete this asset? This cannot be undone.",
+            "writeModeDirectTooltip": "[NEEDS TRANSLATION] Changes are committed directly to the branch",
+            "writeModeBranchTooltip": "[NEEDS TRANSLATION] Changes will be committed to {branch}",
+            "writeModeBranchName": "[NEEDS TRANSLATION] {branch}",
+            "writeModeReadOnlyTooltip": "[NEEDS TRANSLATION] No write access to this repository",
+            "createPr": "[NEEDS TRANSLATION] Create Pull Request",
+            "prTitle": "[NEEDS TRANSLATION] PR title",
+            "prBody": "[NEEDS TRANSLATION] Description (optional)"
         }
     }
 }
