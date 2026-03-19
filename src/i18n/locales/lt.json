@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Nėra rašymo prieigos prie šios saugyklos",
             "createPr": "Sukurti Pull Request",
             "prTitle": "PR antraštė",
-            "prBody": "Aprašymas (neprivaloma)"
+            "prBody": "Aprašymas (neprivaloma)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

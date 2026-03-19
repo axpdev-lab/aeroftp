@@ -3384,7 +3384,8 @@
             "writeModeReadOnlyTooltip": "このリポジトリへの書き込み権限がありません",
             "createPr": "Pull Request を作成",
             "prTitle": "PR タイトル",
-            "prBody": "説明（任意）"
+            "prBody": "説明（任意）",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

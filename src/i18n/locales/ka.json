@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "ამ საცავში ჩაწერის უფლება არ არის",
             "createPr": "Pull Request-ის შექმნა",
             "prTitle": "PR სათაური",
-            "prBody": "აღწერა (არასავალდებულო)"
+            "prBody": "აღწერა (არასავალდებულო)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

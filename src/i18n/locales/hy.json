@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Այս պահոցին գրելու թույլտվություն չկա",
             "createPr": "Ստեղծել Pull Request",
             "prTitle": "PR վերնագիր",
-            "prBody": "Նկարագրություն (կամընտրական)"
+            "prBody": "Նկարագրություն (կամընտրական)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

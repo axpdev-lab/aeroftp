@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Không có quyền ghi vào kho lưu này",
             "createPr": "Tạo Pull Request",
             "prTitle": "Tiêu đề PR",
-            "prBody": "Mô tả (tùy chọn)"
+            "prBody": "Mô tả (tùy chọn)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

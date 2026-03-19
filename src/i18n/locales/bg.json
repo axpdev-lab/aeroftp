@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Няма права за запис в това хранилище",
             "createPr": "Създаване на Pull Request",
             "prTitle": "Заглавие на PR",
-            "prBody": "Описание (по избор)"
+            "prBody": "Описание (по избор)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

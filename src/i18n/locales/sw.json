@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Hakuna ufikiaji wa kuandika kwenye hifadhi hii",
             "createPr": "Unda Pull Request",
             "prTitle": "Kichwa cha PR",
-            "prBody": "Maelezo (hiari)"
+            "prBody": "Maelezo (hiari)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

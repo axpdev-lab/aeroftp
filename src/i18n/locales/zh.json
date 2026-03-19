@@ -3385,7 +3385,8 @@
             "writeModeReadOnlyTooltip": "无权写入此仓库",
             "createPr": "创建 Pull Request",
             "prTitle": "PR 标题",
-            "prBody": "描述（可选）"
+            "prBody": "描述（可选）",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

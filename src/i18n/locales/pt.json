@@ -3385,7 +3385,8 @@
             "writeModeReadOnlyTooltip": "Sem acesso de escrita a este repositorio",
             "createPr": "Criar Pull Request",
             "prTitle": "Titulo do PR",
-            "prBody": "Descricao (opcional)"
+            "prBody": "Descricao (opcional)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

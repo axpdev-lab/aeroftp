@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Ingen skriveadgang til dette repository",
             "createPr": "Opret Pull Request",
             "prTitle": "PR-titel",
-            "prBody": "Beskrivelse (valgfri)"
+            "prBody": "Beskrivelse (valgfri)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

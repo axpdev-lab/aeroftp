@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Ingen skrivbehörighet till detta arkiv",
             "createPr": "Skapa Pull Request",
             "prTitle": "PR-titel",
-            "prBody": "Beskrivning (valfritt)"
+            "prBody": "Beskrivning (valfritt)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

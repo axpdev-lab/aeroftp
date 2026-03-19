@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Tiada akses tulis ke repositori ini",
             "createPr": "Cipta Pull Request",
             "prTitle": "Tajuk PR",
-            "prBody": "Penerangan (pilihan)"
+            "prBody": "Penerangan (pilihan)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

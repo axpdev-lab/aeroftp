@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Ni dostopa za pisanje v ta repozitorij",
             "createPr": "Ustvari Pull Request",
             "prTitle": "Naslov PR",
-            "prBody": "Opis (neobvezno)"
+            "prBody": "Opis (neobvezno)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

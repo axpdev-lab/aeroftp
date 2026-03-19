@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Δεν έχετε δικαίωμα εγγραφής σε αυτό το αποθετήριο",
             "createPr": "Δημιουργία Pull Request",
             "prTitle": "Τίτλος PR",
-            "prBody": "Περιγραφή (προαιρετικά)"
+            "prBody": "Περιγραφή (προαιρετικά)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

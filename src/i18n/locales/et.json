@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Sellele hoidlale puudub kirjutusoigus",
             "createPr": "Loo Pull Request",
             "prTitle": "PR pealkiri",
-            "prBody": "Kirjeldus (valikuline)"
+            "prBody": "Kirjeldus (valikuline)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

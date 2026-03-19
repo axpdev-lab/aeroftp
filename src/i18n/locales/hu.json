@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Nincs írási jogosultság ehhez a tárolóhoz",
             "createPr": "Pull Request létrehozása",
             "prTitle": "PR cím",
-            "prBody": "Leírás (opcionális)"
+            "prBody": "Leírás (opcionális)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

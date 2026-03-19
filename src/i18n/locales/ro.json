@@ -3385,7 +3385,8 @@
             "writeModeReadOnlyTooltip": "Fara acces de scriere la acest repository",
             "createPr": "Creeaza Pull Request",
             "prTitle": "Titlu PR",
-            "prBody": "Descriere (optional)"
+            "prBody": "Descriere (optional)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

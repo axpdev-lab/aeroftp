@@ -3384,7 +3384,8 @@
             "writeModeReadOnlyTooltip": "[NEEDS TRANSLATION] No write access to this repository",
             "createPr": "[NEEDS TRANSLATION] Create Pull Request",
             "prTitle": "[NEEDS TRANSLATION] PR title",
-            "prBody": "[NEEDS TRANSLATION] Description (optional)"
+            "prBody": "[NEEDS TRANSLATION] Description (optional)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

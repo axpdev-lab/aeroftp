@@ -3385,7 +3385,8 @@
             "writeModeReadOnlyTooltip": "Нет доступа на запись в этот репозиторий",
             "createPr": "Создать Pull Request",
             "prTitle": "Заголовок PR",
-            "prBody": "Описание (необязательно)"
+            "prBody": "Описание (необязательно)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

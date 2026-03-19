@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "এই রিপোজিটরিতে লেখার অনুমতি নেই",
             "createPr": "Pull Request তৈরি করুন",
             "prTitle": "PR শিরোনাম",
-            "prBody": "বিবরণ (ঐচ্ছিক)"
+            "prBody": "বিবরণ (ঐচ্ছিক)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "ไม่มีสิทธิ์เขียนในรีโพนี้",
             "createPr": "สร้าง Pull Request",
             "prTitle": "ชื่อ PR",
-            "prBody": "คำอธิบาย (ไม่บังคับ)"
+            "prBody": "คำอธิบาย (ไม่บังคับ)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

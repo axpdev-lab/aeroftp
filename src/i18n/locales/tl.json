@@ -3414,7 +3414,8 @@
             "writeModeReadOnlyTooltip": "Walang write access sa repository na ito",
             "createPr": "Lumikha ng Pull Request",
             "prTitle": "Pamagat ng PR",
-            "prBody": "Paglalarawan (opsyonal)"
+            "prBody": "Paglalarawan (opsyonal)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

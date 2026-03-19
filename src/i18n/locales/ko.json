@@ -3384,7 +3384,8 @@
             "writeModeReadOnlyTooltip": "이 저장소에 대한 쓰기 권한이 없습니다",
             "createPr": "Pull Request 생성",
             "prTitle": "PR 제목",
-            "prBody": "설명 (선택 사항)"
+            "prBody": "설명 (선택 사항)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

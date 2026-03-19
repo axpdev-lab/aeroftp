@@ -3413,7 +3413,8 @@
             "writeModeReadOnlyTooltip": "Ez dago idazteko baimenik biltegi honetan",
             "createPr": "Pull Request sortu",
             "prTitle": "PR izenburua",
-            "prBody": "Deskribapena (aukerakoa)"
+            "prBody": "Deskribapena (aukerakoa)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Bu depoda yazma erişimi yok",
             "createPr": "Pull Request Oluştur",
             "prTitle": "PR başlığı",
-            "prBody": "Açıklama (isteğe bağlı)"
+            "prBody": "Açıklama (isteğe bağlı)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

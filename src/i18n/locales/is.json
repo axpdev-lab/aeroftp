@@ -3413,7 +3413,8 @@
             "writeModeReadOnlyTooltip": "Enginn skrifheimild á þetta gagnasafn",
             "createPr": "Búa til Pull Request",
             "prTitle": "PR titill",
-            "prBody": "Lýsing (valfrjálst)"
+            "prBody": "Lýsing (valfrjálst)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

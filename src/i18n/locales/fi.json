@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Ei kirjoitusoikeutta tahan tietovarastoon",
             "createPr": "Luo Pull Request",
             "prTitle": "PR-otsikko",
-            "prBody": "Kuvaus (valinnainen)"
+            "prBody": "Kuvaus (valinnainen)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

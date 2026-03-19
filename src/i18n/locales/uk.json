@@ -3385,7 +3385,8 @@
             "writeModeReadOnlyTooltip": "Немає доступу на запис до цього репозиторію",
             "createPr": "Створити Pull Request",
             "prTitle": "Заголовок PR",
-            "prBody": "Опис (необов'язково)"
+            "prBody": "Опис (необов'язково)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

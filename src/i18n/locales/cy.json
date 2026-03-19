@@ -3413,7 +3413,8 @@
             "writeModeReadOnlyTooltip": "Dim mynediad ysgrifennu i'r ystorfa hon",
             "createPr": "Creu Pull Request",
             "prTitle": "Teitl PR",
-            "prBody": "Disgrifiad (dewisol)"
+            "prBody": "Disgrifiad (dewisol)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

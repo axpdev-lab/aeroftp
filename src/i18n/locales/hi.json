@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "इस रिपॉजिटरी में लिखने की पहुंच नहीं है",
             "createPr": "Pull Request बनाएं",
             "prTitle": "PR शीर्षक",
-            "prBody": "विवरण (वैकल्पिक)"
+            "prBody": "विवरण (वैकल्पिक)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

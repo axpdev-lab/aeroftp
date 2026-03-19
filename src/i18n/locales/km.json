@@ -3413,7 +3413,8 @@
             "writeModeReadOnlyTooltip": "គ្មានសិទ្ធិសំរាប់សរសេរក្នុងកំណត់ត្រានេះ",
             "createPr": "បង្កើត Pull Request",
             "prTitle": "ចំណង់ PR",
-            "prBody": "ការរៀបរាប់ (ជម្រើស)"
+            "prBody": "ការរៀបរាប់ (ជម្រើស)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

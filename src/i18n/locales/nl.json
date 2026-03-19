@@ -3384,7 +3384,8 @@
             "writeModeReadOnlyTooltip": "Geen schrijftoegang tot deze repository",
             "createPr": "Pull Request aanmaken",
             "prTitle": "PR titel",
-            "prBody": "Beschrijving (optioneel)"
+            "prBody": "Beschrijving (optioneel)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

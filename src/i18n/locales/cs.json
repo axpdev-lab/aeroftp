@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "K tomuto repozitáři nemáte právo zápisu",
             "createPr": "Vytvořit Pull Request",
             "prTitle": "Název PR",
-            "prBody": "Popis (volitelný)"
+            "prBody": "Popis (volitelný)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

@@ -3395,7 +3395,8 @@
             "writeModeReadOnlyTooltip": "Ziadny pristup na zapis do tohto repozitara",
             "createPr": "Vytvorit Pull Request",
             "prTitle": "Nazov PR",
-            "prBody": "Popis (volitelne)"
+            "prBody": "Popis (volitelne)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }

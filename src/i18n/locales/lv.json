@@ -3394,7 +3394,8 @@
             "writeModeReadOnlyTooltip": "Nav rakstīšanas piekļuves šai repozitorijai",
             "createPr": "Izveidot Pull Request",
             "prTitle": "PR virsraksts",
-            "prBody": "Apraksts (neobligāti)"
+            "prBody": "Apraksts (neobligāti)",
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
         }
     }
 }
