@@ -129,6 +129,11 @@ fn guess_content_type(filename: &str) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// List all releases as virtual directories.
+///
+/// NOTE: Uses `per_page=100` (GitHub maximum) without Link-header pagination.
+/// Repositories with more than 100 releases will only show the most recent 100.
+/// Full pagination would require a lower-level HTTP method that exposes response
+/// headers, which `get_json()` does not currently provide.
 pub async fn list_releases(
     client: &mut GitHubHttpClient,
     owner: &str,

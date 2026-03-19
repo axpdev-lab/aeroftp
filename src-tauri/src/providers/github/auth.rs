@@ -45,6 +45,7 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
         .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("User-Agent", "AeroFTP")
         .body(format!("client_id={}", GITHUB_APP_CLIENT_ID))
         .send()
         .await
@@ -83,6 +84,7 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, 
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", "application/json")
             .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("User-Agent", "AeroFTP")
             .body(form_body)
             .send()
             .await

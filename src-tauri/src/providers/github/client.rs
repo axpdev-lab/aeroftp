@@ -325,7 +325,24 @@ impl GitHubHttpClient {
             .header("User-Agent", USER_AGENT)
             .body(data);
 
-        self.execute_unchecked(builder).await
+        let response = self.execute_unchecked(builder).await?;
+
+        // Check for secondary rate limit (Retry-After header) on upload responses.
+        if let Some(retry_after) = response.headers().get("retry-after") {
+            if let Ok(s) = retry_after.to_str() {
+                if let Ok(secs) = s.parse::<u64>() {
+                    if response.status() == StatusCode::FORBIDDEN
+                        || response.status() == StatusCode::TOO_MANY_REQUESTS
+                    {
+                        return Err(GitHubError::SecondaryRateLimit {
+                            retry_after: secs,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(response)
     }
 
     // ── Accessors ──────────────────────────────────────────────────
