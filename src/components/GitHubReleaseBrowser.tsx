@@ -191,8 +191,9 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       setFormBody('');
       setFormDraft(false);
       setFormPrerelease(false);
+      const result = await invoke<{ releases: Release[]; count: number }>('github_list_releases');
+      setReleases(result.releases);
       setView('list');
-      await fetchReleases();
     } catch (err) {
       setError(String(err));
     } finally {
