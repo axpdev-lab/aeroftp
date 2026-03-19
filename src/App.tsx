@@ -7470,9 +7470,13 @@ const App: React.FC = () => {
                         <Package size={13} />
                       </button>
                     )}
-                    {isConnected && (
+                    {isConnected && (() => {
+                      const noSearchProtocols = ['ftp', 'ftps', 'sftp', 'webdav', 's3', 'github', 'azure'];
+                      const searchDisabled = noSearchProtocols.includes(getActiveProviderProtocol() || '');
+                      return (
                       <button
                         onClick={() => {
+                          if (searchDisabled) return;
                           if (remoteSearchResults !== null) {
                             setRemoteSearchResults(null);
                             setRemoteSearchQuery('');
@@ -7480,12 +7484,14 @@ const App: React.FC = () => {
                             setShowRemoteSearchBar(prev => !prev);
                           }
                         }}
-                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${searchDisabled ? 'text-gray-600 cursor-not-allowed opacity-40' : remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                        title={searchDisabled ? 'Search not supported for this protocol' : remoteSearchResults !== null ? 'Clear search' : 'Search files'}
+                        disabled={searchDisabled}
                       >
                         {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
                       </button>
-                    )}
+                      );
+                    })()}
                     {debugMode && isConnected && (
                       <button
                         onClick={() => {

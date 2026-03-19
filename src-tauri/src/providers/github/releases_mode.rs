@@ -203,10 +203,23 @@ pub async fn download_release_asset(
     local_path: &str,
 ) -> Result<(), ProviderError> {
     let release = get_release_by_tag(client, owner, repo, tag).await?;
-    let asset = find_asset(&release, asset_name)?;
+
+    // Check for auto-generated source archives first (not in assets[])
+    let download_url = if asset_name == "Source code (zip)" {
+        release.zipball_url.clone().ok_or_else(|| {
+            ProviderError::NotFound("Source code (zip) not available".into())
+        })?
+    } else if asset_name == "Source code (tar.gz)" {
+        release.tarball_url.clone().ok_or_else(|| {
+            ProviderError::NotFound("Source code (tar.gz) not available".into())
+        })?
+    } else {
+        let asset = find_asset(&release, asset_name)?;
+        asset.browser_download_url.clone()
+    };
 
     let resp = client
-        .get_raw(&asset.browser_download_url)
+        .get_raw(&download_url)
         .await
         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
