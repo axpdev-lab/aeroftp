@@ -64,6 +64,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
   const [assets, setAssets] = useState<Record<string, Asset[]>>({});
   const [assetsLoading, setAssetsLoading] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'release' | 'asset'; tag: string; assetName?: string } | null>(null);
 
   // Create form state
   const [formTag, setFormTag] = useState('');
@@ -144,35 +145,34 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
     }
   }, [expandedTag, assets]);
 
-  const handleDeleteRelease = useCallback(async (tag: string) => {
-    const confirmed = window.confirm(
-      t('github.confirmDeleteRelease') || `Delete release "${tag}"? This cannot be undone.`
-    );
-    if (!confirmed) return;
-    try {
-      await invoke('github_delete_release', { tag });
-      setReleases(prev => prev.filter(r => r.tag !== tag));
-      if (expandedTag === tag) setExpandedTag(null);
-    } catch (err) {
-      setError(String(err));
-    }
-  }, [expandedTag, t]);
+  const handleDeleteRelease = useCallback((tag: string) => {
+    setConfirmDelete({ type: 'release', tag });
+  }, []);
 
-  const handleDeleteAsset = useCallback(async (tag: string, assetName: string) => {
-    const confirmed = window.confirm(
-      t('github.confirmDeleteAsset') || `Delete asset "${assetName}"?`
-    );
-    if (!confirmed) return;
+  const handleDeleteAsset = useCallback((tag: string, assetName: string) => {
+    setConfirmDelete({ type: 'asset', tag, assetName });
+  }, []);
+
+  const executeDelete = useCallback(async () => {
+    if (!confirmDelete) return;
+    const { type, tag, assetName } = confirmDelete;
+    setConfirmDelete(null);
     try {
-      await invoke('github_delete_release_asset', { tag, assetName });
-      setAssets(prev => ({
-        ...prev,
-        [tag]: (prev[tag] || []).filter(a => a.name !== assetName),
-      }));
+      if (type === 'release') {
+        await invoke('github_delete_release', { tag });
+        setReleases(prev => prev.filter(r => r.tag !== tag));
+        if (expandedTag === tag) setExpandedTag(null);
+      } else if (type === 'asset' && assetName) {
+        await invoke('github_delete_release_asset', { tag, assetName });
+        setAssets(prev => ({
+          ...prev,
+          [tag]: (prev[tag] || []).filter(a => a.name !== assetName),
+        }));
+      }
     } catch (err) {
       setError(String(err));
     }
-  }, [t]);
+  }, [expandedTag]);
 
   const handleCreate = useCallback(async () => {
     if (!formTag.trim()) return;
@@ -322,6 +322,34 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
           />
         )}
       </div>
+
+      {/* Confirmation dialog */}
+      {confirmDelete && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-5 mx-6 max-w-sm animate-scale-in">
+            <p className="text-sm text-gray-700 dark:text-gray-200 mb-4">
+              {confirmDelete.type === 'release'
+                ? (t('github.confirmDeleteRelease') || `Delete release "${confirmDelete.tag}"? This cannot be undone.`)
+                : (t('github.confirmDeleteAsset') || `Delete asset "${confirmDelete.assetName}"? This cannot be undone.`)
+              }
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                {t('common.cancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={executeDelete}
+                className="px-3 py-1.5 text-xs rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+              >
+                {t('common.delete') || 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
