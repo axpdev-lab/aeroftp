@@ -22,9 +22,9 @@ pub use self::model::*;
 use self::client::GitHubHttpClient;
 use self::errors::GitHubError;
 use self::releases_mode::{
-    asset_to_entry, delete_release, delete_release_asset, download_release_asset, get_release_info,
-    list_release_assets, list_releases, release_to_entry, upload_release_asset,
-    VIRTUAL_RELEASES_DIR,
+    asset_to_entry, create_release, delete_release, delete_release_asset,
+    download_release_asset, get_release_info, list_release_assets, list_releases,
+    release_to_entry, upload_release_asset, CreateReleaseParams, VIRTUAL_RELEASES_DIR,
 };
 
 use super::{ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider};
@@ -212,6 +212,82 @@ impl GitHubProvider {
     /// Current write mode.
     pub fn write_mode(&self) -> &GitHubWriteMode {
         &self.write_mode
+    }
+
+    // ── Release management ─────────────────────────────────────────
+
+    /// List all releases as virtual directory entries.
+    pub async fn list_all_releases(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        list_releases(&mut self.client, &self.owner, &self.repo).await
+    }
+
+    /// List assets belonging to a specific release tag.
+    pub async fn list_assets_for_release(
+        &mut self,
+        tag: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        list_release_assets(&mut self.client, &self.owner, &self.repo, tag).await
+    }
+
+    /// Create a new release.
+    pub async fn create_new_release(
+        &mut self,
+        tag: &str,
+        name: &str,
+        body: &str,
+        draft: bool,
+        prerelease: bool,
+    ) -> Result<GitHubRelease, ProviderError> {
+        create_release(
+            &mut self.client,
+            &CreateReleaseParams {
+                owner: &self.owner,
+                repo: &self.repo,
+                tag,
+                name,
+                body,
+                draft,
+                prerelease,
+            },
+        )
+        .await
+    }
+
+    /// Upload a local file as a release asset.
+    pub async fn upload_asset(
+        &mut self,
+        tag: &str,
+        local_path: &str,
+        asset_name: &str,
+    ) -> Result<(), ProviderError> {
+        upload_release_asset(
+            &mut self.client,
+            &self.owner,
+            &self.repo,
+            tag,
+            local_path,
+            asset_name,
+        )
+        .await
+    }
+
+    /// Delete an entire release by tag.
+    pub async fn delete_release_by_tag(&mut self, tag: &str) -> Result<(), ProviderError> {
+        delete_release(&mut self.client, &self.owner, &self.repo, tag).await
+    }
+
+    /// Delete a specific asset from a release.
+    pub async fn delete_asset(
+        &mut self,
+        tag: &str,
+        asset_name: &str,
+    ) -> Result<(), ProviderError> {
+        delete_release_asset(&mut self.client, &self.owner, &self.repo, tag, asset_name).await
+    }
+
+    /// Get release metadata.
+    pub async fn get_release(&mut self, tag: &str) -> Result<GitHubRelease, ProviderError> {
+        get_release_info(&mut self.client, &self.owner, &self.repo, tag).await
     }
 
     /// List all branches of the repository.

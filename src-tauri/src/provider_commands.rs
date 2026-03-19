@@ -1338,7 +1338,7 @@ pub async fn oauth2_connect(
             let manager = OAuth2Manager::new();
             let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
                 .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
-            let mut p = crate::providers::YandexDiskProvider::new(tokens.access_token, None);
+            let mut p = crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
             p.connect().await
                 .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
             Box::new(p)
@@ -4231,5 +4231,274 @@ pub async fn github_app_token_from_pem(
     Ok(serde_json::json!({
         "token": token_resp.token,
         "expires_at": token_resp.expires_at,
+    }))
+}
+
+/// List all releases for the connected GitHub repository
+#[tauri::command]
+pub async fn github_list_releases(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let releases = github
+        .list_all_releases()
+        .await
+        .map_err(|e| format!("Failed to list releases: {}", e))?;
+
+    let result: Vec<serde_json::Value> = releases
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "tag": &r.name,
+                "path": &r.path,
+                "published_at": &r.modified,
+                "draft": r.metadata.get("draft").map(|v| v == "true").unwrap_or(false),
+                "prerelease": r.metadata.get("prerelease").map(|v| v == "true").unwrap_or(false),
+                "body": r.metadata.get("body").cloned().unwrap_or_default(),
+                "release_id": r.metadata.get("release_id").cloned().unwrap_or_default(),
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({ "releases": result, "count": result.len() }))
+}
+
+/// List assets for a specific release tag
+#[tauri::command]
+pub async fn github_list_release_assets(
+    state: State<'_, ProviderState>,
+    tag: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let assets = github
+        .list_assets_for_release(&tag)
+        .await
+        .map_err(|e| format!("Failed to list release assets: {}", e))?;
+
+    let result: Vec<serde_json::Value> = assets
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "name": &a.name,
+                "size": a.size,
+                "content_type": a.mime_type,
+                "download_count": a.metadata.get("download_count").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0),
+                "browser_download_url": a.metadata.get("browser_download_url").cloned().unwrap_or_default(),
+                "updated_at": &a.modified,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({ "assets": result, "count": result.len(), "tag": tag }))
+}
+
+/// Create a new release on the connected GitHub repository
+#[tauri::command]
+pub async fn github_create_release(
+    state: State<'_, ProviderState>,
+    tag: String,
+    name: String,
+    body: String,
+    draft: bool,
+    prerelease: bool,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let release = github
+        .create_new_release(&tag, &name, &body, draft, prerelease)
+        .await
+        .map_err(|e| format!("Failed to create release: {}", e))?;
+
+    Ok(serde_json::json!({
+        "id": release.id,
+        "tag_name": release.tag_name,
+        "name": release.name,
+        "draft": release.draft,
+        "prerelease": release.prerelease,
+        "created_at": release.created_at,
+    }))
+}
+
+/// Upload a file as a release asset
+#[tauri::command]
+pub async fn github_upload_release_asset(
+    state: State<'_, ProviderState>,
+    tag: String,
+    local_path: String,
+    asset_name: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github
+        .upload_asset(&tag, &local_path, &asset_name)
+        .await
+        .map_err(|e| format!("Failed to upload release asset: {}", e))?;
+
+    Ok(serde_json::json!({
+        "tag": tag,
+        "asset": asset_name,
+        "status": "uploaded",
+    }))
+}
+
+/// Delete an entire release by tag
+#[tauri::command]
+pub async fn github_delete_release(
+    state: State<'_, ProviderState>,
+    tag: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github
+        .delete_release_by_tag(&tag)
+        .await
+        .map_err(|e| format!("Failed to delete release: {}", e))?;
+
+    Ok(serde_json::json!({ "tag": tag, "status": "deleted" }))
+}
+
+/// Delete a specific asset from a release
+#[tauri::command]
+pub async fn github_delete_release_asset(
+    state: State<'_, ProviderState>,
+    tag: String,
+    asset_name: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github
+        .delete_asset(&tag, &asset_name)
+        .await
+        .map_err(|e| format!("Failed to delete release asset: {}", e))?;
+
+    Ok(serde_json::json!({ "tag": tag, "asset": asset_name, "status": "deleted" }))
+}
+
+/// Get detailed release information by tag
+#[tauri::command]
+pub async fn github_get_release(
+    state: State<'_, ProviderState>,
+    tag: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+
+    let github = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let release = github
+        .get_release(&tag)
+        .await
+        .map_err(|e| format!("Failed to get release info: {}", e))?;
+
+    let assets: Vec<serde_json::Value> = release
+        .assets
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "name": a.name,
+                "size": a.size,
+                "download_count": a.download_count,
+                "content_type": a.content_type,
+                "browser_download_url": a.browser_download_url,
+                "created_at": a.created_at,
+                "updated_at": a.updated_at,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "id": release.id,
+        "tag_name": release.tag_name,
+        "name": release.name,
+        "body": release.body,
+        "draft": release.draft,
+        "prerelease": release.prerelease,
+        "created_at": release.created_at,
+        "published_at": release.published_at,
+        "assets": assets,
+        "asset_count": assets.len(),
     }))
 }

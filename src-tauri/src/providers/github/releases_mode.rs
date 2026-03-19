@@ -238,7 +238,6 @@ pub async fn upload_release_asset(
 }
 
 /// Parameters for creating a new release.
-#[allow(dead_code)]
 pub struct CreateReleaseParams<'a> {
     pub owner: &'a str,
     pub repo: &'a str,
@@ -250,7 +249,6 @@ pub struct CreateReleaseParams<'a> {
 }
 
 /// Create a new release.
-#[allow(dead_code)]
 pub async fn create_release(
     client: &mut GitHubHttpClient,
     params: &CreateReleaseParams<'_>,
