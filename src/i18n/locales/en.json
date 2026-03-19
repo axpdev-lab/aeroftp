@@ -3233,6 +3233,7 @@
       "commitFiles": "Commit {count} file(s)",
       "commitToBranch": "Commit to {branch}",
       "branchSelector": "Branch",
+      "switchBranch": "Switch branch",
       "writeModeDirect": "Direct push",
       "writeModeDirectTooltip": "Changes are committed directly to the branch",
       "writeModeBranch": "Branch: {branch}",

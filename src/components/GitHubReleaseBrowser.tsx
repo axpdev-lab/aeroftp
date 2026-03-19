@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, X, Plus, ArrowLeft, Trash2, ChevronDown, ChevronRight,
-  FileDown, Download, Loader2, Tag, Calendar, FileBox,
+  FileDown, Download, Loader2, Tag, Calendar, FileBox, RefreshCw,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -191,10 +191,10 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       setFormBody('');
       setFormDraft(false);
       setFormPrerelease(false);
-      const result = await invoke<{ releases: Release[]; count: number }>('github_list_releases');
-      setReleases(result.releases);
       setView('list');
+      fetchReleases();
     } catch (err) {
+      console.error('[GitHubReleaseBrowser] create failed:', err);
       setError(String(err));
     } finally {
       setCreating(false);
@@ -259,6 +259,15 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             </h2>
           </div>
           <div className="flex items-center gap-1">
+            {view === 'list' && (
+              <button
+                onClick={fetchReleases}
+                className="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-700/50"
+                title="Refresh"
+              >
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              </button>
+            )}
             {view === 'list' && (
               <button
                 onClick={openCreateView}
