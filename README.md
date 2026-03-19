@@ -21,7 +21,7 @@
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-22-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/protocols-23-green" alt="Protocols" />
   <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
@@ -82,6 +82,8 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
+> [Full documentation →](https://docs.aeroftp.app/protocols/overview.html)
+
 Turn **any server** into a private personal cloud. Connect to all 23 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
@@ -118,6 +120,8 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 
 ### AeroFile — Professional File Manager
 
+> [Full documentation →](https://docs.aeroftp.app/features/file-tags.html)
+
 A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side.
 
 - **Places Sidebar**: Nautilus-style with user directories, custom locations, recent locations (with per-item delete), mounted drives with usage bars, GVFS network shares (SMB/SFTP/NFS/WebDAV), unmounted partition detection with one-click mount, EFI/swap/recovery hidden, and folder tree toggle (Ctrl+B)
@@ -142,6 +146,8 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 
 ### AeroSync — Bidirectional Sync Engine
 
+> [Full documentation →](https://docs.aeroftp.app/features/aerosync.html)
+
 Enterprise-grade file synchronization with operational reliability features built for real-world use.
 
 - **Smart Sync**: 3 intelligent conflict resolution modes — overwrite if newer, overwrite if different, skip if identical
@@ -160,6 +166,8 @@ Enterprise-grade file synchronization with operational reliability features buil
 ---
 
 ### AeroVault — Military-Grade Encryption
+
+> [Full documentation →](https://docs.aeroftp.app/features/aerovault.html)
 
 [![Crates.io](https://img.shields.io/crates/v/aerovault)](https://crates.io/crates/aerovault)
 [![docs.rs](https://docs.rs/aerovault/badge.svg)](https://docs.rs/aerovault)
@@ -189,6 +197,8 @@ Create, manage, and browse encrypted containers that protect your files with a s
 ---
 
 ### AeroTools — Code Editor, Terminal & AI Chat
+
+> [Full documentation →](https://docs.aeroftp.app/features/aeroagent.html)
 
 The integrated development panel combining three tools in a tabbed interface.
 
@@ -233,6 +243,8 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 ---
 
 ### AeroFTP CLI — Command-Line Client
+
+> [Full documentation →](https://docs.aeroftp.app/cli/commands.html)
 
 A production command-line interface sharing the same Rust backend as the GUI. 15 commands across 23 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
 
@@ -306,6 +318,8 @@ Read the full analysis: **[Credential Isolation for AI Agents](docs/CREDENTIAL-I
 ---
 
 ### AeroPlayer — Media Engine
+
+> [Full documentation →](https://docs.aeroftp.app/features/aeroplayer.html)
 
 Built-in media player with GPU-accelerated visualizations and professional audio processing.
 
