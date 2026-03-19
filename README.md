@@ -120,7 +120,7 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 
 ### AeroFile — Professional File Manager
 
-> [Full documentation →](https://docs.aeroftp.app/features/file-tags.html)
+> [Full documentation →](https://docs.aeroftp.app/getting-started/interface.html)
 
 A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side.
 
@@ -198,7 +198,7 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 ### AeroTools — Code Editor, Terminal & AI Chat
 
-> [Full documentation →](https://docs.aeroftp.app/features/aeroagent.html)
+> [Full documentation →](https://docs.aeroftp.app/features/aerotools.html)
 
 The integrated development panel combining three tools in a tabbed interface.
 
