@@ -120,7 +120,7 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 
 ### AeroFile — Professional File Manager
 
-> [Full documentation →](https://docs.aeroftp.app/getting-started/interface.html)
+> [Full documentation →](https://docs.aeroftp.app/features/aerofile.html)
 
 A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side.
 
@@ -244,7 +244,7 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 
 ### AeroFTP CLI — Command-Line Client
 
-> [Full documentation →](https://docs.aeroftp.app/cli/commands.html)
+> [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
 A production command-line interface sharing the same Rust backend as the GUI. 15 commands across 23 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
 
