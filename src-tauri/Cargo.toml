@@ -41,7 +41,7 @@ tracing-subscriber = "0.3"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
-portable-pty = "0.8"
+portable-pty = "0.9"
 reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
 notify = { version = "8", default-features = true }                          # Filesystem watcher (v8 required by debouncer-full 0.6)
 notify-debouncer-full = "0.6"                                               # Debouncer with rename tracking, event dedup, quiet-period batching
