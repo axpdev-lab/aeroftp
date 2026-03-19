@@ -8178,6 +8178,7 @@ const App: React.FC = () => {
               <GitHubWriteModeIndicator
                 writeMode={gitHubRepoInfo.writeModeKind}
                 workingBranch={gitHubRepoInfo.workingBranch || undefined}
+                isPrivate={gitHubRepoInfo.repoPrivate}
               />
             ) : undefined}
             connectionSecurity={isConnected ? (() => {

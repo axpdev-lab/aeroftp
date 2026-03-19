@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { CheckCircle, GitBranch, GitPullRequest, Lock } from 'lucide-react';
+import { CheckCircle, GitBranch, GitPullRequest, Lock, Globe, LockKeyhole } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
@@ -14,11 +14,13 @@ import { useTranslation } from '../i18n';
 interface GitHubWriteModeIndicatorProps {
   writeMode: 'direct' | 'branch' | 'readonly';
   workingBranch?: string;
+  isPrivate?: boolean;
 }
 
 export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> = ({
   writeMode,
   workingBranch,
+  isPrivate,
 }) => {
   const t = useTranslation();
   const [showPrPrompt, setShowPrPrompt] = useState(false);
@@ -48,21 +50,36 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
     }
   }, [prTitle, prBody]);
 
+  const visibilityBadge = (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs ${isPrivate ? 'text-yellow-500' : 'text-gray-400'}`}
+      title={isPrivate ? 'Private repository' : 'Public repository'}
+    >
+      {isPrivate ? <LockKeyhole size={11} /> : <Globe size={11} />}
+      <span>{isPrivate ? 'Private' : 'Public'}</span>
+    </span>
+  );
+
   switch (writeMode) {
     case 'direct':
       return (
-        <span
-          className="inline-flex items-center gap-1 text-xs text-green-500"
-          title={t('github.writeModeDirectTooltip') || 'Changes are committed directly to the branch'}
-        >
-          <CheckCircle size={12} />
-          <span>{t('github.writeModeDirect') || 'Direct'}</span>
+        <span className="inline-flex items-center gap-2">
+          {visibilityBadge}
+          <span
+            className="inline-flex items-center gap-1 text-xs text-green-500"
+            title={t('github.writeModeDirectTooltip') || 'Changes are committed directly to the branch'}
+          >
+            <CheckCircle size={12} />
+            <span>{t('github.writeModeDirect') || 'Direct'}</span>
+          </span>
         </span>
       );
 
     case 'branch':
       return (
         <>
+          <span className="inline-flex items-center gap-2">
+          {visibilityBadge}
           <span
             className="inline-flex items-center gap-1 text-xs text-yellow-500"
             title={
@@ -86,6 +103,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
               <GitPullRequest size={10} />
               <span>PR</span>
             </button>
+          </span>
           </span>
 
           {showPrPrompt && (
@@ -150,12 +168,15 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
 
     case 'readonly':
       return (
-        <span
-          className="inline-flex items-center gap-1 text-xs text-red-400"
-          title={t('github.writeModeReadOnlyTooltip') || 'No write access to this repository'}
-        >
-          <Lock size={12} />
-          <span>{t('github.writeModeReadOnly') || 'Read-only'}</span>
+        <span className="inline-flex items-center gap-2">
+          {visibilityBadge}
+          <span
+            className="inline-flex items-center gap-1 text-xs text-red-400"
+            title={t('github.writeModeReadOnlyTooltip') || 'No write access to this repository'}
+          >
+            <Lock size={12} />
+            <span>{t('github.writeModeReadOnly') || 'Read-only'}</span>
+          </span>
         </span>
       );
   }
