@@ -171,7 +171,7 @@ function interpolate(template: string, params?: Record<string, string | number>)
 
     return template.replace(/\{(\w+)\}/g, (match, key) => {
         const value = params[key];
-        return value !== undefined ? String(value) : match;
+        return value !== undefined ? String(value) : '';
     });
 }
 

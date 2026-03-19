@@ -978,7 +978,8 @@ async fn download_file(
 #[tauri::command]
 async fn upload_file(
     app: AppHandle,
-    state: State<'_, AppState>, 
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams
 ) -> Result<String, String> {
     // Check if already cancelled (batch stop) — bail immediately
@@ -991,9 +992,9 @@ async fn upload_file(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
-    
+
     let transfer_id = format!("ul-{}", chrono::Utc::now().timestamp_millis());
-    
+
     // Get local file size
     let file_size = tokio::fs::metadata(&params.local_path)
         .await
@@ -1010,6 +1011,31 @@ async fn upload_file(
         progress: None,
         path: None,
     });
+
+    // Try provider path first (cloud providers, GitHub, etc.)
+    {
+        let provider_connected = {
+            let guard = provider_state.provider.lock().await;
+            guard.is_some()
+        };
+        if provider_connected {
+            let mut guard = provider_state.provider.lock().await;
+            if let Some(provider) = guard.as_mut() {
+                let result = provider.upload(&params.local_path, &params.remote_path, None).await;
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "complete".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(if result.is_ok() { format!("Uploaded: {}", filename) } else { format!("Upload failed: {}", filename) }),
+                    progress: None,
+                    path: None,
+                });
+                return result.map(|_| format!("Uploaded: {}", filename))
+                    .map_err(|e| format!("Failed to upload file: {}", e));
+            }
+        }
+    }
 
     let mut ftp_manager = state.ftp_manager.lock().await;
     let start_time = Instant::now();
@@ -3909,29 +3935,55 @@ async fn read_local_file_base64(path: String, max_size_mb: Option<u32>) -> Resul
 }
 
 #[tauri::command]
-async fn preview_remote_file(state: State<'_, AppState>, path: String) -> Result<String, String> {
+async fn preview_remote_file(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let temp_path = std::env::temp_dir().join(format!("aeroftp_preview_{}", chrono::Utc::now().timestamp_millis()));
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    // Try provider path first (cloud providers, GitHub, etc.)
+    let provider_connected = {
+        let guard = provider_state.provider.lock().await;
+        guard.is_some()
+    };
+
+    if provider_connected {
+        let mut guard = provider_state.provider.lock().await;
+        if let Some(provider) = guard.as_mut() {
+            provider.download(&path, &temp_path_str, None)
+                .await
+                .map_err(|e| format!("Failed to download for preview: {}", e))?;
+
+            let content = tokio::fs::read_to_string(&temp_path)
+                .await
+                .map_err(|e| format!("Failed to read preview content: {}", e))?;
+
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Ok(content);
+        }
+    }
+
+    // Fallback to FTP manager for FTP/SFTP connections
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
+
     // Download file content to memory (limit to 1MB for preview)
     let max_size: u64 = 1024 * 1024; // 1MB limit
-    
+
     // Get file size first
     let file_size = ftp_manager.get_file_size(&path)
         .await
         .unwrap_or(0);
-    
+
     if file_size > max_size {
         return Err(format!("File too large for preview ({} KB). Max: 1024 KB", file_size / 1024));
     }
-    
-    // Download to temp and read
-    let temp_path = std::env::temp_dir().join(format!("aeroftp_preview_{}", chrono::Utc::now().timestamp_millis()));
-    let temp_path_str = temp_path.to_string_lossy().to_string();
-    
+
     ftp_manager.download_file_with_progress(&path, &temp_path_str, |_| true)
         .await
         .map_err(|e| format!("Failed to download for preview: {}", e))?;
-    
+
     // Read content
     let content = tokio::fs::read_to_string(&temp_path)
         .await
@@ -4221,25 +4273,42 @@ async fn save_local_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn save_remote_file(state: State<'_, AppState>, path: String, content: String) -> Result<(), String> {
-    let mut ftp_manager = state.ftp_manager.lock().await;
-    
+async fn save_remote_file(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+    content: String,
+) -> Result<(), String> {
     // Write content to temp file first
     let temp_path = std::env::temp_dir().join(format!("aeroftp_upload_{}", chrono::Utc::now().timestamp_millis()));
     let temp_path_str = temp_path.to_string_lossy().to_string();
-    
+
     tokio::fs::write(&temp_path, &content)
         .await
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
-    
-    // Upload to remote server
+
+    // Try provider path first (cloud providers, GitHub, etc.)
+    let provider_connected = {
+        let guard = provider_state.provider.lock().await;
+        guard.is_some()
+    };
+
+    if provider_connected {
+        let mut guard = provider_state.provider.lock().await;
+        if let Some(provider) = guard.as_mut() {
+            let result = provider.upload(&temp_path_str, &path, None).await;
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return result.map_err(|e| format!("Failed to save file: {}", e));
+        }
+    }
+
+    // Fallback to FTP manager
+    let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.upload_file_with_progress(&temp_path_str, &path, content.len() as u64, |_| true)
         .await
         .map_err(|e| format!("Failed to upload file: {}", e))?;
-    
-    // Clean up temp file
+
     let _ = tokio::fs::remove_file(&temp_path).await;
-    
     Ok(())
 }
 
@@ -6007,9 +6076,19 @@ async fn ai_execute_tool(
                     "truncated": content.len() > 5000
                 }))
             } else {
-                let content = preview_remote_file(state.clone(), path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
+                // AI tool preview: use FTP manager directly (provider path handled by Tauri command)
+                let content = {
+                    let mut ftp = state.ftp_manager.lock().await;
+                    let temp = std::env::temp_dir().join(format!("aeroftp_ai_preview_{}", chrono::Utc::now().timestamp_millis()));
+                    let temp_str = temp.to_string_lossy().to_string();
+                    ftp.download_file_with_progress(&path, &temp_str, |_| true)
+                        .await
+                        .map_err(|e| format!("Failed to download: {}", e))?;
+                    let c = tokio::fs::read_to_string(&temp).await
+                        .map_err(|e| format!("Failed to read: {}", e))?;
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    c
+                };
                 Ok(serde_json::json!({
                     "success": true,
                     "content": content.chars().take(5000).collect::<String>(),
@@ -6093,10 +6172,13 @@ async fn ai_execute_tool(
             validate_tool_path(local_path, "local_path")?;
             validate_tool_path(remote_path, "remote_path")?;
 
-            upload_file(app, state.clone(), UploadParams {
-                local_path: local_path.to_string(),
-                remote_path: remote_path.to_string(),
-            }).await.map_err(|e| e.to_string())?;
+            // AI tool upload: use FTP manager directly
+            {
+                let mut ftp = state.ftp_manager.lock().await;
+                ftp.upload_file_with_progress(local_path, remote_path, 0, |_| true)
+                    .await
+                    .map_err(|e| format!("Upload failed: {}", e))?;
+            }
             
             Ok(serde_json::json!({ "success": true, "message": format!("Uploaded {} to {}", local_path, remote_path) }))
         },

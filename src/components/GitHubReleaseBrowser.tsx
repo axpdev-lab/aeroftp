@@ -258,7 +258,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
               }
             </h2>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {view === 'list' && (
               <button
                 onClick={fetchReleases}
