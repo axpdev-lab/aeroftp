@@ -129,11 +129,6 @@ fn guess_content_type(filename: &str) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// List all releases as virtual directories.
-///
-/// NOTE: Uses `per_page=100` (GitHub maximum) without Link-header pagination.
-/// Repositories with more than 100 releases will only show the most recent 100.
-/// Full pagination would require a lower-level HTTP method that exposes response
-/// headers, which `get_json()` does not currently provide.
 pub async fn list_releases(
     client: &mut GitHubHttpClient,
     owner: &str,
@@ -141,7 +136,7 @@ pub async fn list_releases(
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
     let path = format!("/repos/{owner}/{repo}/releases?per_page=100");
     let releases: Vec<GitHubRelease> = client
-        .get_json(&path)
+        .get_paginated_json_array(&path)
         .await
         .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
@@ -333,7 +328,7 @@ async fn get_release_by_tag(
     repo: &str,
     tag: &str,
 ) -> Result<GitHubRelease, ProviderError> {
-    let path = format!("/repos/{owner}/{repo}/releases/tags/{tag}");
+    let path = release_by_tag_path(owner, repo, tag);
     let release: GitHubRelease = client.get_json(&path).await.map_err(|e| {
         if matches!(e, GitHubError::PathNotFound(_) | GitHubError::RepoNotFound) {
             ProviderError::NotFound(format!("Release not found: {tag}"))
@@ -342,6 +337,13 @@ async fn get_release_by_tag(
         }
     })?;
     Ok(release)
+}
+
+fn release_by_tag_path(owner: &str, repo: &str, tag: &str) -> String {
+    format!(
+        "/repos/{owner}/{repo}/releases/tags/{}",
+        urlencoding::encode(tag)
+    )
 }
 
 fn find_asset<'a>(
@@ -489,6 +491,14 @@ mod tests {
         assert_eq!(
             entry.metadata.get("download_count").map(|s| s.as_str()),
             Some("55")
+        );
+    }
+
+    #[test]
+    fn test_release_by_tag_path_encodes_reserved_chars() {
+        assert_eq!(
+            release_by_tag_path("axpnet", "aeroftp", "release/2026.03"),
+            "/repos/axpnet/aeroftp/releases/tags/release%2F2026.03"
         );
     }
 }

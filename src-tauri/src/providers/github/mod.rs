@@ -328,15 +328,11 @@ impl GitHubProvider {
     }
 
     /// List all branches of the repository.
-    /// NOTE: Uses `per_page=100` (GitHub maximum) without Link-header pagination.
-    /// Repositories with more than 100 branches will only show the first 100.
-    /// Full pagination would require a lower-level HTTP method that exposes
-    /// response headers, which `get_json()` does not currently provide.
     pub async fn list_branches(&mut self) -> Result<Vec<serde_json::Value>, ProviderError> {
         let url = format!("{}/branches?per_page=100", self.repo_url());
         let branches: Vec<serde_json::Value> = self
             .client
-            .get_json(&url)
+            .get_paginated_json_array(&url)
             .await
             .map_err(ProviderError::from)?;
         Ok(branches)

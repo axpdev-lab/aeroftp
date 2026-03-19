@@ -166,7 +166,7 @@ pub async fn get_head_sha(
     repo: &str,
     branch: &str,
 ) -> Result<String, GitHubError> {
-    let path = format!("/repos/{owner}/{repo}/git/ref/heads/{branch}");
+    let path = head_ref_path(owner, repo, branch);
     let resp: Value = client.get_json(&path).await?;
 
     resp.get("object")
@@ -183,6 +183,13 @@ pub async fn get_head_sha(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+fn head_ref_path(owner: &str, repo: &str, branch: &str) -> String {
+    format!(
+        "/repos/{owner}/{repo}/git/ref/heads/{}",
+        urlencoding::encode(branch)
+    )
+}
 
 fn classify_graphql_error(err: &GraphQLError) -> GitHubError {
     let etype = err.error_type.as_deref().unwrap_or("");
@@ -293,5 +300,13 @@ mod tests {
             path: None,
         };
         assert!(matches!(classify_graphql_error(&err), GitHubError::GraphQLError { .. }));
+    }
+
+    #[test]
+    fn test_head_ref_path_encodes_branch_name() {
+        assert_eq!(
+            head_ref_path("axpnet", "aeroftp", "feature/github-audit"),
+            "/repos/axpnet/aeroftp/git/ref/heads/feature%2Fgithub-audit"
+        );
     }
 }

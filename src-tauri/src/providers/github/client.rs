@@ -32,6 +32,9 @@ const USER_AGENT: &str = "AeroFTP/2.9.9";
 /// GitHub API version header value.
 const API_VERSION: &str = "2022-11-28";
 
+/// Defensive cap for paginated REST listings.
+const MAX_PAGINATION_PAGES: usize = 100;
+
 /// HTTP client wrapper that handles auth, versioning, and rate-limit bookkeeping.
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -159,6 +162,45 @@ impl GitHubHttpClient {
         resp.json::<T>().await.map_err(|e| GitHubError::ParseError(
             format!("JSON parse error: {}", e),
         ))
+    }
+
+    /// `GET` a paginated JSON array endpoint by following `Link: ... rel="next"`.
+    pub async fn get_paginated_json_array<T: DeserializeOwned>(
+        &mut self,
+        url: &str,
+    ) -> Result<Vec<T>, GitHubError> {
+        let mut next_url = Some(self.resolve_url(url));
+        let mut pages = 0usize;
+        let mut all_items = Vec::new();
+
+        while let Some(current_url) = next_url.take() {
+            if pages >= MAX_PAGINATION_PAGES {
+                return Err(GitHubError::ApiError {
+                    status: 400,
+                    message: format!(
+                        "Pagination exceeded defensive cap of {} pages",
+                        MAX_PAGINATION_PAGES
+                    ),
+                });
+            }
+
+            let builder = self.request(Method::GET, &current_url);
+            let resp = self.execute(builder, None).await?;
+            let next_link = parse_next_link(
+                resp.headers()
+                    .get(reqwest::header::LINK)
+                    .and_then(|value| value.to_str().ok()),
+            );
+            let mut page_items = resp.json::<Vec<T>>().await.map_err(|e| {
+                GitHubError::ParseError(format!("JSON parse error: {}", e))
+            })?;
+
+            all_items.append(&mut page_items);
+            next_url = next_link;
+            pages += 1;
+        }
+
+        Ok(all_items)
     }
 
     /// `PUT` with a JSON body; returns the response JSON.
@@ -377,5 +419,50 @@ impl GitHubHttpClient {
     /// their own requests (e.g. `repo_mode.rs` raw GET).
     pub(super) fn token_str(&self) -> &str {
         self.token.expose_secret()
+    }
+}
+
+fn parse_next_link(link_header: Option<&str>) -> Option<String> {
+    let header = link_header?;
+
+    for part in header.split(',') {
+        let mut segments = part.split(';').map(str::trim);
+        let url_part = segments.next()?;
+        let is_next = segments.any(|segment| segment == "rel=\"next\"");
+
+        if !is_next {
+            continue;
+        }
+
+        if let Some(url) = url_part.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+            return Some(url.to_string());
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_next_link;
+
+    #[test]
+    fn test_parse_next_link_extracts_next_url() {
+        let header = concat!(
+            "<https://api.github.com/repositories/1/branches?per_page=100&page=2>; rel=\"next\", ",
+            "<https://api.github.com/repositories/1/branches?per_page=100&page=4>; rel=\"last\""
+        );
+
+        assert_eq!(
+            parse_next_link(Some(header)).as_deref(),
+            Some("https://api.github.com/repositories/1/branches?per_page=100&page=2")
+        );
+    }
+
+    #[test]
+    fn test_parse_next_link_returns_none_without_next() {
+        let header = "<https://api.github.com/repositories/1/branches?per_page=100&page=4>; rel=\"last\"";
+        assert_eq!(parse_next_link(Some(header)), None);
+        assert_eq!(parse_next_link(None), None);
     }
 }
