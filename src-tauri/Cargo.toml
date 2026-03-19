@@ -82,7 +82,7 @@ ctr = "0.9"                                                            # AES-CTR
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.10"
-zeroize = "1"
+zeroize = { version = "1", features = ["derive"] }
 ring = "0.17.14"
 
 # Box, pCloud, Azure, Filen providers (v1.4.1)
@@ -131,6 +131,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite 
 
 # CLI Foundation (v2.3.0)
 clap = { version = "4", features = ["derive", "env"] }                  # CLI argument parser
+clap_complete = "4"                                                    # Shell completion generation
 indicatif = "0.17"                                                     # Progress bars for CLI
 rpassword = "7"                                                        # Secure password input (no echo)
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup

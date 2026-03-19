@@ -32,7 +32,7 @@
 //!   99 Unknown error
 
 use base64::Engine as _;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
 };
@@ -346,6 +346,12 @@ enum Commands {
         /// Custom system prompt (or @file.txt to load from file)
         #[arg(long)]
         system: Option<String>,
+    },
+    /// Generate shell completions (bash, zsh, fish, elvish, powershell)
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
     /// List saved server profiles from the encrypted vault
     Profiles,
@@ -944,25 +950,34 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
+    use zeroize::Zeroize;
 
     // Try to init vault (auto mode unlocks automatically)
     match CredentialStore::init() {
         Ok(status) if status == "MASTER_PASSWORD_REQUIRED" => {
             // Need master password
+            // WARNING: --master-password flag is visible in /proc/*/cmdline and `ps` output.
+            // Prefer AEROFTP_MASTER_PASSWORD env var or interactive prompt (rpassword).
             if let Some(ref mp) = cli.master_password {
                 if std::env::var("AEROFTP_MASTER_PASSWORD").is_err() {
                     eprintln!("Warning: --master-password on command line is visible in process list. Use AEROFTP_MASTER_PASSWORD env var instead.");
                 }
-                CredentialStore::unlock_with_master(mp)
-                    .map_err(|e| format!("Failed to unlock vault: {}", e))?;
+                // VER-006: Clone to allow zeroization after use (original in Cli struct cannot be mutated)
+                let mut mp_copy = mp.clone();
+                let result = CredentialStore::unlock_with_master(&mp_copy)
+                    .map_err(|e| format!("Failed to unlock vault: {}", e));
+                mp_copy.zeroize();
+                result?;
             } else if std::io::stdin().is_terminal() {
                 // Interactive: prompt for master password (hidden input)
                 eprint!("Master password: ");
                 let _ = io::stderr().flush();
-                let mp = rpassword::read_password()
+                let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                CredentialStore::unlock_with_master(mp.trim())
-                    .map_err(|e| format!("Failed to unlock vault: {}", e))?;
+                let result = CredentialStore::unlock_with_master(mp.trim())
+                    .map_err(|e| format!("Failed to unlock vault: {}", e));
+                mp.zeroize();
+                result?;
             } else {
                 return Err("Vault is locked. Use --master-password or set AEROFTP_MASTER_PASSWORD".to_string());
             }
@@ -1139,6 +1154,16 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
 }
 
 fn resolve_url_or_profile(url: &str, cli: &Cli, format: OutputFormat) -> Result<(ProviderConfig, String), i32> {
+    // UX-002: Reject ambiguous invocations where both --profile and a URL are given
+    if cli.profile.is_some() && url.contains("://") {
+        print_error(
+            format,
+            "Cannot specify both --profile and URL. Use either --profile <NAME> or a URL, not both.",
+            5,
+        );
+        return Err(5);
+    }
+
     // If --profile is set, the "url" field is actually the first positional arg (path)
     // But if we have a profile, we ignore the url and use the profile
     if let Some(ref profile_name) = cli.profile {
@@ -1456,7 +1481,36 @@ fn create_oauth_provider_by_protocol(protocol: &str, store: &CredentialStore) ->
             let manager = OAuth2Manager::new();
             let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
                 .map_err(|e| format!("No Yandex tokens: {}", e))?;
-            Ok(Box::new(YandexDiskProvider::new(tokens.access_token, None)))
+            Ok(Box::new(YandexDiskProvider::new(tokens.access_token.clone(), None)))
+        }
+        "fourshared" => {
+            use ftp_client_gui_lib::providers::{
+                fourshared::FourSharedProvider, types::FourSharedConfig,
+            };
+
+            let settings_json = store.get("fourshared_oauth_settings")
+                .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
+            let tokens_json = store.get("fourshared_oauth_tokens")
+                .map_err(|e| format!("No 4shared access tokens in vault: {}", e))?;
+
+            #[derive(serde::Deserialize)]
+            struct FsSettings { consumer_key: String, consumer_secret: String }
+            #[derive(serde::Deserialize)]
+            struct FsTokens { token: String, token_secret: String }
+
+            let settings: FsSettings = serde_json::from_str(&settings_json)
+                .map_err(|e| format!("Failed to parse 4shared OAuth settings: {}", e))?;
+            let tokens: FsTokens = serde_json::from_str(&tokens_json)
+                .map_err(|e| format!("Failed to parse 4shared access tokens: {}", e))?;
+
+            let fs_config = FourSharedConfig {
+                consumer_key: settings.consumer_key,
+                consumer_secret: secrecy::SecretString::from(settings.consumer_secret),
+                access_token: secrecy::SecretString::from(tokens.token),
+                access_token_secret: secrecy::SecretString::from(tokens.token_secret),
+            };
+
+            Ok(Box::new(FourSharedProvider::new(fs_config)))
         }
         other => Err(format!("Unknown OAuth protocol: {}", other)),
     }
@@ -1532,9 +1586,67 @@ async fn try_create_oauth_provider(
                 let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
                     .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
                 Ok(Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
-                    tokens.access_token, None
+                    tokens.access_token.clone(), None
                 )) as Box<dyn StorageProvider>)
             }))
+        }
+        "fourshared" => {
+            // 4shared uses OAuth1 — handle separately from the OAuth2 flow
+            use ftp_client_gui_lib::providers::{
+                fourshared::FourSharedProvider, types::FourSharedConfig,
+            };
+
+            let settings_json = match store.get("fourshared_oauth_settings") {
+                Ok(j) => j,
+                Err(_) => {
+                    eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
+                    return Some(Err(6));
+                }
+            };
+            let tokens_json = match store.get("fourshared_oauth_tokens") {
+                Ok(j) => j,
+                Err(_) => {
+                    eprintln!("Error: No 4shared access tokens found in vault. Authorize 4shared from AeroFTP GUI first.");
+                    return Some(Err(6));
+                }
+            };
+
+            #[derive(serde::Deserialize)]
+            struct FsSettings { consumer_key: String, consumer_secret: String }
+            #[derive(serde::Deserialize)]
+            struct FsTokens { token: String, token_secret: String }
+
+            let settings: FsSettings = match serde_json::from_str(&settings_json) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error: Failed to parse 4shared OAuth settings: {}", e);
+                    return Some(Err(5));
+                }
+            };
+            let tokens: FsTokens = match serde_json::from_str(&tokens_json) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("Error: Failed to parse 4shared access tokens: {}", e);
+                    return Some(Err(5));
+                }
+            };
+
+            let fs_config = FourSharedConfig {
+                consumer_key: settings.consumer_key,
+                consumer_secret: secrecy::SecretString::from(settings.consumer_secret),
+                access_token: secrecy::SecretString::from(tokens.token),
+                access_token_secret: secrecy::SecretString::from(tokens.token_secret),
+            };
+
+            let mut provider = FourSharedProvider::new(fs_config);
+            if let Err(e) = provider.connect().await {
+                eprintln!("Error: 4shared connection failed: {}", e);
+                return Some(Err(6));
+            }
+            if !quiet {
+                eprintln!("Using profile: {} (4SHARED via OAuth1)", profile_name);
+            }
+            return Some(Ok((Box::new(provider) as Box<dyn StorageProvider>, initial_path.to_string())));
         }
         _ => return None,
     };
@@ -6331,6 +6443,11 @@ async fn main() {
                 url, local, remote, direction, *dry_run, *delete, exclude, &cli, format, cancelled,
             )
             .await
+        }
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            clap_complete::generate(*shell, &mut cmd, "aeroftp", &mut std::io::stdout());
+            0
         }
         Commands::Profiles => list_vault_profiles(&cli, format),
         Commands::AgentInfo => cmd_agent_info(&cli),

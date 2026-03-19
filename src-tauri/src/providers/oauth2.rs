@@ -11,6 +11,7 @@ use oauth2::{
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -322,8 +323,8 @@ impl OAuthConfig {
     }
 }
 
-/// Stored OAuth2 tokens
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Stored OAuth2 tokens — zeroized on drop (VER-007)
+#[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct StoredTokens {
     pub access_token: String,
     pub refresh_token: Option<String>,
@@ -504,7 +505,7 @@ impl OAuth2Manager {
             }
         }
 
-        Ok(SecretString::from(tokens.access_token))
+        Ok(SecretString::from(tokens.access_token.clone()))
     }
 
     /// Get the token storage directory

@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use secrecy::zeroize::Zeroize;
-use tracing::info;
+use tracing::{info, warn};
 
 // Cached unlocked vault state: (vault.db path, vault_key)
 //
@@ -287,13 +287,83 @@ impl Drop for CredentialStore {
 impl CredentialStore {
     // ---- Initialization ----
 
+    /// VER-005: File-based lock to prevent concurrent vault creation (CLI+GUI TOCTOU).
+    /// Uses `create_new(true)` as an atomic mutex. Stale locks (>30s) are auto-removed.
+    const VAULT_INIT_LOCK_FILENAME: &'static str = ".vault.lock";
+    const VAULT_INIT_LOCK_STALE_SECS: u64 = 30;
+    const VAULT_INIT_LOCK_RETRY_MS: u64 = 200;
+    const VAULT_INIT_LOCK_MAX_RETRIES: u32 = 20; // 20 * 200ms = 4s max wait
+
+    /// Acquire a file-based init lock. Returns the lock file path on success.
+    fn acquire_init_lock() -> Result<PathBuf, CredentialError> {
+        let dir = config_dir()?;
+        let lock_path = dir.join(Self::VAULT_INIT_LOCK_FILENAME);
+
+        for attempt in 0..Self::VAULT_INIT_LOCK_MAX_RETRIES {
+            // Try atomic creation — fails if file already exists
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(_file) => {
+                    return Ok(lock_path);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Lock file exists — check if stale
+                    if let Ok(metadata) = std::fs::metadata(&lock_path) {
+                        if let Ok(modified) = metadata.modified() {
+                            if let Ok(elapsed) = modified.elapsed() {
+                                if elapsed.as_secs() > Self::VAULT_INIT_LOCK_STALE_SECS {
+                                    warn!("Removing stale vault init lock ({}s old)", elapsed.as_secs());
+                                    let _ = std::fs::remove_file(&lock_path);
+                                    // Retry immediately after removing stale lock
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    // Lock is held by another process — wait and retry
+                    if attempt < Self::VAULT_INIT_LOCK_MAX_RETRIES - 1 {
+                        std::thread::sleep(std::time::Duration::from_millis(Self::VAULT_INIT_LOCK_RETRY_MS));
+                    }
+                }
+                Err(e) => return Err(CredentialError::Io(e)),
+            }
+        }
+
+        Err(CredentialError::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "Failed to acquire vault init lock after maximum retries",
+        )))
+    }
+
+    /// Release the file-based init lock
+    fn release_init_lock(lock_path: &Path) {
+        let _ = std::fs::remove_file(lock_path);
+    }
+
     /// Initialize the credential store at app startup.
     /// Returns "OK" if vault is open, "MASTER_PASSWORD_REQUIRED" if locked.
     pub fn init() -> Result<String, CredentialError> {
         if !VaultKeyFile::exists() {
-            // First run: create auto-mode vault
-            Self::first_run_init()?;
-            return Ok("OK".to_string());
+            // VER-005: Acquire file lock to prevent concurrent CLI+GUI vault creation
+            let lock_path = Self::acquire_init_lock()?;
+            let result = if !VaultKeyFile::exists() {
+                // Double-check after acquiring lock (another process may have created it)
+                Self::first_run_init()
+            } else {
+                Ok(())
+            };
+            Self::release_init_lock(&lock_path);
+            result?;
+
+            // If another process created the vault while we waited, fall through
+            // to the normal open path below. If we created it, first_run_init
+            // already cached the key, so return OK.
+            if Self::from_cache().is_some() {
+                return Ok("OK".to_string());
+            }
         }
 
         let key_file = VaultKeyFile::read()?;
@@ -443,7 +513,7 @@ impl CredentialStore {
 
     /// A2-08: Cache previously verified vault key material.
     /// Called after TOTP verification succeeds.
-    pub fn cache_vault(vault_path: PathBuf, vault_key: [u8; 32]) {
+    pub(crate) fn cache_vault(vault_path: PathBuf, vault_key: [u8; 32]) {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             *cache = Some((vault_path, vault_key));
         }
@@ -576,7 +646,7 @@ impl CredentialStore {
 
     /// A2-05: Internal store that bypasses reserved key check.
     /// Used by totp_enable to atomically store the TOTP secret.
-    pub fn store_internal(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+    pub(crate) fn store_internal(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
         self.store_entry(account, secret)
     }
 
@@ -702,7 +772,7 @@ fn config_dir() -> Result<PathBuf, CredentialError> {
 }
 
 /// Ensure secure file/directory permissions (0o600 files, 0o700 dirs on Unix; ACL on Windows)
-pub fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
+pub(crate) fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -717,7 +787,7 @@ pub fn ensure_secure_permissions(path: &Path) -> Result<(), CredentialError> {
 }
 
 /// Ensure the entire aeroftp config directory has secure permissions
-pub fn harden_config_directory() -> Result<(), CredentialError> {
+pub(crate) fn harden_config_directory() -> Result<(), CredentialError> {
     let dir = config_dir()?;
     if dir.exists() {
         ensure_secure_permissions(&dir)?;
