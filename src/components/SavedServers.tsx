@@ -644,7 +644,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                         return bucket ? `${bucket} — ${providerName}` : providerName;
                                                     })()
                                                     : server.protocol === 'github'
-                                                        ? server.host
+                                                        ? `${server.host}${server.options?.githubAuthMode === 'pat' ? ' (PAT)' : server.options?.githubAuthMode === 'app' ? ' (App)' : server.options?.githubAuthMode === 'authorize' ? ' (OAuth)' : ''}`
                                                     : server.protocol === 'webdav'
                                                         ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
                                                         : `${server.username}@${server.host}:${server.port}`
