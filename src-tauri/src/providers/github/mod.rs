@@ -623,7 +623,7 @@ impl GitHubProvider {
     }
 
     /// Normalise a path: strip leading `/`, collapse `//`, resolve `..`.
-    fn normalise_path(path: &str) -> String {
+    pub(crate) fn normalise_path(path: &str) -> String {
         let trimmed = path.trim_matches('/');
         if trimmed.is_empty() || trimmed == "." {
             return String::new();

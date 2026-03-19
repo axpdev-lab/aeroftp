@@ -16,7 +16,7 @@ use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 
 use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
 use super::releases_mode::delete_release;
-use super::GitHubVirtualPath;
+use super::{GitHubVirtualPath, GitHubWriteMode};
 
 /// Maximum file size GitHub allows via the Contents API (100 MiB)
 const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
@@ -93,23 +93,10 @@ fn gh_log(_msg: &str) {}
 
 // ─── Path utilities ───
 
-/// Normalize a repository path: strip leading `/`, collapse double slashes.
+/// Normalize a repository path — delegates to the canonical `normalise_path()`
+/// which resolves `..` segments, strips leading/trailing `/`, and collapses `//`.
 fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim_start_matches('/');
-    let mut result = String::with_capacity(trimmed.len());
-    let mut prev_slash = false;
-    for ch in trimmed.chars() {
-        if ch == '/' {
-            if prev_slash {
-                continue;
-            }
-            prev_slash = true;
-        } else {
-            prev_slash = false;
-        }
-        result.push(ch);
-    }
-    result.trim_end_matches('/').to_string()
+    super::GitHubProvider::normalise_path(path)
 }
 
 /// Extract filename from a path
@@ -410,6 +397,11 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        // Enforce write-mode policy
+        if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
+            return Err(ProviderError::PermissionDenied(reason.clone()));
+        }
+
         let norm = normalize_path(remote_path);
         let filename = filename_from_path(&norm);
 
@@ -448,7 +440,7 @@ impl GitHubProvider {
             message,
             content: encoded,
             sha: existing_sha,
-            branch: Some(self.branch.clone()),
+            branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
         };
 
@@ -493,6 +485,11 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        // Enforce write-mode policy
+        if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
+            return Err(ProviderError::PermissionDenied(reason.clone()));
+        }
+
         let norm = normalize_path(remote_path);
         let filename = filename_from_path(&norm);
 
@@ -504,7 +501,7 @@ impl GitHubProvider {
         let body = GitHubContentDelete {
             message,
             sha,
-            branch: Some(self.branch.clone()),
+            branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
         };
 
@@ -532,7 +529,7 @@ impl GitHubProvider {
             .map_err(ProviderError::from)?;
 
         // Remove from cache
-        self.sha_cache.remove(&(self.branch.clone(), norm.clone()));
+        self.sha_cache.remove(&(self.content_branch().to_string(), norm.clone()));
 
         gh_log(&format!("delete_file complete: {}", norm));
         Ok(())
@@ -544,6 +541,11 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        // Enforce write-mode policy
+        if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
+            return Err(ProviderError::PermissionDenied(reason.clone()));
+        }
+
         let norm = normalize_path(path);
 
         if self.parse_virtual_path(&norm).is_some() {
