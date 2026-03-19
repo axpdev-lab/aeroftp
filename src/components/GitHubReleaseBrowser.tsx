@@ -227,11 +227,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-xl border shadow-2xl animate-scale-in"
-        style={{
-          backgroundColor: 'var(--color-bg-secondary)',
-          borderColor: 'var(--color-border)',
-        }}
+        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in bg-white dark:bg-gray-800"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -556,6 +552,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                 >
                                   <Download size={12} />
                                 </button>
+                                {!asset.name.startsWith('Source code') && (
                                 <button
                                   onClick={e => {
                                     e.stopPropagation();
@@ -567,6 +564,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                 >
                                   <Trash2 size={12} />
                                 </button>
+                                )}
                               </div>
                             </td>
                           </tr>
