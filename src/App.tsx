@@ -7484,7 +7484,7 @@ const App: React.FC = () => {
                             setShowRemoteSearchBar(prev => !prev);
                           }
                         }}
-                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${searchDisabled ? 'text-gray-600 cursor-not-allowed opacity-40' : remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${searchDisabled ? 'text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50' : remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                         title={searchDisabled ? 'Search not supported for this protocol' : remoteSearchResults !== null ? 'Clear search' : 'Search files'}
                         disabled={searchDisabled}
                       >

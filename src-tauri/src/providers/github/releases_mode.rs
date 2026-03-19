@@ -218,10 +218,25 @@ pub async fn download_release_asset(
         asset.browser_download_url.clone()
     };
 
-    let resp = client
-        .get_raw(&download_url)
-        .await
-        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+    // Source archives use API URLs that redirect — download with a plain HTTP client
+    // to avoid GitHub API header conflicts (Accept: application/octet-stream vs vnd.github+json)
+    let resp = if asset_name.starts_with("Source code") {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+            .get(&download_url)
+            .header("Authorization", format!("Bearer {}", client.token_str()))
+            .header("User-Agent", "AeroFTP")
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+    } else {
+        client
+            .get_raw(&download_url)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+    };
 
     if !resp.status().is_success() {
         return Err(ProviderError::TransferFailed(format!(
