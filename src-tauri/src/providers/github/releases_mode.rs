@@ -85,6 +85,31 @@ pub(crate) fn asset_to_entry(asset: &GitHubAsset, tag: &str) -> RemoteEntry {
     }
 }
 
+/// Create a virtual `RemoteEntry` for auto-generated source code archives.
+fn source_archive_entry(tag: &str, name: &str, url: &str, content_type: &str) -> RemoteEntry {
+    let mut metadata = HashMap::new();
+    metadata.insert("asset_id".into(), "0".into());
+    metadata.insert("download_count".into(), "0".into());
+    metadata.insert("content_type".into(), content_type.into());
+    metadata.insert("browser_download_url".into(), url.into());
+    metadata.insert("auto_generated".into(), "true".into());
+
+    RemoteEntry {
+        name: name.into(),
+        path: format!("/{}/{}/{}", VIRTUAL_RELEASES_DIR, tag, name),
+        is_dir: false,
+        size: 0,
+        modified: None,
+        permissions: None,
+        owner: None,
+        group: None,
+        is_symlink: false,
+        link_target: None,
+        mime_type: Some(content_type.into()),
+        metadata,
+    }
+}
+
 /// Strip the `{?name,label}` URI template suffix from `upload_url`.
 fn strip_upload_template(upload_url: &str) -> String {
     if let Some(idx) = upload_url.find('{') {
@@ -151,11 +176,21 @@ pub async fn list_release_assets(
     tag: &str,
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
     let release = get_release_by_tag(client, owner, repo, tag).await?;
-    Ok(release
+    let mut entries: Vec<RemoteEntry> = release
         .assets
         .iter()
         .map(|a| asset_to_entry(a, tag))
-        .collect())
+        .collect();
+
+    // Add auto-generated source code archives (zipball/tarball) as virtual assets
+    if let Some(ref url) = release.zipball_url {
+        entries.push(source_archive_entry(tag, "Source code (zip)", url, "application/zip"));
+    }
+    if let Some(ref url) = release.tarball_url {
+        entries.push(source_archive_entry(tag, "Source code (tar.gz)", url, "application/gzip"));
+    }
+
+    Ok(entries)
 }
 
 /// Download a release asset to a local file path.

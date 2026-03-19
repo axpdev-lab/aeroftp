@@ -61,6 +61,10 @@ pub struct GitHubRelease {
     pub assets: Vec<GitHubAsset>,
     pub upload_url: String,
     pub body: Option<String>,
+    #[serde(default)]
+    pub zipball_url: Option<String>,
+    #[serde(default)]
+    pub tarball_url: Option<String>,
 }
 
 /// A release asset (binary attachment)
