@@ -6081,7 +6081,7 @@ async fn ai_execute_tool(
                     let mut ftp = state.ftp_manager.lock().await;
                     let temp = std::env::temp_dir().join(format!("aeroftp_ai_preview_{}", chrono::Utc::now().timestamp_millis()));
                     let temp_str = temp.to_string_lossy().to_string();
-                    ftp.download_file_with_progress(&path, &temp_str, |_| true)
+                    ftp.download_file_with_progress(path, &temp_str, |_| true)
                         .await
                         .map_err(|e| format!("Failed to download: {}", e))?;
                     let c = tokio::fs::read_to_string(&temp).await

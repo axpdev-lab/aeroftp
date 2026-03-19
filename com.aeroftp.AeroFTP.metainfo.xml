@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.4" date="2026-03-19">
+      <description>
+        <p>GitHub Integration: Release Browser with create, download, and delete. PR creation button in branch workflow. Batch commit via GraphQL. Public/private repository badge. Critical fix: Monaco editor preview and save now works on all 23 protocols, not just FTP/SFTP. 8 CLI security audit findings resolved. Snap Store auto-publish re-enabled.</p>
+      </description>
+    </release>
     <release version="3.0.3" date="2026-03-18">
       <description>
         <p>Comprehensive AeroAgent fixes: all 47 tools now correctly resolve relative paths, recursive directory upload with per-level mkdir, fixed Cohere and Perplexity streaming compatibility, server_exec credential lookup and TLS retry, empty message handling for reasoning models. Added Website and Documentation links in Help menu. AUR package switched from AppImage to .deb extraction to resolve EGL errors on Arch Linux.</p>

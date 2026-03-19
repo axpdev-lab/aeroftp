@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.4] - 2026-03-19
+
+### GitHub Integration & Editor on All Protocols
+
+Advanced GitHub repository integration and critical fix enabling the Monaco editor to open, preview, and save files on all 23 protocols.
+
+#### Added
+
+- **GitHub Release Browser**: Create, list, download, and delete releases from an in-app modal with asset management, source code archive download, and refresh button
+- **GitHub PR creation button**: One-click Pull Request creation in branch workflow mode with title and body dialog
+- **GitHub batch commit**: Atomic multi-file commits via GraphQL `createCommitOnBranch` mutation
+- **GitHub public/private badge**: Repository visibility indicator in status bar
+- **GitHub auth mode label**: Saved servers show authentication type (PAT, OAuth, App) in subtitle
+- **Release asset download**: Native save-to-disk dialog for downloading release assets
+- **Shell completion**: `aeroftp completions bash/zsh/fish/powershell` via clap_complete
+- **Search button disabled state**: Protocols without remote search show disabled icon with tooltip
+
+#### Fixed
+
+- **Editor preview on all protocols** (critical): `preview_remote_file` now uses active StorageProvider with FTP fallback, enabling file preview on GitHub, Google Drive, Dropbox, and all cloud providers
+- **Editor save on all protocols** (critical): `save_remote_file` and `upload_file` use provider-first pattern, enabling edit-in-place across all 23 protocols
+- **8 CLI audit findings**: 4shared OAuth1 CLI, credential store scope, vault init TOCTOU lock, password zeroize, StoredTokens ZeroizeOnDrop, profile/URL mutual exclusion
+- **6 GitHub audit findings**: Write-mode guard on repo helpers, content_branch in mutations, path normalization unified, Device Flow User-Agent, Retry-After on uploads, branch/tag URL encoding
+- **Draft release navigation**: Fallback to listing all releases when tag endpoint returns 404
+- **Source code archives**: Show auto-generated zip/tar.gz in release asset listing
+- **Release delete confirmation**: In-app dialog replacing window.confirm race condition
+- **AUR EGL fix**: Switch from AppImage to .deb extraction (fixes EGL_BAD_PARAMETER on Arch)
+- **i18n**: 28 GitHub keys translated in 47 languages, missing interpolation params render empty
+
+#### Changed
+
+- **Snap Store auto-publish**: Re-enabled after reviewer approval
+- **portable-pty**: Upgraded from 0.8 to 0.9
+- **Protocol count**: Standardized to 23 (includes GitHub) across all docs and UI
+
 ## [3.0.3] - 2026-03-18
 
 ### AeroAgent Tool Fixes & Provider Improvements
