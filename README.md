@@ -82,7 +82,7 @@ AeroFTP
 
 ### AeroCloud — Your Personal Cloud
 
-> [Full documentation →](https://docs.aeroftp.app/protocols/overview.html)
+> [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
 Turn **any server** into a private personal cloud. Connect to all 23 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
 
