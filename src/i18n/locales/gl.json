@@ -3423,7 +3423,20 @@
             "pemEmpty": "O ficheiro PEM está baleiro. Por favor, descargue unha nova clave privada desde a configuración do seu GitHub App.",
             "pemStoredInVault": "A súa chave PEM agora está cifrada (AES-256) e almacenada de forma segura no vault. Pola súa seguridade, elimine ou protexa o ficheiro .pem orixinal — AeroFTP xa non o necesita.",
             "pemVaultBadge": "PEM key almacenado no vault",
-            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect.",
+            "pemVaultReady": "[NEEDS TRANSLATION] PEM key found in vault — ready to connect",
+            "importChangelog": "[NEEDS TRANSLATION] Import from CHANGELOG",
+            "pagesOpenSite": "[NEEDS TRANSLATION] Open Site",
+            "pagesRebuild": "[NEEDS TRANSLATION] Rebuild",
+            "pagesBuilds": "[NEEDS TRANSLATION] Deployment History",
+            "pagesNoBuilds": "[NEEDS TRANSLATION] No deployments found.",
+            "pagesNotEnabled": "[NEEDS TRANSLATION] GitHub Pages is not enabled for this repository.",
+            "pagesEnableHint": "[NEEDS TRANSLATION] Enable it from repository Settings > Pages on GitHub.",
+            "pagesWorkflowHint": "[NEEDS TRANSLATION] Deployments are managed by GitHub Actions. Push a commit to trigger a new build.",
+            "importChangelogTooltip": "[NEEDS TRANSLATION] Read CHANGELOG.md from repository and extract the section matching the tag version",
+            "renameCommit": "[NEEDS TRANSLATION] Rename",
+            "deleteCommit": "[NEEDS TRANSLATION] Delete",
+            "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
         }
     }
 }

@@ -4252,7 +4252,7 @@ pub async fn github_app_token_from_pem(
     // Validate PEM by attempting JWT generation
     crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
 
-    // Store PEM content in vault (encrypted AES-256-GCM) so user can delete the .pem file
+    // Store PEM content + App credentials in vault (encrypted AES-256-GCM)
     let vault_key = github_pem_vault_key(&app_id, &installation_id);
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         if let Err(e) = store.store(&vault_key, &pem_contents) {
@@ -4260,6 +4260,12 @@ pub async fn github_app_token_from_pem(
         } else {
             log::info!("GitHub App PEM stored in vault as '{}'", vault_key);
         }
+        // Store App ID + Installation ID so the form can pre-populate on new connections
+        let creds = serde_json::json!({
+            "app_id": app_id,
+            "installation_id": installation_id,
+        });
+        let _ = store.store("github_app_credentials", &creds.to_string());
     }
 
     log::info!("GitHub App token: PEM valid, requesting installation token...");
@@ -4296,6 +4302,13 @@ pub async fn github_app_token_from_vault(
     validate_pem_contents(&pem_contents)?;
     crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
 
+    // Ensure App credentials are saved in vault for form pre-population
+    let creds = serde_json::json!({
+        "app_id": app_id,
+        "installation_id": installation_id,
+    });
+    let _ = store.store("github_app_credentials", &creds.to_string());
+
     log::info!("GitHub App token: vault PEM valid, requesting installation token...");
 
     let token_resp = crate::providers::github::auth::get_installation_token(
@@ -4308,6 +4321,38 @@ pub async fn github_app_token_from_vault(
         "token": token_resp.token,
         "expires_at": token_resp.expires_at,
     }))
+}
+
+/// Get stored GitHub App credentials (App ID + Installation ID) from vault
+#[tauri::command]
+pub async fn github_get_app_credentials() -> Result<serde_json::Value, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready".to_string())?;
+    match store.get("github_app_credentials") {
+        Ok(json_str) => serde_json::from_str(&json_str)
+            .map_err(|e| format!("Invalid credentials format: {}", e)),
+        Err(_) => Ok(serde_json::Value::Null),
+    }
+}
+
+/// Store GitHub PAT in vault (encrypted)
+#[tauri::command]
+pub async fn github_store_pat(pat: String) -> Result<(), String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready".to_string())?;
+    store.store("github_pat", &pat)
+        .map_err(|e| format!("Failed to store PAT: {}", e))?;
+    log::info!("GitHub PAT stored in vault");
+    Ok(())
+}
+
+/// Get stored GitHub PAT from vault
+#[tauri::command]
+pub async fn github_get_pat() -> Result<String, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready".to_string())?;
+    store.get("github_pat")
+        .map_err(|_| "No PAT stored in vault".to_string())
 }
 
 /// Check if a GitHub App PEM is stored in the vault
@@ -4463,6 +4508,118 @@ pub async fn github_read_file(
 
     String::from_utf8(bytes)
         .map_err(|e| format!("File is not valid UTF-8: {}", e))
+}
+
+// ── GitHub Pages ──────────────────────────────────────────────────
+
+/// Get GitHub Pages site info (returns null if not enabled)
+#[tauri::command]
+pub async fn github_get_pages(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    match github.get_pages_info().await {
+        Ok(Some(site)) => Ok(serde_json::to_value(site).unwrap_or_default()),
+        Ok(None) => Ok(serde_json::Value::Null),
+        Err(e) => Err(format!("Failed to get Pages info: {}", e)),
+    }
+}
+
+/// List GitHub Pages builds
+#[tauri::command]
+pub async fn github_list_pages_builds(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let builds = github.list_pages_builds().await
+        .map_err(|e| format!("Failed to list Pages builds: {}", e))?;
+    Ok(serde_json::to_value(builds).unwrap_or_default())
+}
+
+/// Trigger a GitHub Pages rebuild (legacy build_type only)
+#[tauri::command]
+pub async fn github_trigger_pages_build(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let status = github.trigger_pages_build().await
+        .map_err(|e| format!("Failed to trigger Pages build: {}", e))?;
+    Ok(serde_json::to_value(status).unwrap_or_default())
+}
+
+/// Update GitHub Pages configuration (CNAME, HTTPS, source)
+#[tauri::command]
+pub async fn github_update_pages(
+    state: State<'_, ProviderState>,
+    cname: Option<String>,
+    https_enforced: Option<bool>,
+    source_branch: Option<String>,
+    source_path: Option<String>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github.update_pages_config(
+        cname.as_deref(),
+        https_enforced,
+        source_branch.as_deref(),
+        source_path.as_deref(),
+    ).await
+        .map_err(|e| format!("Failed to update Pages config: {}", e))
+}
+
+/// Check DNS health for GitHub Pages custom domain
+#[tauri::command]
+pub async fn github_pages_health(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let health = github.pages_health_check().await
+        .map_err(|e| format!("Failed to check Pages DNS health: {}", e))?;
+    Ok(serde_json::to_value(health).unwrap_or_default())
 }
 
 /// Upload a file as a release asset

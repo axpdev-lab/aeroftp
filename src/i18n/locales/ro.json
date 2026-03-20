@@ -3395,7 +3395,20 @@
             "pemEmpty": "Fișierul PEM este gol. Vă rugăm să descărcați o cheie privată nouă din setările GitHub App.",
             "pemStoredInVault": "Cheia PEM este acum criptata (AES-256) si stocata in siguranta in vault. Pentru siguranta dumneavoastra, stergeti sau securizati fisierul .pem original — AeroFTP nu mai are nevoie de el.",
             "pemVaultBadge": "Cheie PEM stocata in vault",
-            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect.",
+            "pemVaultReady": "[NEEDS TRANSLATION] PEM key found in vault — ready to connect",
+            "importChangelog": "[NEEDS TRANSLATION] Import from CHANGELOG",
+            "pagesOpenSite": "[NEEDS TRANSLATION] Open Site",
+            "pagesRebuild": "[NEEDS TRANSLATION] Rebuild",
+            "pagesBuilds": "[NEEDS TRANSLATION] Deployment History",
+            "pagesNoBuilds": "[NEEDS TRANSLATION] No deployments found.",
+            "pagesNotEnabled": "[NEEDS TRANSLATION] GitHub Pages is not enabled for this repository.",
+            "pagesEnableHint": "[NEEDS TRANSLATION] Enable it from repository Settings > Pages on GitHub.",
+            "pagesWorkflowHint": "[NEEDS TRANSLATION] Deployments are managed by GitHub Actions. Push a commit to trigger a new build.",
+            "importChangelogTooltip": "[NEEDS TRANSLATION] Read CHANGELOG.md from repository and extract the section matching the tag version",
+            "renameCommit": "[NEEDS TRANSLATION] Rename",
+            "deleteCommit": "[NEEDS TRANSLATION] Delete",
+            "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
         }
     }
 }

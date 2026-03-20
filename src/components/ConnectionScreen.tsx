@@ -525,6 +525,72 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [gitHubDeviceFlow, setGitHubDeviceFlow] = useState<{ userCode: string; verificationUri: string; deviceCode: string; interval: number } | null>(null);
     const [gitHubDeviceFlowLoading, setGitHubDeviceFlowLoading] = useState(false);
     const [gitHubPemLoading, setGitHubPemLoading] = useState(false);
+    const [gitHubPemInVault, setGitHubPemInVault] = useState(false);
+    const [gitHubAppFieldsLocked, setGitHubAppFieldsLocked] = useState(false);
+
+    // Auto-populate App ID + Installation ID from vault when switching to App (.pem) mode
+    useEffect(() => {
+        if (connectionParams.options?.githubAuthMode !== 'app') {
+            setGitHubPemInVault(false);
+            return;
+        }
+        const appId = connectionParams.options?.githubAppId?.trim();
+        const installId = connectionParams.options?.githubInstallationId?.trim();
+
+        if (appId && installId) {
+            // Fields already filled — just check vault for PEM
+            invoke('github_has_vault_pem', { appId, installationId: installId })
+                .then((has) => {
+                    setGitHubPemInVault(has as boolean);
+                    setGitHubAppFieldsLocked(has as boolean);
+                })
+                .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+        } else {
+            // Fields empty — try to load saved credentials from vault
+            invoke('github_get_app_credentials')
+                .then((result) => {
+                    const creds = result as { app_id?: string; installation_id?: string } | null;
+                    if (creds?.app_id && creds?.installation_id) {
+                        onConnectionParamsChange({
+                            ...connectionParams,
+                            options: {
+                                ...connectionParams.options,
+                                githubAppId: creds.app_id,
+                                githubInstallationId: creds.installation_id,
+                            },
+                        });
+                        invoke('github_has_vault_pem', { appId: creds.app_id, installationId: creds.installation_id })
+                            .then((has) => {
+                                setGitHubPemInVault(has as boolean);
+                                setGitHubAppFieldsLocked(has as boolean);
+                            })
+                            .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+                    } else {
+                        setGitHubPemInVault(false);
+                        setGitHubAppFieldsLocked(false);
+                    }
+                })
+                .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+        }
+    }, [connectionParams.options?.githubAuthMode]);
+
+    // Auto-populate token from vault when switching to PAT or Authorize mode
+    useEffect(() => {
+        const mode = connectionParams.options?.githubAuthMode;
+        if ((mode !== 'pat' && mode !== 'authorize' && mode !== undefined) || connectionParams.password) return;
+        // Both PAT and OAuth tokens are stored under the same vault key
+        invoke('github_get_pat')
+            .then((pat) => {
+                if (pat && typeof pat === 'string') {
+                    onConnectionParamsChange({
+                        ...connectionParams,
+                        password: pat,
+                        port: 443,
+                    });
+                }
+            })
+            .catch(() => {});
+    }, [connectionParams.options?.githubAuthMode]);
 
     // Fetch AeroCloud config when AeroCloud is selected
     useEffect(() => {
@@ -721,6 +787,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Handle the main action button
     const handleConnectAndSave = async () => {
+        // Store PAT in vault for future connections (if GitHub PAT mode)
+        if (connectionParams.options?.githubAuthMode === 'pat' && connectionParams.password) {
+            invoke('github_store_pat', { pat: connectionParams.password }).catch(() => {});
+        }
+
         if (editingProfileId) {
             // Edit mode: save changes and reset form
             await saveToServers();
@@ -1930,15 +2001,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             {/* Mode buttons — locked when editing a saved connection */}
                                             <div className="flex gap-1.5">
                                                 {(['authorize', 'pat', 'app'] as const).map((mode) => {
-                                                    const isActive = (connectionParams.options?.githubAuthMode || 'authorize') === mode;
+                                                    const isActive = connectionParams.options?.githubAuthMode === mode;
                                                     const isLocked = !!editingProfileId;
                                                     return (
                                                     <button
                                                         key={mode}
                                                         type="button"
-                                                        disabled={isLocked && !isActive}
+                                                        disabled={(isLocked && !isActive) || isActive}
                                                         onClick={() => {
-                                                            if (isLocked) return;
+                                                            if (isLocked || isActive) return;
                                                             onConnectionParamsChange({
                                                                 ...connectionParams,
                                                                 password: '',
@@ -1962,8 +2033,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
 
                                             {/* Mode: Authorize with GitHub (Device Flow) */}
-                                            {(connectionParams.options?.githubAuthMode || 'authorize') === 'authorize' && (
+                                            {connectionParams.options?.githubAuthMode === 'authorize' && (
                                                 <div className="pt-1">
+                                                    {/* Show "already authorized" if token exists in vault */}
+                                                    {connectionParams.password && !gitHubDeviceFlow && (
+                                                        <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1 mb-2">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                            {t('github.alreadyAuthorized')}
+                                                        </p>
+                                                    )}
                                                     <button
                                                         type="button"
                                                         onClick={async () => {
@@ -1990,12 +2068,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         {t('github.authorizeWithGitHub')}
                                                     </button>
                                                     <p className="text-xs text-gray-500 mt-1.5 text-center">{t('github.authorizeBrowserHint')}</p>
-                                                    {connectionParams.password && (
-                                                        <p className="text-xs text-green-500 mt-1 text-center flex items-center justify-center gap-1">
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                                                            {t('connection.authorized')}
-                                                        </p>
-                                                    )}
                                                 </div>
                                             )}
 
@@ -2032,26 +2104,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <div className="pt-1 space-y-2">
                                                     <p className="text-xs text-gray-400">{t('github.appModeHint')}</p>
                                                     <p className="text-xs text-gray-500">{t('github.appTokenDuration')}</p>
-                                                    <input
-                                                        type="text"
-                                                        value={connectionParams.options?.githubAppId || ''}
-                                                        onChange={(e) => onConnectionParamsChange({
-                                                            ...connectionParams,
-                                                            options: { ...connectionParams.options, githubAppId: e.target.value },
-                                                        })}
-                                                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                        placeholder={t('github.appIdPlaceholder')}
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        value={connectionParams.options?.githubInstallationId || ''}
-                                                        onChange={(e) => onConnectionParamsChange({
-                                                            ...connectionParams,
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={connectionParams.options?.githubAppId || ''}
+                                                            onChange={(e) => onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                options: { ...connectionParams.options, githubAppId: e.target.value },
+                                                            })}
+                                                            disabled={gitHubAppFieldsLocked}
+                                                            className={`w-full px-3 py-2 text-sm border rounded-lg ${gitHubAppFieldsLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700' : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}
+                                                            placeholder={t('github.appIdPlaceholder')}
+                                                        />
+                                                        {gitHubAppFieldsLocked && (
+                                                            <button type="button" onClick={() => setGitHubAppFieldsLocked(false)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[var(--color-accent)] hover:underline">
+                                                                Edit
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={connectionParams.options?.githubInstallationId || ''}
+                                                            onChange={(e) => onConnectionParamsChange({
+                                                                ...connectionParams,
                                                             options: { ...connectionParams.options, githubInstallationId: e.target.value },
                                                         })}
-                                                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                        disabled={gitHubAppFieldsLocked}
+                                                        className={`w-full px-3 py-2 text-sm border rounded-lg ${gitHubAppFieldsLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700' : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}
                                                         placeholder={t('github.installationIdPlaceholder')}
-                                                    />
+                                                        />
+                                                    </div>
                                                     <button
                                                         type="button"
                                                         onClick={async () => {
@@ -2122,6 +2205,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         {gitHubPemLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
                                                         {gitHubPemLoading ? t('github.appTokenGenerating') : t('github.appImportPem')}
                                                     </button>
+                                                    {gitHubPemInVault && !connectionParams.password && (
+                                                        <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                                            {t('github.pemVaultReady') || 'PEM key found in vault — ready to connect'}
+                                                        </p>
+                                                    )}
                                                     {connectionParams.password && (() => {
                                                         const expiresAt = connectionParams.options?.githubTokenExpiresAt;
                                                         const expiresMs = expiresAt ? Date.parse(expiresAt) : NaN;
@@ -2229,7 +2318,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-3">
                                             <button
                                                 onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.server || !connectionParams.password}
+                                                disabled={loading || !connectionParams.server || (!connectionParams.password && !gitHubPemInVault && connectionParams.options?.githubAuthMode !== 'authorize')}
                                                 className={`w-full py-3.5 rounded-xl font-medium text-white shadow-lg shadow-gray-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-700 hover:to-gray-600'}`}
                                             >
@@ -3085,11 +3174,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             deviceCode: gitHubDeviceFlow.deviceCode,
                                             interval: gitHubDeviceFlow.interval,
                                         }) as string;
+                                        // Store OAuth token in vault for multi-repo reuse
+                                        invoke('github_store_pat', { pat: token }).catch(() => {});
                                         onConnectionParamsChange({ ...connectionParams, password: token });
                                         setGitHubDeviceFlow(null);
                                         setGitHubAlert({
                                             title: t('github.authTitle'),
-                                            message: t('connection.authorized'),
+                                            message: t('github.alreadyAuthorized'),
                                             type: 'info',
                                         });
                                     } catch (err) {

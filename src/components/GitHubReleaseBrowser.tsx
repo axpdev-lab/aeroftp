@@ -791,7 +791,7 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
         </div>
         {previewBody ? (
           <div
-            className="w-full px-3 py-2 text-sm rounded-lg border overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
+            className="w-full px-4 py-3 pl-6 text-sm rounded-lg border overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
             style={{ ...inputStyle, minHeight: '12rem', maxHeight: '24rem' }}
             dangerouslySetInnerHTML={{ __html: body
               .replace(/#### /g, '<h4>')

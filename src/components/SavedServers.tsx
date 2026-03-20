@@ -665,18 +665,6 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                         ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
                                                         : `${server.username}@${server.host}:${server.port}`
                                     }
-                                    {server.protocol === 'github' && server.options?.githubAuthMode === 'app' && server.options?.githubTokenExpiresAt && (() => {
-                                        const expiresMs = Date.parse(server.options.githubTokenExpiresAt!);
-                                        if (!Number.isFinite(expiresMs)) return null;
-                                        const remainMs = expiresMs - Date.now();
-                                        if (remainMs <= 0) {
-                                            return <span className="text-red-400 text-xs"> · token expired — auto-refreshes on connect</span>;
-                                        }
-                                        const mins = Math.ceil(remainMs / 60000);
-                                        const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
-                                        const color = mins <= 15 ? 'text-amber-400' : 'text-green-400';
-                                        return <span className={`${color} text-xs`}> · {timeStr} left</span>;
-                                    })()}
                                 </div>
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

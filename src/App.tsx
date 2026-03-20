@@ -49,6 +49,7 @@ import { GitHubCommitDialog } from './components/GitHubCommitDialog';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
+import { GitHubPagesBrowser } from './components/GitHubPagesBrowser';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
 import { FileLuTrashManager } from './components/FileLuTrashManager';
@@ -85,7 +86,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, Github
 } from 'lucide-react';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
@@ -341,6 +342,8 @@ const App: React.FC = () => {
   } | null>(null);
   const [gitHubBranches, setGitHubBranches] = useState<Array<{ name: string; protected: boolean }>>([]);
   const [showGitHubReleaseBrowser, setShowGitHubReleaseBrowser] = useState(false);
+  const [showGitHubPages, setShowGitHubPages] = useState(false);
+  const [hasGitHubPages, setHasGitHubPages] = useState(false);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -1933,7 +1936,16 @@ const App: React.FC = () => {
             installationId,
           });
         } else {
-          throw new Error('GitHub App mode requires a stored PEM or PEM file path to refresh the installation token');
+          // Try vault as last resort — PEM may have been imported in another connection
+          const hasVaultPem = await invoke<boolean>('github_has_vault_pem', { appId, installationId }).catch(() => false);
+          if (hasVaultPem) {
+            tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_vault', {
+              appId,
+              installationId,
+            });
+          } else {
+            throw new Error('No PEM key found. Import a .pem file first or check your App ID and Installation ID.');
+          }
         }
 
         effectiveParams = {
@@ -2000,6 +2012,11 @@ const App: React.FC = () => {
       }>('github_get_info');
       setGitHubRepoInfo(info);
 
+      // Check if GitHub Pages is enabled (lightweight, non-blocking)
+      invoke<unknown>('github_get_pages')
+        .then(result => setHasGitHubPages(result !== null))
+        .catch(() => setHasGitHubPages(false));
+
       if (refreshBranches) {
         const branches = await invoke<Array<{ name: string; protected: boolean }>>('github_list_branches');
         setGitHubBranches(branches);
@@ -2008,6 +2025,7 @@ const App: React.FC = () => {
       console.warn('Failed to refresh GitHub context:', error);
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
+      setHasGitHubPages(false);
     }
   }, [activeSessionId, connectionParams.protocol, isConnected, sessions]);
 
@@ -4910,7 +4928,7 @@ const App: React.FC = () => {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
+      { label: currentProtocol === 'github' ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
       ...(count > 1 ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -4934,7 +4952,7 @@ const App: React.FC = () => {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
+      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : currentProtocol === 'github' ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
       ...(currentProtocol === 'jottacloud' ? [{
         label: t('contextMenu.moveToTrash'),
@@ -5626,7 +5644,10 @@ const App: React.FC = () => {
     }
 
     const count = selection.size;
-    const uploadLabel = count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload');
+    const isGitHub = (connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol) === 'github';
+    const uploadLabel = isGitHub
+      ? (count > 1 ? t('github.commitFiles', { count }) : t('github.commit'))
+      : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
     const filesToUpload = Array.from(selection);
 
     // Detect .aerovault early for context menu ordering
@@ -5635,7 +5656,7 @@ const App: React.FC = () => {
     const items: ContextMenuItem[] = [
       {
         label: uploadLabel,
-        icon: <Cloud size={14} />,
+        icon: isGitHub ? <Github size={14} /> : <Cloud size={14} />,
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
@@ -6479,6 +6500,10 @@ const App: React.FC = () => {
             onCancel={gitHubCommitDialog.onCancel || (() => setGitHubCommitDialog(null))}
           />
         )}
+        <GitHubPagesBrowser
+          isOpen={showGitHubPages}
+          onClose={() => setShowGitHubPages(false)}
+        />
         <GitHubReleaseBrowser
           isOpen={showGitHubReleaseBrowser}
           onClose={() => setShowGitHubReleaseBrowser(false)}
@@ -7477,13 +7502,24 @@ const App: React.FC = () => {
                       />
                     )}
                     {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && (
-                      <button
-                        onClick={() => setShowGitHubReleaseBrowser(true)}
-                        className="flex-shrink-0 p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
-                        title="Releases"
-                      >
-                        <Package size={13} />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setShowGitHubReleaseBrowser(true)}
+                          className="flex-shrink-0 p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                          title="Releases"
+                        >
+                          <Package size={13} />
+                        </button>
+                        {hasGitHubPages && (
+                          <button
+                            onClick={() => setShowGitHubPages(true)}
+                            className="flex-shrink-0 p-1.5 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
+                            title="GitHub Pages"
+                          >
+                            <Globe size={13} />
+                          </button>
+                        )}
+                      </>
                     )}
                     {isConnected && (() => {
                       const noSearchProtocols = ['ftp', 'ftps', 'sftp', 'webdav', 's3', 'github', 'azure'];

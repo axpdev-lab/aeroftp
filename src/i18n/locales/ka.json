@@ -3404,7 +3404,20 @@
             "pemEmpty": "PEM ფაილი ცარიელია. გთხოვთ, ჩამოტვირთეთ ახალი პირადი გასაღები GitHub App-ის პარამეტრებიდან.",
             "pemStoredInVault": "თქვენი PEM გასაღები ახლა დაშიფრულია (AES-256) და უსაფრთხოდ შენახულია vault-ში. თქვენი უსაფრთხოებისთვის, წაშალეთ ან დაიცავით ორიგინალური .pem ფაილი — AeroFTP-ს იგი აღარ სცირდება.",
             "pemVaultBadge": "PEM გასაღები შენახულია vault-ში",
-            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect.",
+            "pemVaultReady": "[NEEDS TRANSLATION] PEM key found in vault — ready to connect",
+            "importChangelog": "[NEEDS TRANSLATION] Import from CHANGELOG",
+            "pagesOpenSite": "[NEEDS TRANSLATION] Open Site",
+            "pagesRebuild": "[NEEDS TRANSLATION] Rebuild",
+            "pagesBuilds": "[NEEDS TRANSLATION] Deployment History",
+            "pagesNoBuilds": "[NEEDS TRANSLATION] No deployments found.",
+            "pagesNotEnabled": "[NEEDS TRANSLATION] GitHub Pages is not enabled for this repository.",
+            "pagesEnableHint": "[NEEDS TRANSLATION] Enable it from repository Settings > Pages on GitHub.",
+            "pagesWorkflowHint": "[NEEDS TRANSLATION] Deployments are managed by GitHub Actions. Push a commit to trigger a new build.",
+            "importChangelogTooltip": "[NEEDS TRANSLATION] Read CHANGELOG.md from repository and extract the section matching the tag version",
+            "renameCommit": "[NEEDS TRANSLATION] Rename",
+            "deleteCommit": "[NEEDS TRANSLATION] Delete",
+            "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
         }
     }
 }

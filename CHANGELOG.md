@@ -26,9 +26,15 @@ Critical fix for SFTP file uploads producing 0-byte files, plus atomic download 
 - **GitHub auth mode badge**: Colored badge (APP/PAT/OAuth) on saved GitHub servers for instant identification
 - **GitHub token countdown**: Live remaining time in saved server subtitle (green >15min, amber <15min, red expired) with auto-refresh messaging
 - **0 B file alert badge**: Warning triangle on files with 0 bytes in list and grid views (local + remote panels)
-- **Release CHANGELOG import**: "Import from CHANGELOG" button in Release Browser reads `CHANGELOG.md` from the repository and auto-populates the release body with the matching version section
+- **GitHub Pages browser**: Site info, deployment history, build status, custom domain, and "Open Site" button for repos with GitHub Pages enabled (auto-detected via API)
+- **GitHub PAT vault storage**: Personal Access Tokens encrypted in vault on first use; pre-populated for new connections to different repos
+- **GitHub OAuth vault storage**: Device Flow tokens stored in vault; "Already authorized" badge for instant multi-repo setup
+- **GitHub multi-repo**: Connect to multiple GitHub repositories simultaneously with separate tabs (APP, PAT, OAuth modes coexist)
+- **GitHub context menu icons**: "Commit" with GitHub icon replaces "Upload" on local panel; "Delete" and "Rename" show GitHub icon on remote panel
+- **Release CHANGELOG import**: "Import from CHANGELOG" button reads `CHANGELOG.md` from repo and auto-populates release body matching the tag version
+- **Release form improvements**: Wider dialog (max-w-2xl), markdown preview toggle, smart tag suggestion (next patch version), resizable textarea
 - **`github_read_file` command**: Generic Tauri command to read any text file from the connected GitHub repository
-- **9 new i18n keys**: GitHub PEM vault, token status, 0B warning, token duration in 47 languages
+- **12 new i18n keys**: GitHub Pages, PEM vault, token status, 0B warning, context menu, auth status in 47 languages
 
 #### Changed
 

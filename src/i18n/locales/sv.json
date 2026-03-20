@@ -3405,7 +3405,20 @@
             "pemEmpty": "PEM-filen är tom. Vänligen ladda ner en ny privat nyckel från dina GitHub App-inställningar.",
             "pemStoredInVault": "Din PEM-nyckel ar nu krypterad (AES-256) och sakert lagrad i vault. For din sakerhet, radera eller sakra den ursprungliga .pem-filen — AeroFTP behover den inte langre.",
             "pemVaultBadge": "PEM-nyckel lagrad i vault",
-            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect.",
+            "pemVaultReady": "[NEEDS TRANSLATION] PEM key found in vault — ready to connect",
+            "importChangelog": "[NEEDS TRANSLATION] Import from CHANGELOG",
+            "pagesOpenSite": "[NEEDS TRANSLATION] Open Site",
+            "pagesRebuild": "[NEEDS TRANSLATION] Rebuild",
+            "pagesBuilds": "[NEEDS TRANSLATION] Deployment History",
+            "pagesNoBuilds": "[NEEDS TRANSLATION] No deployments found.",
+            "pagesNotEnabled": "[NEEDS TRANSLATION] GitHub Pages is not enabled for this repository.",
+            "pagesEnableHint": "[NEEDS TRANSLATION] Enable it from repository Settings > Pages on GitHub.",
+            "pagesWorkflowHint": "[NEEDS TRANSLATION] Deployments are managed by GitHub Actions. Push a commit to trigger a new build.",
+            "importChangelogTooltip": "[NEEDS TRANSLATION] Read CHANGELOG.md from repository and extract the section matching the tag version",
+            "renameCommit": "[NEEDS TRANSLATION] Rename",
+            "deleteCommit": "[NEEDS TRANSLATION] Delete",
+            "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
         }
     }
 }

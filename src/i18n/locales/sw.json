@@ -3405,7 +3405,20 @@
             "pemEmpty": "Faili ya PEM ni tupu. Tafadhali pakua ufunguo mpya wa faragha kutoka mipangilio yako ya GitHub App.",
             "pemStoredInVault": "Ufunguo wako wa PEM sasa umesimbwa kwa njia fiche (AES-256) na kuhifadhiwa kwa usalama katika vault. Kwa usalama wako, futa au linda faili asili ya .pem — AeroFTP haihitaji tena.",
             "pemVaultBadge": "Ufunguo wa PEM umehifadhiwa kwenye vault",
-            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect.",
+            "pemVaultReady": "[NEEDS TRANSLATION] PEM key found in vault — ready to connect",
+            "importChangelog": "[NEEDS TRANSLATION] Import from CHANGELOG",
+            "pagesOpenSite": "[NEEDS TRANSLATION] Open Site",
+            "pagesRebuild": "[NEEDS TRANSLATION] Rebuild",
+            "pagesBuilds": "[NEEDS TRANSLATION] Deployment History",
+            "pagesNoBuilds": "[NEEDS TRANSLATION] No deployments found.",
+            "pagesNotEnabled": "[NEEDS TRANSLATION] GitHub Pages is not enabled for this repository.",
+            "pagesEnableHint": "[NEEDS TRANSLATION] Enable it from repository Settings > Pages on GitHub.",
+            "pagesWorkflowHint": "[NEEDS TRANSLATION] Deployments are managed by GitHub Actions. Push a commit to trigger a new build.",
+            "importChangelogTooltip": "[NEEDS TRANSLATION] Read CHANGELOG.md from repository and extract the section matching the tag version",
+            "renameCommit": "[NEEDS TRANSLATION] Rename",
+            "deleteCommit": "[NEEDS TRANSLATION] Delete",
+            "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
         }
     }
 }

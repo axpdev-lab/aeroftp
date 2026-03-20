@@ -13,6 +13,7 @@ mod errors;
 mod graphql;
 mod model;
 mod rate_limit;
+pub(crate) mod pages;
 mod releases_mode;
 mod repo_mode;
 
@@ -680,6 +681,83 @@ impl GitHubProvider {
             return Self::normalise_path(clean);
         }
         Self::normalise_path(&format!("{}/{}", self.current_path, clean))
+    }
+
+    // ── GitHub Pages ─────────────────────────────────────────────
+
+    /// Get Pages site info. Returns Ok(None) if Pages is not enabled.
+    pub async fn get_pages_info(&mut self) -> Result<Option<pages::PagesSite>, ProviderError> {
+        match pages::get_pages_site(&mut self.client, &self.owner, &self.repo).await {
+            Ok(site) => Ok(Some(site)),
+            Err(GitHubError::NotFound(_))
+            | Err(GitHubError::RepoNotFound)
+            | Err(GitHubError::PathNotFound(_))
+            | Err(GitHubError::ApiError { status: 404, .. }) => Ok(None),
+            Err(e) => Err(ProviderError::from(e)),
+        }
+    }
+
+    /// List recent Pages builds.
+    pub async fn list_pages_builds(&mut self) -> Result<Vec<pages::PagesBuild>, ProviderError> {
+        pages::list_pages_builds(&mut self.client, &self.owner, &self.repo)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Get latest Pages build.
+    pub async fn get_latest_pages_build(&mut self) -> Result<pages::PagesBuild, ProviderError> {
+        pages::get_latest_build(&mut self.client, &self.owner, &self.repo)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Trigger a Pages rebuild (legacy build_type only).
+    pub async fn trigger_pages_build(&mut self) -> Result<pages::PagesBuildStatus, ProviderError> {
+        pages::request_build(&mut self.client, &self.owner, &self.repo)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Update Pages configuration.
+    pub async fn update_pages_config(
+        &mut self,
+        cname: Option<&str>,
+        https_enforced: Option<bool>,
+        source_branch: Option<&str>,
+        source_path: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        pages::update_pages_config(
+            &mut self.client, &self.owner, &self.repo,
+            cname, https_enforced, source_branch, source_path,
+        )
+        .await
+        .map_err(ProviderError::from)
+    }
+
+    /// Check DNS health for custom domain.
+    pub async fn pages_health_check(&mut self) -> Result<pages::PagesHealthCheck, ProviderError> {
+        pages::get_health_check(&mut self.client, &self.owner, &self.repo)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Enable Pages on the repository.
+    pub async fn enable_pages(
+        &mut self,
+        branch: &str,
+        path: &str,
+        build_type: &str,
+    ) -> Result<pages::PagesSite, ProviderError> {
+        pages::create_pages_site(&mut self.client, &self.owner, &self.repo, branch, path, build_type)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Disable Pages on the repository.
+    pub async fn disable_pages(&mut self) -> Result<(), ProviderError> {
+        pages::delete_pages_site(&mut self.client, &self.owner, &self.repo)
+            .await
+            .map_err(ProviderError::from)
     }
 }
 
