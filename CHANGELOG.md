@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.5] - 2026-03-20
 
-### SFTP Upload Fix & Download Safety
+### SFTP Upload Fix, GitHub Integration Pro & Download Safety
 
-Critical fix for SFTP file uploads producing 0-byte files, plus atomic download writes across all 22 providers to prevent data corruption on interrupted transfers.
+Critical fix for SFTP file uploads, complete GitHub integration with multi-repo, co-authoring, Pages monitoring, and atomic download writes across all 22 providers.
+
+> *First release tagged and published entirely from AeroFTP with `aeroftp[bot]`.*
 
 #### Fixed
 
