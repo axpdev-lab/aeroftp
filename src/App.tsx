@@ -50,6 +50,7 @@ import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
 import { GitHubPagesBrowser } from './components/GitHubPagesBrowser';
+import { GitHubActionsBrowser } from './components/GitHubActionsBrowser';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
 import { MegaTrashManager } from './components/MegaTrashManager';
 import { FileLuTrashManager } from './components/FileLuTrashManager';
@@ -343,6 +344,7 @@ const App: React.FC = () => {
   const [gitHubBranches, setGitHubBranches] = useState<Array<{ name: string; protected: boolean }>>([]);
   const [showGitHubReleaseBrowser, setShowGitHubReleaseBrowser] = useState(false);
   const [showGitHubPages, setShowGitHubPages] = useState(false);
+  const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
 
   // SEC-P1-06: TOFU host key dialog state
@@ -1216,9 +1218,14 @@ const App: React.FC = () => {
   }, [sortFoldersFirst]);
 
   const sortedRemoteFiles = useMemo(() => {
-    const source = remoteSearchResults !== null ? remoteSearchResults : remoteFiles;
+    let source = remoteSearchResults !== null ? remoteSearchResults : remoteFiles;
+    // Client-side live filter when search bar is open (same as local panel)
+    if (remoteSearchResults === null && remoteSearchQuery.trim()) {
+      const q = remoteSearchQuery.trim().toLowerCase();
+      source = source.filter(f => f.name.toLowerCase().includes(q));
+    }
     return sortFiles(source, remoteSortField, remoteSortOrder);
-  }, [remoteFiles, remoteSearchResults, remoteSortField, remoteSortOrder, sortFiles]);
+  }, [remoteFiles, remoteSearchResults, remoteSearchQuery, remoteSortField, remoteSortOrder, sortFiles]);
   const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFiles]);
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
@@ -6504,6 +6511,10 @@ const App: React.FC = () => {
           isOpen={showGitHubPages}
           onClose={() => setShowGitHubPages(false)}
         />
+        <GitHubActionsBrowser
+          isOpen={showGitHubActions}
+          onClose={() => setShowGitHubActions(false)}
+        />
         <GitHubReleaseBrowser
           isOpen={showGitHubReleaseBrowser}
           onClose={() => setShowGitHubReleaseBrowser(false)}
@@ -7519,15 +7530,18 @@ const App: React.FC = () => {
                             <Globe size={13} />
                           </button>
                         )}
+                        <button
+                          onClick={() => setShowGitHubActions(true)}
+                          className="flex-shrink-0 p-1.5 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                          title="GitHub Actions"
+                        >
+                          <Zap size={13} />
+                        </button>
                       </>
                     )}
-                    {isConnected && (() => {
-                      const noSearchProtocols = ['ftp', 'ftps', 'sftp', 'webdav', 's3', 'github', 'azure'];
-                      const searchDisabled = noSearchProtocols.includes(getActiveProviderProtocol() || '');
-                      return (
+                    {isConnected && (
                       <button
                         onClick={() => {
-                          if (searchDisabled) return;
                           if (remoteSearchResults !== null) {
                             setRemoteSearchResults(null);
                             setRemoteSearchQuery('');
@@ -7535,14 +7549,12 @@ const App: React.FC = () => {
                             setShowRemoteSearchBar(prev => !prev);
                           }
                         }}
-                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${searchDisabled ? 'text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-70' : remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                        title={searchDisabled ? 'Search not supported for this protocol' : remoteSearchResults !== null ? 'Clear search' : 'Search files'}
-                        disabled={searchDisabled}
+                        className={`flex-shrink-0 p-1.5 rounded transition-colors ${remoteSearchResults !== null ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                        title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
                       >
                         {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
                       </button>
-                      );
-                    })()}
+                    )}
                     {debugMode && isConnected && (
                       <button
                         onClick={() => {
@@ -7582,8 +7594,8 @@ const App: React.FC = () => {
                         className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
                       />
                       {remoteSearching && <RefreshCw size={14} className="animate-spin text-blue-500 flex-shrink-0" />}
-                      {remoteSearchResults !== null && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: remoteSearchResults.length })}</span>
+                      {remoteSearchQuery.trim() && (
+                        <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{sortedRemoteFiles.length} results</span>
                       )}
                       <button
                         onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}

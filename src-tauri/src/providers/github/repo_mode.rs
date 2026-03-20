@@ -433,7 +433,7 @@ impl GitHubProvider {
         };
 
         let default_msg = format!("Update {} via AeroFTP", filename);
-        let message = commit_message.unwrap_or(&default_msg).to_string();
+        let message = self.with_co_author(commit_message.unwrap_or(&default_msg));
 
         let body = GitHubContentUpdate {
             message,
@@ -496,7 +496,7 @@ impl GitHubProvider {
         let sha = self.resolve_sha(remote_path).await?;
 
         let default_msg = format!("Delete {} via AeroFTP", filename);
-        let message = commit_message.unwrap_or(&default_msg).to_string();
+        let message = self.with_co_author(commit_message.unwrap_or(&default_msg));
 
         let body = GitHubContentDelete {
             message,
@@ -557,7 +557,7 @@ impl GitHubProvider {
 
         let gitkeep_path = format!("{}/.gitkeep", norm);
         let default_msg = format!("Create directory {} via AeroFTP", norm);
-        let message = commit_message.unwrap_or(&default_msg).to_string();
+        let message = self.with_co_author(commit_message.unwrap_or(&default_msg));
 
         let body = GitHubContentUpdate {
             message,

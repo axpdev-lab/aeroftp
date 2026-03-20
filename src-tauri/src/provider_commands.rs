@@ -4849,3 +4849,89 @@ pub async fn github_batch_commit(
         "deletions_count": deletions.len(),
     }))
 }
+
+// ── GitHub Actions ────────────────────────────────────────────────
+
+/// List recent GitHub Actions workflow runs
+#[tauri::command]
+pub async fn github_list_actions_runs(
+    state: State<'_, ProviderState>,
+    branch: Option<String>,
+    per_page: Option<u8>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let runs = github
+        .list_actions_runs(branch.as_deref(), per_page.unwrap_or(20))
+        .await
+        .map_err(|e| format!("Failed to list Actions runs: {}", e))?;
+    Ok(serde_json::to_value(runs).unwrap_or_default())
+}
+
+/// Re-run a GitHub Actions workflow
+#[tauri::command]
+pub async fn github_rerun_workflow(
+    state: State<'_, ProviderState>,
+    run_id: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github.rerun_actions_workflow(run_id).await
+        .map_err(|e| format!("Failed to re-run workflow: {}", e))
+}
+
+/// Re-run only failed jobs in a GitHub Actions workflow
+#[tauri::command]
+pub async fn github_rerun_failed_jobs(
+    state: State<'_, ProviderState>,
+    run_id: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github.rerun_failed_jobs(run_id).await
+        .map_err(|e| format!("Failed to re-run failed jobs: {}", e))
+}
+
+/// Cancel an in-progress GitHub Actions workflow run
+#[tauri::command]
+pub async fn github_cancel_workflow(
+    state: State<'_, ProviderState>,
+    run_id: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    github.cancel_actions_run(run_id).await
+        .map_err(|e| format!("Failed to cancel workflow: {}", e))
+}

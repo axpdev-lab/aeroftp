@@ -231,6 +231,18 @@ impl GitHubHttpClient {
             .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
     }
 
+    /// `POST` with empty body. Returns `()` on 2xx.
+    /// Used for Actions re-run / cancel endpoints that return 201/202.
+    pub async fn post_empty(
+        &mut self,
+        url: &str,
+    ) -> Result<(), GitHubError> {
+        let full_url = self.resolve_url(url);
+        let builder = self.request(Method::POST, &full_url);
+        self.execute(builder, None).await?;
+        Ok(())
+    }
+
     /// `PATCH` with a JSON body; returns the response JSON.
     pub async fn patch_json(
         &mut self,

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.6] - 2026-03-21
+
+### GitHub Actions Monitor, Search Filter & Co-Authoring Fix
+
+Complete GitHub CI/CD monitoring with Actions workflow panel, universal file search filter across all 22 providers, and co-authoring fix ensuring `aeroftp[bot]` appears as repository contributor.
+
+> *Tagged and published from AeroFTP with `aeroftp[bot]`.*
+
+#### Added
+
+- **GitHub Actions browser**: Live workflow runs monitor with status semaphore (green/amber/red), duration, commit SHA, actor, branch. Re-run all jobs, re-run failed only, cancel in-progress — all from the app. Auto-polls every 15s when runs are active
+- **GitHub code search**: `find()` implementation via Git Trees API with recursive listing and case-insensitive filename matching
+- **Universal file filter**: Client-side live filter enabled for all 22 providers (was disabled for FTP, SFTP, WebDAV, S3, Azure, GitHub). Type to filter files in current directory with result counter
+- **GitHub App credentials vault**: App ID and Installation ID saved alongside PEM in vault. New connections pre-populate all fields — just enter the repo name
+- **GitHub PAT vault storage**: Personal Access Tokens encrypted in vault on first use; pre-populated for new connections to different repos
+- **GitHub OAuth vault storage**: Device Flow tokens stored in vault; "Already authorized" badge for instant multi-repo setup
+- **GitHub connection form UX**: Auth method tabs hidden until clicked (no default selection), locked fields with "Edit" link (S3 pattern), "PEM found in vault" auto-detection
+- **4 Tauri commands**: `github_list_actions_runs`, `github_rerun_workflow`, `github_rerun_failed_jobs`, `github_cancel_workflow`
+
+#### Fixed
+
+- **GitHub co-authoring contributor display**: Commits via App mode now use `Co-authored-by` trailer ensuring `aeroftp[bot]` appears as contributor (not just committer) on GitHub
+- **GitHub PEM reconnection**: Token auto-refresh on connect using vault-stored PEM — no manual re-import needed after token expiry
+- **Remote search 0 results**: Search bar was calling API-based `provider_find` on Enter but not applying client-side filter. Now filters live on keystroke
+- **Version bump**: All 5 version files updated to 3.0.6 (was showing 3.0.4 in splash screen on v3.0.5 release)
+
+#### Changed
+
+- **Audit remediation**: 4 findings fixed from 3-agent code review — setState side effect in polling, dead code removal, deduplicated methods, unified action handlers
+- **`post_empty` HTTP method**: Added to GitHub HTTP client for Actions API endpoints that return 201/202 with no body
+
 ## [3.0.5] - 2026-03-20
 
 ### SFTP Upload Fix, GitHub Integration Pro & Download Safety

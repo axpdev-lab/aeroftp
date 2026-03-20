@@ -13,6 +13,7 @@ mod errors;
 mod graphql;
 mod model;
 mod rate_limit;
+pub(crate) mod actions;
 pub(crate) mod pages;
 mod releases_mode;
 mod repo_mode;
@@ -198,24 +199,12 @@ impl GitHubProvider {
         self.repo_private
     }
 
-    /// Get the committer for content operations.
-    /// - Installation token (.pem): returns AeroFTP bot identity with rocket logo
-    /// - PAT / Device Flow: returns None, GitHub uses the authenticated user's identity and avatar
-    pub fn content_committer(&self) -> Option<GitHubCommitter> {
+    /// Owner identity for commits (both committer and author fields).
+    /// - Installation token (.pem): returns the owner's identity so their avatar appears.
+    ///   The bot is added via Co-authored-by trailer in the commit message.
+    /// - PAT / Device Flow: returns None, GitHub uses the authenticated user's identity.
+    fn owner_identity(&self) -> Option<GitHubCommitter> {
         if self.is_bot_token {
-            Some(GitHubCommitter::default())
-        } else {
-            None
-        }
-    }
-
-    /// Get the author for content operations.
-    /// - Installation token (.pem): returns the authenticated user's identity so both
-    ///   the bot (committer) and the human (author) appear on the commit.
-    /// - PAT / Device Flow: returns None (GitHub uses the token owner as both).
-    pub fn content_author(&self) -> Option<GitHubCommitter> {
-        if self.is_bot_token {
-            // Use the repo owner as author — their noreply email ensures the avatar shows
             let email = format!("{}@users.noreply.github.com", self.owner);
             Some(GitHubCommitter {
                 name: self.owner.clone(),
@@ -223,6 +212,27 @@ impl GitHubProvider {
             })
         } else {
             None
+        }
+    }
+
+    pub fn content_committer(&self) -> Option<GitHubCommitter> {
+        self.owner_identity()
+    }
+
+    pub fn content_author(&self) -> Option<GitHubCommitter> {
+        self.owner_identity()
+    }
+
+    /// Append Co-authored-by trailer for bot mode.
+    /// This ensures aeroftp[bot] appears as contributor on the commit.
+    pub fn with_co_author(&self, message: &str) -> String {
+        if self.is_bot_token {
+            format!(
+                "{}\n\nCo-authored-by: aeroftp[bot] <268949222+aeroftp[bot]@users.noreply.github.com>",
+                message
+            )
+        } else {
+            message.to_string()
         }
     }
 
@@ -741,6 +751,40 @@ impl GitHubProvider {
             .map_err(ProviderError::from)
     }
 
+    // ── GitHub Actions ────────────────────────────────────────────
+
+    /// List recent workflow runs.
+    pub async fn list_actions_runs(
+        &mut self,
+        branch: Option<&str>,
+        per_page: u8,
+    ) -> Result<Vec<actions::WorkflowRunInfo>, ProviderError> {
+        actions::list_workflow_runs(&mut self.client, &self.owner, &self.repo, branch, per_page)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Re-run a workflow.
+    pub async fn rerun_actions_workflow(&mut self, run_id: u64) -> Result<(), ProviderError> {
+        actions::rerun_workflow(&mut self.client, &self.owner, &self.repo, run_id)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Re-run only failed jobs.
+    pub async fn rerun_failed_jobs(&mut self, run_id: u64) -> Result<(), ProviderError> {
+        actions::rerun_failed_jobs(&mut self.client, &self.owner, &self.repo, run_id)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Cancel an in-progress workflow run.
+    pub async fn cancel_actions_run(&mut self, run_id: u64) -> Result<(), ProviderError> {
+        actions::cancel_workflow_run(&mut self.client, &self.owner, &self.repo, run_id)
+            .await
+            .map_err(ProviderError::from)
+    }
+
     /// Enable Pages on the repository.
     pub async fn enable_pages(
         &mut self,
@@ -1195,9 +1239,9 @@ impl StorageProvider for GitHubProvider {
             .next()
             .unwrap_or(&resolved);
         let message = if sha.is_some() {
-            format!("Update {}", file_name)
+            self.with_co_author(&format!("Update {}", file_name))
         } else {
-            format!("Create {}", file_name)
+            self.with_co_author(&format!("Create {}", file_name))
         };
 
         let update = GitHubContentUpdate {
@@ -1291,7 +1335,7 @@ impl StorageProvider for GitHubProvider {
         let gitkeep_path = format!("{}/.gitkeep", resolved);
 
         let update = GitHubContentUpdate {
-            message: format!("Create directory {}", resolved),
+            message: self.with_co_author(&format!("Create directory {}", resolved)),
             content: String::new(), // empty file
             sha: None,
             branch: Some(self.content_branch().to_string()),
@@ -1357,10 +1401,10 @@ impl StorageProvider for GitHubProvider {
         };
 
         let del = GitHubContentDelete {
-            message: format!(
+            message: self.with_co_author(&format!(
                 "Delete {}",
                 resolved.rsplit('/').next().unwrap_or(&resolved)
-            ),
+            )),
             sha,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
@@ -1444,11 +1488,11 @@ impl StorageProvider for GitHubProvider {
             &data,
         );
         let update = GitHubContentUpdate {
-            message: format!(
+            message: self.with_co_author(&format!(
                 "Rename {} -> {}",
                 from.rsplit('/').next().unwrap_or(from),
                 to.rsplit('/').next().unwrap_or(to),
-            ),
+            )),
             content: b64,
             sha: None,
             branch: Some(self.content_branch().to_string()),
@@ -1615,6 +1659,78 @@ impl StorageProvider for GitHubProvider {
             map.insert("git-sha1".to_string(), sha.clone());
         }
         Ok(map)
+    }
+
+    fn supports_find(&self) -> bool {
+        true
+    }
+
+    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        // Use Git Trees API with recursive flag — lists all files in repo
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+            self.owner, self.repo, urlencoding::encode(self.active_branch())
+        );
+
+        #[derive(serde::Deserialize)]
+        struct TreeResponse {
+            tree: Vec<TreeItem>,
+        }
+        #[derive(serde::Deserialize)]
+        struct TreeItem {
+            path: String,
+            #[serde(rename = "type")]
+            item_type: String,
+            sha: String,
+            size: Option<u64>,
+        }
+
+        let response: TreeResponse = self
+            .client
+            .get_json(&url)
+            .await
+            .map_err(ProviderError::from)?;
+
+        let pattern_lower = pattern.to_lowercase();
+
+        let entries = response
+            .tree
+            .into_iter()
+            .filter(|item| {
+                // Match filename or path against pattern (case-insensitive)
+                let name = item.path.rsplit('/').next().unwrap_or(&item.path);
+                name.to_lowercase().contains(&pattern_lower)
+                    || item.path.to_lowercase().contains(&pattern_lower)
+            })
+            .take(100)
+            .map(|item| {
+                let name = item.path.rsplit('/').next().unwrap_or(&item.path).to_string();
+                RemoteEntry {
+                    name,
+                    path: item.path,
+                    is_dir: item.item_type == "tree",
+                    size: item.size.unwrap_or(0),
+                    modified: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: {
+                        let mut m = HashMap::new();
+                        m.insert("sha".to_string(), item.sha);
+                        m
+                    },
+                }
+            })
+            .collect();
+
+        Ok(entries)
     }
 }
 

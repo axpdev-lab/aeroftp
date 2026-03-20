@@ -137,6 +137,16 @@
   </languages>
 
   <releases>
+    <release version="3.0.6" date="2026-03-21">
+      <description>
+        <p>GitHub Actions monitor with live workflow status, re-run, and cancel. Universal file search filter for all 22 providers. GitHub App co-authoring fix for proper contributor attribution. PEM, PAT, and OAuth credentials stored in encrypted vault for instant multi-repo setup. 4-finding code audit remediation.</p>
+      </description>
+    </release>
+    <release version="3.0.5" date="2026-03-20">
+      <description>
+        <p>Critical SFTP upload fix: replaced russh-sftp write backend with ssh2/SCP for reliable file delivery. Atomic download writes across all 22 providers. Complete GitHub integration: multi-repo, Pages browser, co-authoring with aeroftp[bot], PEM vault storage, CHANGELOG import in Release Browser.</p>
+      </description>
+    </release>
     <release version="3.0.4" date="2026-03-19">
       <description>
         <p>GitHub Integration: Release Browser with create, download, and delete. PR creation button in branch workflow. Batch commit via GraphQL. Public/private repository badge. Critical fix: Monaco editor preview and save now works on all 23 protocols, not just FTP/SFTP. 8 CLI security audit findings resolved. Snap Store auto-publish re-enabled.</p>
