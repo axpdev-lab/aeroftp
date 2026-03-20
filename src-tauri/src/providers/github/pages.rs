@@ -124,12 +124,9 @@ pub async fn list_pages_builds(
     struct Deployment {
         id: Option<u64>,
         sha: Option<String>,
-        #[serde(rename = "ref")]
-        git_ref: Option<String>,
         created_at: Option<String>,
         updated_at: Option<String>,
         creator: Option<PagesUser>,
-        description: Option<String>,
     }
 
     let deployments: Vec<Deployment> = client.get_json(&deploy_url).await.unwrap_or_default();
@@ -148,7 +145,6 @@ pub async fn list_pages_builds(
             #[derive(Deserialize)]
             struct DeployStatus {
                 state: Option<String>,
-                description: Option<String>,
             }
 
             if let Ok(statuses) = client.get_json::<Vec<DeployStatus>>(&status_url).await {
