@@ -74,6 +74,24 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   const [formPrerelease, setFormPrerelease] = useState(false);
   const [creating, setCreating] = useState(false);
   const [importingChangelog, setImportingChangelog] = useState(false);
+  const [previewBody, setPreviewBody] = useState(false);
+
+  /** Suggest next patch version from existing releases */
+  const suggestedTag = React.useMemo(() => {
+    if (releases.length === 0) return 'v1.0.0';
+    // Find latest semver tag
+    const sorted = [...releases]
+      .map(r => r.tag.replace(/^v/, ''))
+      .filter(t => /^\d+\.\d+\.\d+/.test(t))
+      .sort((a, b) => {
+        const [a1, a2, a3] = a.split('.').map(Number);
+        const [b1, b2, b3] = b.split('.').map(Number);
+        return b1 - a1 || b2 - a2 || b3 - a3;
+      });
+    if (sorted.length === 0) return 'v1.0.0';
+    const [maj, min, patch] = sorted[0].split('.').map(Number);
+    return `v${maj}.${min}.${patch + 1}`;
+  }, [releases]);
 
   /** Extract a version section from CHANGELOG.md content */
   const extractChangelogSection = useCallback((content: string, tag: string): string | null => {
@@ -268,7 +286,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in bg-white dark:bg-gray-800"
+        className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in bg-white dark:bg-gray-800"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -360,6 +378,9 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             onCreate={handleCreate}
             onImportChangelog={handleImportChangelog}
             importingChangelog={importingChangelog}
+            suggestedTag={suggestedTag}
+            previewBody={previewBody}
+            onTogglePreview={() => setPreviewBody(p => !p)}
           />
         ) : (
           <ReleaseList
@@ -681,12 +702,15 @@ interface CreateReleaseFormProps {
   onCreate: () => void;
   onImportChangelog: () => void;
   importingChangelog: boolean;
+  suggestedTag: string;
+  previewBody: boolean;
+  onTogglePreview: () => void;
 }
 
 const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
   tag, name, body, draft, prerelease, creating,
   onTagChange, onNameChange, onBodyChange, onDraftChange, onPrereleaseChange, onCreate,
-  onImportChangelog, importingChangelog,
+  onImportChangelog, importingChangelog, suggestedTag, previewBody, onTogglePreview,
 }) => {
   const t = useTranslation();
 
@@ -710,7 +734,7 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
           type="text"
           value={tag}
           onChange={e => onTagChange(e.target.value)}
-          placeholder="v1.0.0"
+          placeholder={suggestedTag}
           className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2"
           style={inputStyle}
         />
@@ -754,15 +778,43 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
             {importingChangelog ? <Loader2 size={10} className="animate-spin" /> : <FileText size={10} />}
             {t('github.importChangelog') || 'Import from CHANGELOG'}
           </button>
+          {body.trim() && (
+            <button
+              type="button"
+              onClick={onTogglePreview}
+              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors hover:opacity-80"
+              style={{ color: previewBody ? 'var(--color-accent)' : 'var(--color-text-secondary)' }}
+            >
+              {previewBody ? 'Edit' : 'Preview'}
+            </button>
+          )}
         </div>
-        <textarea
-          value={body}
-          onChange={e => onBodyChange(e.target.value)}
-          rows={8}
-          placeholder={t('github.releaseDescriptionPlaceholder') || 'Describe this release...'}
-          className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 resize-y"
-          style={inputStyle}
-        />
+        {previewBody ? (
+          <div
+            className="w-full px-3 py-2 text-sm rounded-lg border overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
+            style={{ ...inputStyle, minHeight: '12rem', maxHeight: '24rem' }}
+            dangerouslySetInnerHTML={{ __html: body
+              .replace(/#### /g, '<h4>')
+              .replace(/### /g, '<h3>')
+              .replace(/## /g, '<h2>')
+              .replace(/# /g, '<h1>')
+              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\n- /g, '\n<li>')
+              .replace(/<li>/g, '</li><li>')
+              .replace(/\n\n/g, '<br/><br/>')
+              .replace(/\n/g, '<br/>')
+            }}
+          />
+        ) : (
+          <textarea
+            value={body}
+            onChange={e => onBodyChange(e.target.value)}
+            rows={12}
+            placeholder={t('github.releaseDescriptionPlaceholder') || 'Describe this release...'}
+            className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 resize-y"
+            style={{ ...inputStyle, minHeight: '12rem' }}
+          />
+        )}
       </div>
 
       {/* Toggles */}
