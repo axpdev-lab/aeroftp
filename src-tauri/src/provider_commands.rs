@@ -4445,6 +4445,26 @@ pub async fn github_create_release(
     }))
 }
 
+/// Read a text file from the connected GitHub repository
+#[tauri::command]
+pub async fn github_read_file(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let bytes = provider
+        .download_to_bytes(&path)
+        .await
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    String::from_utf8(bytes)
+        .map_err(|e| format!("File is not valid UTF-8: {}", e))
+}
+
 /// Upload a file as a release asset
 #[tauri::command]
 pub async fn github_upload_release_asset(

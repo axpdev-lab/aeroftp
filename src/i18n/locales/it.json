@@ -3370,6 +3370,8 @@
             "branchProtectionInfo": "Upload, rinomine ed eliminazioni creano commit Git. Se il branch è protetto, verrà creato automaticamente un branch di lavoro e potrai aprire una Pull Request per unire le modifiche.",
             "releases": "Release GitHub",
             "createRelease": "Crea Release",
+            "importChangelog": "Importa da CHANGELOG",
+            "importChangelogTooltip": "Leggi CHANGELOG.md dal repository e estrai la sezione corrispondente alla versione del tag",
             "noReleases": "Nessuna release trovata",
             "tagName": "Nome tag",
             "releaseName": "Nome release",

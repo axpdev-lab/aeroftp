@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, X, Plus, ArrowLeft, Trash2, ChevronDown, ChevronRight,
-  FileDown, Download, Loader2, Tag, Calendar, FileBox, RefreshCw,
+  FileDown, Download, Loader2, Tag, Calendar, FileBox, RefreshCw, FileText,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -73,6 +73,46 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   const [formDraft, setFormDraft] = useState(false);
   const [formPrerelease, setFormPrerelease] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [importingChangelog, setImportingChangelog] = useState(false);
+
+  /** Extract a version section from CHANGELOG.md content */
+  const extractChangelogSection = useCallback((content: string, tag: string): string | null => {
+    // Normalize tag: "v3.0.5" -> "3.0.5"
+    const version = tag.replace(/^v/, '');
+    // Find "## [X.Y.Z]" or "## [vX.Y.Z]" header
+    const pattern = new RegExp(`^## \\[v?${version.replace(/\./g, '\\.')}\\].*$`, 'm');
+    const startMatch = content.match(pattern);
+    if (!startMatch || startMatch.index === undefined) return null;
+
+    // Find the next "## [" header after the match
+    const afterStart = startMatch.index + startMatch[0].length;
+    const nextSection = content.indexOf('\n## [', afterStart);
+    const section = nextSection === -1
+      ? content.slice(afterStart)
+      : content.slice(afterStart, nextSection);
+
+    return section.trim();
+  }, []);
+
+  /** Import body from CHANGELOG.md in the repository */
+  const handleImportChangelog = useCallback(async () => {
+    if (!formTag.trim()) return;
+    setImportingChangelog(true);
+    try {
+      const content = await invoke<string>('github_read_file', { path: 'CHANGELOG.md' });
+      const section = extractChangelogSection(content, formTag.trim());
+      if (section) {
+        setFormBody(section);
+      } else {
+        setFormBody(`_No section found for ${formTag.trim()} in CHANGELOG.md_`);
+      }
+    } catch (err) {
+      console.error('[GitHubReleaseBrowser] changelog import failed:', err);
+      setFormBody(`_Failed to import CHANGELOG: ${String(err)}_`);
+    } finally {
+      setImportingChangelog(false);
+    }
+  }, [formTag, extractChangelogSection]);
 
   const fetchReleases = useCallback(async () => {
     setLoading(true);
@@ -318,6 +358,8 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             onDraftChange={setFormDraft}
             onPrereleaseChange={setFormPrerelease}
             onCreate={handleCreate}
+            onImportChangelog={handleImportChangelog}
+            importingChangelog={importingChangelog}
           />
         ) : (
           <ReleaseList
@@ -637,11 +679,14 @@ interface CreateReleaseFormProps {
   onDraftChange: (v: boolean) => void;
   onPrereleaseChange: (v: boolean) => void;
   onCreate: () => void;
+  onImportChangelog: () => void;
+  importingChangelog: boolean;
 }
 
 const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
   tag, name, body, draft, prerelease, creating,
   onTagChange, onNameChange, onBodyChange, onDraftChange, onPrereleaseChange, onCreate,
+  onImportChangelog, importingChangelog,
 }) => {
   const t = useTranslation();
 
@@ -691,18 +736,31 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
 
       {/* Description */}
       <div>
-        <label
-          className="block text-xs font-medium mb-1"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          {t('github.releaseDescription') || 'Description'}
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label
+            className="text-xs font-medium"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            {t('github.releaseDescription') || 'Description'}
+          </label>
+          <button
+            type="button"
+            onClick={onImportChangelog}
+            disabled={importingChangelog || !tag.trim()}
+            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: 'var(--color-accent)' }}
+            title={t('github.importChangelog') || 'Import section from CHANGELOG.md'}
+          >
+            {importingChangelog ? <Loader2 size={10} className="animate-spin" /> : <FileText size={10} />}
+            {t('github.importChangelog') || 'Import from CHANGELOG'}
+          </button>
+        </div>
         <textarea
           value={body}
           onChange={e => onBodyChange(e.target.value)}
-          rows={4}
+          rows={8}
           placeholder={t('github.releaseDescriptionPlaceholder') || 'Describe this release...'}
-          className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 resize-none"
+          className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 resize-y"
           style={inputStyle}
         />
       </div>

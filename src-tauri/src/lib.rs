@@ -8018,6 +8018,7 @@ pub fn run() {
             provider_commands::github_list_releases,
             provider_commands::github_list_release_assets,
             provider_commands::github_create_release,
+            provider_commands::github_read_file,
             provider_commands::github_upload_release_asset,
             provider_commands::github_delete_release,
             provider_commands::github_delete_release_asset,

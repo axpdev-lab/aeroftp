@@ -3264,6 +3264,8 @@
       "branchProtectionInfo": "Uploads, renames, and deletes create Git commits. If the branch is protected, a working branch will be created automatically and you can open a Pull Request to merge your changes.",
       "releases": "GitHub Releases",
       "createRelease": "Create Release",
+      "importChangelog": "Import from CHANGELOG",
+      "importChangelogTooltip": "Read CHANGELOG.md from repository and extract the section matching the tag version",
       "noReleases": "No releases found",
       "tagName": "Tag name",
       "releaseName": "Release name",

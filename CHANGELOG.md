@@ -26,6 +26,8 @@ Critical fix for SFTP file uploads producing 0-byte files, plus atomic download 
 - **GitHub auth mode badge**: Colored badge (APP/PAT/OAuth) on saved GitHub servers for instant identification
 - **GitHub token countdown**: Live remaining time in saved server subtitle (green >15min, amber <15min, red expired) with auto-refresh messaging
 - **0 B file alert badge**: Warning triangle on files with 0 bytes in list and grid views (local + remote panels)
+- **Release CHANGELOG import**: "Import from CHANGELOG" button in Release Browser reads `CHANGELOG.md` from the repository and auto-populates the release body with the matching version section
+- **`github_read_file` command**: Generic Tauri command to read any text file from the connected GitHub repository
 - **9 new i18n keys**: GitHub PEM vault, token status, 0B warning, token duration in 47 languages
 
 #### Changed
