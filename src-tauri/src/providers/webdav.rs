@@ -15,7 +15,6 @@ use rand::Rng;
 use reqwest::{Client, Method, StatusCode};
 use secrecy::ExposeSecret;
 use std::collections::HashMap;
-use tokio::io::AsyncWriteExt;
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, WebDavConfig,
@@ -835,7 +834,7 @@ impl StorageProvider for WebDavProvider {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
                 let mut stream = response.bytes_stream();
-                let mut file = tokio::fs::File::create(local_path)
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
                 let mut downloaded: u64 = 0;
@@ -843,7 +842,7 @@ impl StorageProvider for WebDavProvider {
                 while let Some(chunk_result) = stream.next().await {
                     let chunk = chunk_result
                         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    file.write_all(&chunk)
+                    atomic.write_all(&chunk)
                         .await
                         .map_err(ProviderError::IoError)?;
                     downloaded += chunk.len() as u64;
@@ -851,7 +850,7 @@ impl StorageProvider for WebDavProvider {
                         progress(downloaded, total_size);
                     }
                 }
-                file.flush().await.map_err(ProviderError::IoError)?;
+                atomic.commit().await.map_err(ProviderError::IoError)?;
 
                 Ok(())
             }

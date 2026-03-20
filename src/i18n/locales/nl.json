@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Verplaatsen naar Prullenbak mislukt",
             "batchRenameResult": "{success} hernoemd, {errors} mislukt",
             "copyCompleted": "Kopiëren voltooid",
-            "localPathNotFound": "Lokale map \"{path}\" niet gevonden. Genavigeerd naar de thuismap."
+            "localPathNotFound": "Lokale map \"{path}\" niet gevonden. Genavigeerd naar de thuismap.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -3385,7 +3386,15 @@
             "createPr": "Pull Request aanmaken",
             "prTitle": "PR titel",
             "prBody": "Beschrijving (optioneel)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token verlopen — wordt automatisch vernieuwd bij verbinding met .pem",
+            "appTokenExpiringSoon": "Token verloopt binnenkort — wordt automatisch vernieuwd bij verbinding",
+            "pemNotFound": "PEM-bestand niet gevonden. Het is mogelijk verplaatst of verwijderd. Importeer het .pem-bestand opnieuw.",
+            "pemInvalidFormat": "Ongeldig PEM-sleutelformaat. Download een nieuwe privésleutel vanuit de GitHub App-instellingen en importeer opnieuw.",
+            "pemEmpty": "PEM-bestand is leeg. Download een nieuwe privésleutel vanuit uw GitHub App-instellingen.",
+            "pemStoredInVault": "Uw PEM-sleutel is nu versleuteld (AES-256) en veilig opgeslagen in de vault. Verwijder of beveilig voor uw veiligheid het originele .pem-bestand — AeroFTP heeft het niet meer nodig.",
+            "pemVaultBadge": "PEM-sleutel opgeslagen in vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

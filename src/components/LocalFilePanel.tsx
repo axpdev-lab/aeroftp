@@ -596,7 +596,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     <FileTagBadge tags={getTagsForFile(file.path)} />
                     {getSyncBadge(file.path, file.modified || undefined, true)}
                   </td>
-                  {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? formatBytes(file.size) : '-'}</td>}
+                  {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>}
                   {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
                   {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
                 </tr>
@@ -677,8 +677,11 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   </span>
                 )}
                 <FileTagBadge tags={getTagsForFile(file.path)} />
-                {!file.is_dir && file.size !== null && (
+                {!file.is_dir && file.size !== null && file.size > 0 && (
                   <span className="file-grid-size">{formatBytes(file.size)}</span>
+                )}
+                {!file.is_dir && file.size === 0 && (
+                  <span className="file-grid-size" title={t('toast.zeroByteWarning')}>&#9888; 0 B</span>
                 )}
               </div>
             ))}

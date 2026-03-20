@@ -15,7 +15,7 @@
 |----------|-----------|-------------|-------------------|-------------------|
 | **FTP** | None | Password | Universal Vault | N/A |
 | **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
-| **SFTP** | SSH | Password / SSH Key | Universal Vault | TOFU + known_hosts |
+| **SFTP** | SSH (hybrid: russh + ssh2/SCP) | Password / SSH Key | Universal Vault | TOFU + known_hosts |
 | **WebDAV** | HTTPS | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
 | **S3** | HTTPS | Access Key + Secret | Universal Vault | TLS Certificate |
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
@@ -257,7 +257,7 @@ Bidirectional directory synchronization compares local and remote files by times
 |----------|---------|--------|----------|----------|-------|
 | **FTP** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
 | **FTPS** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
-| **SFTP** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
+| **SFTP** | Yes | Yes (ssh2/SCP) | Yes | Yes | Uploads via ssh2/SCP fallback (russh write bug) |
 | **WebDAV** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **S3** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Google Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |

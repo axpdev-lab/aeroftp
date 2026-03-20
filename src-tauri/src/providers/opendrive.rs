@@ -1080,24 +1080,23 @@ impl StorageProvider for OpenDriveProvider {
         }
 
         let total = resp.content_length().unwrap_or(0);
-        let mut file = tokio::fs::File::create(local_path)
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(ProviderError::IoError)?;
 
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let mut downloaded = 0_u64;
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await.map_err(ProviderError::IoError)?;
+            atomic.write_all(&chunk).await.map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total);
             }
         }
-        file.flush().await.map_err(ProviderError::IoError)?;
+        atomic.commit().await.map_err(ProviderError::IoError)?;
         Ok(())
     }
 

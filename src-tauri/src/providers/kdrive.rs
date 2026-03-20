@@ -670,17 +670,16 @@ impl StorageProvider for KDriveProvider {
         // KD-002: Streaming download — write chunks progressively instead of buffering in RAM
         // KD-005: Call progress callback with bytes_written/total_size
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(ProviderError::IoError)?;
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
@@ -688,7 +687,7 @@ impl StorageProvider for KDriveProvider {
             }
         }
 
-        file.flush().await.map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+        atomic.commit().await.map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         kdrive_log(&format!("Downloaded {} ({} bytes)", filename, downloaded));
         Ok(())
@@ -1246,17 +1245,18 @@ impl StorageProvider for KDriveProvider {
 
         // Stream version download to file
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(ProviderError::IoError)?;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("Version download error: {}", e)))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }

@@ -1004,11 +1004,10 @@ impl StorageProvider for JottacloudProvider {
         }
 
         let total_size = resp.content_length().unwrap_or(0);
-        let mut file = tokio::fs::File::create(local_path).await.map_err(|e| {
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Create local file failed: {}", e))
         })?;
 
-        use tokio::io::AsyncWriteExt;
         let mut stream = resp.bytes_stream();
         use futures_util::StreamExt;
         let mut downloaded: u64 = 0;
@@ -1017,7 +1016,7 @@ impl StorageProvider for JottacloudProvider {
             let chunk = chunk.map_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
-            file.write_all(&chunk).await.map_err(|e| {
+            atomic.write_all(&chunk).await.map_err(|e| {
                 ProviderError::TransferFailed(format!("Write failed: {}", e))
             })?;
             downloaded += chunk.len() as u64;
@@ -1026,8 +1025,8 @@ impl StorageProvider for JottacloudProvider {
             }
         }
 
-        file.flush().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Flush failed: {}", e))
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 
         jotta_log(&format!("Downloaded {} ({} bytes)", resolved, downloaded));

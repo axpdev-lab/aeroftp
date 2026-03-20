@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Nepavyko perkelti į šiukšlinę",
             "batchRenameResult": "{success} pervadinta, {errors} nepavyko",
             "copyCompleted": "Kopijavimas baigtas",
-            "localPathNotFound": "Vietinis aplankas \"{path}\" nerastas. Pereita į pagrindinį katalogą."
+            "localPathNotFound": "Vietinis aplankas \"{path}\" nerastas. Pereita į pagrindinį katalogą.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -3395,7 +3396,15 @@
             "createPr": "Sukurti Pull Request",
             "prTitle": "PR antraštė",
             "prBody": "Aprašymas (neprivaloma)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token nebegalioja — bus automatiškai atnaujintas prisijungiant naudojant .pem",
+            "appTokenExpiringSoon": "Token netrukus nebegalios — bus automatiškai atnaujintas prisijungiant",
+            "pemNotFound": "PEM failas nerastas. Jis galėjo būti perkeltas arba ištrintas. Prašome iš naujo importuoti .pem failą.",
+            "pemInvalidFormat": "Neteisingas PEM rakto formatas. Atsisiųskite naują privatų raktą iš GitHub App nustatymų ir importuokite iš naujo.",
+            "pemEmpty": "PEM failas tuščias. Prašome atsisiųsti naują privatų raktą iš GitHub App nustatymų.",
+            "pemStoredInVault": "Jūsų PEM raktas dabar užšifruotas (AES-256) ir saugiai saugomas vault. Dėl savo saugumo ištrinkite arba apsaugokite originalų .pem failą — AeroFTP jo nebereikia.",
+            "pemVaultBadge": "PEM raktas saugomas vault saugykloje",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

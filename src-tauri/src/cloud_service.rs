@@ -888,6 +888,10 @@ impl CloudService {
                         let _ = provider.mkdir(&parent_path).await;
                     }
 
+                    tracing::info!(
+                        "AeroCloud: uploading local '{}' ({} bytes) to remote '{}'",
+                        local_info.path, local_info.size, remote_path
+                    );
                     provider
                         .upload(&local_info.path, &remote_path, None)
                         .await

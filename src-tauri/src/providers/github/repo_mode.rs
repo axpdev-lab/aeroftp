@@ -10,7 +10,6 @@ use base64::Engine;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tokio::io::AsyncWriteExt;
 
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 
@@ -360,7 +359,7 @@ impl GitHubProvider {
         let total_size = resp.content_length().unwrap_or(file_size);
         let mut stream = resp.bytes_stream();
 
-        let mut file = tokio::fs::File::create(local_path)
+        let mut atomic = crate::providers::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(ProviderError::IoError)?;
 
@@ -370,7 +369,7 @@ impl GitHubProvider {
             let chunk = chunk_result
                 .map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
 
-            file.write_all(&chunk)
+            atomic.write_all(&chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
 
@@ -381,7 +380,7 @@ impl GitHubProvider {
             }
         }
 
-        file.flush().await.map_err(ProviderError::IoError)?;
+        atomic.commit().await.map_err(ProviderError::IoError)?;
 
         gh_log(&format!("download_file complete: {} bytes", downloaded));
 
@@ -442,6 +441,7 @@ impl GitHubProvider {
             sha: existing_sha,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let encoded_path = norm
@@ -503,6 +503,7 @@ impl GitHubProvider {
             sha,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let encoded_path = norm
@@ -564,6 +565,7 @@ impl GitHubProvider {
             sha: None,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let encoded_path = gitkeep_path

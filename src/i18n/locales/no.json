@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Kunne ikke flytte til Papirkurv",
             "batchRenameResult": "{success} omdøpt, {errors} mislyktes",
             "copyCompleted": "Kopiering fullført",
-            "localPathNotFound": "Lokal mappe \"{path}\" ble ikke funnet. Navigert til hjemmekatalog."
+            "localPathNotFound": "Lokal mappe \"{path}\" ble ikke funnet. Navigert til hjemmekatalog.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -3414,7 +3415,15 @@
             "createPr": "Opprett Pull Request",
             "prTitle": "PR tittel",
             "prBody": "Beskrivelse (valgfritt)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token er utløpt — oppdateres automatisk ved tilkobling med .pem",
+            "appTokenExpiringSoon": "Token utløper snart — oppdateres automatisk ved tilkobling",
+            "pemNotFound": "PEM-filen ble ikke funnet. Den kan ha blitt flyttet eller slettet. Vennligst importer .pem-filen på nytt.",
+            "pemInvalidFormat": "Ugyldig PEM-nøkkelformat. Last ned en ny privat nøkkel fra GitHub App-innstillingene og importer på nytt.",
+            "pemEmpty": "PEM-filen er tom. Vennligst last ned en ny privat nøkkel fra GitHub App-innstillingene dine.",
+            "pemStoredInVault": "PEM-nøkkelen din er nå kryptert (AES-256) og lagret sikkert i vault. For din sikkerhet, slett eller sikre den opprinnelige .pem-filen — AeroFTP trenger den ikke lenger.",
+            "pemVaultBadge": "PEM-nøkkel lagret i vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

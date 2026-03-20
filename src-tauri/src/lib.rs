@@ -8012,6 +8012,8 @@ pub fn run() {
             provider_commands::github_device_flow_start,
             provider_commands::github_device_flow_complete,
             provider_commands::github_app_token_from_pem,
+            provider_commands::github_app_token_from_vault,
+            provider_commands::github_has_vault_pem,
             // GitHub Release management
             provider_commands::github_list_releases,
             provider_commands::github_list_release_assets,

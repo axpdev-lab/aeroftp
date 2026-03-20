@@ -2560,6 +2560,9 @@ async fn cmd_put(
                 }
             }
 
+            // Allow SSH transport to flush in-flight write data before closing.
+            // russh 0.57 buffers SFTP writes; disconnect before flush produces 0-byte files.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let _ = provider.disconnect().await;
             0
         }

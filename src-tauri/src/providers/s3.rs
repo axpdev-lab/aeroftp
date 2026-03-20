@@ -12,7 +12,6 @@ use futures_util::StreamExt;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use secrecy::ExposeSecret;
-use tokio::io::AsyncWriteExt;
 use tracing::{debug, info};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::HashMap;
@@ -1166,23 +1165,23 @@ impl StorageProvider for S3Provider {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
 
-                // H-01: Streaming download — write chunks as they arrive
+                // H-01: Streaming download — write chunks as they arrive (atomic)
                 let mut stream = response.bytes_stream();
-                let mut file = tokio::fs::File::create(local_path).await
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
                     .map_err(ProviderError::IoError)?;
                 let mut downloaded: u64 = 0;
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    file.write_all(&chunk).await
+                    atomic.write_all(&chunk).await
                         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     downloaded += chunk.len() as u64;
                     if let Some(ref progress) = on_progress {
                         progress(downloaded, total_size);
                     }
                 }
-                file.flush().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                atomic.commit().await
+                    .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
                 Ok(())
             }
@@ -2098,16 +2097,16 @@ impl StorageProvider for S3Provider {
         match response.status() {
             StatusCode::OK => {
                 let mut stream = response.bytes_stream();
-                let mut file = tokio::fs::File::create(local_path).await
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
                     .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    file.write_all(&chunk).await
+                    atomic.write_all(&chunk).await
                         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 }
-                file.flush().await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                atomic.commit().await
+                    .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
                 info!("Downloaded version '{}' of '{}' to '{}'", version_id, key, local_path);
                 Ok(())

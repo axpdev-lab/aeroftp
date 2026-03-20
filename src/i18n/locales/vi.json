@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Không thể chuyển vào Thùng rác",
             "batchRenameResult": "{success} đã đổi tên, {errors} thất bại",
             "copyCompleted": "Sao chép hoàn tất",
-            "localPathNotFound": "Không tìm thấy thư mục cục bộ \"{path}\". Đã điều hướng đến thư mục chính."
+            "localPathNotFound": "Không tìm thấy thư mục cục bộ \"{path}\". Đã điều hướng đến thư mục chính.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -3396,7 +3397,15 @@
             "createPr": "Tạo Pull Request",
             "prTitle": "Tiêu đề PR",
             "prBody": "Mô tả (tùy chọn)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token đã hết hạn — sẽ tự động làm mới khi kết nối bằng .pem",
+            "appTokenExpiringSoon": "Token sắp hết hạn — sẽ tự động làm mới khi kết nối",
+            "pemNotFound": "Không tìm thấy tệp PEM. Tệp có thể đã bị di chuyển hoặc xóa. Vui lòng nhập lại tệp .pem.",
+            "pemInvalidFormat": "Định dạng khóa PEM không hợp lệ. Tải xuống khóa riêng tư mới từ cài đặt GitHub App và nhập lại.",
+            "pemEmpty": "Tệp PEM trống. Vui lòng tải xuống khóa riêng tư mới từ cài đặt GitHub App của bạn.",
+            "pemStoredInVault": "Khoa PEM cua ban da duoc ma hoa (AES-256) va luu tru an toan trong vault. De dam bao an toan, hay xoa hoac bao ve tep .pem goc — AeroFTP khong con can tep do nua.",
+            "pemVaultBadge": "Khoa PEM duoc luu trong vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Gagal memindahkan ke Sampah",
             "batchRenameResult": "{success} diganti nama, {errors} gagal",
             "copyCompleted": "Penyalinan selesai",
-            "localPathNotFound": "Folder lokal \"{path}\" tidak ditemukan. Dinavigasi ke direktori beranda."
+            "localPathNotFound": "Folder lokal \"{path}\" tidak ditemukan. Dinavigasi ke direktori beranda.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -3395,7 +3396,15 @@
             "createPr": "Buat Pull Request",
             "prTitle": "Judul PR",
             "prBody": "Deskripsi (opsional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token kedaluwarsa — akan diperbarui otomatis saat terhubung menggunakan .pem",
+            "appTokenExpiringSoon": "Token akan segera kedaluwarsa — akan diperbarui otomatis saat terhubung",
+            "pemNotFound": "File PEM tidak ditemukan. File mungkin telah dipindahkan atau dihapus. Silakan impor ulang file .pem.",
+            "pemInvalidFormat": "Format kunci PEM tidak valid. Unduh kunci privat baru dari pengaturan GitHub App dan impor ulang.",
+            "pemEmpty": "File PEM kosong. Silakan unduh kunci privat baru dari pengaturan GitHub App Anda.",
+            "pemStoredInVault": "Kunci PEM Anda sekarang dienkripsi (AES-256) dan disimpan dengan aman di vault. Demi keamanan Anda, hapus atau amankan file .pem asli — AeroFTP tidak lagi membutuhkannya.",
+            "pemVaultBadge": "Kunci PEM tersimpan di vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

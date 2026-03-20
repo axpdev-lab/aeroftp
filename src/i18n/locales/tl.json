@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Nabigo ang paglipat sa Basurahan",
             "batchRenameResult": "{success} napalitan ang pangalan, {errors} nabigo",
             "copyCompleted": "Kumpleto na ang pagkopya",
-            "localPathNotFound": "Hindi nahanap ang lokal na folder na \"{path}\". Na-navigate sa home directory."
+            "localPathNotFound": "Hindi nahanap ang lokal na folder na \"{path}\". Na-navigate sa home directory.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -3415,7 +3416,15 @@
             "createPr": "Lumikha ng Pull Request",
             "prTitle": "Pamagat ng PR",
             "prBody": "Paglalarawan (opsyonal)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Nag-expire na ang token — awtomatikong mare-refresh sa pagkonekta gamit ang .pem",
+            "appTokenExpiringSoon": "Malapit nang mag-expire ang token — awtomatikong mare-refresh sa pagkonekta",
+            "pemNotFound": "Hindi natagpuan ang PEM file. Maaaring nailipat o nabura ito. Pakiimport muli ang .pem file.",
+            "pemInvalidFormat": "Di-wastong format ng PEM key. Mag-download ng bagong private key mula sa mga setting ng GitHub App at muling i-import.",
+            "pemEmpty": "Walang laman ang PEM file. Pakidownload ang bagong private key mula sa iyong mga setting ng GitHub App.",
+            "pemStoredInVault": "Ang iyong PEM key ay naka-encrypt na ngayon (AES-256) at ligtas na nakaimbak sa vault. Para sa iyong kaligtasan, burahin o protektahan ang orihinal na .pem file — hindi na ito kailangan ng AeroFTP.",
+            "pemVaultBadge": "PEM key nakaimbak sa vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

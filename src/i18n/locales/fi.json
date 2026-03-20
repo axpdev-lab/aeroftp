@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Siirtäminen roskakoriin epäonnistui",
             "batchRenameResult": "{success} nimetty uudelleen, {errors} epäonnistui",
             "copyCompleted": "Kopiointi valmis",
-            "localPathNotFound": "Paikallista kansiota \"{path}\" ei löydy. Siirryttiin kotihakemistoon."
+            "localPathNotFound": "Paikallista kansiota \"{path}\" ei löydy. Siirryttiin kotihakemistoon.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -3395,7 +3396,15 @@
             "createPr": "Luo Pull Request",
             "prTitle": "PR-otsikko",
             "prBody": "Kuvaus (valinnainen)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token vanhentunut — päivitetään automaattisesti yhdistettäessä .pem-tiedostolla",
+            "appTokenExpiringSoon": "Token vanhenee pian — päivitetään automaattisesti yhdistettäessä",
+            "pemNotFound": "PEM-tiedostoa ei löytynyt. Se on ehkä siirretty tai poistettu. Tuo .pem-tiedosto uudelleen.",
+            "pemInvalidFormat": "Virheellinen PEM-avainmuoto. Lataa uusi yksityinen avain GitHub App -asetuksista ja tuo se uudelleen.",
+            "pemEmpty": "PEM-tiedosto on tyhjä. Lataa uusi yksityinen avain GitHub App -asetuksistasi.",
+            "pemStoredInVault": "PEM-avaimesi on nyt salattu (AES-256) ja tallennettu turvallisesti vault-iin. Turvallisuutesi vuoksi poista tai suojaa alkuperäinen .pem-tiedosto — AeroFTP ei enää tarvitse sitä.",
+            "pemVaultBadge": "PEM key tallennettu vault-iin",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

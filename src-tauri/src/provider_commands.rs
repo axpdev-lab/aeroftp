@@ -4200,7 +4200,29 @@ pub async fn github_device_flow_complete(device_code: String, interval: u64) -> 
     crate::providers::github::auth::poll_for_token(&device_code, interval).await
 }
 
-/// GitHub App Bot Mode — Read .pem from disk and get installation token
+/// Vault key for a GitHub App PEM, keyed by app_id + installation_id
+fn github_pem_vault_key(app_id: &str, installation_id: &str) -> String {
+    format!("github_pem_{}_{}", app_id, installation_id)
+}
+
+/// Validate PEM contents: non-empty, correct RSA header
+fn validate_pem_contents(pem_contents: &str) -> Result<(), String> {
+    if pem_contents.trim().is_empty() {
+        return Err("PEM file is empty. Please download a new private key from GitHub App settings.".to_string());
+    }
+    if !pem_contents.contains("-----BEGIN RSA PRIVATE KEY-----")
+        && !pem_contents.contains("-----BEGIN PRIVATE KEY-----")
+    {
+        return Err(
+            "Invalid PEM format: file does not contain an RSA private key. \
+             Download a fresh .pem from GitHub > Settings > Developer settings > GitHub Apps > Private keys."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// GitHub App Bot Mode — Read .pem from disk, store in vault, and get installation token
 /// The private key never leaves the Rust backend — only the path is received from frontend
 #[tauri::command]
 pub async fn github_app_token_from_pem(
@@ -4210,14 +4232,35 @@ pub async fn github_app_token_from_pem(
 ) -> Result<serde_json::Value, String> {
     log::info!("GitHub App token: reading PEM from {}", pem_path);
 
+    // Check file exists before reading — provide actionable error
+    let path = std::path::Path::new(&pem_path);
+    if !path.exists() {
+        return Err(format!(
+            "PEM file not found: '{}'. The .pem file may have been moved or deleted. Please re-import it.",
+            pem_path
+        ));
+    }
+
     // Read PEM securely in backend — key never crosses IPC
     let pem_contents = std::fs::read_to_string(&pem_path)
-        .map_err(|e| format!("Failed to read .pem file '{}': {}", pem_path, e))?;
+        .map_err(|e| format!("Cannot read .pem file '{}': {}", pem_path, e))?;
 
     log::info!("GitHub App token: PEM read OK ({} bytes), validating...", pem_contents.len());
 
-    // Validate PEM
+    validate_pem_contents(&pem_contents)?;
+
+    // Validate PEM by attempting JWT generation
     crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
+
+    // Store PEM content in vault (encrypted AES-256-GCM) so user can delete the .pem file
+    let vault_key = github_pem_vault_key(&app_id, &installation_id);
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        if let Err(e) = store.store(&vault_key, &pem_contents) {
+            log::warn!("Could not store PEM in vault (non-fatal): {}", e);
+        } else {
+            log::info!("GitHub App PEM stored in vault as '{}'", vault_key);
+        }
+    }
 
     log::info!("GitHub App token: PEM valid, requesting installation token...");
 
@@ -4232,6 +4275,51 @@ pub async fn github_app_token_from_pem(
         "token": token_resp.token,
         "expires_at": token_resp.expires_at,
     }))
+}
+
+/// GitHub App Bot Mode — Read PEM from vault (previously imported) and refresh installation token
+/// Used for reconnection without needing the .pem file on disk
+#[tauri::command]
+pub async fn github_app_token_from_vault(
+    app_id: String,
+    installation_id: String,
+) -> Result<serde_json::Value, String> {
+    let vault_key = github_pem_vault_key(&app_id, &installation_id);
+    log::info!("GitHub App token: reading PEM from vault key '{}'", vault_key);
+
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready — cannot retrieve stored PEM".to_string())?;
+
+    let pem_contents = store.get(&vault_key)
+        .map_err(|_| "PEM not found in vault. Please re-import the .pem file.".to_string())?;
+
+    validate_pem_contents(&pem_contents)?;
+    crate::providers::github::auth::validate_pem(&pem_contents, &app_id)?;
+
+    log::info!("GitHub App token: vault PEM valid, requesting installation token...");
+
+    let token_resp = crate::providers::github::auth::get_installation_token(
+        &pem_contents,
+        &app_id,
+        &installation_id,
+    ).await?;
+
+    Ok(serde_json::json!({
+        "token": token_resp.token,
+        "expires_at": token_resp.expires_at,
+    }))
+}
+
+/// Check if a GitHub App PEM is stored in the vault
+#[tauri::command]
+pub async fn github_has_vault_pem(
+    app_id: String,
+    installation_id: String,
+) -> Result<bool, String> {
+    let vault_key = github_pem_vault_key(&app_id, &installation_id);
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready".to_string())?;
+    Ok(store.get(&vault_key).is_ok())
 }
 
 /// List all releases for the connected GitHub repository

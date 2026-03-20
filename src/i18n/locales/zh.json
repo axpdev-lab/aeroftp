@@ -990,7 +990,8 @@
             "moveToTrashFailed": "移至废纸篓失败",
             "batchRenameResult": "{success} 个已重命名，{errors} 个失败",
             "copyCompleted": "复制完成",
-            "localPathNotFound": "未找到本地文件夹 \"{path}\"。已导航至主目录。"
+            "localPathNotFound": "未找到本地文件夹 \"{path}\"。已导航至主目录。",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -3386,7 +3387,15 @@
             "createPr": "创建 Pull Request",
             "prTitle": "PR 标题",
             "prBody": "描述（可选）",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token 已过期 — 连接时将使用 .pem 自动刷新",
+            "appTokenExpiringSoon": "Token 即将过期 — 连接时将自动刷新",
+            "pemNotFound": "未找到 PEM 文件。该文件可能已被移动或删除。请重新导入 .pem 文件。",
+            "pemInvalidFormat": "PEM 密钥格式无效。请从 GitHub App 设置中下载新的私钥并重新导入。",
+            "pemEmpty": "PEM 文件为空。请从您的 GitHub App 设置中下载新的私钥。",
+            "pemStoredInVault": "您的 PEM 密钥已加密（AES-256）并安全存储在 vault 中。为了您的安全，请删除或保护原始 .pem 文件 — AeroFTP 不再需要该文件。",
+            "pemVaultBadge": "PEM 密钥已存储在 vault 中",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Verschieben in den Papierkorb fehlgeschlagen",
             "batchRenameResult": "{success} umbenannt, {errors} fehlgeschlagen",
             "copyCompleted": "Kopieren abgeschlossen",
-            "localPathNotFound": "Lokaler Ordner \"{path}\" nicht gefunden. Zum Heimverzeichnis navigiert."
+            "localPathNotFound": "Lokaler Ordner \"{path}\" nicht gefunden. Zum Heimverzeichnis navigiert.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -3385,7 +3386,15 @@
             "createPr": "Pull Request erstellen",
             "prTitle": "PR-Titel",
             "prBody": "Beschreibung (optional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token abgelaufen — wird beim Verbinden mit .pem automatisch erneuert",
+            "appTokenExpiringSoon": "Token läuft bald ab — wird beim Verbinden automatisch erneuert",
+            "pemNotFound": "PEM-Datei nicht gefunden. Sie wurde möglicherweise verschoben oder gelöscht. Bitte importieren Sie die .pem-Datei erneut.",
+            "pemInvalidFormat": "Ungültiges PEM-Schlüsselformat. Laden Sie einen neuen privaten Schlüssel aus den GitHub App-Einstellungen herunter und importieren Sie ihn erneut.",
+            "pemEmpty": "Die PEM-Datei ist leer. Bitte laden Sie einen neuen privaten Schlüssel aus Ihren GitHub App-Einstellungen herunter.",
+            "pemStoredInVault": "Ihr PEM-Schlüssel ist jetzt verschlüsselt (AES-256) und sicher im vault gespeichert. Zu Ihrer Sicherheit löschen oder sichern Sie die ursprüngliche .pem-Datei — AeroFTP benötigt sie nicht mehr.",
+            "pemVaultBadge": "PEM key im vault gespeichert",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

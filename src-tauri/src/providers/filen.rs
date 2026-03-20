@@ -15,7 +15,6 @@ use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Sha512, Digest};
 use std::collections::HashMap;
-use tokio::io::AsyncWriteExt;
 use tracing::debug;
 
 /// Debug logging through tracing infrastructure (no file I/O)
@@ -885,7 +884,7 @@ impl StorageProvider for FilenProvider {
         // Note: AES-256-GCM requires the full chunk in memory for authenticated decryption,
         // but we stream the HTTP response into a buffer instead of using resp.bytes()
         // which may hold a second copy.
-        let mut local_file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(ProviderError::IoError)?;
         let mut transferred: u64 = 0;
 
@@ -910,7 +909,7 @@ impl StorageProvider for FilenProvider {
             }
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
-            local_file.write_all(&decrypted).await
+            atomic.write_all(&decrypted).await
                 .map_err(ProviderError::IoError)?;
             transferred += decrypted.len() as u64;
 
@@ -919,7 +918,7 @@ impl StorageProvider for FilenProvider {
             }
         }
 
-        local_file.flush().await.map_err(ProviderError::IoError)?;
+        atomic.commit().await.map_err(ProviderError::IoError)?;
 
         Ok(())
     }

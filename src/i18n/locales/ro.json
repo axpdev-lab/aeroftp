@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Mutarea în Coș de gunoi a eșuat",
             "batchRenameResult": "{success} redenumite, {errors} eșuate",
             "copyCompleted": "Copiere finalizată",
-            "localPathNotFound": "Folderul local \"{path}\" nu a fost găsit. S-a navigat la directorul acasă."
+            "localPathNotFound": "Folderul local \"{path}\" nu a fost găsit. S-a navigat la directorul acasă.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -3386,7 +3387,15 @@
             "createPr": "Creeaza Pull Request",
             "prTitle": "Titlu PR",
             "prBody": "Descriere (optional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token expirat — se va reîmprospăta automat la conectare folosind .pem",
+            "appTokenExpiringSoon": "Token expiră în curând — se va reîmprospăta automat la conectare",
+            "pemNotFound": "Fișierul PEM nu a fost găsit. Este posibil să fi fost mutat sau șters. Vă rugăm să reimportați fișierul .pem.",
+            "pemInvalidFormat": "Format de cheie PEM invalid. Descărcați o cheie privată nouă din setările GitHub App și reimportați.",
+            "pemEmpty": "Fișierul PEM este gol. Vă rugăm să descărcați o cheie privată nouă din setările GitHub App.",
+            "pemStoredInVault": "Cheia PEM este acum criptata (AES-256) si stocata in siguranta in vault. Pentru siguranta dumneavoastra, stergeti sau securizati fisierul .pem original — AeroFTP nu mai are nevoie de el.",
+            "pemVaultBadge": "Cheie PEM stocata in vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

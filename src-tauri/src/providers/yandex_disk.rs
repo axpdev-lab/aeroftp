@@ -613,18 +613,17 @@ impl StorageProvider for YandexDiskProvider {
         }
 
         let total = resp.content_length().unwrap_or(0);
-        let mut file = tokio::fs::File::create(local_path)
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(ProviderError::IoError)?;
 
         let mut stream = resp.bytes_stream();
         let mut downloaded: u64 = 0;
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk)
+            atomic.write_all(&chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
@@ -633,7 +632,7 @@ impl StorageProvider for YandexDiskProvider {
             }
         }
 
-        file.flush().await.map_err(ProviderError::IoError)?;
+        atomic.commit().await.map_err(ProviderError::IoError)?;
         yd_log(&format!("download complete: {} bytes", downloaded));
         Ok(())
     }

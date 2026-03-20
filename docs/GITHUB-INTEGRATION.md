@@ -119,6 +119,9 @@ Your commits will show your app's name with a `[bot]` suffix and your custom log
 - Best for: teams, branded automation, CI/CD bots, open-source projects
 - Commit identity: `yourapp[bot]` with your custom logo
 - Token management: automatic (1-hour tokens generated from .pem on demand)
+- PEM key storage: encrypted in vault (AES-256-GCM) after first import — original .pem file can be deleted
+- Token expiry: dynamic badge shows valid/expiring/expired state with auto-refresh on connect
+- Co-authoring: commits show **both** the human user (author) and `aeroftp[bot]` (committer) with dual avatars on GitHub
 
 **Example:**
 
@@ -192,7 +195,7 @@ Files larger than 100 MiB cannot be stored in GitHub repositories. Use Release a
 | -------------- | ------ | --------- | ------ |
 | PAT | Authenticated user | Authenticated user | User's avatar |
 | Device Flow | Authenticated user | Authenticated user | User's avatar |
-| Installation token (.pem) | `yourapp[bot]` | `yourapp[bot]` | App's logo |
+| Installation token (.pem) | Repository owner | `yourapp[bot]` | Both avatars (user + app) |
 
 The commit identity is determined by GitHub based on the token used, not by AeroFTP. Installation tokens produce bot-attributed commits with the app's logo because they represent the app itself, not a user.
 

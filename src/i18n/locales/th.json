@@ -990,7 +990,8 @@
             "moveToTrashFailed": "ไม่สามารถย้ายไปยังถังขยะได้",
             "batchRenameResult": "{success} เปลี่ยนชื่อสำเร็จ, {errors} ล้มเหลว",
             "copyCompleted": "คัดลอกเสร็จสมบูรณ์",
-            "localPathNotFound": "ไม่พบโฟลเดอร์ในเครื่อง \"{path}\" นำทางไปยังไดเรกทอรีหน้าแรกแล้ว"
+            "localPathNotFound": "ไม่พบโฟลเดอร์ในเครื่อง \"{path}\" นำทางไปยังไดเรกทอรีหน้าแรกแล้ว",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -3396,7 +3397,15 @@
             "createPr": "สร้าง Pull Request",
             "prTitle": "ชื่อ PR",
             "prBody": "คำอธิบาย (ไม่บังคับ)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token หมดอายุแล้ว — จะรีเฟรชอัตโนมัติเมื่อเชื่อมต่อโดยใช้ .pem",
+            "appTokenExpiringSoon": "Token ใกล้หมดอายุ — จะรีเฟรชอัตโนมัติเมื่อเชื่อมต่อ",
+            "pemNotFound": "ไม่พบไฟล์ PEM อาจถูกย้ายหรือลบไปแล้ว กรุณานำเข้าไฟล์ .pem อีกครั้ง",
+            "pemInvalidFormat": "รูปแบบคีย์ PEM ไม่ถูกต้อง ดาวน์โหลดคีย์ส่วนตัวใหม่จากการตั้งค่า GitHub App แล้วนำเข้าอีกครั้ง",
+            "pemEmpty": "ไฟล์ PEM ว่างเปล่า กรุณาดาวน์โหลดคีย์ส่วนตัวใหม่จากการตั้งค่า GitHub App ของคุณ",
+            "pemStoredInVault": "คีย์ PEM ของคุณถูกเข้ารหัสแล้ว (AES-256) และจัดเก็บอย่างปลอดภัยใน vault เพื่อความปลอดภัยของคุณ กรุณาลบหรือปกป้องไฟล์ .pem ต้นฉบับ — AeroFTP ไม่ต้องการไฟล์นั้นอีกต่อไป",
+            "pemVaultBadge": "คีย์ PEM ถูกจัดเก็บใน vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

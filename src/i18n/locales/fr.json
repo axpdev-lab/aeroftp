@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Échec du déplacement vers la corbeille",
             "batchRenameResult": "{success} renommés, {errors} échoués",
             "copyCompleted": "Copie terminée",
-            "localPathNotFound": "Le dossier local \"{path}\" est introuvable. Navigation vers le répertoire personnel."
+            "localPathNotFound": "Le dossier local \"{path}\" est introuvable. Navigation vers le répertoire personnel.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -3385,7 +3386,15 @@
             "createPr": "[NEEDS TRANSLATION] Create Pull Request",
             "prTitle": "[NEEDS TRANSLATION] PR title",
             "prBody": "[NEEDS TRANSLATION] Description (optional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token expiré — sera renouvelé automatiquement lors de la connexion avec .pem",
+            "appTokenExpiringSoon": "Token bientôt expiré — sera renouvelé automatiquement lors de la connexion",
+            "pemNotFound": "Fichier PEM introuvable. Il a peut-être été déplacé ou supprimé. Veuillez réimporter le fichier .pem.",
+            "pemInvalidFormat": "Format de clé PEM invalide. Téléchargez une nouvelle clé privée depuis les paramètres de GitHub App et réimportez-la.",
+            "pemEmpty": "Le fichier PEM est vide. Veuillez télécharger une nouvelle clé privée depuis les paramètres de votre GitHub App.",
+            "pemStoredInVault": "Votre clé PEM est désormais chiffrée (AES-256) et stockée en toute sécurité dans le vault. Pour votre sécurité, supprimez ou protégez le fichier .pem original — AeroFTP n’en a plus besoin.",
+            "pemVaultBadge": "PEM key stocké dans le vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

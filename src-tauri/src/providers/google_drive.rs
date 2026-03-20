@@ -894,7 +894,6 @@ impl StorageProvider for GoogleDriveProvider {
         _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -946,13 +945,15 @@ impl StorageProvider for GoogleDriveProvider {
         }
 
         let mut stream = response.bytes_stream();
-        let mut out_file = tokio::fs::File::create(&actual_local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(&actual_local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            out_file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         info!("Downloaded {} to {}", remote_path, actual_local_path);
         Ok(())

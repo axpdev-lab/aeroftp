@@ -70,7 +70,7 @@ src-tauri/src/providers/
 ├── oauth2.rs               # OAuth2 PKCE flow (8 providers)
 ├── oauth1.rs               # OAuth 1.0 HMAC-SHA1 (4shared)
 ├── ftp.rs                  # FTP/FTPS via suppaftp
-├── sftp.rs                 # SFTP via russh + russh_sftp
+├── sftp.rs                 # SFTP: russh (connection/listing/download) + ssh2/SCP (upload)
 ├── webdav.rs               # WebDAV with HTTP Digest/Basic auth
 ├── s3.rs                   # S3 + AWS SigV4 signing
 ├── google_drive.rs         # Google Drive API v3
@@ -98,7 +98,7 @@ src-tauri/src/providers/
 | Provider | File | Lines | Auth Method | Protocol |
 |----------|------|-------|-------------|----------|
 | FTP/FTPS | `ftp.rs` | ~1,050 | User/Pass + TLS | TCP socket |
-| SFTP | `sftp.rs` | ~970 | User/Pass/Key | SSH |
+| SFTP | `sftp.rs` | ~1,200 | User/Pass/Key | SSH (hybrid: russh + ssh2/SCP) |
 | WebDAV | `webdav.rs` | ~1,450 | HTTP Basic/Digest | HTTPS |
 | S3 | `s3.rs` | ~2,200 | AWS SigV4 | HTTPS |
 | Google Drive | `google_drive.rs` | ~2,050 | OAuth2 PKCE | REST |

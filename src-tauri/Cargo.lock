@@ -84,6 +84,7 @@ dependencies = [
  "sha1 0.10.6",
  "sha2 0.10.9",
  "similar",
+ "ssh2",
  "suppaftp",
  "tar",
  "tauri",
@@ -718,9 +719,9 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96eb4cdd6cf1b31d671e9efe75c5d1ec614776856cefbe109ca373554a6d514f"
+checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
 dependencies = [
  "hybrid-array",
 ]
@@ -1425,9 +1426,9 @@ dependencies = [
 
 [[package]]
 name = "crypto-common"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "211f05e03c7d03754740fd9e585de910a095d6b99f8bcfffdef8319fa02a8331"
+checksum = "77727bb15fa921304124b128af125e7e3b968275d1b108b379190264f4423710"
 dependencies = [
  "hybrid-array",
 ]
@@ -1656,13 +1657,13 @@ dependencies = [
 
 [[package]]
 name = "digest"
-version = "0.11.0"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8bf3682cdec91817be507e4aa104314898b95b84d74f3d43882210101a545b6"
+checksum = "4850db49bf08e663084f7fb5c87d202ef91a3907271aff24a94eb97ff039153c"
 dependencies = [
- "block-buffer 0.11.0",
+ "block-buffer 0.12.0",
  "const-oid 0.10.2",
- "crypto-common 0.2.0",
+ "crypto-common 0.2.1",
 ]
 
 [[package]]
@@ -2983,9 +2984,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1b229d73f5803b562cc26e4da0396c8610a4ee209f4fac8fa4f8d709166dc45"
+checksum = "8655f91cd07f2b9d0c24137bd650fe69617773435ee5ec83022377777ce65ef1"
 dependencies = [
  "typenum",
 ]
@@ -3313,7 +3314,7 @@ checksum = "fe44f2bbd99fcb302e246e2d6bcf51aeda346d02a365f80296a07a8c711b6da6"
 dependencies = [
  "argon2",
  "bcrypt-pbkdf",
- "digest 0.11.0",
+ "digest 0.11.2",
  "ecdsa",
  "ed25519-dalek",
  "hex",
@@ -3710,6 +3711,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
+name = "libssh2-sys"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "220e4f05ad4a218192533b300327f5150e809b54c4ec83b5a1d91833601811b9"
+dependencies = [
+ "cc",
+ "libc",
+ "libz-sys",
+ "openssl-sys",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
+name = "libz-sys"
+version = "1.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52f4c29e2a68ac30c9087e1b772dc9f44a2b66ed44edf2266cf2be9b03dafc1"
+dependencies = [
+ "cc",
+ "libc",
  "pkg-config",
  "vcpkg",
 ]
@@ -4405,6 +4432,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
+name = "openssl-src"
+version = "300.5.5+3.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f1787d533e03597a7934fd0a765f0d28e94ecc5fb7789f8053b1e699a56f709"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4412,6 +4448,7 @@ checksum = "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -5649,7 +5686,7 @@ dependencies = [
  "const-oid 0.10.2",
  "crypto-bigint 0.7.0-rc.18",
  "crypto-primes",
- "digest 0.11.0",
+ "digest 0.11.2",
  "pkcs1 0.8.0-rc.4",
  "pkcs8 0.11.0-rc.11",
  "rand_core 0.10.0-rc-3",
@@ -5761,9 +5798,9 @@ dependencies = [
 
 [[package]]
 name = "russh-sftp"
-version = "2.1.1"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bb94393cafad0530145b8f626d8687f1ee1dedb93d7ba7740d6ae81868b13b5"
+checksum = "f08ed364d54b74d988c964b464a53a1916379f9441cfd10ca8fb264be1349842"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -6334,7 +6371,7 @@ checksum = "3b167252f3c126be0d8926639c4c4706950f01445900c4b3db0fd7e89fcb750a"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "digest 0.11.0",
+ "digest 0.11.2",
 ]
 
 [[package]]
@@ -6356,7 +6393,7 @@ checksum = "7c5f3b1e2dc8aad28310d8410bd4d7e180eca65fca176c52ab00d364475d0024"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "digest 0.11.0",
+ "digest 0.11.2",
 ]
 
 [[package]]
@@ -6448,7 +6485,7 @@ version = "3.0.0-rc.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "597a96996ccff7dfa16f052bd995b4cecc72af22c35138738dc029f0ead6608d"
 dependencies = [
- "digest 0.11.0",
+ "digest 0.11.2",
  "rand_core 0.10.0-rc-3",
 ]
 
@@ -6617,6 +6654,18 @@ dependencies = [
  "bytes",
  "pem-rfc7468 0.7.0",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "ssh2"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f84d13b3b8a0d4e91a2629911e951db1bb8671512f5c09d7d4ba34500ba68c8"
+dependencies = [
+ "bitflags 2.11.0",
+ "libc",
+ "libssh2-sys",
+ "parking_lot",
 ]
 
 [[package]]

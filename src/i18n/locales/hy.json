@@ -983,7 +983,8 @@
             "moveToTrashFailed": "Չհաջողվեց աղբարկղ տևալը",
             "batchRenameResult": "{success} վերանվանված, {errors} ձախողված",
             "copyCompleted": "Պատճենը ավարտված է",
-            "localPathNotFound": "\"{path}\" տեղական թղթապանակը չի գտնվել: Անցում կատարվեց տնային թղթապանակ:"
+            "localPathNotFound": "\"{path}\" տեղական թղթապանակը չի գտնվել: Անցում կատարվեց տնային թղթապանակ:",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -3395,7 +3396,15 @@
             "createPr": "Ստեղծել Pull Request",
             "prTitle": "PR վերնագիր",
             "prBody": "Նկարագրություն (կամընտրական)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token-ի ժամկետը լրացել է — կթարմացվի ինքնաթարմանական միանալով .pem-ի օգտագործմամբ",
+            "appTokenExpiringSoon": "Token-ի ժամկետը շուտով լրանում է — կթարմացվի ինքնաթարմանական միանալով",
+            "pemNotFound": "PEM ֆայլը չի գտնվել։ Հնարավոր է տեղափոխվել կամ ջնջվել է։ Խնդրում ենք նորից ներմուծել .pem ֆայլը։",
+            "pemInvalidFormat": "Սխալ PEM բանալիի ձևաչափ։ Ներբեռնեք նոր գաղտնի բանալի GitHub App-ի կարգավորումներից և նորից ներմուցեք։",
+            "pemEmpty": "PEM ֆայլը դատարկ է։ Խնդրում ենք ներբեռնեք նոր գաղտնի բանալի GitHub App-ի կարգավորումներից։",
+            "pemStoredInVault": "Ձեր PEM բանալին այպեղ գաղտնաբանված է (AES-256) և ապահով պահված է vault-ում։ Ձեր անվտանգության համար ջնջեք կամ ապահովեք սկզբնական .pem ֆայլը — AeroFTP-ն այլևս այն չի պահանջում։",
+            "pemVaultBadge": "PEM բանալին պահված է vault-ում",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

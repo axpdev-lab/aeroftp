@@ -37,7 +37,7 @@ The previous dual-mode system (OS Keyring primary + encrypted vault fallback) su
 | -------- | ---------- | ------- |
 | FTP | None (configurable) | Plain-text by default; supports Explicit TLS, Implicit TLS, or opportunistic TLS upgrade |
 | FTPS | TLS/SSL | Explicit TLS (AUTH TLS, port 21) or Implicit TLS (port 990). Certificate verification configurable. |
-| SFTP | SSH | Native Rust implementation (russh 0.57) |
+| SFTP | SSH | Hybrid: russh 0.57 (connection, listing, download) + ssh2/libssh2 SCP (uploads) |
 | WebDAV | HTTPS | TLS encrypted, HTTP Digest auth (RFC 2617) auto-detection |
 | S3 | HTTPS | SigV4 authentication with TLS |
 | Google Drive | HTTPS + OAuth2 | PKCE flow with token refresh |
@@ -203,7 +203,7 @@ All file transfers use chunked streaming to prevent memory exhaustion:
 | Provider | Download | Upload | Chunk Size |
 |----------|----------|--------|------------|
 | FTP/FTPS | Streaming (8KB) | Streaming | 8 KB |
-| SFTP | Streaming (32KB) | Streaming | 32 KB |
+| SFTP | Streaming (32KB) | SCP via ssh2 (32KB) | 32 KB |
 | Filen | Streaming per-chunk | Streaming | Per-server chunk |
 | Dropbox | Streaming (bytes_stream) | Streaming session (128MB) | 128 MB |
 | Google Drive | Streaming | Streaming (10MB) | 10 MB |
@@ -237,6 +237,22 @@ AeroFTP implements Trust On First Use (TOFU) with visual fingerprint verificatio
 - Creates `~/.ssh/` directory with `0700` and `known_hosts` with `0600` permissions automatically
 - Pending keys are held in memory with 5-minute TTL (never written to disk until accepted)
 - SSH Terminal sessions also require host key approval before opening
+
+### SFTP Hybrid Upload Architecture (v3.0.5+)
+
+AeroFTP uses a dual-backend architecture for SFTP to ensure reliable file transfers:
+
+- **Downloads, listing, navigation, metadata**: Handled by `russh` 0.57 + `russh-sftp` 2.1 (async Rust, integrated with the Tauri runtime)
+- **Uploads**: Handled by `ssh2` (libssh2) via SCP protocol, executed in a blocking thread (`tokio::task::spawn_blocking`)
+
+This design was adopted after the development team identified a critical data integrity bug in `russh-sftp`'s `AsyncWrite` implementation: the SFTP write commands were not reliably delivered to the server before the file handle was closed, resulting in 0-byte files on disk. The issue was confirmed across russh versions 0.57.0, 0.57.1, and 0.58.0, and affects certain SFTP server implementations (confirmed on WD MyCloud NAS with embedded OpenSSH).
+
+The SCP upload path preserves all security properties:
+
+- Host key verification via `~/.ssh/known_hosts` (same trust model)
+- Password and private key authentication (same credential flow)
+- File permissions and timestamps preserved via SCP protocol
+- Post-upload size verification via SFTP `stat()` to detect transfer corruption
 
 ### FTP Insecure Connection Warning
 

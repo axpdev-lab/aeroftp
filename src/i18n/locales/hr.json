@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Premještanje u smeće nije uspjelo",
             "batchRenameResult": "{success} preimenovano, {errors} neuspjelo",
             "copyCompleted": "Kopiranje dovršeno",
-            "localPathNotFound": "Lokalna mapa \"{path}\" nije pronađena. Navigirano na kućni direktorij."
+            "localPathNotFound": "Lokalna mapa \"{path}\" nije pronađena. Navigirano na kućni direktorij.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -3395,7 +3396,15 @@
             "createPr": "Stvori Pull Request",
             "prTitle": "Naslov PR-a",
             "prBody": "Opis (neobavezno)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token je istekao — automatski se osvježava pri povezivanju pomoću .pem",
+            "appTokenExpiringSoon": "Token uskoro istječe — automatski se osvježava pri povezivanju",
+            "pemNotFound": "PEM datoteka nije pronađena. Možda je premještena ili izbrisana. Molimo ponovo uvezite .pem datoteku.",
+            "pemInvalidFormat": "Neispravan format PEM ključa. Preuzmite novi privatni ključ iz postavki GitHub App i ponovo ga uvezite.",
+            "pemEmpty": "PEM datoteka je prazna. Molimo preuzmite novi privatni ključ iz postavki GitHub App.",
+            "pemStoredInVault": "Vaš PEM ključ je sada enkriptiran (AES-256) i sigurno pohranjen u vault. Radi vaše sigurnosti, izbrišite ili osigurajte izvornu .pem datoteku — AeroFTP je više ne treba.",
+            "pemVaultBadge": "PEM ključ pohranjen u vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

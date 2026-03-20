@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.5] - 2026-03-20
+
+### SFTP Upload Fix & Download Safety
+
+Critical fix for SFTP file uploads producing 0-byte files, plus atomic download writes across all 22 providers to prevent data corruption on interrupted transfers.
+
+#### Fixed
+
+- **SFTP upload 0-byte bug** (critical): File uploads via russh/russh-sftp produced 0-byte files on the server due to a write buffering race condition in russh 0.57.x. The SFTP upload backend was replaced with ssh2/libssh2 SCP, which reliably delivers file content. Downloads, listing, and navigation remain on russh. Identified by the development team through systematic root cause analysis and 10 fix attempts against a live NAS target
+- **Atomic download writes**: All 22 providers now write downloads to a `.aerotmp` temporary file and atomically rename on completion. If a download fails mid-stream, the original file is untouched and no 0-byte file is left behind
+
+#### Added
+
+- **GitHub PEM vault storage**: GitHub App `.pem` private keys are now encrypted (AES-256-GCM) and stored in the vault on first import. Reconnection uses the vault copy — the original `.pem` file can be safely deleted
+- **GitHub token expiry badges**: Dynamic status indicators show token state (valid, expiring soon, expired) with auto-refresh messaging
+- **GitHub PEM error messages**: Specific, actionable error messages for missing, empty, or invalid PEM files instead of generic "InvalidKeyFormat"
+- **ssh2 dependency**: Added `ssh2 0.9.5` with vendored OpenSSL for reliable SFTP uploads via SCP protocol
+- **GitHub App co-authoring**: Commits via App (.pem) mode now show both the repository owner (author) and `aeroftp[bot]` (committer) with dual avatars on GitHub
+- **GitHub auth mode badge**: Colored badge (APP/PAT/OAuth) on saved GitHub servers for instant identification
+- **GitHub token countdown**: Live remaining time in saved server subtitle (green >15min, amber <15min, red expired) with auto-refresh messaging
+- **0 B file alert badge**: Warning triangle on files with 0 bytes in list and grid views (local + remote panels)
+- **9 new i18n keys**: GitHub PEM vault, token status, 0B warning, token duration in 47 languages
+
+#### Changed
+
+- **SFTP upload architecture**: Hybrid model — russh for SSH connection lifecycle, listing, downloads; ssh2/SCP for uploads with post-upload size verification
+- **README**: AeroCloud documentation link updated to docs.aeroftp.app
+
 ## [3.0.4] - 2026-03-19
 
 ### GitHub Integration & Editor on All Protocols

@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Prügikasti teisaldamine ebaõnnestus",
             "batchRenameResult": "{success} ümber nimetatud, {errors} ebaõnnestus",
             "copyCompleted": "Kopeerimine lõpetatud",
-            "localPathNotFound": "Kohalikku kausta \"{path}\" ei leitud. Liiguti kodukataloogile."
+            "localPathNotFound": "Kohalikku kausta \"{path}\" ei leitud. Liiguti kodukataloogile.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -3395,7 +3396,15 @@
             "createPr": "Loo Pull Request",
             "prTitle": "PR pealkiri",
             "prBody": "Kirjeldus (valikuline)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token aegunud — uuendatakse automaatselt .pem abil ühendumisel",
+            "appTokenExpiringSoon": "Token aegub varsti — uuendatakse automaatselt ühendumisel",
+            "pemNotFound": "PEM-faili ei leitud. See võib olla teisaldatud või kustutatud. Palun importige .pem-fail uuesti.",
+            "pemInvalidFormat": "Vigane PEM-võtme vorming. Laadige GitHub App seadetest alla uus privaatvõti ja importige see uuesti.",
+            "pemEmpty": "PEM-fail on tühi. Palun laadige oma GitHub App seadetest alla uus privaatvõti.",
+            "pemStoredInVault": "Teie PEM-võti on nüüd krüpteeritud (AES-256) ja turvaliselt vault-is salvestatud. Oma turvalisuse tagamiseks kustutage või kaitske algne .pem-fail — AeroFTP ei vaja seda enam.",
+            "pemVaultBadge": "PEM key salvestatud vault-is",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Ezin izan da zakarrontzira mugitu",
             "batchRenameResult": "{success} berrizendatu, {errors} huts egin",
             "copyCompleted": "Kopia osatua",
-            "localPathNotFound": "\"{path}\" tokiko karpeta ez da aurkitu. Hasierako direktoriora nabigatu da."
+            "localPathNotFound": "\"{path}\" tokiko karpeta ez da aurkitu. Hasierako direktoriora nabigatu da.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -3414,7 +3415,15 @@
             "createPr": "Pull Request sortu",
             "prTitle": "PR izenburua",
             "prBody": "Deskribapena (aukerakoa)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token iraungi da — automatikoki berritu egingo da .pem erabiliz konektatzean",
+            "appTokenExpiringSoon": "Token laster iraungiko da — automatikoki berritu egingo da konektatzean",
+            "pemNotFound": "PEM fitxategia ez da aurkitu. Agian mugitu edo ezabatu egin da. Mesedez, inportatu berriro .pem fitxategia.",
+            "pemInvalidFormat": "PEM gako formatu baliogabea. Deskargatu gako pribatu berri bat GitHub App ezarpenetatik eta inportatu berriro.",
+            "pemEmpty": "PEM fitxategia hutsik dago. Mesedez, deskargatu gako pribatu berri bat zure GitHub App ezarpenetatik.",
+            "pemStoredInVault": "Zure PEM gakoa orain enkriptatuta dago (AES-256) eta modu seguruan gordetuta vault-ean. Zure segurtasunerako, ezabatu edo babestu jatorrizko .pem fitxategia — AeroFTP-k ez du gehiago behar.",
+            "pemVaultBadge": "PEM key vault-en gordeta",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

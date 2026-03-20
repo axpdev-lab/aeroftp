@@ -8,6 +8,7 @@ use russh::client::{self, Config, Handle, Handler, Msg};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
 use russh::client::AuthResult;
 use russh::{Channel, ChannelId, ChannelMsg, CryptoVec};
+// Note: CryptoVec will be replaced with bytes::Bytes when upgrading to russh 0.58+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;

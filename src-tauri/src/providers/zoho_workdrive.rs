@@ -1394,23 +1394,24 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         // Streaming download: write chunks to file as they arrive
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
             }
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         info!("Downloaded {} to {} ({} bytes)", remote_path, local_path, downloaded);
         Ok(())
@@ -2082,17 +2083,18 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
 
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         info!("Downloaded version {} of {} to {}", version_id, path, local_path);
         Ok(())

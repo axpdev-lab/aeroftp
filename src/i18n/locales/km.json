@@ -990,7 +990,8 @@
             "moveToTrashFailed": "បរាជ័យក្នុងការផ្លាស់ទីទៅធុងសម្រាម",
             "batchRenameResult": "{success} ប្តូរឈ្មោះហើយ, {errors} បរាជ័យ",
             "copyCompleted": "ការចម្លងបានបញ្ចប់",
-            "localPathNotFound": "រកមិនឃើញថតក្នុងម៉ាស៊ីន \"{path}\"។ បានរុករកទៅថតផ្ទះ។"
+            "localPathNotFound": "រកមិនឃើញថតក្នុងម៉ាស៊ីន \"{path}\"។ បានរុករកទៅថតផ្ទះ។",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -3414,7 +3415,15 @@
             "createPr": "បង្កើត Pull Request",
             "prTitle": "ចំណង់ PR",
             "prBody": "ការរៀបរាប់ (ជម្រើស)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token បានផុតកំណត់ — នឹងធ្វើបច្ចុប្បន្នភាពដោយស្វ័យប្រវត្តិនៅពេលភ្ជាប់ដោយប្រើ .pem",
+            "appTokenExpiringSoon": "Token ជិតផុតកំណត់ — នឹងធ្វើបច្ចុប្បន្នភាពដោយស្វ័យប្រវត្តិនៅពេលភ្ជាប់",
+            "pemNotFound": "រកមិនឃើញឯកសារ PEM។ វាអាចត្រូវបានផ្លាស់ទី ឬលុបចោល។ សូមនាំចូលឯកសារ .pem ឡើងវិញ។",
+            "pemInvalidFormat": "ទម្រង់សោ PEM មិនត្រឹមត្រូវ។ ទាញយកសោឯកជនថ្មីពីការកំណត់ GitHub App ហើយនាំចូលឡើងវិញ។",
+            "pemEmpty": "ឯកសារ PEM គឺទទេ។ សូមទាញយកសោឯកជនថ្មីពីការកំណត់ GitHub App របស់អ្នក។",
+            "pemStoredInVault": "សោរប្រែ PEM របស់អ្នកឥឡូវនេះត្រូវបានអ៊ានគ្រីប (AES-256) និងរក្សាទុកឯយសុវត្ថិភាពនៅក្នុង vault។ ក្រាសលាបលាំអាម សូមលុប ឬវារក្សាអាមហើរអូរៈតំបែរមែដើម .pem — AeroFTP លែមិនត្រូវការវាទៀតហើយ។",
+            "pemVaultBadge": "រូចរាល់ខាង PEM ត្រូវបានរក្សាទុកនៅក្នុង vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

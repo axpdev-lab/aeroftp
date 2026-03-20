@@ -521,7 +521,7 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        let mut local_file = tokio::fs::File::create(local_path)
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(ProviderError::IoError)?;
 
@@ -536,7 +536,7 @@ impl StorageProvider for FtpProvider {
             if n == 0 {
                 break;
             }
-            local_file
+            atomic
                 .write_all(&chunk[..n])
                 .await
                 .map_err(ProviderError::IoError)?;
@@ -547,7 +547,7 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        local_file.flush().await.map_err(ProviderError::IoError)?;
+        atomic.commit().await.map_err(ProviderError::IoError)?;
 
         // Finalize the stream - need to get stream again after the borrow
         let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;

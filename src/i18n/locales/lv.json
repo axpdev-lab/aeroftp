@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Neizdevās pārvietot uz atkritni",
             "batchRenameResult": "{success} pārdēvēti, {errors} neizdevās",
             "copyCompleted": "Kopēšana pabeigta",
-            "localPathNotFound": "Lokālā mape \"{path}\" nav atrasta. Navigēts uz mājas direktoriju."
+            "localPathNotFound": "Lokālā mape \"{path}\" nav atrasta. Navigēts uz mājas direktoriju.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -3395,7 +3396,15 @@
             "createPr": "Izveidot Pull Request",
             "prTitle": "PR virsraksts",
             "prBody": "Apraksts (neobligāti)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token ir beidzies — tiks automātiski atjaunināts, pieslēdzoties ar .pem",
+            "appTokenExpiringSoon": "Token drīz beigsies — tiks automātiski atjaunināts pieslēdzoties",
+            "pemNotFound": "PEM fails nav atrasts. Iespējams, tas ir pārvietots vai dzēsts. Lūdzu, atkārtoti importējiet .pem failu.",
+            "pemInvalidFormat": "Nederīgs PEM atslēgas formāts. Lejupielādējiet jaunu privāto atslēgu no GitHub App iestatījumiem un importējiet atkārtoti.",
+            "pemEmpty": "PEM fails ir tukšs. Lūdzu, lejupielādējiet jaunu privāto atslēgu no GitHub App iestatījumiem.",
+            "pemStoredInVault": "Jūsu PEM atslēga tagad ir šifrēta (AES-256) un droši glabājas vault. Jūsu drošībai dzēsiet vai aizsargājiet sākotnējo .pem failu — AeroFTP tas vairs nav nepieciešams.",
+            "pemVaultBadge": "PEM atslēga saglabāta vault glabātuvē",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

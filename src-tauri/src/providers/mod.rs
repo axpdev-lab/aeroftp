@@ -46,6 +46,7 @@ pub mod opendrive;
 pub mod yandex_disk;
 pub mod github;
 pub mod http_retry;
+pub mod atomic_write;
 
 pub use types::*;
 // GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0

@@ -990,7 +990,8 @@
             "moveToTrashFailed": "ট্র্যাশে সরাতে ব্যর্থ হয়েছে",
             "batchRenameResult": "{success} পুনঃনামকরণ হয়েছে, {errors} ব্যর্থ হয়েছে",
             "copyCompleted": "অনুলিপি সম্পন্ন",
-            "localPathNotFound": "স্থানীয় ফোল্ডার \"{path}\" পাওয়া যায়নি। হোম ডিরেক্টরিতে নেভিগেট করা হয়েছে।"
+            "localPathNotFound": "স্থানীয় ফোল্ডার \"{path}\" পাওয়া যায়নি। হোম ডিরেক্টরিতে নেভিগেট করা হয়েছে।",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -3395,7 +3396,15 @@
             "createPr": "Pull Request তৈরি করুন",
             "prTitle": "PR শিরোনাম",
             "prBody": "বিবরণ (ঐচ্ছিক)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token মেয়াদ উত্তীর্ণ — .pem ব্যবহার করে সংযোগের সময় স্বয়ংক্রিয়ভাবে রিফ্রেশ হবে",
+            "appTokenExpiringSoon": "Token শীঘ্রই মেয়াদ উত্তীর্ণ হবে — সংযোগের সময় স্বয়ংক্রিয়ভাবে রিফ্রেশ হবে",
+            "pemNotFound": "PEM ফাইল পাওয়া যায়নি। এটি সরানো বা মুছে ফেলা হয়ে থাকতে পারে। অনুগ্রহ করে .pem ফাইলটি পুনরায় আমদানি করুন।",
+            "pemInvalidFormat": "অবৈধ PEM কী ফরম্যাট। GitHub App সেটিংস থেকে একটি নতুন প্রাইভেট কী ডাউনলোড করুন এবং পুনরায় আমদানি করুন।",
+            "pemEmpty": "PEM ফাইলটি খালি। অনুগ্রহ করে আপনার GitHub App সেটিংস থেকে একটি নতুন প্রাইভেট কী ডাউনলোড করুন।",
+            "pemStoredInVault": "আপনার PEM কী এখন এনক্রিপ্ট করা (AES-256) এবং vault-এ নিরাপদে সংরক্ষিত। আপনার নিরাপত্তার জন্য, মূল .pem ফাইলটি মুছে ফেলুন বা সুরক্ষিত করুন — AeroFTP-এর আর এটির প্রয়োজন নেই।",
+            "pemVaultBadge": "PEM key vault-এ সংরক্ষিত",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

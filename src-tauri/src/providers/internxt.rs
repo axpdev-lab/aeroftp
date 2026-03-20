@@ -24,7 +24,6 @@ use serde::Deserialize;
 use sha2::{Sha256, Sha512, Digest};
 use ripemd::Ripemd160;
 use std::collections::HashMap;
-use tokio::io::AsyncWriteExt;
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
@@ -1351,12 +1350,12 @@ impl StorageProvider for InternxtProvider {
             ProviderError::ServerError(format!("Failed to parse file info: {}", e))
         })?;
 
-        // Handle empty files
+        // Handle empty files — atomic write for consistency
         if bucket_info.size == 0 {
-            let mut file = tokio::fs::File::create(local_path).await.map_err(|e| {
+            let atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
                 ProviderError::Other(format!("Failed to create file: {}", e))
             })?;
-            file.flush().await.ok();
+            atomic.commit().await.ok();
             return Ok(());
         }
 
@@ -1389,14 +1388,16 @@ impl StorageProvider for InternxtProvider {
         // Decrypt
         let decrypted = Self::decrypt_file_content(&encrypted_data, &key, &iv)?;
 
-        // Write to file
-        let mut file = tokio::fs::File::create(local_path).await.map_err(|e| {
+        // Write to file atomically
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
             ProviderError::Other(format!("Failed to create output file: {}", e))
         })?;
-        file.write_all(&decrypted).await.map_err(|e| {
+        atomic.write_all(&decrypted).await.map_err(|e| {
             ProviderError::Other(format!("Failed to write file: {}", e))
         })?;
-        file.flush().await.ok();
+        atomic.commit().await.map_err(|e| {
+            ProviderError::Other(format!("Failed to finalize download: {}", e))
+        })?;
 
         internxt_log(&format!("Downloaded {} ({} bytes)", filename, decrypted.len()));
         Ok(())

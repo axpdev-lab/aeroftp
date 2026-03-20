@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Premikanje v koš ni uspelo",
             "batchRenameResult": "{success} preimenovanih, {errors} neuspešnih",
             "copyCompleted": "Kopiranje končano",
-            "localPathNotFound": "Lokalna mapa \"{path}\" ni bila najdena. Preusmerjeno v domači imenik."
+            "localPathNotFound": "Lokalna mapa \"{path}\" ni bila najdena. Preusmerjeno v domači imenik.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -3396,7 +3397,15 @@
             "createPr": "Ustvari Pull Request",
             "prTitle": "Naslov PR",
             "prBody": "Opis (neobvezno)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token je potekel — samodejno se bo osvežil ob povezavi z uporabo .pem",
+            "appTokenExpiringSoon": "Token bo kmalu potekel — samodejno se bo osvežil ob povezavi",
+            "pemNotFound": "Datoteka PEM ni bila najdena. Morda je bila premaknjena ali izbrisana. Prosimo, znova uvozite datoteko .pem.",
+            "pemInvalidFormat": "Neveljavna oblika ključa PEM. Prenesite nov zasebni ključ iz nastavitev GitHub App in znova uvozite.",
+            "pemEmpty": "Datoteka PEM je prazna. Prosimo, prenesite nov zasebni ključ iz nastavitev GitHub App.",
+            "pemStoredInVault": "Vas kljuc PEM je zdaj sifriran (AES-256) in varno shranjen v vault. Za vaso varnost izbrisite ali zavarujte izvirno datoteko .pem — AeroFTP je ne potrebuje vec.",
+            "pemVaultBadge": "Kljuc PEM shranjen v vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

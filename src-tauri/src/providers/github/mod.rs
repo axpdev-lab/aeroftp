@@ -208,6 +208,23 @@ impl GitHubProvider {
         }
     }
 
+    /// Get the author for content operations.
+    /// - Installation token (.pem): returns the authenticated user's identity so both
+    ///   the bot (committer) and the human (author) appear on the commit.
+    /// - PAT / Device Flow: returns None (GitHub uses the token owner as both).
+    pub fn content_author(&self) -> Option<GitHubCommitter> {
+        if self.is_bot_token {
+            // Use the repo owner as author — their noreply email ensures the avatar shows
+            let email = format!("{}@users.noreply.github.com", self.owner);
+            Some(GitHubCommitter {
+                name: self.owner.clone(),
+                email,
+            })
+        } else {
+            None
+        }
+    }
+
     /// Current write mode.
     pub fn write_mode(&self) -> &GitHubWriteMode {
         &self.write_mode
@@ -1111,6 +1128,7 @@ impl StorageProvider for GitHubProvider {
             sha,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -1148,6 +1166,7 @@ impl StorageProvider for GitHubProvider {
                         sha: update.sha.clone(),
                         branch: Some(self.content_branch().to_string()),
                         committer: self.content_committer(),
+            author: self.content_author(),
                     };
                     let retry_body = serde_json::to_value(&retry_update)
                         .map_err(|e3| ProviderError::TransferFailed(e3.to_string()))?;
@@ -1199,6 +1218,7 @@ impl StorageProvider for GitHubProvider {
             sha: None,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let url = self.contents_mutation_url(&gitkeep_path);
@@ -1266,6 +1286,7 @@ impl StorageProvider for GitHubProvider {
             sha,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let url = self.contents_mutation_url(&resolved);
@@ -1354,6 +1375,7 @@ impl StorageProvider for GitHubProvider {
             sha: None,
             branch: Some(self.content_branch().to_string()),
             committer: self.content_committer(),
+            author: self.content_author(),
         };
 
         let url = self.contents_mutation_url(&resolved_to);

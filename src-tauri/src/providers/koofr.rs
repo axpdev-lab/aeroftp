@@ -786,11 +786,10 @@ impl StorageProvider for KoofrProvider {
 
         // Streaming download
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path)
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
         let mut downloaded: u64 = 0;
@@ -798,7 +797,7 @@ impl StorageProvider for KoofrProvider {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk
                 .map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
-            file.write_all(&chunk)
+            atomic.write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
             downloaded += chunk.len() as u64;
@@ -806,9 +805,9 @@ impl StorageProvider for KoofrProvider {
                 cb(downloaded, total_size);
             }
         }
-        file.flush()
+        atomic.commit()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }
@@ -1444,23 +1443,22 @@ impl StorageProvider for KoofrProvider {
         }
 
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path)
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk
                 .map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
-            file.write_all(&chunk)
+            atomic.write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
         }
-        file.flush()
+        atomic.commit()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }

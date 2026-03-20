@@ -960,10 +960,9 @@ impl StorageProvider for FileLuProvider {
 
         let resp = self.get_with_retry(&direct_url).await?;
         let total_size = resp.content_length().unwrap_or(0);
-        let mut file = tokio::fs::File::create(local_path).await.map_err(ProviderError::IoError)?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(ProviderError::IoError)?;
 
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
         let mut downloaded: u64 = 0;
         let mut stream = resp.bytes_stream();
 
@@ -971,12 +970,13 @@ impl StorageProvider for FileLuProvider {
             let chunk = chunk.map_err(|e| {
                 ProviderError::TransferFailed(format!("Download chunk error: {}", e))
             })?;
-            file.write_all(&chunk).await.map_err(ProviderError::IoError)?;
+            atomic.write_all(&chunk).await.map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
             }
         }
+        atomic.commit().await.map_err(ProviderError::IoError)?;
         Ok(())
     }
 

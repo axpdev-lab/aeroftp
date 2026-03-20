@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Methwyd symud i'r sbwriel",
             "batchRenameResult": "{success} wedi'u hailenwi, {errors} wedi methu",
             "copyCompleted": "Copïo wedi'i gwblhau",
-            "localPathNotFound": "Ni chanfuwyd ffolder leol \"{path}\". Llywiwyd i'r cyfeiriadur cartref."
+            "localPathNotFound": "Ni chanfuwyd ffolder leol \"{path}\". Llywiwyd i'r cyfeiriadur cartref.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -3414,7 +3415,15 @@
             "createPr": "Creu Pull Request",
             "prTitle": "Teitl PR",
             "prBody": "Disgrifiad (dewisol)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token wedi dod i ben — bydd yn adnewyddu'n awtomatig wrth gysylltu gan ddefnyddio .pem",
+            "appTokenExpiringSoon": "Token ar fin dod i ben — bydd yn adnewyddu'n awtomatig wrth gysylltu",
+            "pemNotFound": "Ni chanfuwyd y ffeil PEM. Efallai ei bod wedi'i symud neu ei dileu. Ail-fewnforiwch y ffeil .pem os gwelwch yn dda.",
+            "pemInvalidFormat": "Fformat allwedd PEM annilys. Lawrlwythwch allwedd breifat newydd o osodiadau GitHub App a'i hail-fewnforio.",
+            "pemEmpty": "Mae'r ffeil PEM yn wag. Lawrlwythwch allwedd breifat newydd o osodiadau eich GitHub App os gwelwch yn dda.",
+            "pemStoredInVault": "Mae eich allwedd PEM bellach wedi'i hamgryptio (AES-256) ac wedi'i storio'n ddiogel yn y vault. Er eich diogelwch, dilëwch neu ddiogelu'r ffeil .pem wreiddiol — nid oes angen iddi ar AeroFTP mwyach.",
+            "pemVaultBadge": "PEM key wedi'i storio yn y vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

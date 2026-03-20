@@ -197,9 +197,12 @@ pub struct GitHubContentUpdate {
     pub sha: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// Committer identity — defaults to AeroFTP
+    /// Committer identity — defaults to AeroFTP bot
     #[serde(skip_serializing_if = "Option::is_none")]
     pub committer: Option<GitHubCommitter>,
+    /// Author identity — the human user behind the commit
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<GitHubCommitter>,
 }
 
 /// Request body for deleting a file via the Contents API
@@ -209,7 +212,10 @@ pub struct GitHubContentDelete {
     pub sha: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// Committer identity — defaults to AeroFTP
+    /// Committer identity — defaults to AeroFTP bot
     #[serde(skip_serializing_if = "Option::is_none")]
     pub committer: Option<GitHubCommitter>,
+    /// Author identity — the human user behind the commit
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<GitHubCommitter>,
 }

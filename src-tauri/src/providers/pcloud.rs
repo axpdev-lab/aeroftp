@@ -415,23 +415,24 @@ impl StorageProvider for PCloudProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
             }
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }

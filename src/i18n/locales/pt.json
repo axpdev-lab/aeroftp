@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Falha ao mover para o Lixo",
             "batchRenameResult": "{success} renomeados, {errors} falharam",
             "copyCompleted": "Cópia concluída",
-            "localPathNotFound": "Pasta local \"{path}\" não encontrada. Navegado para o diretório inicial."
+            "localPathNotFound": "Pasta local \"{path}\" não encontrada. Navegado para o diretório inicial.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -3386,7 +3387,15 @@
             "createPr": "Criar Pull Request",
             "prTitle": "Titulo do PR",
             "prBody": "Descricao (opcional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token expirado — será atualizado automaticamente ao conectar usando .pem",
+            "appTokenExpiringSoon": "Token expirando em breve — será atualizado automaticamente ao conectar",
+            "pemNotFound": "Ficheiro PEM não encontrado. Pode ter sido movido ou eliminado. Por favor, reimporte o ficheiro .pem.",
+            "pemInvalidFormat": "Formato de chave PEM inválido. Transfira uma nova chave privada nas definições da GitHub App e reimporte.",
+            "pemEmpty": "O ficheiro PEM está vazio. Por favor, transfira uma nova chave privada nas definições da GitHub App.",
+            "pemStoredInVault": "A sua chave PEM esta agora encriptada (AES-256) e armazenada em seguranca no vault. Para sua seguranca, elimine ou proteja o ficheiro .pem original — o AeroFTP ja nao precisa dele.",
+            "pemVaultBadge": "Chave PEM armazenada no vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

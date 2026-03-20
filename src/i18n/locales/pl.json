@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Nie udało się przenieść do Kosza",
             "batchRenameResult": "{success} zmieniono nazwę, {errors} nie powiodło się",
             "copyCompleted": "Kopiowanie zakończone",
-            "localPathNotFound": "Lokalny folder \"{path}\" nie znaleziony. Nawigowano do katalogu domowego."
+            "localPathNotFound": "Lokalny folder \"{path}\" nie znaleziony. Nawigowano do katalogu domowego.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -3386,7 +3387,15 @@
             "createPr": "Utwórz Pull Request",
             "prTitle": "Tytuł PR",
             "prBody": "Opis (opcjonalnie)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token wygasł — zostanie automatycznie odświeżony przy połączeniu za pomocą .pem",
+            "appTokenExpiringSoon": "Token wkrótce wygaśnie — zostanie automatycznie odświeżony przy połączeniu",
+            "pemNotFound": "Nie znaleziono pliku PEM. Mógł zostać przeniesiony lub usunięty. Proszę ponownie zaimportować plik .pem.",
+            "pemInvalidFormat": "Nieprawidłowy format klucza PEM. Pobierz nowy klucz prywatny z ustawień GitHub App i zaimportuj ponownie.",
+            "pemEmpty": "Plik PEM jest pusty. Pobierz nowy klucz prywatny z ustawień GitHub App.",
+            "pemStoredInVault": "Twoj klucz PEM jest teraz zaszyfrowany (AES-256) i bezpiecznie przechowywany w vault. Dla bezpieczenstwa usun lub zabezpiecz oryginalny plik .pem — AeroFTP nie potrzebuje go juz wiecej.",
+            "pemVaultBadge": "Klucz PEM przechowywany w vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

@@ -1907,20 +1907,34 @@ const App: React.FC = () => {
       const appId = effectiveParams.options.githubAppId?.trim();
       const installationId = effectiveParams.options.githubInstallationId?.trim();
       const pemPath = effectiveParams.options.githubPemPath?.trim();
+      const pemStored = effectiveParams.options.githubPemStored === true;
       const expiresAt = effectiveParams.options.githubTokenExpiresAt;
       const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
       const mustRefreshToken = !effectiveParams.password || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + (5 * 60 * 1000);
 
       if (mustRefreshToken) {
-        if (!appId || !installationId || !pemPath) {
-          throw new Error('GitHub App mode requires App ID, Installation ID, and PEM path to refresh the installation token');
+        if (!appId || !installationId) {
+          throw new Error('GitHub App mode requires App ID and Installation ID to refresh the installation token');
         }
 
-        const tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_pem', {
-          pemPath,
-          appId,
-          installationId,
-        });
+        let tokenResponse: { token: string; expires_at: string };
+
+        if (pemStored) {
+          // PEM stored in vault — no file needed
+          tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_vault', {
+            appId,
+            installationId,
+          });
+        } else if (pemPath) {
+          // Fallback: read PEM from disk (also stores in vault for next time)
+          tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_pem', {
+            pemPath,
+            appId,
+            installationId,
+          });
+        } else {
+          throw new Error('GitHub App mode requires a stored PEM or PEM file path to refresh the installation token');
+        }
 
         effectiveParams = {
           ...effectiveParams,
@@ -1928,6 +1942,7 @@ const App: React.FC = () => {
           options: {
             ...effectiveParams.options,
             githubPemPath: pemPath,
+            githubPemStored: true, // Mark as stored after successful token refresh
             githubTokenExpiresAt: tokenResponse.expires_at,
           },
         };
@@ -7678,7 +7693,7 @@ const App: React.FC = () => {
                                 {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
                                 {getSyncBadge(file.path, file.modified || undefined, false)}
                               </td>
-                              {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : '-'}</td>}
+                              {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : '-')}</td>}
                               {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
                               {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>}
                               {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
@@ -7842,8 +7857,11 @@ const App: React.FC = () => {
                                 {displayName(file.name, file.is_dir)}
                               </span>
                             )}
-                            {!file.is_dir && file.size && (
+                            {!file.is_dir && (file.size ?? 0) > 0 && (
                               <span className="file-grid-size">{formatBytes(file.size)}</span>
+                            )}
+                            {!file.is_dir && file.size === 0 && (
+                              <span className="file-grid-size" title={t('toast.zeroByteWarning')}>&#9888; 0 B</span>
                             )}
                           </div>
                         ))}

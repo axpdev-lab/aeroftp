@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Неуспешно преместување во Корпа",
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
             "copyCompleted": "Копирањето е завршено",
-            "localPathNotFound": "Локалната папка \"{path}\" не е пронајдена. Пренасочено кон домашниот директориум."
+            "localPathNotFound": "Локалната папка \"{path}\" не е пронајдена. Пренасочено кон домашниот директориум.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -3414,7 +3415,15 @@
             "createPr": "Креирај Pull Request",
             "prTitle": "PR наслов",
             "prBody": "Опис (опционално)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token е истечен — ќе се обнови автоматски при поврзување со .pem",
+            "appTokenExpiringSoon": "Token наскоро истекува — ќе се обнови автоматски при поврзување",
+            "pemNotFound": "PEM датотеката не е пронајдена. Можеби е преместена или избришана. Ве молиме повторно увезете ја .pem датотеката.",
+            "pemInvalidFormat": "Невалиден формат на PEM клуч. Преземете нов приватен клуч од поставките на GitHub App и повторно увезете го.",
+            "pemEmpty": "PEM датотеката е празна. Ве молиме преземете нов приватен клуч од поставките на GitHub App.",
+            "pemStoredInVault": "Вашиот PEM клуч сега е шифриран (AES-256) и безбедно сочуван во vault. За ваша безбедност, избришете го или обезбедете го оригиналниот .pem фајл — AeroFTP повеќе не го бара.",
+            "pemVaultBadge": "PEM клучот е сочуван во vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

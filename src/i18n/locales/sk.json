@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Presun do koša sa nepodaril",
             "batchRenameResult": "{success} premenovaných, {errors} zlyhalo",
             "copyCompleted": "Kopírovanie dokončené",
-            "localPathNotFound": "Lokálny priečinok \"{path}\" nebol nájdený. Navigácia presmerovaná do domovského adresára."
+            "localPathNotFound": "Lokálny priečinok \"{path}\" nebol nájdený. Navigácia presmerovaná do domovského adresára.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -3396,7 +3397,15 @@
             "createPr": "Vytvorit Pull Request",
             "prTitle": "Nazov PR",
             "prBody": "Popis (volitelne)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token vypršal — automaticky sa obnoví pri pripojení pomocou .pem",
+            "appTokenExpiringSoon": "Token čoskoro vyprší — automaticky sa obnoví pri pripojení",
+            "pemNotFound": "Súbor PEM sa nenašiel. Mohol byť presunutý alebo odstránený. Prosím, znovu importujte súbor .pem.",
+            "pemInvalidFormat": "Neplatný formát kľúča PEM. Stiahnite nový súkromný kľúč z nastavení GitHub App a znovu importujte.",
+            "pemEmpty": "Súbor PEM je prázdny. Prosím, stiahnite nový súkromný kľúč z nastavení GitHub App.",
+            "pemStoredInVault": "Vas kluc PEM je teraz zasifrovany (AES-256) a bezpecne ulozeny vo vault. Pre vasu bezpecnost odstranre alebo zabezpecte povodny subor .pem — AeroFTP ho uz nepotrebuje.",
+            "pemVaultBadge": "Kluc PEM ulozeny vo vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

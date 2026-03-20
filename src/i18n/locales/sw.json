@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Imeshindwa kuhamisha kwenye Takataka",
             "batchRenameResult": "{success} zimebadilishwa jina, {errors} zimeshindwa",
             "copyCompleted": "Kunakili kumekamilika",
-            "localPathNotFound": "Folda ya ndani \"{path}\" haikupatikana. Imeelekeza kwenye saraka ya nyumbani."
+            "localPathNotFound": "Folda ya ndani \"{path}\" haikupatikana. Imeelekeza kwenye saraka ya nyumbani.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -3396,7 +3397,15 @@
             "createPr": "Unda Pull Request",
             "prTitle": "Kichwa cha PR",
             "prBody": "Maelezo (hiari)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token imeisha muda — itasasishwa kiotomatiki unapounganisha kwa kutumia .pem",
+            "appTokenExpiringSoon": "Token inakaribia kuisha muda — itasasishwa kiotomatiki unapounganisha",
+            "pemNotFound": "Faili ya PEM haijapatikana. Huenda ilihamishwa au kufutwa. Tafadhali ingiza tena faili ya .pem.",
+            "pemInvalidFormat": "Muundo batili wa ufunguo wa PEM. Pakua ufunguo mpya wa faragha kutoka mipangilio ya GitHub App na uingize tena.",
+            "pemEmpty": "Faili ya PEM ni tupu. Tafadhali pakua ufunguo mpya wa faragha kutoka mipangilio yako ya GitHub App.",
+            "pemStoredInVault": "Ufunguo wako wa PEM sasa umesimbwa kwa njia fiche (AES-256) na kuhifadhiwa kwa usalama katika vault. Kwa usalama wako, futa au linda faili asili ya .pem — AeroFTP haihitaji tena.",
+            "pemVaultBadge": "Ufunguo wa PEM umehifadhiwa kwenye vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

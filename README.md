@@ -90,7 +90,7 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 |----------|-----------|----------|
 | **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
 | **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
-| **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA |
+| **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA, hybrid upload (SCP) |
 | **WebDAV** | HTTPS | Nextcloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD, Seafile. HTTP Digest auth (RFC 2617), file locking (RFC 4918) |
 | **S3** | HTTPS | AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
 | **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share permissions, workspace export |
@@ -283,7 +283,7 @@ aeroftp ls --profile "My Google Drive" /
 - SSH key authentication for SFTP
 - 10-auditor dual security audit (Claude Opus 4.6 + GPT 5.4, 83+ findings resolved)
 
-See the full **[CLI Guide](docs/CLI-GUIDE.md)** for usage, examples, profiles, and batch scripting reference.
+See the full **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** for usage, examples, profiles, and batch scripting reference.
 
 #### AI Agent & CI/CD Integration
 

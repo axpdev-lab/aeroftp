@@ -990,7 +990,8 @@
             "moveToTrashFailed": "휴지통으로 이동 실패",
             "batchRenameResult": "{success}개 이름 변경, {errors}개 실패",
             "copyCompleted": "복사 완료",
-            "localPathNotFound": "로컬 폴더 \"{path}\"을(를) 찾을 수 없습니다. 홈 디렉토리로 이동했습니다."
+            "localPathNotFound": "로컬 폴더 \"{path}\"을(를) 찾을 수 없습니다. 홈 디렉토리로 이동했습니다.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -3385,7 +3386,15 @@
             "createPr": "Pull Request 생성",
             "prTitle": "PR 제목",
             "prBody": "설명 (선택 사항)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token이 만료되었습니다 — .pem을 사용하여 연결 시 자동 갱신됩니다",
+            "appTokenExpiringSoon": "Token이 곧 만료됩니다 — 연결 시 자동 갱신됩니다",
+            "pemNotFound": "PEM 파일을 찾을 수 없습니다. 이동되었거나 삭제되었을 수 있습니다. .pem 파일을 다시 가져오세요.",
+            "pemInvalidFormat": "잘못된 PEM 키 형식입니다. GitHub App 설정에서 새 개인 키를 다운로드하고 다시 가져오세요.",
+            "pemEmpty": "PEM 파일이 비어 있습니다. GitHub App 설정에서 새 개인 키를 다운로드하세요.",
+            "pemStoredInVault": "PEM 키가 암호화(AES-256)되어 vault에 안전하게 저장되었습니다. 보안을 위해 원본 .pem 파일을 삭제하거나 안전한 곳에 보관하세요 — AeroFTP에서는 더 이상 필요하지 않습니다.",
+            "pemVaultBadge": "PEM 키가 vault에 저장됨",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

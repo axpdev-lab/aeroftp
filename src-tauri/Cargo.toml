@@ -91,9 +91,10 @@ uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
-# CVE-2025-54804 resolved by upgrading to russh 0.54+
+# SFTP channel writes: see sftp-upload-0byte-bug.md in memory
 russh = { version = "0.57", features = ["ring"] }
 russh-sftp = "2.1"
+ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
 # Archive Support with Encryption (v1.3.0+)
 sevenz-rust = { version = "0.6", features = ["aes256", "compress"] }  # 7z with AES-256

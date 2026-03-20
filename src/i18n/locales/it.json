@@ -1215,7 +1215,8 @@
             "permissionsUpdatedDesc": "{name} → {mode}",
             "batchRenameResult": "{success} rinominati, {errors} falliti",
             "copyCompleted": "Copia completata",
-            "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home."
+            "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home.",
+            "zeroByteWarning": "File 0 B — potrebbe indicare un errore di trasferimento"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -3325,6 +3326,7 @@
             "authorizationFailed": "Autorizzazione fallita: {error}",
             "appTitle": "GitHub App",
             "appModeHint": "I commit mostreranno l'identità e il logo della tua GitHub App.",
+            "appTokenDuration": "I token di installazione sono validi per 1 ora e si rigenerano automaticamente alla connessione.",
             "appIdPlaceholder": "App ID (es. 12345678)",
             "installationIdPlaceholder": "Installation ID (es. 98765432)",
             "selectPemTitle": "Seleziona la chiave privata GitHub App (.pem)",
@@ -3332,6 +3334,13 @@
             "appMissingIds": "Inserisci prima App ID e Installation ID.",
             "appTokenReady": "Token di installazione pronto. Scade: {expiresAt}",
             "appTokenReadyShort": "Token di installazione pronto (scadenza circa 1 ora)",
+            "appTokenExpired": "Token scaduto — verrà rigenerato automaticamente alla connessione tramite .pem",
+            "appTokenExpiringSoon": "Token in scadenza — verrà rigenerato automaticamente alla connessione",
+            "pemNotFound": "File PEM non trovato. Potrebbe essere stato spostato o eliminato. Reimporta il file .pem.",
+            "pemInvalidFormat": "Formato chiave PEM non valido. Scarica una nuova chiave privata dalle impostazioni della GitHub App e reimporta.",
+            "pemEmpty": "Il file PEM è vuoto. Scarica una nuova chiave privata dalle impostazioni della tua GitHub App.",
+            "pemStoredInVault": "La tua chiave PEM è ora crittografata (AES-256) e custodita nel vault. Per la tua sicurezza, elimina o proteggi il file .pem originale — AeroFTP non ne ha più bisogno.",
+            "pemVaultBadge": "Chiave PEM salvata nel vault",
             "appTokenGenerating": "Generazione token...",
             "appImportPem": "Importa .pem e ottieni token",
             "manageApps": "Gestisci GitHub Apps",

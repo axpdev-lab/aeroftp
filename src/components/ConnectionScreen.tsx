@@ -2031,6 +2031,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             {connectionParams.options?.githubAuthMode === 'app' && (
                                                 <div className="pt-1 space-y-2">
                                                     <p className="text-xs text-gray-400">{t('github.appModeHint')}</p>
+                                                    <p className="text-xs text-gray-500">{t('github.appTokenDuration')}</p>
                                                     <input
                                                         type="text"
                                                         value={connectionParams.options?.githubAppId || ''}
@@ -2084,20 +2085,32 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                         options: {
                                                                             ...connectionParams.options,
                                                                             githubPemPath: selected as string,
+                                                                            githubPemStored: true,
                                                                             githubTokenExpiresAt: result.expires_at,
                                                                         },
                                                                     });
                                                                     setGitHubAlert({
                                                                         title: t('github.appTitle'),
-                                                                        message: t('github.appTokenReady', { expiresAt: new Date(result.expires_at).toLocaleString() }),
-                                                                        type: 'info',
+                                                                        message: t('github.pemStoredInVault'),
+                                                                        type: 'warning',
                                                                     });
                                                                 }
                                                             } catch (err) {
                                                                 console.error('PEM auth failed:', err);
+                                                                const errStr = String(err);
+                                                                let message: string;
+                                                                if (errStr.includes('not found') || errStr.includes('No such file')) {
+                                                                    message = t('github.pemNotFound');
+                                                                } else if (errStr.includes('Invalid PEM') || errStr.includes('InvalidKeyFormat') || errStr.includes('does not contain')) {
+                                                                    message = t('github.pemInvalidFormat');
+                                                                } else if (errStr.includes('empty')) {
+                                                                    message = t('github.pemEmpty');
+                                                                } else {
+                                                                    message = t('github.operationFailed', { error: errStr });
+                                                                }
                                                                 setGitHubAlert({
                                                                     title: t('github.appTitle'),
-                                                                    message: t('github.operationFailed', { error: String(err) }),
+                                                                    message,
                                                                     type: 'error',
                                                                 });
                                                             } finally {
@@ -2109,10 +2122,39 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         {gitHubPemLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
                                                         {gitHubPemLoading ? t('github.appTokenGenerating') : t('github.appImportPem')}
                                                     </button>
-                                                    {connectionParams.password && (
-                                                        <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1">
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                                                            {t('github.appTokenReadyShort')}
+                                                    {connectionParams.password && (() => {
+                                                        const expiresAt = connectionParams.options?.githubTokenExpiresAt;
+                                                        const expiresMs = expiresAt ? Date.parse(expiresAt) : NaN;
+                                                        const isExpired = Number.isFinite(expiresMs) && expiresMs <= Date.now();
+                                                        const isExpiringSoon = Number.isFinite(expiresMs) && !isExpired && expiresMs <= Date.now() + 5 * 60 * 1000;
+                                                        if (isExpired) {
+                                                            return (
+                                                                <p className="text-xs text-amber-500 text-center flex items-center justify-center gap-1">
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                                    {t('github.appTokenExpired')}
+                                                                </p>
+                                                            );
+                                                        }
+                                                        if (isExpiringSoon) {
+                                                            return (
+                                                                <p className="text-xs text-amber-400 text-center flex items-center justify-center gap-1">
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                                    {t('github.appTokenExpiringSoon')}
+                                                                </p>
+                                                            );
+                                                        }
+                                                        const expiresDate = Number.isFinite(expiresMs) ? new Date(expiresMs).toLocaleTimeString() : '';
+                                                        return (
+                                                            <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1">
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                {expiresDate ? t('github.appTokenReady', { expiresAt: expiresDate }) : t('github.appTokenReadyShort')}
+                                                            </p>
+                                                        );
+                                                    })()}
+                                                    {connectionParams.options?.githubPemStored && (
+                                                        <p className="text-xs text-blue-400 text-center flex items-center justify-center gap-1">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                                            {t('github.pemVaultBadge')}
                                                         </p>
                                                     )}
                                                     <p className="text-xs text-gray-500">

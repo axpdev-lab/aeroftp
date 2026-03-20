@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Ekki tókst að færa í ruslið",
             "batchRenameResult": "{success} endurnefnt, {errors} mistókst",
             "copyCompleted": "Afritun lokið",
-            "localPathNotFound": "Staðbundin mappa \"{path}\" fannst ekki. Fór í heimamöppuna."
+            "localPathNotFound": "Staðbundin mappa \"{path}\" fannst ekki. Fór í heimamöppuna.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -3414,7 +3415,15 @@
             "createPr": "Búa til Pull Request",
             "prTitle": "PR titill",
             "prBody": "Lýsing (valfrjálst)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token útrunninn — endurnýjast sjálfkrafa við tengingu með .pem",
+            "appTokenExpiringSoon": "Token rennur bráðum út — endurnýjast sjálfkrafa við tengingu",
+            "pemNotFound": "PEM skrá fannst ekki. Hún gæti hafa verið flutt eða eytt. Vinsamlegast flytjið .pem skrána inn aftur.",
+            "pemInvalidFormat": "Ógilt PEM lyklasnið. Sækið nýjan einkalykil úr stillingum GitHub App og flytjið inn aftur.",
+            "pemEmpty": "PEM skráin er tóm. Vinsamlegast sækið nýjan einkalykil úr stillingum GitHub App.",
+            "pemStoredInVault": "PEM lykillinn þinn er nú dulkóðaður (AES-256) og geymdur örugglega í vault. Til öryggis, eyððu eða tryggðu upprunalegu .pem skrána — AeroFTP þarfnast hennar ekki lengur.",
+            "pemVaultBadge": "PEM lykill geymdur í vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

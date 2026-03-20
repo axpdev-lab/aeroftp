@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Αποτυχία μετακίνησης στον κάδο απορριμμάτων",
             "batchRenameResult": "{success} μετονομάστηκαν, {errors} απέτυχαν",
             "copyCompleted": "Η αντιγραφή ολοκληρώθηκε",
-            "localPathNotFound": "Ο τοπικός φάκελος \"{path}\" δεν βρέθηκε. Πλοηγήθηκε στον κατάλογο αρχικής σελίδας."
+            "localPathNotFound": "Ο τοπικός φάκελος \"{path}\" δεν βρέθηκε. Πλοηγήθηκε στον κατάλογο αρχικής σελίδας.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -3395,7 +3396,15 @@
             "createPr": "Δημιουργία Pull Request",
             "prTitle": "Τίτλος PR",
             "prBody": "Περιγραφή (προαιρετικά)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Το token έληξε — θα ανανεωθεί αυτόματα κατά τη σύνδεση με .pem",
+            "appTokenExpiringSoon": "Το token λήγει σύντομα — θα ανανεωθεί αυτόματα κατά τη σύνδεση",
+            "pemNotFound": "Το αρχείο PEM δεν βρέθηκε. Μπορεί να έχει μετακινηθεί ή διαγραφεί. Παρακαλώ εισάγετε ξανά το αρχείο .pem.",
+            "pemInvalidFormat": "Μη έγκυρη μορφή κλειδιού PEM. Κατεβάστε ένα νέο ιδιωτικό κλειδί από τις ρυθμίσεις του GitHub App και εισάγετέ το ξανά.",
+            "pemEmpty": "Το αρχείο PEM είναι κενό. Παρακαλώ κατεβάστε ένα νέο ιδιωτικό κλειδί από τις ρυθμίσεις του GitHub App σας.",
+            "pemStoredInVault": "Το κλειδί PEM σας είναι πλέον κρυπτογραφημένο (AES-256) και αποθηκευμένο με ασφάλεια στο vault. Για την ασφάλειά σας, διαγράψτε ή ασφαλίστε το αρχικό αρχείο .pem — το AeroFTP δεν το χρειάζεται πλέον.",
+            "pemVaultBadge": "PEM key αποθηκευμένο στο vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

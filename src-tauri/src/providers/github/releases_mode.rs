@@ -7,7 +7,6 @@ use std::collections::HashMap;
 
 use futures_util::StreamExt;
 use serde_json::json;
-use tokio::io::AsyncWriteExt;
 
 use super::client::GitHubHttpClient;
 use super::errors::GitHubError;
@@ -245,19 +244,19 @@ pub async fn download_release_asset(
         )));
     }
 
-    let mut file = tokio::fs::File::create(local_path)
+    let mut atomic = crate::providers::atomic_write::AtomicFile::new(local_path)
         .await
         .map_err(ProviderError::IoError)?;
 
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let bytes = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        file.write_all(&bytes)
+        atomic.write_all(&bytes)
             .await
             .map_err(ProviderError::IoError)?;
     }
 
-    file.flush().await.map_err(ProviderError::IoError)?;
+    atomic.commit().await.map_err(ProviderError::IoError)?;
     Ok(())
 }
 

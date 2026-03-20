@@ -990,7 +990,8 @@
             "moveToTrashFailed": "ゴミ箱への移動に失敗しました",
             "batchRenameResult": "{success} 件の名前変更成功、{errors} 件の失敗",
             "copyCompleted": "コピーが完了しました",
-            "localPathNotFound": "ローカルフォルダー \"{path}\" が見つかりませんでした。ホームディレクトリに移動しました。"
+            "localPathNotFound": "ローカルフォルダー \"{path}\" が見つかりませんでした。ホームディレクトリに移動しました。",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -3385,7 +3386,15 @@
             "createPr": "Pull Request を作成",
             "prTitle": "PR タイトル",
             "prBody": "説明（任意）",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token の有効期限が切れました — .pem を使用して接続時に自動更新されます",
+            "appTokenExpiringSoon": "Token の有効期限が間もなく切れます — 接続時に自動更新されます",
+            "pemNotFound": "PEM ファイルが見つかりません。移動または削除された可能性があります。.pem ファイルを再インポートしてください。",
+            "pemInvalidFormat": "PEM キーの形式が無効です。GitHub App の設定から新しい秘密キーをダウンロードして再インポートしてください。",
+            "pemEmpty": "PEM ファイルが空です。GitHub App の設定から新しい秘密キーをダウンロードしてください。",
+            "pemStoredInVault": "PEM キーは暗号化（AES-256）され、vault に安全に保存されました。安全のため、元の .pem ファイルを削除または安全な場所に移動してください—AeroFTP ではもう必要ありません。",
+            "pemVaultBadge": "PEM キーは vault に保存済み",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

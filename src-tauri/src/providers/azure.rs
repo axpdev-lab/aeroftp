@@ -18,7 +18,7 @@ use quick_xml::events::Event;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
 use secrecy::ExposeSecret;
 use sha2::Sha256;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tracing::{info, debug};
 
 use super::{
@@ -710,13 +710,13 @@ impl StorageProvider for AzureProvider {
 
         // H-01: Streaming download — chunked writes instead of buffering entire response
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let mut bytes_received: u64 = 0;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
             // AZ-003: Report download progress
@@ -725,6 +725,8 @@ impl StorageProvider for AzureProvider {
                 cb(bytes_received, total_size);
             }
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }

@@ -614,6 +614,17 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                         {server.protocol || 'ftp'}
                                     </span>
+                                    {server.protocol === 'github' && server.options?.githubAuthMode && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                            server.options.githubAuthMode === 'app'
+                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                                                : server.options.githubAuthMode === 'pat'
+                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                                        }`}>
+                                            {server.options.githubAuthMode === 'app' ? 'APP' : server.options.githubAuthMode === 'pat' ? 'PAT' : 'OAuth'}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                     {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
@@ -644,11 +655,28 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                         return bucket ? `${bucket} — ${providerName}` : providerName;
                                                     })()
                                                     : server.protocol === 'github'
-                                                        ? `${server.host}${server.options?.githubAuthMode === 'pat' ? ' (PAT)' : server.options?.githubAuthMode === 'app' ? ' (App)' : server.options?.githubAuthMode === 'authorize' ? ' (OAuth)' : ''}`
+                                                        ? (() => {
+                                                            const base = server.host;
+                                                            const mode = server.options?.githubAuthMode;
+                                                            const modeLabel = mode === 'pat' ? ' (PAT)' : mode === 'app' ? ' (App)' : mode === 'authorize' ? ' (OAuth)' : '';
+                                                            return `${base}${modeLabel}`;
+                                                        })()
                                                     : server.protocol === 'webdav'
                                                         ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
                                                         : `${server.username}@${server.host}:${server.port}`
                                     }
+                                    {server.protocol === 'github' && server.options?.githubAuthMode === 'app' && server.options?.githubTokenExpiresAt && (() => {
+                                        const expiresMs = Date.parse(server.options.githubTokenExpiresAt!);
+                                        if (!Number.isFinite(expiresMs)) return null;
+                                        const remainMs = expiresMs - Date.now();
+                                        if (remainMs <= 0) {
+                                            return <span className="text-red-400 text-xs"> · token expired — auto-refreshes on connect</span>;
+                                        }
+                                        const mins = Math.ceil(remainMs / 60000);
+                                        const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+                                        const color = mins <= 15 ? 'text-amber-400' : 'text-green-400';
+                                        return <span className={`${color} text-xs`}> · {timeStr} left</span>;
+                                    })()}
                                 </div>
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

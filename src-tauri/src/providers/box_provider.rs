@@ -1087,7 +1087,6 @@ impl StorageProvider for BoxProvider {
 
     async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
@@ -1103,13 +1102,15 @@ impl StorageProvider for BoxProvider {
         }
 
         let mut stream = resp.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         Ok(())
     }

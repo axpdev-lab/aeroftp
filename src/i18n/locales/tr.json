@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Çöp Kutusuna taşıma başarısız oldu",
             "batchRenameResult": "{success} yeniden adlandırıldı, {errors} başarısız",
             "copyCompleted": "Kopyalama tamamlandı",
-            "localPathNotFound": "Yerel klasör \"{path}\" bulunamadı. Ana dizine gidildi."
+            "localPathNotFound": "Yerel klasör \"{path}\" bulunamadı. Ana dizine gidildi.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -3396,7 +3397,15 @@
             "createPr": "Pull Request Oluştur",
             "prTitle": "PR başlığı",
             "prBody": "Açıklama (isteğe bağlı)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token süresi doldu — bağlanırken .pem kullanılarak otomatik yenilenecek",
+            "appTokenExpiringSoon": "Token süresi yakında dolacak — bağlanırken otomatik yenilenecek",
+            "pemNotFound": "PEM dosyası bulunamadı. Taşınmış veya silinmiş olabilir. Lütfen .pem dosyasını yeniden içe aktarın.",
+            "pemInvalidFormat": "Geçersiz PEM anahtar biçimi. GitHub App ayarlarından yeni bir özel anahtar indirin ve yeniden içe aktarın.",
+            "pemEmpty": "PEM dosyası boş. Lütfen GitHub App ayarlarınızdan yeni bir özel anahtar indirin.",
+            "pemStoredInVault": "PEM anahtariniz artik sifrelenmis (AES-256) ve vault icinde guvenli bir sekilde saklanmaktadir. Guvenliginiz icin orijinal .pem dosyasini silin veya guvenli hale getirin — AeroFTP artik ona ihtiyac duymuyor.",
+            "pemVaultBadge": "PEM anahtari vault icinde sakli",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

@@ -582,7 +582,6 @@ impl StorageProvider for OneDriveProvider {
 
         // Download content with streaming
         use futures_util::StreamExt;
-        use tokio::io::AsyncWriteExt;
 
         let response = self.client
             .get(&download_url)
@@ -591,13 +590,15 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let mut stream = response.bytes_stream();
-        let mut file = tokio::fs::File::create(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            file.write_all(&chunk).await
+            atomic.write_all(&chunk).await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
+        atomic.commit().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
         info!("Downloaded {} to {}", remote_path, local_path);
         Ok(())

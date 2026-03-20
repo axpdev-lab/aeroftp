@@ -990,7 +990,8 @@
             "moveToTrashFailed": "სანაგვეში გადატანა ვერ მოხერხდა",
             "batchRenameResult": "{success} გადარქმეულია, {errors} ვერ შესრულდა",
             "copyCompleted": "კოპირება დასრულებულია",
-            "localPathNotFound": "ლოკალური საქაღალდე \"{path}\" ვერ მოიძებნა. გადადით მთავარ დირექტორიაში."
+            "localPathNotFound": "ლოკალური საქაღალდე \"{path}\" ვერ მოიძებნა. გადადით მთავარ დირექტორიაში.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -3395,7 +3396,15 @@
             "createPr": "Pull Request-ის შექმნა",
             "prTitle": "PR სათაური",
             "prBody": "აღწერა (არასავალდებულო)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token-ის ვადა ამოიწურა — ავტომატურად განახლდება დაკავშირებისას .pem-ის გამოყენებით",
+            "appTokenExpiringSoon": "Token-ის ვადა მალე ამოიწურება — ავტომატურად განახლდება დაკავშირებისას",
+            "pemNotFound": "PEM ფაილი ვერ მოიძებნა. შესაძლოა გადატანილი ან წაშლილია. გთხოვთ, ხელახლა შემოიტანეთ .pem ფაილი.",
+            "pemInvalidFormat": "PEM გასაღების არასწორი ფორმატი. ჩამოტვირთეთ ახალი პირადი გასაღები GitHub App-ის პარამეტრებიდან და ხელახლა შემოიტანეთ.",
+            "pemEmpty": "PEM ფაილი ცარიელია. გთხოვთ, ჩამოტვირთეთ ახალი პირადი გასაღები GitHub App-ის პარამეტრებიდან.",
+            "pemStoredInVault": "თქვენი PEM გასაღები ახლა დაშიფრულია (AES-256) და უსაფრთხოდ შენახულია vault-ში. თქვენი უსაფრთხოებისთვის, წაშალეთ ან დაიცავით ორიგინალური .pem ფაილი — AeroFTP-ს იგი აღარ სცირდება.",
+            "pemVaultBadge": "PEM გასაღები შენახულია vault-ში",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

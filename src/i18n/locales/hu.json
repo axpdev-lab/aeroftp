@@ -990,7 +990,8 @@
             "moveToTrashFailed": "Nem sikerült kukába helyezni",
             "batchRenameResult": "{success} átnevezve, {errors} sikertelen",
             "copyCompleted": "Másolás befejezve",
-            "localPathNotFound": "A(z) \"{path}\" helyi mappa nem található. Átnavigálva a saját könyvtárba."
+            "localPathNotFound": "A(z) \"{path}\" helyi mappa nem található. Átnavigálva a saját könyvtárba.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -3395,7 +3396,15 @@
             "createPr": "Pull Request létrehozása",
             "prTitle": "PR cím",
             "prBody": "Leírás (opcionális)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "A token lejárt — automatikusan frissül csatlakozáskor a .pem használatával",
+            "appTokenExpiringSoon": "A token hamarosan lejár — automatikusan frissül csatlakozáskor",
+            "pemNotFound": "A PEM fájl nem található. Lehet, hogy áthelyezték vagy törölték. Kérjük, importálja újra a .pem fájlt.",
+            "pemInvalidFormat": "Érvénytelen PEM kulcsformátum. Töltsön le egy új privát kulcsot a GitHub App beállításaiból, és importálja újra.",
+            "pemEmpty": "A PEM fájl üres. Kérjük, töltsön le egy új privát kulcsot a GitHub App beállításaiból.",
+            "pemStoredInVault": "A PEM kulcsa mostantól titkosítva (AES-256) és biztonságosan tárolva van a vault-ban. Biztonsága érdekében törölje vagy védje az eredeti .pem fájlt — az AeroFTP már nem igényli.",
+            "pemVaultBadge": "PEM kulcs tárolva a vault-ban",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

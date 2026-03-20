@@ -990,7 +990,8 @@
             "moveToTrashFailed": "No s'ha pogut moure a la paperera",
             "batchRenameResult": "{success} reanomenats, {errors} fallits",
             "copyCompleted": "Copia completada",
-            "localPathNotFound": "La carpeta local \"{path}\" no s'ha trobat. S'ha navegat al directori d'inici."
+            "localPathNotFound": "La carpeta local \"{path}\" no s'ha trobat. S'ha navegat al directori d'inici.",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -3414,7 +3415,15 @@
             "createPr": "Crear Pull Request",
             "prTitle": "Títol del PR",
             "prBody": "Descripció (opcional)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token expirat — es renovarà automàticament en connectar amb .pem",
+            "appTokenExpiringSoon": "Token a punt d'expirar — es renovarà automàticament en connectar",
+            "pemNotFound": "No s'ha trobat el fitxer PEM. Pot haver estat mogut o eliminat. Si us plau, torneu a importar el fitxer .pem.",
+            "pemInvalidFormat": "Format de clau PEM no vàlid. Descarregueu una nova clau privada des de la configuració de GitHub App i torneu a importar-la.",
+            "pemEmpty": "El fitxer PEM és buit. Si us plau, descarregueu una nova clau privada des de la configuració del vostre GitHub App.",
+            "pemStoredInVault": "La vostra clau PEM ara està xifrada (AES-256) i emmagatzemada de manera segura al vault. Per a la vostra seguretat, elimineu o protegiu el fitxer .pem original — AeroFTP ja no el necessita.",
+            "pemVaultBadge": "PEM key emmagatzemat al vault",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }

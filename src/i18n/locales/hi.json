@@ -990,7 +990,8 @@
             "moveToTrashFailed": "ट्रैश में भेजना विफल रहा",
             "batchRenameResult": "{success} का नाम बदला गया, {errors} विफल",
             "copyCompleted": "प्रतिलिपि पूर्ण",
-            "localPathNotFound": "स्थानीय फ़ोल्डर \"{path}\" नहीं मिला। होम डायरेक्टरी पर नेविगेट किया गया।"
+            "localPathNotFound": "स्थानीय फ़ोल्डर \"{path}\" नहीं मिला। होम डायरेक्टरी पर नेविगेट किया गया।",
+            "zeroByteWarning": "[NEEDS TRANSLATION] 0 B file — may indicate a transfer error"
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -3395,7 +3396,15 @@
             "createPr": "Pull Request बनाएं",
             "prTitle": "PR शीर्षक",
             "prBody": "विवरण (वैकल्पिक)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "[NEEDS TRANSLATION] Switch branch",
+            "appTokenExpired": "Token समाप्त हो गया — .pem का उपयोग करके कनेक्ट करने पर स्वचालित रूप से रिफ्रेश होगा",
+            "appTokenExpiringSoon": "Token जल्द ही समाप्त हो रहा है — कनेक्ट करने पर स्वचालित रूप से रिफ्रेश होगा",
+            "pemNotFound": "PEM फ़ाइल नहीं मिली। हो सकता है इसे स्थानांतरित या हटा दिया गया हो। कृपया .pem फ़ाइल को फिर से आयात करें।",
+            "pemInvalidFormat": "अमान्य PEM कुंजी प्रारूप। GitHub App सेटिंग्स से एक नई निजी कुंजी डाउनलोड करें और फिर से आयात करें।",
+            "pemEmpty": "PEM फ़ाइल खाली है। कृपया अपनी GitHub App सेटिंग्स से एक नई निजी कुंजी डाउनलोड करें।",
+            "pemStoredInVault": "आपकी PEM कुंजी अब एन्क्रिप्टेड (AES-256) है और vault में सुरक्षित रूप से संग्रहीत है। आपकी सुरक्षा के लिए, मूल .pem फ़ाइल को हटाएं या सुरक्षित करें — AeroFTP को अब इसकी आवश्यकता नहीं है।",
+            "pemVaultBadge": "PEM key vault में संग्रहीत",
+            "appTokenDuration": "[NEEDS TRANSLATION] Installation tokens are valid for 1 hour and auto-refresh on connect."
         }
     }
 }
