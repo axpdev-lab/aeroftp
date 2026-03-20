@@ -100,7 +100,7 @@ ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 sevenz-rust = { version = "0.6", features = ["aes256", "compress"] }  # 7z with AES-256
 unrar = "0.5"                                                          # RAR extraction
 trash = "5"                                                            # Cross-platform trash/recycle bin
-tar = "0.4"                                                           # TAR archives
+tar = "0.4.45"                                                        # TAR archives (CVE symlink chmod + PAX size fix)
 flate2 = "1.0"                                                        # Gzip compression
 xz2 = "0.1"                                                           # XZ/LZMA compression
 bzip2 = "0.6"                                                         # Bzip2 compression
