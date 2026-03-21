@@ -1,6 +1,6 @@
 # AeroFTP CLI — User Guide
 
-> **Version**: 3.0.2
+> **Version**: 3.0.8
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
 > **License**: GPL-3.0
 
@@ -49,7 +49,7 @@ The CLI binary (`aeroftp-cli`) is included in all AeroFTP distribution packages 
 ```bash
 # Verify installation
 aeroftp --version
-# aeroftp 2.9.9
+# aeroftp 3.0.8
 
 aeroftp --help
 ```
@@ -148,7 +148,7 @@ Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exa
 
 ### OAuth Providers via Profile
 
-OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk) require browser authorization. Authorize once in the AeroFTP GUI, then use the CLI:
+OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared) require browser authorization. Authorize once in the AeroFTP GUI, then use the CLI. Note: 4shared uses OAuth 1.0 and works in CLI after completing authorization in the GUI.
 
 ```bash
 # After authorizing Google Drive in the GUI:
@@ -321,15 +321,107 @@ aeroftp tree sftp://user@host /var/www/ -d 2
 
 Renders a tree with Unicode connectors (├──, └──) showing the directory hierarchy. Cycle-safe with visited-path tracking.
 
+### head — First N Lines
+
+```bash
+# Print first 20 lines (default)
+aeroftp head --profile "server" /var/log/app.log
+
+# First 5 lines
+aeroftp head sftp://user@host /var/log/app.log -n 5
+
+# JSON output
+aeroftp head --profile "server" /path/file.txt -n 3 --json
+```
+
+Prints the first N lines of a remote text file. Default: 20 lines. Files larger than 256 MB are rejected. Binary files return exit code 5.
+
+### tail — Last N Lines
+
+```bash
+# Print last 20 lines (default)
+aeroftp tail --profile "server" /var/log/app.log
+
+# Last 5 lines
+aeroftp tail sftp://user@host /var/log/app.log -n 5
+```
+
+Similar to `head` but prints the last N lines. Useful for viewing log files.
+
+### touch — Create Empty File
+
+```bash
+# Create a new empty file
+aeroftp touch --profile "server" /remote/path/newfile.txt
+
+# Verify file already exists
+aeroftp touch --profile "server" /remote/path/existing.txt
+```
+
+Creates an empty file if it doesn't exist. If the file already exists, confirms it without error (exit code 0).
+
+### hashsum — Compute File Hash
+
+```bash
+# SHA-256 hash
+aeroftp hashsum --profile "server" sha256 /data/file.bin
+
+# MD5 hash
+aeroftp hashsum sftp://user@host md5 /data/file.iso
+
+# BLAKE3 hash
+aeroftp hashsum --profile "server" blake3 /path/file.dat
+
+# JSON output
+aeroftp hashsum --profile "server" sha256 /file.txt --json
+```
+
+Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
+
+### check — Verify Local/Remote Match
+
+```bash
+# Compare local and remote directories
+aeroftp check --profile "server" /local/dir /remote/dir
+
+# Use SHA-256 checksums (slower but more accurate)
+aeroftp check --profile "server" /local/ /remote/ --checksum
+
+# One-way: only check files that exist locally
+aeroftp check --profile "server" /local/ /remote/ --one-way
+
+# JSON output with details
+aeroftp check --profile "server" /local/ /remote/ --json
+```
+
+Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
+
 ### sync — Synchronize Directories
 
 ```bash
 # Preview what would be synced
-aeroftp sync sftp://user@host ./local/ /remote/ --dry-run
+aeroftp sync --profile "server" ./local/ /remote/ --dry-run
+
+# Upload only
+aeroftp sync --profile "server" ./local/ /remote/ --direction upload
+
+# Download only
+aeroftp sync --profile "server" ./local/ /remote/ --direction download
 
 # Sync with delete (mirror mode)
 aeroftp sync sftp://user@host ./local/ /remote/ --delete
+
+# Exclude patterns
+aeroftp sync --profile "server" ./local/ /remote/ --exclude "*.tmp" --exclude ".git"
+
+# Safety limit: abort if more than 50 files would be deleted
+aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 50
+
+# Safety limit: abort if more than 25% of files would be deleted
+aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 25%
 ```
+
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`.
 
 ### batch — Execute Script
 
@@ -362,6 +454,14 @@ Executes a `.aeroftp` script file containing a sequence of commands. See [Batch 
 | `--trust-host-key` | Trust unknown SSH host keys |
 | `--two-factor <code>` | 2FA code for Filen/Internxt (env: `AEROFTP_2FA`) |
 | `--limit-rate <speed>` | Speed limit (e.g., `1M`, `500K`) |
+| `--include <pattern>` | Include only files matching glob pattern (repeatable) |
+| `--exclude-global <pattern>` | Exclude files matching glob pattern (repeatable) |
+| `--include-from <file>` | Read include patterns from file |
+| `--exclude-from <file>` | Read exclude patterns from file |
+| `--min-size <size>` | Minimum file size filter (e.g., `100k`, `1M`) |
+| `--max-size <size>` | Maximum file size filter (e.g., `1G`) |
+| `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
+| `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
 
 ---
 
@@ -494,9 +594,9 @@ DISCONNECT
 | `FIND <path> <pattern>` | Search files |
 | `TREE <path> [flags]` | Directory tree |
 | `DF` | Storage quota |
+| `SYNC <local> <remote>` | Synchronize directories |
 | `ECHO <message>` | Print message |
-| `SLEEP <seconds>` | Wait |
-| `EXIT [code]` | Exit with code |
+| `ON_ERROR CONTINUE\|FAIL` | Set error handling policy |
 
 ### Variable Substitution
 
@@ -511,8 +611,11 @@ ECHO Price: $$$VERSION  # → Price: $2.9.1
 ### Error Handling
 
 ```
-# Set error policy: stop (default), continue, ask
-SET ON_ERROR=continue
+# Continue on error (default: FAIL)
+ON_ERROR CONTINUE
+
+# Stop on first error
+ON_ERROR FAIL
 ```
 
 ### Running Batch Scripts
@@ -693,7 +796,7 @@ fi
 ```
 # deploy.aeroftp
 SET SERVER=sftp://deploy@prod.example.com:2222
-SET ON_ERROR=stop
+ON_ERROR FAIL
 
 CONNECT ${SERVER}
 ECHO Starting deployment...
@@ -738,6 +841,29 @@ aeroftp get sftp://user@host /large-file.iso --limit-rate 5M
 ### Encoding Issues
 
 The CLI sanitizes filenames with ANSI escape sequences. If filenames appear truncated, the server is sending control characters in directory listings.
+
+---
+
+## Live Test Results (v3.0.8)
+
+The following providers have been tested live via CLI with `--profile`:
+
+| Provider | Protocol | connect | ls | put/get | head/tail | hashsum | check | touch | tree | df |
+|----------|----------|---------|----|---------|-----------|---------|||-------|------|------|
+| WD MyCloud NAS | SFTP | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS |
+| axpdev.it | FTP | PASS | PASS | — | PASS | PASS | — | — | — | — |
+| Playground | GitHub | PASS | PASS | PASS | PASS | PASS | — | PASS | PASS | — |
+| MEGA.nz | MEGA | PASS | PASS | — | — | — | — | — | — | — |
+| OpenDrive | OpenDrive | PASS | PASS | — | — | — | — | — | — | PASS |
+| Filen | Filen (E2E) | PASS | PASS | — | — | — | — | — | — | PASS |
+| Koofr | WebDAV | PASS | PASS | — | — | — | — | — | — | — |
+| Koofr | Native API | PASS | PASS | — | — | — | — | — | — | PASS |
+| WD MyCloud NAS | WebDAV | PASS | PASS | — | — | — | — | — | — | — |
+| Backblaze B2 | S3 | PASS | PASS | — | — | — | — | — | — | — |
+| Azure | Azure Blob | PASS | PASS | — | — | — | — | — | — | — |
+| 4shared | OAuth 1.0 | PASS | PASS | — | — | — | — | — | — | PASS |
+
+**12 providers tested**, all core operations verified.
 
 ---
 

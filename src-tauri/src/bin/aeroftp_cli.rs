@@ -9,6 +9,11 @@
 //!   aeroftp rm <url> <path> [-rf]             Delete file/directory
 //!   aeroftp mv <url> <from> <to>              Rename/move
 //!   aeroftp cat <url> <path>                  Print to stdout
+//!   aeroftp head <url> <path> [-n 20]         Print first N lines
+//!   aeroftp tail <url> <path> [-n 20]         Print last N lines
+//!   aeroftp touch <url> <path>                Create empty file or update timestamp
+//!   aeroftp hashsum <algo> <url> <path>       Compute file hash (md5/sha1/sha256/sha512/blake3)
+//!   aeroftp check <url> <local> <remote>      Verify local/remote directories match
 //!   aeroftp stat <url> <path>                 File metadata
 //!   aeroftp find <url> <path> <pattern>       Search files
 //!   aeroftp df <url>                          Storage quota
@@ -128,6 +133,40 @@ struct Cli {
     #[arg(long, global = true)]
     limit_rate: Option<String>,
 
+    // ── Filter flags (apply to ls, get, put, sync, find, rm) ──
+
+    /// Include only files matching glob pattern (repeatable)
+    #[arg(long, global = true)]
+    include: Vec<String>,
+
+    /// Exclude files matching glob pattern (repeatable)
+    #[arg(long, global = true)]
+    exclude_global: Vec<String>,
+
+    /// Read include patterns from file (one per line, # comments)
+    #[arg(long, global = true)]
+    include_from: Option<String>,
+
+    /// Read exclude patterns from file (one per line, # comments)
+    #[arg(long, global = true)]
+    exclude_from: Option<String>,
+
+    /// Minimum file size (e.g., "100k", "1M", "1G")
+    #[arg(long, global = true)]
+    min_size: Option<String>,
+
+    /// Maximum file size (e.g., "100k", "1M", "1G")
+    #[arg(long, global = true)]
+    max_size: Option<String>,
+
+    /// Skip files newer than duration (e.g., "7d", "24h", "2w")
+    #[arg(long, global = true)]
+    min_age: Option<String>,
+
+    /// Skip files older than duration (e.g., "7d", "24h", "2w")
+    #[arg(long, global = true)]
+    max_age: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -148,16 +187,27 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum HashAlgorithm {
+    Md5,
+    Sha1,
+    Sha256,
+    Sha512,
+    Blake3,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Test connection to a remote server
     Connect {
-        /// Server URL (e.g., sftp://user@host:22)
+        /// Server URL (e.g., sftp://user@host:22). Omit when using --profile.
+        #[arg(default_value = "_")]
         url: String,
     },
     /// List files on a remote server
     Ls {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote path (default: /)
         #[arg(default_value = "/")]
@@ -177,7 +227,8 @@ enum Commands {
     },
     /// Download file(s) from remote server
     Get {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote file path (supports glob patterns like "*.csv")
         remote: String,
@@ -189,7 +240,8 @@ enum Commands {
     },
     /// Upload file(s) to remote server (supports glob patterns like "*.csv")
     Put {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Local file path (supports glob patterns like "*.csv")
         local: String,
@@ -201,16 +253,20 @@ enum Commands {
     },
     /// Create a remote directory
     Mkdir {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote directory path
+        #[arg(default_value = "")]
         path: String,
     },
     /// Delete a remote file or directory
     Rm {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote path to delete
+        #[arg(default_value = "")]
         path: String,
         /// Recursive delete (directories)
         #[arg(short, long)]
@@ -221,48 +277,131 @@ enum Commands {
     },
     /// Rename/move a remote file
     Mv {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Source path
+        #[arg(default_value = "")]
         from: String,
         /// Destination path
+        #[arg(default_value = "")]
         to: String,
     },
     /// Print remote file to stdout (for piping)
     Cat {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote file path
+        #[arg(default_value = "")]
         path: String,
+    },
+    /// Print first N lines of a remote file
+    Head {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Number of lines to print (default: 20)
+        #[arg(short = 'n', long, default_value = "20")]
+        lines: usize,
+    },
+    /// Print last N lines of a remote file
+    Tail {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Number of lines to print (default: 20)
+        #[arg(short = 'n', long, default_value = "20")]
+        lines: usize,
+    },
+    /// Create empty file or update timestamp
+    Touch {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Timestamp override (ISO 8601)
+        #[arg(long)]
+        timestamp: Option<String>,
+    },
+    /// Compute hash of remote file(s)
+    Hashsum {
+        /// Hash algorithm
+        #[arg(value_enum)]
+        algorithm: HashAlgorithm,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Download and hash locally
+        #[arg(long)]
+        download: bool,
+    },
+    /// Verify local and remote directories are identical
+    Check {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Local directory
+        #[arg(default_value = ".")]
+        local: String,
+        /// Remote directory
+        #[arg(default_value = "/")]
+        remote: String,
+        /// Use checksums instead of size/mtime
+        #[arg(long)]
+        checksum: bool,
+        /// Only check files present locally
+        #[arg(long)]
+        one_way: bool,
     },
     /// Show file/directory metadata
     Stat {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote path
+        #[arg(default_value = "")]
         path: String,
     },
     /// Search for files by pattern
     Find {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Base path to search from
+        #[arg(default_value = "/")]
         path: String,
         /// Search pattern (glob-style)
+        #[arg(default_value = "*")]
         pattern: String,
     },
     /// Show storage quota/usage
     Df {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
     },
     /// Synchronize local and remote directories
     Sync {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Local directory path
+        #[arg(default_value = ".")]
         local: String,
         /// Remote directory path
+        #[arg(default_value = "/")]
         remote: String,
         /// Sync direction: upload, download, both
         #[arg(long, default_value = "both")]
@@ -276,10 +415,20 @@ enum Commands {
         /// Exclude patterns (can repeat: --exclude "*.tmp" --exclude ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
+        /// Safety limit: abort if more than N files (or N%) would be deleted
+        #[arg(long)]
+        max_delete: Option<String>,
+        /// Move overwritten/deleted files to backup directory
+        #[arg(long)]
+        backup_dir: Option<String>,
+        /// Suffix for backup files (e.g., ".bak")
+        #[arg(long, default_value = "")]
+        backup_suffix: String,
     },
     /// Display remote directory tree
     Tree {
-        /// Server URL
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
         url: String,
         /// Remote path (default: /)
         #[arg(default_value = "/")]
@@ -446,6 +595,34 @@ struct CliError {
 struct CliOk {
     status: &'static str,
     message: String,
+}
+
+#[derive(Serialize)]
+struct CliHashResult {
+    status: &'static str,
+    algorithm: String,
+    hash: String,
+    path: String,
+    size: u64,
+}
+
+#[derive(Serialize)]
+struct CliCheckResult {
+    status: &'static str,
+    match_count: u32,
+    differ_count: u32,
+    missing_local: u32,
+    missing_remote: u32,
+    elapsed_secs: f64,
+    details: Vec<CliCheckEntry>,
+}
+
+#[derive(Serialize)]
+struct CliCheckEntry {
+    path: String,
+    status: String,
+    local_size: Option<u64>,
+    remote_size: Option<u64>,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -639,6 +816,176 @@ fn use_color() -> bool {
     }
     // Default: color if stderr is a terminal
     std::io::stderr().is_terminal()
+}
+
+// ── Filter System ─────────────────────────────────────────────────
+
+/// Parse a size string like "100k", "1M", "2G" into bytes.
+fn parse_size_filter(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Empty size".into());
+    }
+    let (num_str, multiplier) = match s.as_bytes().last() {
+        Some(b'k' | b'K') => (&s[..s.len() - 1], 1024u64),
+        Some(b'm' | b'M') => (&s[..s.len() - 1], 1024 * 1024),
+        Some(b'g' | b'G') => (&s[..s.len() - 1], 1024 * 1024 * 1024),
+        _ => (s, 1u64),
+    };
+    num_str
+        .trim()
+        .parse::<f64>()
+        .map(|n| (n * multiplier as f64) as u64)
+        .map_err(|e| format!("Invalid size '{}': {}", s, e))
+}
+
+/// Parse an age/duration string like "7d", "24h", "2w" into seconds.
+fn parse_age_filter(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Empty duration".into());
+    }
+    let (num_str, multiplier) = match s.as_bytes().last() {
+        Some(b's') => (&s[..s.len() - 1], 1u64),
+        Some(b'm') => (&s[..s.len() - 1], 60u64),
+        Some(b'h') => (&s[..s.len() - 1], 3600u64),
+        Some(b'd') => (&s[..s.len() - 1], 86400u64),
+        Some(b'w') => (&s[..s.len() - 1], 604800u64),
+        Some(b'M') => (&s[..s.len() - 1], 2592000u64), // 30 days
+        Some(b'y') => (&s[..s.len() - 1], 31536000u64), // 365 days
+        _ => (s, 86400u64), // default: days
+    };
+    num_str
+        .trim()
+        .parse::<f64>()
+        .map(|n| (n * multiplier as f64) as u64)
+        .map_err(|e| format!("Invalid duration '{}': {}", s, e))
+}
+
+/// Load patterns from a file (one per line, # comments, blank lines skipped).
+fn load_patterns_from_file(path: &str) -> Result<Vec<String>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Cannot read filter file '{}': {}", path, e))?;
+    Ok(content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(String::from)
+        .collect())
+}
+
+/// Build a filter function from CLI global flags.
+/// Returns a closure that takes (name, size, modified_timestamp) and returns true if the entry passes.
+/// Filter predicate: (filename, size_bytes, modified_timestamp_secs) -> passes
+type FilterFn = Box<dyn Fn(&str, u64, Option<u64>) -> bool + Send + Sync>;
+
+fn build_filter(cli: &Cli) -> FilterFn {
+    use globset::{Glob, GlobSetBuilder};
+
+    // Collect include patterns
+    let mut include_patterns = cli.include.clone();
+    if let Some(ref path) = cli.include_from {
+        if let Ok(patterns) = load_patterns_from_file(path) {
+            include_patterns.extend(patterns);
+        }
+    }
+
+    // Collect exclude patterns (merge global + per-command)
+    let mut exclude_patterns = cli.exclude_global.clone();
+    if let Some(ref path) = cli.exclude_from {
+        if let Ok(patterns) = load_patterns_from_file(path) {
+            exclude_patterns.extend(patterns);
+        }
+    }
+
+    // Build glob sets
+    let include_set = if include_patterns.is_empty() {
+        None
+    } else {
+        let mut builder = GlobSetBuilder::new();
+        for p in &include_patterns {
+            if let Ok(g) = Glob::new(p) {
+                builder.add(g);
+            }
+        }
+        builder.build().ok()
+    };
+
+    let exclude_set = if exclude_patterns.is_empty() {
+        None
+    } else {
+        let mut builder = GlobSetBuilder::new();
+        for p in &exclude_patterns {
+            if let Ok(g) = Glob::new(p) {
+                builder.add(g);
+            }
+        }
+        builder.build().ok()
+    };
+
+    // Parse size limits
+    let min_size = cli.min_size.as_ref().and_then(|s| parse_size_filter(s).ok());
+    let max_size = cli.max_size.as_ref().and_then(|s| parse_size_filter(s).ok());
+
+    // Parse age limits (convert to threshold timestamps)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let min_age_ts = cli.min_age.as_ref().and_then(|s| parse_age_filter(s).ok()).map(|secs| now - secs);
+    let max_age_ts = cli.max_age.as_ref().and_then(|s| parse_age_filter(s).ok()).map(|secs| now - secs);
+
+    Box::new(move |name: &str, size: u64, modified: Option<u64>| {
+        // Include filter: if set, file must match at least one include pattern
+        if let Some(ref set) = include_set {
+            if !set.is_match(name) {
+                return false;
+            }
+        }
+        // Exclude filter: if file matches any exclude pattern, skip it
+        if let Some(ref set) = exclude_set {
+            if set.is_match(name) {
+                return false;
+            }
+        }
+        // Size filters
+        if let Some(min) = min_size {
+            if size < min {
+                return false;
+            }
+        }
+        if let Some(max) = max_size {
+            if size > max {
+                return false;
+            }
+        }
+        // Age filters: min_age means "older than", max_age means "newer than"
+        if let Some(ts) = modified {
+            if let Some(threshold) = min_age_ts {
+                if ts > threshold {
+                    return false; // File is too new
+                }
+            }
+            if let Some(threshold) = max_age_ts {
+                if ts < threshold {
+                    return false; // File is too old
+                }
+            }
+        }
+        true
+    })
+}
+
+/// Check if any filter flags are active.
+fn has_filters(cli: &Cli) -> bool {
+    !cli.include.is_empty()
+        || !cli.exclude_global.is_empty()
+        || cli.include_from.is_some()
+        || cli.exclude_from.is_some()
+        || cli.min_size.is_some()
+        || cli.max_size.is_some()
+        || cli.min_age.is_some()
+        || cli.max_age.is_some()
 }
 
 fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
@@ -1352,6 +1699,13 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         extra.insert("container".to_string(), container.clone());
     }
 
+    // Azure: GUI stores container as "bucket" in options; map to "container" for provider
+    if provider_type == ProviderType::Azure && !extra.contains_key("container") {
+        if let Some(bucket) = extra.remove("bucket") {
+            extra.insert("container".to_string(), bucket);
+        }
+    }
+
     if !cli.quiet {
         eprintln!("Using profile: {} ({} → {})", name, protocol.to_uppercase(), host);
     }
@@ -1488,26 +1842,34 @@ fn create_oauth_provider_by_protocol(protocol: &str, store: &CredentialStore) ->
                 fourshared::FourSharedProvider, types::FourSharedConfig,
             };
 
-            let settings_json = store.get("fourshared_oauth_settings")
-                .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
-            let tokens_json = store.get("fourshared_oauth_tokens")
-                .map_err(|e| format!("No 4shared access tokens in vault: {}", e))?;
-
-            #[derive(serde::Deserialize)]
-            struct FsSettings { consumer_key: String, consumer_secret: String }
-            #[derive(serde::Deserialize)]
-            struct FsTokens { token: String, token_secret: String }
-
-            let settings: FsSettings = serde_json::from_str(&settings_json)
-                .map_err(|e| format!("Failed to parse 4shared OAuth settings: {}", e))?;
-            let tokens: FsTokens = serde_json::from_str(&tokens_json)
-                .map_err(|e| format!("Failed to parse 4shared access tokens: {}", e))?;
+            // Read consumer key/secret — try individual keys first (GUI format), then legacy JSON
+            let (ck, cs) = if let (Ok(k), Ok(s)) = (
+                store.get("oauth_fourshared_client_id"),
+                store.get("oauth_fourshared_client_secret"),
+            ) {
+                (k, s)
+            } else {
+                let json = store.get("fourshared_oauth_settings")
+                    .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
+                #[derive(serde::Deserialize)]
+                struct Fs { consumer_key: String, consumer_secret: String }
+                let fs: Fs = serde_json::from_str(&json)
+                    .map_err(|e| format!("Failed to parse 4shared settings: {}", e))?;
+                (fs.consumer_key, fs.consumer_secret)
+            };
+            let (at, ats) = {
+                let data = store.get("oauth_fourshared")
+                    .map_err(|_| "No 4shared access tokens in vault. Authorize from GUI first.".to_string())?;
+                data.split_once(':')
+                    .map(|(t, s)| (t.to_string(), s.to_string()))
+                    .ok_or_else(|| "Invalid 4shared token format".to_string())?
+            };
 
             let fs_config = FourSharedConfig {
-                consumer_key: settings.consumer_key,
-                consumer_secret: secrecy::SecretString::from(settings.consumer_secret),
-                access_token: secrecy::SecretString::from(tokens.token),
-                access_token_secret: secrecy::SecretString::from(tokens.token_secret),
+                consumer_key: ck,
+                consumer_secret: secrecy::SecretString::from(cs),
+                access_token: secrecy::SecretString::from(at),
+                access_token_secret: secrecy::SecretString::from(ats),
             };
 
             Ok(Box::new(FourSharedProvider::new(fs_config)))
@@ -1596,46 +1958,48 @@ async fn try_create_oauth_provider(
                 fourshared::FourSharedProvider, types::FourSharedConfig,
             };
 
-            let settings_json = match store.get("fourshared_oauth_settings") {
-                Ok(j) => j,
-                Err(_) => {
-                    eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
-                    return Some(Err(6));
+            // GUI stores 4shared credentials as individual vault keys:
+            //   oauth_fourshared_client_id, oauth_fourshared_client_secret (consumer)
+            //   fourshared_access_token, fourshared_access_token_secret (tokens)
+            // Also support legacy JSON format: fourshared_oauth_settings, fourshared_oauth_tokens
+            let (consumer_key, consumer_secret) = if let (Ok(k), Ok(s)) = (
+                store.get("oauth_fourshared_client_id"),
+                store.get("oauth_fourshared_client_secret"),
+            ) {
+                (k, s)
+            } else if let Ok(json) = store.get("fourshared_oauth_settings") {
+                #[derive(serde::Deserialize)]
+                struct FsSettings { consumer_key: String, consumer_secret: String }
+                match serde_json::from_str::<FsSettings>(&json) {
+                    Ok(s) => (s.consumer_key, s.consumer_secret),
+                    Err(_) => {
+                        eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
+                        return Some(Err(6));
+                    }
                 }
-            };
-            let tokens_json = match store.get("fourshared_oauth_tokens") {
-                Ok(j) => j,
-                Err(_) => {
-                    eprintln!("Error: No 4shared access tokens found in vault. Authorize 4shared from AeroFTP GUI first.");
-                    return Some(Err(6));
-                }
+            } else {
+                eprintln!("Error: No 4shared OAuth settings found in vault. Configure consumer_key/consumer_secret in AeroFTP GUI first.");
+                return Some(Err(6));
             };
 
-            #[derive(serde::Deserialize)]
-            struct FsSettings { consumer_key: String, consumer_secret: String }
-            #[derive(serde::Deserialize)]
-            struct FsTokens { token: String, token_secret: String }
-
-            let settings: FsSettings = match serde_json::from_str(&settings_json) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Error: Failed to parse 4shared OAuth settings: {}", e);
-                    return Some(Err(5));
+            // Tokens stored as "token:token_secret" in key "oauth_fourshared"
+            let (access_token, access_secret) = if let Ok(data) = store.get("oauth_fourshared") {
+                if let Some((t, s)) = data.split_once(':') {
+                    (t.to_string(), s.to_string())
+                } else {
+                    eprintln!("Error: Invalid 4shared token format in vault.");
+                    return Some(Err(6));
                 }
-            };
-            let tokens: FsTokens = match serde_json::from_str(&tokens_json) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("Error: Failed to parse 4shared access tokens: {}", e);
-                    return Some(Err(5));
-                }
+            } else {
+                eprintln!("Error: No 4shared access tokens found in vault. Authorize 4shared from AeroFTP GUI first.");
+                return Some(Err(6));
             };
 
             let fs_config = FourSharedConfig {
-                consumer_key: settings.consumer_key,
-                consumer_secret: secrecy::SecretString::from(settings.consumer_secret),
-                access_token: secrecy::SecretString::from(tokens.token),
-                access_token_secret: secrecy::SecretString::from(tokens.token_secret),
+                consumer_key,
+                consumer_secret: secrecy::SecretString::from(consumer_secret),
+                access_token: secrecy::SecretString::from(access_token),
+                access_token_secret: secrecy::SecretString::from(access_secret),
             };
 
             let mut provider = FourSharedProvider::new(fs_config);
@@ -1843,34 +2207,18 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
         None
     };
 
-    let (config, _path) = match url_to_provider_config(url, cli) {
+    let (mut provider, _path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(e) => {
+        Err(code) => {
             if let Some(sp) = spinner { sp.finish_and_clear(); }
-            print_error(format, &e, 5);
-            return 5;
+            return code;
         }
     };
 
-    let pt = config.provider_type;
-    let host = config.host.clone();
-    let port = config.effective_port();
-    let user = config.username.clone().unwrap_or_default();
-
-    let mut provider = match ProviderFactory::create(&config) {
-        Ok(p) => p,
-        Err(e) => {
-            if let Some(sp) = spinner { sp.finish_and_clear(); }
-            print_error(format, &format!("Failed to create provider: {}", e), provider_error_to_exit_code(&e));
-            return provider_error_to_exit_code(&e);
-        }
-    };
-
-    if let Err(e) = provider.connect().await {
-        if let Some(sp) = spinner { sp.finish_and_clear(); }
-        print_error(format, &format!("Connection failed: {}", e), provider_error_to_exit_code(&e));
-        return provider_error_to_exit_code(&e);
-    }
+    let pt = provider.provider_type();
+    let host = provider.display_name();
+    let port = 443u16; // display-only, actual port handled by provider
+    let user = String::new();
 
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
@@ -1957,6 +2305,15 @@ async fn cmd_ls(
     } else {
         entries.into_iter().filter(|e| !e.name.starts_with('.')).collect()
     };
+
+    // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
+    if has_filters(cli) {
+        let filter = build_filter(cli);
+        entries.retain(|e| {
+            if e.is_dir { return true; } // Don't filter directories in ls
+            filter(&e.name, e.size, None)
+        });
+    }
 
     // Sort
     match sort {
@@ -3113,6 +3470,9 @@ async fn cmd_sync(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    max_delete: Option<&str>,
+    _backup_dir: Option<&str>,
+    _backup_suffix: &str,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -3313,6 +3673,27 @@ async fn cmd_sync(
             to_delete_remote.len() + to_delete_local.len(),
             skipped
         );
+    }
+
+    // --max-delete safety check
+    if let Some(max_del) = max_delete {
+        let delete_count = to_delete_remote.len() + to_delete_local.len();
+        let total_files = local_map.len() + remote_map.len();
+        let limit = if max_del.ends_with('%') {
+            let pct: f64 = max_del.trim_end_matches('%').parse().unwrap_or(100.0);
+            ((pct / 100.0) * total_files as f64).ceil() as usize
+        } else {
+            max_del.parse::<usize>().unwrap_or(usize::MAX)
+        };
+        if delete_count > limit {
+            let msg = format!(
+                "Safety abort: {} files would be deleted (limit: {}). Increase --max-delete or remove the flag.",
+                delete_count, max_del
+            );
+            print_error(format, &msg, 4);
+            let _ = provider.disconnect().await;
+            return 4;
+        }
     }
 
     if dry_run {
@@ -3804,6 +4185,386 @@ async fn cmd_put_glob(
     if uploaded == total as u32 { 0 } else { 4 }
 }
 
+// ── Head / Tail / Touch / Hashsum / Check ─────────────────────────
+
+async fn cmd_head(
+    url: &str,
+    path: &str,
+    lines: usize,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match provider.download_to_bytes(path).await {
+        Ok(data) => {
+            match String::from_utf8(data) {
+                Ok(text) => {
+                    let result: Vec<&str> = text.lines().take(lines).collect();
+                    let output = result.join("\n");
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "path": path,
+                            "lines": result.len(),
+                            "content": output,
+                        }));
+                    } else {
+                        println!("{}", output);
+                    }
+                    let _ = provider.disconnect().await;
+                    0
+                }
+                Err(_) => {
+                    print_error(format, "File is not valid UTF-8 text", 5);
+                    let _ = provider.disconnect().await;
+                    5
+                }
+            }
+        }
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("head failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            code
+        }
+    }
+}
+
+async fn cmd_tail(
+    url: &str,
+    path: &str,
+    lines: usize,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match provider.download_to_bytes(path).await {
+        Ok(data) => {
+            match String::from_utf8(data) {
+                Ok(text) => {
+                    let all_lines: Vec<&str> = text.lines().collect();
+                    let start = all_lines.len().saturating_sub(lines);
+                    let result = &all_lines[start..];
+                    let output = result.join("\n");
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "path": path,
+                            "lines": result.len(),
+                            "content": output,
+                        }));
+                    } else {
+                        println!("{}", output);
+                    }
+                    let _ = provider.disconnect().await;
+                    0
+                }
+                Err(_) => {
+                    print_error(format, "File is not valid UTF-8 text", 5);
+                    let _ = provider.disconnect().await;
+                    5
+                }
+            }
+        }
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("tail failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            code
+        }
+    }
+}
+
+async fn cmd_touch(
+    url: &str,
+    path: &str,
+    _timestamp: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    // Check if file exists
+    match provider.stat(path).await {
+        Ok(_) => {
+            // File exists — touch is a no-op for most providers (mtime update not widely supported)
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({"status": "ok", "path": path, "action": "exists"}));
+            } else {
+                eprintln!("File exists: {}", path);
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(_) => {
+            // File doesn't exist — create empty file
+            let tmp = std::env::temp_dir().join(format!("aeroftp_touch_{}", uuid::Uuid::new_v4()));
+            if let Err(e) = std::fs::write(&tmp, b"") {
+                print_error(format, &format!("Failed to create temp file: {}", e), 4);
+                let _ = provider.disconnect().await;
+                return 4;
+            }
+            let result = provider.upload(tmp.to_str().unwrap_or(""), path, None).await;
+            let _ = std::fs::remove_file(&tmp);
+            match result {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({"status": "ok", "path": path, "action": "created"}));
+                    } else {
+                        eprintln!("Created: {}", path);
+                    }
+                    let _ = provider.disconnect().await;
+                    0
+                }
+                Err(e) => {
+                    let code = provider_error_to_exit_code(&e);
+                    print_error(format, &format!("touch failed: {}", e), code);
+                    let _ = provider.disconnect().await;
+                    code
+                }
+            }
+        }
+    }
+}
+
+async fn cmd_hashsum(
+    algorithm: HashAlgorithm,
+    url: &str,
+    path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match provider.download_to_bytes(path).await {
+        Ok(data) => {
+            let hash = match algorithm {
+                HashAlgorithm::Md5 => {
+                    use md5::Digest;
+                    format!("{:x}", md5::Md5::digest(&data))
+                }
+                HashAlgorithm::Sha1 => {
+                    use sha1::Digest;
+                    format!("{:x}", sha1::Sha1::digest(&data))
+                }
+                HashAlgorithm::Sha256 => {
+                    use sha2::Digest;
+                    format!("{:x}", sha2::Sha256::digest(&data))
+                }
+                HashAlgorithm::Sha512 => {
+                    use sha2::Digest;
+                    format!("{:x}", sha2::Sha512::digest(&data))
+                }
+                HashAlgorithm::Blake3 => {
+                    blake3::hash(&data).to_hex().to_string()
+                }
+            };
+            let algo_name = match algorithm {
+                HashAlgorithm::Md5 => "md5",
+                HashAlgorithm::Sha1 => "sha1",
+                HashAlgorithm::Sha256 => "sha256",
+                HashAlgorithm::Sha512 => "sha512",
+                HashAlgorithm::Blake3 => "blake3",
+            };
+            if matches!(format, OutputFormat::Json) {
+                print_json(&CliHashResult {
+                    status: "ok",
+                    algorithm: algo_name.to_string(),
+                    hash: hash.clone(),
+                    path: path.to_string(),
+                    size: data.len() as u64,
+                });
+            } else {
+                println!("{}  {}", hash, path);
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("hashsum failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            code
+        }
+    }
+}
+
+async fn cmd_check(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    checksum: bool,
+    one_way: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let start = Instant::now();
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    // Scan local files
+    let local_dir = Path::new(local_path);
+    if !local_dir.is_dir() {
+        print_error(format, &format!("Local path is not a directory: {}", local_path), 5);
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+    let mut local_files: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    for entry in walkdir::WalkDir::new(local_dir)
+        .max_depth(MAX_SCAN_DEPTH)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            if let Ok(rel) = entry.path().strip_prefix(local_dir) {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                let hash = if checksum {
+                    use sha2::Digest;
+                    match std::fs::read(entry.path()) {
+                        Ok(data) => Some(format!("{:x}", sha2::Sha256::digest(&data))),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+                local_files.insert(rel_str, (size, hash));
+            }
+        }
+    }
+
+    // Scan remote files (BFS)
+    let mut remote_files: HashMap<String, u64> = HashMap::new();
+    let mut dirs_to_scan = vec![remote_path.to_string()];
+    let remote_prefix = if remote_path.ends_with('/') {
+        remote_path.to_string()
+    } else {
+        format!("{}/", remote_path)
+    };
+    while let Some(dir) = dirs_to_scan.pop() {
+        match provider.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    let rel = entry
+                        .path
+                        .strip_prefix(&remote_prefix)
+                        .unwrap_or(&entry.path)
+                        .to_string();
+                    if entry.is_dir {
+                        dirs_to_scan.push(entry.path.clone());
+                    } else {
+                        remote_files.insert(rel, entry.size);
+                    }
+                }
+            }
+            Err(e) => {
+                if !matches!(format, OutputFormat::Json) {
+                    eprintln!("Warning: failed to scan {}: {}", dir, e);
+                }
+            }
+        }
+    }
+
+    // Compare
+    let mut match_count: u32 = 0;
+    let mut differ_count: u32 = 0;
+    let mut missing_local: u32 = 0;
+    let mut missing_remote: u32 = 0;
+    let mut details: Vec<CliCheckEntry> = Vec::new();
+
+    for (rel, (local_size, _local_hash)) in &local_files {
+        match remote_files.get(rel) {
+            Some(&remote_size) => {
+                if *local_size == remote_size {
+                    match_count += 1;
+                } else {
+                    differ_count += 1;
+                    details.push(CliCheckEntry {
+                        path: rel.clone(),
+                        status: "differ".to_string(),
+                        local_size: Some(*local_size),
+                        remote_size: Some(remote_size),
+                    });
+                }
+            }
+            None => {
+                missing_remote += 1;
+                details.push(CliCheckEntry {
+                    path: rel.clone(),
+                    status: "missing_remote".to_string(),
+                    local_size: Some(*local_size),
+                    remote_size: None,
+                });
+            }
+        }
+    }
+
+    if !one_way {
+        for (rel, &remote_size) in &remote_files {
+            if !local_files.contains_key(rel) {
+                missing_local += 1;
+                details.push(CliCheckEntry {
+                    path: rel.clone(),
+                    status: "missing_local".to_string(),
+                    local_size: None,
+                    remote_size: Some(remote_size),
+                });
+            }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64();
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&CliCheckResult {
+            status: if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
+                "ok"
+            } else {
+                "differences_found"
+            },
+            match_count,
+            differ_count,
+            missing_local,
+            missing_remote,
+            elapsed_secs: elapsed,
+            details,
+        });
+    } else {
+        eprintln!(
+            "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
+            match_count, differ_count, missing_local, missing_remote, elapsed
+        );
+        for d in &details {
+            let icon = match d.status.as_str() {
+                "differ" => "~",
+                "missing_local" => "-",
+                "missing_remote" => "+",
+                _ => "?",
+            };
+            eprintln!("  {} {}", icon, d.path);
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    if differ_count > 0 || missing_local > 0 || missing_remote > 0 {
+        4
+    } else {
+        0
+    }
+}
+
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
     let content = match std::fs::read_to_string(file) {
         Ok(c) => c,
@@ -4216,6 +4977,9 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     false,
                     &[],
+                    None,
+                    None,
+                    "",
                     cli,
                     format,
                     cancelled.clone(),
@@ -6392,6 +7156,9 @@ async fn main() {
 
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
+        // Profile-aware positional shift: when --profile is set, the "url" positional
+        // is actually the first real argument (path, remote, etc.). We detect this by
+        // checking if url doesn't look like a URL (no "://") and shift args accordingly.
         Commands::Ls {
             url,
             path,
@@ -6399,40 +7166,125 @@ async fn main() {
             sort,
             reverse,
             all,
-        } => cmd_ls(url, path, *long, sort, *reverse, *all, &cli, format).await,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_ls(u, p, *long, sort, *reverse, *all, &cli, format).await
+        }
         Commands::Get {
             url,
             remote,
             local,
             recursive,
-        } => cmd_get(url, remote, local.as_deref(), *recursive, &cli, format, cancelled).await,
+        } => {
+            let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), Some(remote.as_str()))
+            } else {
+                ("_", remote.as_str(), local.as_deref())
+            };
+            cmd_get(u, r, l, *recursive, &cli, format, cancelled).await
+        }
         Commands::Put {
             url,
             local,
             remote,
             recursive,
-        } => cmd_put(url, local, remote.as_deref(), *recursive, &cli, format, cancelled).await,
-        Commands::Mkdir { url, path } => cmd_mkdir(url, path, &cli, format).await,
+        } => {
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), Some(local.as_str()))
+            } else {
+                ("_", local.as_str(), remote.as_deref())
+            };
+            cmd_put(u, l, r, *recursive, &cli, format, cancelled).await
+        }
+        Commands::Mkdir { url, path } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_mkdir("_", p, &cli, format).await
+        }
         Commands::Rm {
             url,
             path,
             recursive,
             force,
-        } => cmd_rm(url, path, *recursive, *force, &cli, format).await,
-        Commands::Mv { url, from, to } => cmd_mv(url, from, to, &cli, format).await,
-        Commands::Cat { url, path } => cmd_cat(url, path, &cli, format).await,
-        Commands::Stat { url, path } => cmd_stat(url, path, &cli, format).await,
+        } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_rm("_", p, *recursive, *force, &cli, format).await
+        }
+        Commands::Mv { url, from, to } => {
+            let (f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                (url.as_str(), from.as_str())
+            } else {
+                (from.as_str(), to.as_str())
+            };
+            cmd_mv("_", f, t, &cli, format).await
+        }
+        Commands::Cat { url, path } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_cat("_", p, &cli, format).await
+        }
+        Commands::Head { url, path, lines } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_head("_", p, *lines, &cli, format).await
+        }
+        Commands::Tail { url, path, lines } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_tail("_", p, *lines, &cli, format).await
+        }
+        Commands::Touch { url, path, timestamp } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_touch("_", p, timestamp.as_deref(), &cli, format).await
+        }
+        Commands::Hashsum {
+            algorithm,
+            url,
+            path,
+            download: _,
+        } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_hashsum(*algorithm, "_", p, &cli, format).await
+        }
+        Commands::Check {
+            url,
+            local,
+            remote,
+            checksum,
+            one_way,
+        } => {
+            let (l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                (url.as_str(), local.as_str())
+            } else {
+                (local.as_str(), remote.as_str())
+            };
+            cmd_check("_", l, r, *checksum, *one_way, &cli, format).await
+        }
+        Commands::Stat { url, path } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_stat("_", p, &cli, format).await
+        }
         Commands::Find {
             url,
             path,
             pattern,
-        } => cmd_find(url, path, pattern, &cli, format).await,
+        } => {
+            let (p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                (url.as_str(), path.as_str())
+            } else {
+                (path.as_str(), pattern.as_str())
+            };
+            cmd_find("_", p, pat, &cli, format).await
+        }
         Commands::Df { url } => cmd_df(url, &cli, format).await,
         Commands::Tree {
             url,
             path,
             max_depth,
-        } => cmd_tree(url, path, *max_depth, &cli, format).await,
+        } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_tree("_", p, *max_depth, &cli, format).await
+        }
         Commands::Sync {
             url,
             local,
@@ -6441,9 +7293,14 @@ async fn main() {
             dry_run,
             delete,
             exclude,
+            max_delete,
+            backup_dir,
+            backup_suffix,
         } => {
             cmd_sync(
-                url, local, remote, direction, *dry_run, *delete, exclude, &cli, format, cancelled,
+                url, local, remote, direction, *dry_run, *delete, exclude,
+                max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
+                &cli, format, cancelled,
             )
             .await
         }

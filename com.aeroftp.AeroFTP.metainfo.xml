@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.8" date="2026-03-21">
+      <description>
+        <p>CLI Feature Parity: 5 new commands (head, tail, hashsum, touch, check), advanced filter system (include/exclude, size, age), sync safety (max-delete), profile UX overhaul (no URL placeholder needed). 4shared OAuth 1.0 and Azure container auto-detection from profiles. 12 providers tested live. Complete CLI documentation rewrite.</p>
+      </description>
+    </release>
     <release version="3.0.7" date="2026-03-21">
       <description>
         <p>Filen Encrypted Notes (Beta): E2E encrypted notes with per-note AES-256-GCM keys, auto-save, version history, and tag management. Provider trash managers moved from context menu to dedicated toolbar buttons for 10 cloud providers. Connect loading spinner prevents double-click. GitHub file listings now show modification dates. Saved Servers buttons restyled with colored badges.</p>
