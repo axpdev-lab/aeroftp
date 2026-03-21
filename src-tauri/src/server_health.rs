@@ -118,6 +118,14 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             host: "api.drimecloud.com",
             probe_url: "https://api.drimecloud.com/health",
         }),
+        "github" => Some(CloudProviderInfo {
+            host: "api.github.com",
+            probe_url: "https://api.github.com/zen",
+        }),
+        "yandexdisk" => Some(CloudProviderInfo {
+            host: "cloud-api.yandex.net",
+            probe_url: "https://cloud-api.yandex.net/v1/disk/",
+        }),
         _ => None,
     }
 }
