@@ -17,6 +17,11 @@ use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
 use super::releases_mode::delete_release;
 use super::{GitHubVirtualPath, GitHubWriteMode};
 
+/// Maximum number of files to fetch commit dates for (avoids rate-limit pressure)
+const MAX_DATE_FETCH_ENTRIES: usize = 60;
+/// Maximum parallel requests when fetching commit dates
+const DATE_FETCH_CONCURRENCY: usize = 10;
+
 /// Maximum file size GitHub allows via the Contents API (100 MiB)
 const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
@@ -103,12 +108,108 @@ fn filename_from_path(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// Minimal Commits API response — only the date fields we need
+#[derive(Debug, Deserialize)]
+struct CommitListItem {
+    commit: CommitInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitInfo {
+    committer: Option<CommitActor>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitActor {
+    date: Option<String>,
+}
+
 // ─── Core implementation ───
 
 use super::GitHubProvider;
 
 impl GitHubProvider {
     // ── Internal helpers ──
+
+    /// Enrich directory entries with last-commit dates via parallel Commits API calls.
+    ///
+    /// Best-effort: individual failures are silently ignored (entry keeps `modified: None`).
+    /// Capped at [`MAX_DATE_FETCH_ENTRIES`] files and [`DATE_FETCH_CONCURRENCY`] concurrent requests
+    /// to avoid hitting GitHub rate limits.
+    pub(super) async fn enrich_entries_with_dates(&self, entries: &mut [RemoteEntry]) {
+        use futures_util::stream::{self, StreamExt as _};
+        use secrecy::ExposeSecret;
+
+        if entries.is_empty() {
+            return;
+        }
+
+        let http = self.client.client.clone();
+        let token = format!("Bearer {}", self.client.token.expose_secret());
+        let branch = self.branch.clone();
+
+        // Collect (index, repo_path) pairs — strip leading "/" from entry paths
+        let tasks: Vec<(usize, String)> = entries
+            .iter()
+            .enumerate()
+            .take(MAX_DATE_FETCH_ENTRIES)
+            .map(|(i, e)| {
+                let repo_path = e.path.strip_prefix('/').unwrap_or(&e.path).to_string();
+                (i, repo_path)
+            })
+            .collect();
+
+        let owner = &self.owner;
+        let repo = &self.repo;
+
+        // Fire parallel requests with bounded concurrency
+        let results: Vec<(usize, Option<String>)> = stream::iter(tasks)
+            .map(|(idx, file_path)| {
+                let http = http.clone();
+                let token = token.clone();
+                let branch = branch.clone();
+                let url = format!(
+                    "{}/repos/{}/{}/commits?path={}&per_page=1&sha={}",
+                    API_BASE,
+                    owner,
+                    repo,
+                    urlencoding::encode(&file_path),
+                    urlencoding::encode(&branch),
+                );
+                async move {
+                    let date = async {
+                        let resp = http
+                            .get(&url)
+                            .header("Authorization", &token)
+                            .header("X-GitHub-Api-Version", "2022-11-28")
+                            .header("Accept", "application/vnd.github+json")
+                            .send()
+                            .await
+                            .ok()?;
+                        if !resp.status().is_success() {
+                            return None;
+                        }
+                        let commits: Vec<CommitListItem> = resp.json().await.ok()?;
+                        commits
+                            .first()
+                            .and_then(|c| c.commit.committer.as_ref())
+                            .and_then(|a| a.date.clone())
+                    }
+                    .await;
+                    (idx, date)
+                }
+            })
+            .buffer_unordered(DATE_FETCH_CONCURRENCY)
+            .collect()
+            .await;
+
+        // Apply dates to entries
+        for (idx, date) in results {
+            if let Some(d) = date {
+                entries[idx].modified = Some(d);
+            }
+        }
+    }
 
     /// Build the Contents API URL for a path
     fn contents_url(&self, path: &str) -> String {
@@ -273,10 +374,13 @@ impl GitHubProvider {
                     return self.list_contents_via_tree(path).await;
                 }
 
-                let entries: Vec<RemoteEntry> = items
+                let mut entries: Vec<RemoteEntry> = items
                     .iter()
                     .filter_map(Self::content_to_entry)
                     .collect();
+
+                // Enrich with last-commit dates (parallel, best-effort)
+                self.enrich_entries_with_dates(&mut entries).await;
 
                 Ok(entries)
             }
@@ -311,7 +415,7 @@ impl GitHubProvider {
             format!("{}/", norm)
         };
 
-        let entries: Vec<RemoteEntry> = tree
+        let mut entries: Vec<RemoteEntry> = tree
             .iter()
             .filter(|e| {
                 if norm.is_empty() {
@@ -324,6 +428,9 @@ impl GitHubProvider {
             })
             .filter_map(Self::tree_entry_to_remote)
             .collect();
+
+        // Enrich with last-commit dates (parallel, best-effort)
+        self.enrich_entries_with_dates(&mut entries).await;
 
         Ok(entries)
     }

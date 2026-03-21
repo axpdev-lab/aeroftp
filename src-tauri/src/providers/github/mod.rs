@@ -685,6 +685,10 @@ impl GitHubProvider {
         let is_absolute = path.starts_with('/');
         let clean = path.trim_matches('/');
         if clean.is_empty() || clean == "." {
+            // "/" means root (empty internal path), "." or "" means current dir
+            if is_absolute {
+                return String::new();
+            }
             return self.current_path.clone();
         }
         if is_absolute || self.current_path.is_empty() {
@@ -1547,9 +1551,9 @@ impl StorageProvider for GitHubProvider {
 
         self.cache_sha(&content.path, &content.sha);
 
-        Ok(RemoteEntry {
+        let mut entry = RemoteEntry {
             name: content.name.clone(),
-            path: content.path.clone(),
+            path: format!("/{}", content.path),
             is_dir: content.content_type == "dir",
             size: content.size.unwrap_or(0),
             modified: None,
@@ -1564,7 +1568,12 @@ impl StorageProvider for GitHubProvider {
                 m.insert("sha".to_string(), content.sha.clone());
                 m
             },
-        })
+        };
+
+        // Fetch last-commit date for this single entry
+        self.enrich_entries_with_dates(std::slice::from_mut(&mut entry)).await;
+
+        Ok(entry)
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
