@@ -2601,6 +2601,7 @@ const App: React.FC = () => {
 
     // Set active session immediately
     setActiveSessionId(sessionId);
+    setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     setStorageQuota(null); // Clear stale quota while reconnecting
 
