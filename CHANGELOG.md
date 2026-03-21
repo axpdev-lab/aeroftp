@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.7] - 2026-03-21
+
+### Filen Encrypted Notes, Provider Toolbar & UX Polish
+
+End-to-end encrypted notes for Filen with per-note AES-256-GCM keys, provider-specific toolbar buttons replacing context menu clutter, and connection UX improvements.
+
+#### Added
+
+- **Filen Encrypted Notes (Beta)**: Full CRUD for Filen's E2E encrypted notes — create, read, edit, trash, archive, restore, delete. Per-note AES-256-GCM key derived via PBKDF2, encrypted with master key. Auto-save (2s debounce) + manual save button. Version history viewer with restore. Tag management (create, rename, delete, assign/remove). Filter by All/Favorites/Pinned/Archived/Trash. 20 Tauri commands, `filen/notes.rs` module (660 lines)
+- **Filen Notes toolbar button**: Emerald `FileText` icon in remote address bar when connected to Filen — same pattern as GitHub Actions/Releases/Pages buttons
+- **Provider trash toolbar button**: Single conditional `Trash2` button in remote address bar for 10 providers (Zoho, Jottacloud, MEGA, Google Drive, Box, Dropbox, FileLu, Koofr, OpenDrive, Yandex). Replaces per-provider "View Trash" entries in context menu
+- **Connect loading spinner**: Persistent `Loader2` spinner on saved server connect button with disabled state preventing double-click. Awaits full connection lifecycle via async `onConnect`
+- **GitHub file dates**: Parallel per-file last-commit date fetching via Commits API (10 concurrent, capped at 60 entries) — GitHub file listings now show modification dates
+
+#### Fixed
+
+- **GitHub sync navigation**: `resolve_path("/")` was treating root as current directory — synchronized navigation broke on upward traversal when remote panel received `cd("/")`
+- **Filen module structure**: Refactored `filen.rs` (1607 lines) into `filen/mod.rs` + `filen/notes.rs` directory module for maintainability
+- **Context menu cleanup**: Removed ~50 lines of "View Trash" entries from right-click menu across 10 providers — now accessible via toolbar button
+
+#### Changed
+
+- **Saved Servers button styling**: Health Check (emerald) and Export/Import (amber) buttons match AeroCloud/AeroFile compact badge style — `p-1.5` padding, 16px icons, colored backgrounds
+- **Save feedback in note editor**: Three-state indicator — amber "Unsaved", blue spinner "Saving...", green check "Saved"
+- **18 i18n keys**: Filen Notes UI strings translated in all 47 languages
+
 ## [3.0.6] - 2026-03-21
 
 ### GitHub Actions Monitor, Search Filter & Co-Authoring Fix
