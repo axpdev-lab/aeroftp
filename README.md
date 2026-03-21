@@ -243,6 +243,32 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 
 ---
 
+### Agent-Ready by Design
+
+> [Full documentation →](https://docs.aeroftp.app/features/agent-ready.html)
+
+AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and autonomous coding assistants become the standard way to interact with computers, AeroFTP provides native interfaces for both use cases.
+
+**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
+
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across all 23 protocols. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
+
+```bash
+# Claude Code or any AI agent deploys files — zero credentials exposed
+aeroftp put --profile "Production" ./dist/ /var/www/ --json
+
+# Agent checks server storage across multiple providers
+aeroftp df --profile "AWS S3" --json
+aeroftp df --profile "Google Drive" --json
+
+# Agent runs a batch deployment script
+aeroftp batch deploy.aeroftp
+```
+
+In a world where AI agents increasingly manage files, deploy code, and orchestrate infrastructure, AeroFTP bridges the gap between 23 storage protocols and the agentic workflows that need them.
+
+---
+
 ### AeroFTP CLI — Command-Line Client
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
