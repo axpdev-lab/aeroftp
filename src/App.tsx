@@ -62,6 +62,7 @@ import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
+import { FilenNotesPanel } from './components/FilenNotesPanel';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
@@ -346,6 +347,7 @@ const App: React.FC = () => {
   const [showGitHubPages, setShowGitHubPages] = useState(false);
   const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
+  const [showFilenNotes, setShowFilenNotes] = useState(false);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -2601,6 +2603,7 @@ const App: React.FC = () => {
 
     // Set active session immediately
     setActiveSessionId(sessionId);
+    setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     setStorageQuota(null); // Clear stale quota while reconnecting
 
@@ -5162,13 +5165,7 @@ const App: React.FC = () => {
             }),
           },
         ] : []),
-        // --- Always visible ---
-        {
-          label: t('filelu.viewTrash'),
-          icon: <Trash2 size={14} className="text-violet-500" />,
-          action: () => setShowFileLuTrash(true),
-          divider: true,
-        },
+        // View Trash moved to toolbar button
         ...(file.is_dir && filesToUse.length === 1 ? [{
           label: t('filelu.remoteUrlUpload'),
           icon: <span style={{ fontSize: 13 }}>🌐</span>,
@@ -5387,47 +5384,9 @@ const App: React.FC = () => {
       }
     }
 
-    // Cloud provider: View Trash + Labels
-    if (currentProtocol === 'zohoworkdrive') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} />,
-        action: () => setShowZohoTrash(true),
-      });
-      // Divider after trash
-      items[items.length - 1].divider = true;
-    }
-    if (currentProtocol === 'jottacloud') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-orange-500" />,
-        action: () => setShowJottaTrash(true),
-        divider: true,
-      });
-    }
-    if (currentProtocol === 'mega') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-red-500" />,
-        action: () => setShowMegaTrash(true),
-        divider: true,
-      });
-    }
-    if (currentProtocol === 'googledrive') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-blue-500" />,
-        action: () => setShowGDriveTrash(true),
-        divider: true,
-      });
-    }
+    // Cloud provider: provider-specific context menu items
+    // Note: "View Trash" moved to toolbar button for all providers
     if (currentProtocol === 'box') {
-      // View Trash
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-blue-500" />,
-        action: () => setShowBoxTrash(true),
-      });
       // Box-specific: Tags (single file or folder)
       if (filesToUse.length === 1) {
         const currentTags = file.metadata?.box_tags ? file.metadata.box_tags.split(',') : [];
@@ -5483,15 +5442,7 @@ const App: React.FC = () => {
         });
       }
     }
-    if (currentProtocol === 'dropbox') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-blue-500" />,
-        action: () => setShowDropboxTrash(true),
-        divider: true,
-      });
-      // Note: Dropbox tags API exists but returns errors — disabled for now
-    }
+    // Note: Dropbox tags API exists but returns errors — disabled for now
     if (currentProtocol === 'onedrive') {
       // OneDrive: Move to Trash
       items.push({
@@ -5511,30 +5462,7 @@ const App: React.FC = () => {
       });
       // Note: OneDrive "View Trash" not available — Microsoft Graph v1.0 has no recycle bin list endpoint
     }
-    if (currentProtocol === 'koofr') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-green-500" />,
-        action: () => setShowKoofrTrash(true),
-        divider: true,
-      });
-    }
-    if (currentProtocol === 'opendrive') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-cyan-500" />,
-        action: () => setShowOpenDriveTrash(true),
-        divider: true,
-      });
-    }
-    if (currentProtocol === 'yandexdisk') {
-      items.push({
-        label: t('contextMenu.viewTrash'),
-        icon: <Trash2 size={14} className="text-sky-500" />,
-        action: () => setShowYandexTrash(true),
-        divider: true,
-      });
-    }
+    // Koofr, OpenDrive, Yandex: View Trash moved to toolbar button
     // GitHub: View on GitHub, Copy Raw URL, File History
     if (currentProtocol === 'github' && currentServer) {
       const [ghOwner, ghRepo] = (currentServer || '').split('/');
@@ -6518,6 +6446,10 @@ const App: React.FC = () => {
         <GitHubReleaseBrowser
           isOpen={showGitHubReleaseBrowser}
           onClose={() => setShowGitHubReleaseBrowser(false)}
+        />
+        <FilenNotesPanel
+          isOpen={showFilenNotes}
+          onClose={() => setShowFilenNotes(false)}
         />
         {batchRenameDialog && (
           <BatchRenameDialog
@@ -7539,6 +7471,40 @@ const App: React.FC = () => {
                         </button>
                       </>
                     )}
+                    {isConnected && getActiveProviderProtocol() === 'filen' && (
+                      <button
+                        onClick={() => setShowFilenNotes(true)}
+                        className="flex-shrink-0 p-1.5 rounded text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                        title={t('filenNotes.title')}
+                      >
+                        <FileText size={13} />
+                      </button>
+                    )}
+                    {isConnected && (() => {
+                      const proto = getActiveProviderProtocol();
+                      const trashMap: Record<string, () => void> = {
+                        zohoworkdrive: () => setShowZohoTrash(true),
+                        jottacloud: () => setShowJottaTrash(true),
+                        mega: () => setShowMegaTrash(true),
+                        googledrive: () => setShowGDriveTrash(true),
+                        box: () => setShowBoxTrash(true),
+                        dropbox: () => setShowDropboxTrash(true),
+                        filelu: () => setShowFileLuTrash(true),
+                        koofr: () => setShowKoofrTrash(true),
+                        opendrive: () => setShowOpenDriveTrash(true),
+                        yandexdisk: () => setShowYandexTrash(true),
+                      };
+                      const handler = trashMap[proto || ''];
+                      return handler ? (
+                        <button
+                          onClick={handler}
+                          className="flex-shrink-0 p-1.5 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                          title={t('contextMenu.viewTrash')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      ) : null;
+                    })()}
                     {isConnected && (
                       <button
                         onClick={() => {

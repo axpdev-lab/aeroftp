@@ -3409,6 +3409,37 @@
             "prTitle": "Titolo PR",
             "prBody": "Descrizione (opzionale)",
             "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+        },
+        "filenNotes": {
+            "title": "Note crittografate",
+            "searchPlaceholder": "Cerca note...",
+            "createNote": "Nuova nota",
+            "newNotePlaceholder": "Titolo della nota...",
+            "create": "Crea",
+            "empty": "Nessuna nota trovata",
+            "untitled": "Senza titolo",
+            "unsaved": "Non salvato",
+            "saving": "Salvataggio...",
+            "saved": "Salvato",
+            "saveNow": "Salva ora",
+            "startTyping": "Inizia a scrivere...",
+            "encryptionBadge": "Crittografia end-to-end con AES-256-GCM (chiave per nota)",
+            "history": "Cronologia versioni",
+            "noHistory": "Nessuna cronologia disponibile",
+            "restore": "Ripristina",
+            "deletePermanently": "Elimina definitivamente",
+            "favorite": "Preferito",
+            "pin": "Fissa",
+            "archive": "Archivia",
+            "trash": "Cestino",
+            "participants": "partecipanti",
+            "filter": {
+                "all": "Tutte",
+                "favorites": "Preferite",
+                "pinned": "Fissate",
+                "archived": "Archiviate",
+                "trash": "Cestino"
+            }
         }
     }
 }

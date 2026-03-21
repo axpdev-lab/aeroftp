@@ -4935,3 +4935,363 @@ pub async fn github_cancel_workflow(
     github.cancel_actions_run(run_id).await
         .map_err(|e| format!("Failed to cancel workflow: {}", e))
 }
+
+// ============ Filen Encrypted Notes ============
+
+/// List all Filen encrypted notes
+#[tauri::command]
+pub async fn filen_notes_list(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::filen::notes::FilenNote>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.list_notes().await.map_err(|e| e.to_string())
+}
+
+/// Create a new Filen encrypted note
+#[tauri::command]
+pub async fn filen_notes_create(
+    state: State<'_, ProviderState>,
+    title: String,
+    content: String,
+    note_type: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    let nt = parse_note_type_str(&note_type);
+    filen.create_note(&title, &content, &nt).await.map_err(|e| e.to_string())
+}
+
+/// Get decrypted content of a Filen note
+#[tauri::command]
+pub async fn filen_notes_get_content(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<crate::providers::filen::notes::FilenNoteContent, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.get_note_content(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Edit content of a Filen encrypted note
+#[tauri::command]
+pub async fn filen_notes_edit_content(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    content: String,
+    note_type: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    let nt = parse_note_type_str(&note_type);
+    filen.edit_note_content(&uuid, &content, &nt).await.map_err(|e| e.to_string())
+}
+
+/// Edit title of a Filen encrypted note
+#[tauri::command]
+pub async fn filen_notes_edit_title(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    title: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.edit_note_title(&uuid, &title).await.map_err(|e| e.to_string())
+}
+
+/// Change the type of a Filen note (text, md, code, rich, checklist)
+#[tauri::command]
+pub async fn filen_notes_change_type(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    note_type: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    let nt = parse_note_type_str(&note_type);
+    filen.change_note_type(&uuid, &nt).await.map_err(|e| e.to_string())
+}
+
+/// Move a Filen note to trash
+#[tauri::command]
+pub async fn filen_notes_trash(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.trash_note(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Archive a Filen note
+#[tauri::command]
+pub async fn filen_notes_archive(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.archive_note(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Restore a Filen note from trash or archive
+#[tauri::command]
+pub async fn filen_notes_restore(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.restore_note(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete a Filen note
+#[tauri::command]
+pub async fn filen_notes_delete(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.delete_note(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Toggle favorite on a Filen note
+#[tauri::command]
+pub async fn filen_notes_toggle_favorite(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    favorite: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.toggle_note_favorite(&uuid, favorite).await.map_err(|e| e.to_string())
+}
+
+/// Toggle pinned on a Filen note
+#[tauri::command]
+pub async fn filen_notes_toggle_pinned(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    pinned: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.toggle_note_pinned(&uuid, pinned).await.map_err(|e| e.to_string())
+}
+
+/// Get version history for a Filen note
+#[tauri::command]
+pub async fn filen_notes_history(
+    state: State<'_, ProviderState>,
+    uuid: String,
+) -> Result<Vec<crate::providers::filen::notes::FilenNoteHistoryEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.get_note_history(&uuid).await.map_err(|e| e.to_string())
+}
+
+/// Restore a specific history version of a Filen note
+#[tauri::command]
+pub async fn filen_notes_history_restore(
+    state: State<'_, ProviderState>,
+    uuid: String,
+    history_id: u64,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.restore_note_history(&uuid, history_id).await.map_err(|e| e.to_string())
+}
+
+/// List all Filen note tags
+#[tauri::command]
+pub async fn filen_notes_tags_list(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::filen::notes::FilenNoteTag>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.list_note_tags().await.map_err(|e| e.to_string())
+}
+
+/// Create a new Filen note tag
+#[tauri::command]
+pub async fn filen_notes_tags_create(
+    state: State<'_, ProviderState>,
+    name: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.create_note_tag(&name).await.map_err(|e| e.to_string())
+}
+
+/// Rename a Filen note tag
+#[tauri::command]
+pub async fn filen_notes_tags_rename(
+    state: State<'_, ProviderState>,
+    tag_uuid: String,
+    name: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.rename_note_tag(&tag_uuid, &name).await.map_err(|e| e.to_string())
+}
+
+/// Delete a Filen note tag
+#[tauri::command]
+pub async fn filen_notes_tags_delete(
+    state: State<'_, ProviderState>,
+    tag_uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.delete_note_tag(&tag_uuid).await.map_err(|e| e.to_string())
+}
+
+/// Assign a tag to a Filen note
+#[tauri::command]
+pub async fn filen_notes_tag_note(
+    state: State<'_, ProviderState>,
+    note_uuid: String,
+    tag_uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.tag_note(&note_uuid, &tag_uuid).await.map_err(|e| e.to_string())
+}
+
+/// Remove a tag from a Filen note
+#[tauri::command]
+pub async fn filen_notes_untag_note(
+    state: State<'_, ProviderState>,
+    note_uuid: String,
+    tag_uuid: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider.as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    filen.untag_note(&note_uuid, &tag_uuid).await.map_err(|e| e.to_string())
+}
+
+/// Parse note type string to enum (delegates to notes module).
+fn parse_note_type_str(s: &str) -> crate::providers::filen::notes::NoteType {
+    crate::providers::filen::notes::parse_note_type(s)
+}

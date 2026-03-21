@@ -3409,6 +3409,37 @@
       "watermark": "Watermark",
       "folderLock": "Folder Lock",
       "filePassword": "Password"
+    },
+    "filenNotes": {
+      "title": "Encrypted Notes",
+      "searchPlaceholder": "Search notes...",
+      "createNote": "New Note",
+      "newNotePlaceholder": "Note title...",
+      "create": "Create",
+      "empty": "No notes found",
+      "untitled": "Untitled",
+      "unsaved": "Unsaved",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "saveNow": "Save now",
+      "startTyping": "Start typing...",
+      "encryptionBadge": "End-to-end encrypted with AES-256-GCM (per-note key)",
+      "history": "Version History",
+      "noHistory": "No history available",
+      "restore": "Restore",
+      "deletePermanently": "Delete permanently",
+      "favorite": "Favorite",
+      "pin": "Pin",
+      "archive": "Archive",
+      "trash": "Trash",
+      "participants": "participants",
+      "filter": {
+        "all": "All",
+        "favorites": "Favorites",
+        "pinned": "Pinned",
+        "archived": "Archived",
+        "trash": "Trash"
+      }
     }
   }
 }

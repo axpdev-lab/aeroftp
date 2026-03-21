@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.7" date="2026-03-21">
+      <description>
+        <p>Filen Encrypted Notes (Beta): E2E encrypted notes with per-note AES-256-GCM keys, auto-save, version history, and tag management. Provider trash managers moved from context menu to dedicated toolbar buttons for 10 cloud providers. Connect loading spinner prevents double-click. GitHub file listings now show modification dates. Saved Servers buttons restyled with colored badges.</p>
+      </description>
+    </release>
     <release version="3.0.6" date="2026-03-21">
       <description>
         <p>GitHub Actions monitor with live workflow status, re-run, and cancel. Universal file search filter for all 22 providers. GitHub App co-authoring fix for proper contributor attribution. PEM, PAT, and OAuth credentials stored in encrypted vault for instant multi-repo setup. 4-finding code audit remediation.</p>

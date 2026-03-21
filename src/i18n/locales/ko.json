@@ -3408,6 +3408,37 @@
             "renameCommit": "[NEEDS TRANSLATION] Rename",
             "deleteCommit": "[NEEDS TRANSLATION] Delete",
             "alreadyAuthorized": "[NEEDS TRANSLATION] Already authorized — ready to connect"
+        },
+        "filenNotes": {
+            "title": "[NEEDS TRANSLATION] Encrypted Notes",
+            "searchPlaceholder": "[NEEDS TRANSLATION] Search notes...",
+            "createNote": "[NEEDS TRANSLATION] New Note",
+            "newNotePlaceholder": "[NEEDS TRANSLATION] Note title...",
+            "create": "[NEEDS TRANSLATION] Create",
+            "empty": "[NEEDS TRANSLATION] No notes found",
+            "untitled": "[NEEDS TRANSLATION] Untitled",
+            "unsaved": "[NEEDS TRANSLATION] Unsaved changes",
+            "startTyping": "[NEEDS TRANSLATION] Start typing...",
+            "encryptionBadge": "[NEEDS TRANSLATION] End-to-end encrypted with AES-256-GCM (per-note key)",
+            "history": "[NEEDS TRANSLATION] Version History",
+            "noHistory": "[NEEDS TRANSLATION] No history available",
+            "restore": "[NEEDS TRANSLATION] Restore",
+            "deletePermanently": "[NEEDS TRANSLATION] Delete permanently",
+            "favorite": "[NEEDS TRANSLATION] Favorite",
+            "pin": "[NEEDS TRANSLATION] Pin",
+            "archive": "[NEEDS TRANSLATION] Archive",
+            "trash": "[NEEDS TRANSLATION] Trash",
+            "filter": {
+                "all": "[NEEDS TRANSLATION] All",
+                "favorites": "[NEEDS TRANSLATION] Favorites",
+                "pinned": "[NEEDS TRANSLATION] Pinned",
+                "archived": "[NEEDS TRANSLATION] Archived",
+                "trash": "[NEEDS TRANSLATION] Trash"
+            },
+            "participants": "[NEEDS TRANSLATION] participants",
+            "saving": "[NEEDS TRANSLATION] Saving...",
+            "saved": "[NEEDS TRANSLATION] Saved",
+            "saveNow": "[NEEDS TRANSLATION] Save now"
         }
     }
 }

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2 } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -47,7 +47,7 @@ const loadOAuthCredentials = async (provider: string): Promise<{ clientId: strin
 };
 
 interface SavedServersProps {
-    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void;
+    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
     currentProfile?: ServerProfile; // For highlighting active connection
     className?: string;
     onEdit: (profile: ServerProfile) => void;
@@ -129,6 +129,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [servers, setServers] = useState<ServerProfile[]>([]);
 
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
+    const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
@@ -290,6 +291,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const handleConnect = async (serverParam: ServerProfile) => {
         const server = serverParam;
 
+        // Prevent double-click
+        if (connectingId) return;
+        setConnectingId(server.id);
+
         // Clear any previous OAuth error
         setOauthError(null);
 
@@ -368,7 +373,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 saveServers(updated);
 
                 // Call onConnect with OAuth params
-                onConnect({
+                await onConnect({
                     server: result.display_name,
                     username: updatedUsername,
                     password: '',
@@ -381,6 +386,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 setOauthError(e instanceof Error ? e.message : String(e));
             } finally {
                 setOauthConnecting(null);
+                setConnectingId(null);
             }
             return;
         }
@@ -426,7 +432,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 setServers(updated);
                 saveServers(updated);
 
-                onConnect({
+                await onConnect({
                     server: result.display_name,
                     username: updatedUsername,
                     password: '',
@@ -438,43 +444,50 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 setOauthError(e instanceof Error ? e.message : String(e));
             } finally {
                 setOauthConnecting(null);
+                setConnectingId(null);
             }
             return;
         }
 
         // Non-OAuth: Update last connected
-        const updated = servers.map(s =>
-            s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
-        );
-        setServers(updated);
-        saveServers(updated);
-
-        // Load password from credential vault (with retry if vault not ready yet)
-        let password = '';
         try {
-            password = await getCredentialWithRetry(`server_${server.id}`);
+            const updated = servers.map(s =>
+                s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
+            );
+            setServers(updated);
+            saveServers(updated);
+
+            // Load password from credential vault (with retry if vault not ready yet)
+            let password = '';
+            try {
+                password = await getCredentialWithRetry(`server_${server.id}`);
+            } catch {
+                // Credential not found — password empty (never saved or server without password)
+            }
+
+            // Build connection params - for providers, don't append port to host
+            // SFTP/MEGA use provider_connect which handles port separately
+            const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github'].includes(server.protocol);
+            const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
+            const serverString = isProviderProtocol
+                ? server.host  // S3/WebDAV/SFTP/MEGA: use host only
+                : (server.port !== defaultPort ? `${server.host}:${server.port}` : server.host);
+
+            await onConnect({
+                server: serverString,
+                username: server.username,
+                password,
+                protocol: server.protocol || 'ftp',
+                port: server.port,
+                displayName: server.name,
+                options: server.options,
+                providerId: server.providerId,
+            }, server.initialPath, server.localInitialPath);
         } catch {
-            // Credential not found — password empty (never saved or server without password)
+            // Connection error handled by parent — reset loading state
+        } finally {
+            setConnectingId(null);
         }
-
-        // Build connection params - for providers, don't append port to host
-        // SFTP/MEGA use provider_connect which handles port separately
-        const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github'].includes(server.protocol);
-        const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
-        const serverString = isProviderProtocol
-            ? server.host  // S3/WebDAV/SFTP/MEGA: use host only
-            : (server.port !== defaultPort ? `${server.host}:${server.port}` : server.host);
-
-        onConnect({
-            server: serverString,
-            username: server.username,
-            password,
-            protocol: server.protocol || 'ftp',
-            port: server.port,
-            displayName: server.name,
-            options: server.options,
-            providerId: server.providerId,
-        }, server.initialPath, server.localInitialPath);
     };
 
 
@@ -495,19 +508,19 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     {servers.length > 0 && (
                         <button
                             onClick={() => setHealthCheckTarget('all')}
-                            className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                            className="p-1.5 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 text-emerald-600 dark:text-emerald-400 rounded-lg transition-colors"
                             title={t('healthCheck.title')}
                         >
-                            <Activity size={18} />
+                            <Activity size={16} />
                         </button>
                     )}
                     {onOpenExportImport && (
                         <button
                             onClick={onOpenExportImport}
-                            className="p-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                            className="p-1.5 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-800/40 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
                             title={t('settings.exportImport')}
                         >
-                            <ImportExportIcon size={18} />
+                            <ImportExportIcon size={16} />
                         </button>
                     )}
                 </div>
@@ -592,11 +605,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                             return (
                                 <button
                                     onClick={() => handleConnect(server)}
-                                    disabled={oauthConnecting !== null}
-                                    className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:ring-2 hover:ring-blue-400 hover:shadow-lg disabled:cursor-wait ${oauthConnecting === server.id ? 'animate-pulse' : ''} ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} text-white`}`}
+                                    disabled={connectingId !== null}
+                                    className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:ring-2 hover:ring-blue-400 hover:shadow-lg disabled:cursor-wait disabled:opacity-70 ${connectingId === server.id ? 'ring-2 ring-blue-400' : ''} ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${protocolColors[server.protocol || 'ftp']} text-white`}`}
                                     title={t('common.connect')}
                                 >
-                                    {hasCustomIcon ? (
+                                    {connectingId === server.id ? (
+                                        <Loader2 size={18} className="animate-spin text-blue-500" />
+                                    ) : hasCustomIcon ? (
                                         <img src={server.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                     ) : hasFavicon ? (
                                         <img src={server.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />

@@ -4,6 +4,8 @@
 //! Uses client-side AES-256-GCM encryption (zero-knowledge).
 //! All file names, metadata, and content are encrypted locally.
 
+pub mod notes;
+
 use async_trait::async_trait;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use aes_gcm::aead::Aead;
@@ -202,6 +204,8 @@ pub struct FilenProvider {
     file_key_cache: HashMap<String, String>,
     /// F-ERR-01: Retry configuration for HTTP requests
     retry_config: HttpRetryConfig,
+    /// User UUID for Notes participant operations (from /v3/user/account)
+    user_uuid: String,
 }
 
 /// M3: Maximum number of cached directory/file-key entries to prevent unbounded memory growth.
@@ -226,6 +230,7 @@ impl FilenProvider {
             dir_cache: HashMap::new(),
             file_key_cache: HashMap::new(),
             retry_config: HttpRetryConfig::default(),
+            user_uuid: String::new(),
         }
     }
 
@@ -674,9 +679,23 @@ impl StorageProvider for FilenProvider {
             name: "/".to_string(),
         });
 
+        // Step 6: Fetch user UUID from /v3/user/account (required for Notes participant operations)
+        let account_request = self.client
+            .get(format!("{}/v3/user/account", GATEWAY))
+            .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let account_resp: serde_json::Value = self.send_retry(account_request).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if let Some(uuid) = account_resp["data"]["uuid"].as_str() {
+            self.user_uuid = uuid.to_string();
+        }
+
         self.connected = true;
-        filen_log(&format!("Connected as {}, root_uuid={}, master_keys={}",
-            self.config.email, self.root_uuid, self.master_keys.len()));
+        filen_log(&format!("Connected as {}, root_uuid={}, user_uuid={}, master_keys={}",
+            self.config.email, self.root_uuid, self.user_uuid, self.master_keys.len()));
         Ok(())
     }
 
