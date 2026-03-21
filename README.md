@@ -49,6 +49,7 @@
 
 <!-- Row 3: Community & Listings -->
 <p align="center">
+  <a href="https://openinventionnetwork.com/"><img src="https://img.shields.io/badge/OIN-Community%20Member-E87722" alt="OIN Community Member" /></a>
   <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
   <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
@@ -239,6 +240,32 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 - **Plugin ecosystem**: GitHub-based registry with SHA-256 integrity, event hooks, browser UI
 - **Context menu AI**: Right-click any file → "Ask AeroAgent" for instant analysis
 - **Drag & drop to chat**: Drop files into AeroAgent for analysis
+
+---
+
+### Agent-Ready by Design
+
+> [Full documentation →](https://docs.aeroftp.app/features/agent-ready.html)
+
+AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and autonomous coding assistants become the standard way to interact with computers, AeroFTP provides native interfaces for both use cases.
+
+**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
+
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across all 23 protocols. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
+
+```bash
+# Claude Code or any AI agent deploys files — zero credentials exposed
+aeroftp put --profile "Production" ./dist/ /var/www/ --json
+
+# Agent checks server storage across multiple providers
+aeroftp df --profile "AWS S3" --json
+aeroftp df --profile "Google Drive" --json
+
+# Agent runs a batch deployment script
+aeroftp batch deploy.aeroftp
+```
+
+In a world where AI agents increasingly manage files, deploy code, and orchestrate infrastructure, AeroFTP bridges the gap between 23 storage protocols and the agentic workflows that need them.
 
 ---
 
@@ -496,6 +523,9 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 
 <p align="center">
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
+</p>
+<p align="center">
+  <a href="https://openinventionnetwork.com/"><img src="icons/oin-member-badge.png" alt="OIN 2.0 Community Member" height="48" /></a>
 </p>
 <p align="center">
   <em>Built with Rust (Tauri 2) + React 18 + TypeScript</em>
