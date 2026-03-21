@@ -49,6 +49,7 @@
 
 <!-- Row 3: Community & Listings -->
 <p align="center">
+  <a href="https://openinventionnetwork.com/"><img src="https://img.shields.io/badge/OIN-Community%20Member-E87722" alt="OIN Community Member" /></a>
   <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
   <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
