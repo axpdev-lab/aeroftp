@@ -48,10 +48,10 @@ The CLI binary (`aeroftp-cli`) is included in all AeroFTP distribution packages 
 
 ```bash
 # Verify installation
-aeroftp --version
+aeroftp-cli --version
 # aeroftp 3.0.8
 
-aeroftp --help
+aeroftp-cli --help
 ```
 
 ### Building from Source
@@ -119,19 +119,19 @@ The most powerful way to use the CLI. Connect to any saved server from the AeroF
 
 ```bash
 # List all saved profiles
-aeroftp profiles
+aeroftp-cli profiles
 
 # Connect using a profile name
-aeroftp ls --profile "My Server" /path/
+aeroftp-cli ls --profile "My Server" /path/
 
 # Fuzzy name matching (case-insensitive)
-aeroftp ls --profile "aruba" /www/
+aeroftp-cli ls --profile "aruba" /www/
 
 # Connect by profile index number
-aeroftp ls --profile 3 /
+aeroftp-cli ls --profile 3 /
 
 # JSON output for scripting
-aeroftp profiles --json
+aeroftp-cli profiles --json
 ```
 
 ### Profile Matching
@@ -152,13 +152,13 @@ OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Y
 
 ```bash
 # After authorizing Google Drive in the GUI:
-aeroftp ls --profile "My Google Drive" /
+aeroftp-cli ls --profile "My Google Drive" /
 
 # pCloud (long-lived tokens — works immediately)
-aeroftp ls --profile "pCloud" /
+aeroftp-cli ls --profile "pCloud" /
 
 # Dropbox
-aeroftp get --profile "My Dropbox" /Documents/report.pdf
+aeroftp-cli get --profile "My Dropbox" /Documents/report.pdf
 ```
 
 ### Master Password
@@ -170,11 +170,11 @@ If the vault is protected with a master password:
 AEROFTP_MASTER_PASSWORD=secret aeroftp ls --profile "server" /
 
 # Interactive prompt (hidden input)
-aeroftp ls --profile "server" /
+aeroftp-cli ls --profile "server" /
 # Master password: ********
 
 # Via flag (visible in process list — use env var instead)
-aeroftp ls --profile "server" --master-password secret /
+aeroftp-cli ls --profile "server" --master-password secret /
 ```
 
 ### AI Agent Integration
@@ -183,10 +183,10 @@ The `--profile` flag is designed for AI coding agents (Claude Code, Cursor, Code
 
 ```bash
 # Agent runs this — no password anywhere
-aeroftp put --profile "Production" ./dist/app.js /var/www/app.js
+aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
 
 # Agent can list, upload, download, sync — all credential-free
-aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run
+aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
 ```
 
 ---
@@ -196,7 +196,7 @@ aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run
 ### connect — Test Connection
 
 ```bash
-aeroftp connect sftp://user@myserver.com
+aeroftp-cli connect sftp://user@myserver.com
 ```
 
 Connects to the server, displays server info (type, version, storage quota if available), and disconnects. Useful for verifying credentials and connectivity.
@@ -205,32 +205,32 @@ Connects to the server, displays server info (type, version, storage quota if av
 
 ```bash
 # Basic listing
-aeroftp ls sftp://user@host /var/www/
+aeroftp-cli ls sftp://user@host /var/www/
 
 # Long format (permissions, size, date)
-aeroftp ls sftp://user@host /var/www/ -l
+aeroftp-cli ls sftp://user@host /var/www/ -l
 
 # Sort by size, reversed
-aeroftp ls sftp://user@host / -l --sort size --reverse
+aeroftp-cli ls sftp://user@host / -l --sort size --reverse
 
 # Show hidden files
-aeroftp ls sftp://user@host / --all
+aeroftp-cli ls sftp://user@host / --all
 ```
 
 ### get — Download Files
 
 ```bash
 # Download a single file
-aeroftp get sftp://user@host /var/www/index.html
+aeroftp-cli get sftp://user@host /var/www/index.html
 
 # Download to specific local path
-aeroftp get sftp://user@host /var/www/index.html ./local-copy.html
+aeroftp-cli get sftp://user@host /var/www/index.html ./local-copy.html
 
 # Glob pattern — download all CSV files
-aeroftp get sftp://user@host "/data/*.csv"
+aeroftp-cli get sftp://user@host "/data/*.csv"
 
 # Recursive directory download
-aeroftp get sftp://user@host /var/www/ ./backup/ -r
+aeroftp-cli get sftp://user@host /var/www/ ./backup/ -r
 ```
 
 > **Glob patterns**: Quote the remote path to prevent shell expansion. The CLI expands `*` and `?` patterns server-side.
@@ -239,48 +239,48 @@ aeroftp get sftp://user@host /var/www/ ./backup/ -r
 
 ```bash
 # Upload a single file
-aeroftp put sftp://user@host ./report.pdf /uploads/
+aeroftp-cli put sftp://user@host ./report.pdf /uploads/
 
 # Glob pattern — upload all JSON files
-aeroftp put sftp://user@host "./*.json" /data/
+aeroftp-cli put sftp://user@host "./*.json" /data/
 
 # Recursive upload
-aeroftp put sftp://user@host ./project/ /var/www/project/ -r
+aeroftp-cli put sftp://user@host ./project/ /var/www/project/ -r
 ```
 
 ### mkdir — Create Directory
 
 ```bash
-aeroftp mkdir sftp://user@host /var/www/new-folder
+aeroftp-cli mkdir sftp://user@host /var/www/new-folder
 ```
 
 ### rm — Delete File or Directory
 
 ```bash
 # Delete a file
-aeroftp rm sftp://user@host /var/www/old-file.txt
+aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 
 # Delete a directory recursively
-aeroftp rm sftp://user@host /var/www/old-folder/ -rf
+aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
 
 ### mv — Rename / Move
 
 ```bash
-aeroftp mv sftp://user@host /var/www/old-name.txt /var/www/new-name.txt
+aeroftp-cli mv sftp://user@host /var/www/old-name.txt /var/www/new-name.txt
 ```
 
 ### cat — Print File Content
 
 ```bash
 # Print file to stdout
-aeroftp cat sftp://user@host /etc/config.ini
+aeroftp-cli cat sftp://user@host /etc/config.ini
 
 # Pipe to grep
-aeroftp cat sftp://user@host /etc/config.ini | grep DB_HOST
+aeroftp-cli cat sftp://user@host /etc/config.ini | grep DB_HOST
 
 # Redirect to local file
-aeroftp cat sftp://user@host /data/export.csv > local.csv
+aeroftp-cli cat sftp://user@host /data/export.csv > local.csv
 ```
 
 > **Safety**: Files larger than 256 MB are rejected to prevent OOM.
@@ -288,7 +288,7 @@ aeroftp cat sftp://user@host /data/export.csv > local.csv
 ### stat — File Metadata
 
 ```bash
-aeroftp stat sftp://user@host /var/www/index.html
+aeroftp-cli stat sftp://user@host /var/www/index.html
 ```
 
 Displays: name, path, type (file/directory), size, permissions, owner, group, modification date.
@@ -296,7 +296,7 @@ Displays: name, path, type (file/directory), size, permissions, owner, group, mo
 ### find — Search Files
 
 ```bash
-aeroftp find sftp://user@host /var/www/ "*.php"
+aeroftp-cli find sftp://user@host /var/www/ "*.php"
 ```
 
 Searches recursively for files matching the glob pattern. Uses server-side search when available, falls back to BFS traversal.
@@ -304,7 +304,7 @@ Searches recursively for files matching the glob pattern. Uses server-side searc
 ### df — Storage Quota
 
 ```bash
-aeroftp df sftp://user@host
+aeroftp-cli df sftp://user@host
 ```
 
 Displays used/total storage with a visual progress bar. Returns exit code 7 if the protocol doesn't support storage info.
@@ -313,10 +313,10 @@ Displays used/total storage with a visual progress bar. Returns exit code 7 if t
 
 ```bash
 # Full tree
-aeroftp tree sftp://user@host /var/www/
+aeroftp-cli tree sftp://user@host /var/www/
 
 # Limit depth
-aeroftp tree sftp://user@host /var/www/ -d 2
+aeroftp-cli tree sftp://user@host /var/www/ -d 2
 ```
 
 Renders a tree with Unicode connectors (├──, └──) showing the directory hierarchy. Cycle-safe with visited-path tracking.
@@ -325,13 +325,13 @@ Renders a tree with Unicode connectors (├──, └──) showing the direct
 
 ```bash
 # Print first 20 lines (default)
-aeroftp head --profile "server" /var/log/app.log
+aeroftp-cli head --profile "server" /var/log/app.log
 
 # First 5 lines
-aeroftp head sftp://user@host /var/log/app.log -n 5
+aeroftp-cli head sftp://user@host /var/log/app.log -n 5
 
 # JSON output
-aeroftp head --profile "server" /path/file.txt -n 3 --json
+aeroftp-cli head --profile "server" /path/file.txt -n 3 --json
 ```
 
 Prints the first N lines of a remote text file. Default: 20 lines. Files larger than 256 MB are rejected. Binary files return exit code 5.
@@ -340,10 +340,10 @@ Prints the first N lines of a remote text file. Default: 20 lines. Files larger 
 
 ```bash
 # Print last 20 lines (default)
-aeroftp tail --profile "server" /var/log/app.log
+aeroftp-cli tail --profile "server" /var/log/app.log
 
 # Last 5 lines
-aeroftp tail sftp://user@host /var/log/app.log -n 5
+aeroftp-cli tail sftp://user@host /var/log/app.log -n 5
 ```
 
 Similar to `head` but prints the last N lines. Useful for viewing log files.
@@ -352,10 +352,10 @@ Similar to `head` but prints the last N lines. Useful for viewing log files.
 
 ```bash
 # Create a new empty file
-aeroftp touch --profile "server" /remote/path/newfile.txt
+aeroftp-cli touch --profile "server" /remote/path/newfile.txt
 
 # Verify file already exists
-aeroftp touch --profile "server" /remote/path/existing.txt
+aeroftp-cli touch --profile "server" /remote/path/existing.txt
 ```
 
 Creates an empty file if it doesn't exist. If the file already exists, confirms it without error (exit code 0).
@@ -364,16 +364,16 @@ Creates an empty file if it doesn't exist. If the file already exists, confirms 
 
 ```bash
 # SHA-256 hash
-aeroftp hashsum --profile "server" sha256 /data/file.bin
+aeroftp-cli hashsum --profile "server" sha256 /data/file.bin
 
 # MD5 hash
-aeroftp hashsum sftp://user@host md5 /data/file.iso
+aeroftp-cli hashsum sftp://user@host md5 /data/file.iso
 
 # BLAKE3 hash
-aeroftp hashsum --profile "server" blake3 /path/file.dat
+aeroftp-cli hashsum --profile "server" blake3 /path/file.dat
 
 # JSON output
-aeroftp hashsum --profile "server" sha256 /file.txt --json
+aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
 ```
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
@@ -382,16 +382,16 @@ Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format
 
 ```bash
 # Compare local and remote directories
-aeroftp check --profile "server" /local/dir /remote/dir
+aeroftp-cli check --profile "server" /local/dir /remote/dir
 
 # Use SHA-256 checksums (slower but more accurate)
-aeroftp check --profile "server" /local/ /remote/ --checksum
+aeroftp-cli check --profile "server" /local/ /remote/ --checksum
 
 # One-way: only check files that exist locally
-aeroftp check --profile "server" /local/ /remote/ --one-way
+aeroftp-cli check --profile "server" /local/ /remote/ --one-way
 
 # JSON output with details
-aeroftp check --profile "server" /local/ /remote/ --json
+aeroftp-cli check --profile "server" /local/ /remote/ --json
 ```
 
 Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
@@ -400,10 +400,10 @@ Verifies that a local directory and remote directory are identical. Compares by 
 
 ```bash
 # Detailed server info with storage quota
-aeroftp about --profile "server"
+aeroftp-cli about --profile "server"
 
 # JSON output
-aeroftp about --profile "server" --json
+aeroftp-cli about --profile "server" --json
 ```
 
 Shows provider name, type, server info, and storage quota (used/free/total) in a single command. More detailed than `df` — includes protocol version, server software, and connection parameters alongside quota information.
@@ -412,13 +412,13 @@ Shows provider name, type, server info, and storage quota (used/free/total) in a
 
 ```bash
 # Scan for duplicate files (report only)
-aeroftp dedupe --profile "server" /data --dry-run
+aeroftp-cli dedupe --profile "server" /data --dry-run
 
 # Delete duplicates (keep first occurrence)
-aeroftp dedupe --profile "server" /data --mode skip
+aeroftp-cli dedupe --profile "server" /data --mode skip
 
 # JSON output with group details
-aeroftp dedupe --profile "server" /data --dry-run --json
+aeroftp-cli dedupe --profile "server" /data --dry-run --json
 ```
 
 Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest).
@@ -427,36 +427,36 @@ Finds duplicate files by content hash (SHA-256). Groups files by size first (fas
 
 ```bash
 # Preview what would be synced
-aeroftp sync --profile "server" ./local/ /remote/ --dry-run
+aeroftp-cli sync --profile "server" ./local/ /remote/ --dry-run
 
 # Upload only
-aeroftp sync --profile "server" ./local/ /remote/ --direction upload
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload
 
 # Download only
-aeroftp sync --profile "server" ./local/ /remote/ --direction download
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction download
 
 # Sync with delete (mirror mode)
-aeroftp sync sftp://user@host ./local/ /remote/ --delete
+aeroftp-cli sync sftp://user@host ./local/ /remote/ --delete
 
 # Exclude patterns
-aeroftp sync --profile "server" ./local/ /remote/ --exclude "*.tmp" --exclude ".git"
+aeroftp-cli sync --profile "server" ./local/ /remote/ --exclude "*.tmp" --exclude ".git"
 
 # Safety limit: abort if more than 50 files would be deleted
-aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 50
+aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --max-delete 50
 
 # Safety limit: abort if more than 25% of files would be deleted
-aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 25%
+aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --max-delete 25%
 
 # Detect renamed files to avoid re-upload
-aeroftp sync --profile "server" ./local/ /remote/ --delete --track-renames --dry-run
+aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --track-renames --dry-run
 # Without --track-renames: 1 upload + 1 delete
 # With --track-renames: 1 server-side rename (no data transfer)
 
 # Time-based bandwidth schedule
-aeroftp sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:00,10M 18:00,512k 23:00,off"
+aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:00,10M 18:00,512k 23:00,off"
 
 # Simple bandwidth limit (alternative to --limit-rate with schedule syntax)
-aeroftp sync --profile "server" ./local/ /remote/ --bwlimit "1M"
+aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "1M"
 ```
 
 Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`.
@@ -464,7 +464,7 @@ Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--
 ### batch — Execute Script
 
 ```bash
-aeroftp batch deploy.aeroftp
+aeroftp-cli batch deploy.aeroftp
 ```
 
 Executes a `.aeroftp` script file containing a sequence of commands. See [Batch Scripting](#batch-scripting) below.
@@ -510,13 +510,13 @@ All commands support `--json` for structured machine-readable output:
 
 ```bash
 # JSON directory listing
-aeroftp ls sftp://user@host / --json
+aeroftp-cli ls sftp://user@host / --json
 
 # JSON file metadata
-aeroftp stat sftp://user@host /file.txt --json
+aeroftp-cli stat sftp://user@host /file.txt --json
 
 # JSON tree
-aeroftp tree sftp://user@host / --json
+aeroftp-cli tree sftp://user@host / --json
 ```
 
 ### JSON Structure
@@ -567,10 +567,10 @@ The CLI follows Unix conventions for clean pipeline integration:
 
 ```bash
 # Pipe file content without noise
-aeroftp cat sftp://user@host /data.csv > output.csv 2>/dev/null
+aeroftp-cli cat sftp://user@host /data.csv > output.csv 2>/dev/null
 
 # Parse JSON programmatically
-aeroftp ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
+aeroftp-cli ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
 ```
 
 ---
@@ -591,7 +591,7 @@ aeroftp ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
 | 99 | Unknown error |
 
 ```bash
-aeroftp connect sftp://user@host
+aeroftp-cli connect sftp://user@host
 echo "Exit code: $?"
 ```
 
@@ -660,9 +660,9 @@ ON_ERROR FAIL
 ### Running Batch Scripts
 
 ```bash
-aeroftp batch deploy.aeroftp
-aeroftp batch deploy.aeroftp --json    # JSON output for all commands
-aeroftp batch deploy.aeroftp --quiet   # Errors only
+aeroftp-cli batch deploy.aeroftp
+aeroftp-cli batch deploy.aeroftp --json    # JSON output for all commands
+aeroftp-cli batch deploy.aeroftp --quiet   # Errors only
 ```
 
 ---
@@ -673,26 +673,26 @@ aeroftp batch deploy.aeroftp --quiet   # Errors only
 
 ```bash
 # Browse repository as filesystem
-aeroftp ls github://token:YOUR_PAT@owner/repo /src/ -l
+aeroftp-cli ls github://token:YOUR_PAT@owner/repo /src/ -l
 
 # Specific branch
-aeroftp ls github://token:YOUR_PAT@owner/repo@develop /
+aeroftp-cli ls github://token:YOUR_PAT@owner/repo@develop /
 
 # Upload file → creates Git commit
-aeroftp put github://token:YOUR_PAT@owner/repo ./fix.py /src/fix.py
+aeroftp-cli put github://token:YOUR_PAT@owner/repo ./fix.py /src/fix.py
 
 # Read file to stdout
-aeroftp cat github://token:YOUR_PAT@owner/repo /README.md
+aeroftp-cli cat github://token:YOUR_PAT@owner/repo /README.md
 
 # Delete file → creates Git commit
-aeroftp rm github://token:YOUR_PAT@owner/repo /old-file.txt
+aeroftp-cli rm github://token:YOUR_PAT@owner/repo /old-file.txt
 
 # Using saved profile (recommended — no token exposed)
-aeroftp ls --profile "My GitHub Repo" /src/ -l
-aeroftp put --profile "My GitHub Repo" ./app.js /dist/app.js
+aeroftp-cli ls --profile "My GitHub Repo" /src/ -l
+aeroftp-cli put --profile "My GitHub Repo" ./app.js /dist/app.js
 
 # Connection info (shows branch, write mode, rate limit)
-aeroftp connect --profile "My GitHub Repo"
+aeroftp-cli connect --profile "My GitHub Repo"
 ```
 
 Every upload and delete creates a real Git commit. For protected branches, AeroFTP automatically creates a working branch (`aeroftp/{user}/{base}`) and offers PR creation.
@@ -704,43 +704,43 @@ Required permissions: `Contents: Read and write`, `Metadata: Read`.
 
 ```bash
 # Password authentication
-aeroftp connect sftp://user@host
+aeroftp-cli connect sftp://user@host
 
 # SSH key authentication
-aeroftp connect sftp://user@host --key ~/.ssh/id_ed25519
+aeroftp-cli connect sftp://user@host --key ~/.ssh/id_ed25519
 
 # Non-standard port
-aeroftp connect sftp://user@host:2222
+aeroftp-cli connect sftp://user@host:2222
 
 # Trust unknown host keys (first connection)
-aeroftp connect sftp://user@host --trust-host-key
+aeroftp-cli connect sftp://user@host --trust-host-key
 ```
 
 ### FTP / FTPS
 
 ```bash
 # Plain FTP
-aeroftp connect ftp://user@host
+aeroftp-cli connect ftp://user@host
 
 # Explicit TLS (recommended)
-aeroftp connect ftp://user@host --tls explicit
+aeroftp-cli connect ftp://user@host --tls explicit
 
 # Implicit TLS (port 990)
-aeroftp connect ftps://user@host
+aeroftp-cli connect ftps://user@host
 
 # Skip certificate verification (self-signed)
-aeroftp connect ftp://user@host --tls explicit --insecure
+aeroftp-cli connect ftp://user@host --tls explicit --insecure
 ```
 
 ### S3
 
 ```bash
 # Backblaze B2
-aeroftp ls s3://keyId:appKey@s3.eu-central-003.backblazeb2.com \
+aeroftp-cli ls s3://keyId:appKey@s3.eu-central-003.backblazeb2.com \
   --bucket my-bucket --region eu-central-003 /
 
 # AWS S3
-aeroftp ls s3://AKID:SECRET@s3.amazonaws.com \
+aeroftp-cli ls s3://AKID:SECRET@s3.amazonaws.com \
   --bucket my-bucket --region us-east-1 /
 ```
 
@@ -748,10 +748,10 @@ aeroftp ls s3://AKID:SECRET@s3.amazonaws.com \
 
 ```bash
 # HTTPS (webdavs://)
-aeroftp ls webdavs://user@nextcloud.example.com/remote.php/dav/files/user/ /
+aeroftp-cli ls webdavs://user@nextcloud.example.com/remote.php/dav/files/user/ /
 
 # HTTP (webdav://)
-aeroftp ls webdav://user@webdav.example.com /
+aeroftp-cli ls webdav://user@webdav.example.com /
 ```
 
 ### Token-Based Providers
@@ -761,10 +761,10 @@ aeroftp ls webdav://user@webdav.example.com /
 AEROFTP_TOKEN=mytoken aeroftp ls jottacloud://user@jottacloud.com /
 
 # FileLu (API key as token)
-aeroftp ls filelu://user@filelu.com --token my-api-key /
+aeroftp-cli ls filelu://user@filelu.com --token my-api-key /
 
 # 2FA (Filen)
-aeroftp connect filen://user@filen.io --two-factor 123456
+aeroftp-cli connect filen://user@filen.io --two-factor 123456
 ```
 
 ---
@@ -804,7 +804,7 @@ echo "$DEPLOY_PASSWORD" | aeroftp --password-stdin put $SERVER \
 ```bash
 #!/bin/bash
 DATE=$(date +%Y%m%d)
-aeroftp get sftp://backup@nas:2222 /data/database.sql \
+aeroftp-cli get sftp://backup@nas:2222 /data/database.sql \
   "./backups/db-${DATE}.sql" --key ~/.ssh/backup_key
 ```
 
@@ -859,10 +859,10 @@ DISCONNECT
 
 ```bash
 # Verbose output for debugging
-aeroftp connect sftp://user@host -vv
+aeroftp-cli connect sftp://user@host -vv
 
 # Test with --insecure for certificate issues
-aeroftp connect ftp://user@host --tls explicit --insecure
+aeroftp-cli connect ftp://user@host --tls explicit --insecure
 ```
 
 ### FTP Passive Mode
@@ -875,10 +875,10 @@ Use `--limit-rate` for a fixed cap, or `--bwlimit` for time-based scheduling:
 
 ```bash
 # Fixed speed cap
-aeroftp get sftp://user@host /large-file.iso --limit-rate 5M
+aeroftp-cli get sftp://user@host /large-file.iso --limit-rate 5M
 
 # Scheduled bandwidth: slow during business hours, unlimited at night
-aeroftp get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
+aeroftp-cli get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
 ```
 
 ### Encoding Issues

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-03-22
+
+### Co-Author Address Book & GitHub UX
+
+#### Added
+
+- **Co-Author address book**: Persistent contact list in GitHub commit dialog — add usernames or app[bot] names, toggle on/off per commit. Saved co-authors appear as colored chips with one-click enable/disable. Enabled co-authors automatically append `Co-Authored-By` trailers to commit messages. Works with all 3 GitHub connection methods (OAuth, PAT, PEM)
+- **i18n**: `coAuthorPlaceholder` key translated in English and Italian
+
 ## [3.0.9] - 2026-03-22
 
 ### GitHub Batch Operations, CLI Dedup & Installer Polish
@@ -17,7 +26,7 @@ GitHub multi-file atomic commits via GraphQL, unpushed local commit detection wi
 - **GitHub batch delete**: Atomic multi-file deletion in a single commit via GraphQL
 - **GitHub pre-push detection**: Detects unpushed local commits before API upload — warns with push-first/continue/cancel dialog to prevent merge conflicts and skipped local changes
 - **GitHub `git push` from app**: "Push First" button in warning dialog runs `git push` on the local repo before proceeding with API upload
-- **CLI `about` command**: Show server info, account details, and storage quota (`aeroftp about sftp://host`)
+- **CLI `about` command**: Show server info, account details, and storage quota (`aeroftp-cli about sftp://host`)
 - **CLI `dedupe` command**: Find duplicate files by content hash with interactive/dry-run resolution modes
 - **CLI `--bwlimit` schedule**: Time-based bandwidth limiting with schedule syntax (e.g., `--bwlimit "08:00,512k 12:00,10M 18:00,off"`)
 - **CLI `--track-renames` sync**: Detect renamed files by hash to avoid unnecessary re-upload during sync
