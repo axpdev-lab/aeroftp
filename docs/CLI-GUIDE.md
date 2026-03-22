@@ -396,6 +396,33 @@ aeroftp check --profile "server" /local/ /remote/ --json
 
 Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
 
+### about — Server Info & Storage Quota
+
+```bash
+# Detailed server info with storage quota
+aeroftp about --profile "server"
+
+# JSON output
+aeroftp about --profile "server" --json
+```
+
+Shows provider name, type, server info, and storage quota (used/free/total) in a single command. More detailed than `df` — includes protocol version, server software, and connection parameters alongside quota information.
+
+### dedupe — Find Duplicate Files
+
+```bash
+# Scan for duplicate files (report only)
+aeroftp dedupe --profile "server" /data --dry-run
+
+# Delete duplicates (keep first occurrence)
+aeroftp dedupe --profile "server" /data --mode skip
+
+# JSON output with group details
+aeroftp dedupe --profile "server" /data --dry-run --json
+```
+
+Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest).
+
 ### sync — Synchronize Directories
 
 ```bash
@@ -419,9 +446,20 @@ aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 50
 
 # Safety limit: abort if more than 25% of files would be deleted
 aeroftp sync --profile "server" ./local/ /remote/ --delete --max-delete 25%
+
+# Detect renamed files to avoid re-upload
+aeroftp sync --profile "server" ./local/ /remote/ --delete --track-renames --dry-run
+# Without --track-renames: 1 upload + 1 delete
+# With --track-renames: 1 server-side rename (no data transfer)
+
+# Time-based bandwidth schedule
+aeroftp sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:00,10M 18:00,512k 23:00,off"
+
+# Simple bandwidth limit (alternative to --limit-rate with schedule syntax)
+aeroftp sync --profile "server" ./local/ /remote/ --bwlimit "1M"
 ```
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`.
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`.
 
 ### batch — Execute Script
 
@@ -454,6 +492,7 @@ Executes a `.aeroftp` script file containing a sequence of commands. See [Batch 
 | `--trust-host-key` | Trust unknown SSH host keys |
 | `--two-factor <code>` | 2FA code for Filen/Internxt (env: `AEROFTP_2FA`) |
 | `--limit-rate <speed>` | Speed limit (e.g., `1M`, `500K`) |
+| `--bwlimit <schedule>` | Bandwidth schedule (e.g., `"08:00,512k 18:00,off"` or `"1M"`) |
 | `--include <pattern>` | Include only files matching glob pattern (repeatable) |
 | `--exclude-global <pattern>` | Exclude files matching glob pattern (repeatable) |
 | `--include-from <file>` | Read include patterns from file |
@@ -832,10 +871,14 @@ If FTP downloads hang, the server may have passive mode issues. Try SFTP or WebD
 
 ### Large File Transfers
 
-Use `--limit-rate` to avoid saturating bandwidth:
+Use `--limit-rate` for a fixed cap, or `--bwlimit` for time-based scheduling:
 
 ```bash
+# Fixed speed cap
 aeroftp get sftp://user@host /large-file.iso --limit-rate 5M
+
+# Scheduled bandwidth: slow during business hours, unlimited at night
+aeroftp get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
 ```
 
 ### Encoding Issues
@@ -848,22 +891,22 @@ The CLI sanitizes filenames with ANSI escape sequences. If filenames appear trun
 
 The following providers have been tested live via CLI with `--profile`:
 
-| Provider | Protocol | connect | ls | put/get | head/tail | hashsum | check | touch | tree | df |
-|----------|----------|---------|----|---------|-----------|---------|||-------|------|------|
-| WD MyCloud NAS | SFTP | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS |
-| axpdev.it | FTP | PASS | PASS | — | PASS | PASS | — | — | — | — |
-| Playground | GitHub | PASS | PASS | PASS | PASS | PASS | — | PASS | PASS | — |
-| MEGA.nz | MEGA | PASS | PASS | — | — | — | — | — | — | — |
-| OpenDrive | OpenDrive | PASS | PASS | — | — | — | — | — | — | PASS |
-| Filen | Filen (E2E) | PASS | PASS | — | — | — | — | — | — | PASS |
-| Koofr | WebDAV | PASS | PASS | — | — | — | — | — | — | — |
-| Koofr | Native API | PASS | PASS | — | — | — | — | — | — | PASS |
-| WD MyCloud NAS | WebDAV | PASS | PASS | — | — | — | — | — | — | — |
-| Backblaze B2 | S3 | PASS | PASS | — | — | — | — | — | — | — |
-| Azure | Azure Blob | PASS | PASS | — | — | — | — | — | — | — |
-| 4shared | OAuth 1.0 | PASS | PASS | — | — | — | — | — | — | PASS |
+| Provider | Protocol | connect | ls | put/get | head/tail | hashsum | check | about | dedupe | track-renames | bwlimit | touch | tree | df |
+|----------|----------|---------|----|---------|-----------|---------||-------|--------|---------------|---------|-------|------|------|
+| WD MyCloud NAS | SFTP | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS |
+| axpdev.it | FTP | PASS | PASS | — | PASS | PASS | — | PASS | — | — | PASS | — | — | — |
+| Playground | GitHub | PASS | PASS | PASS | PASS | PASS | — | PASS | — | — | — | PASS | PASS | — |
+| MEGA.nz | MEGA | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
+| OpenDrive | OpenDrive | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
+| Filen | Filen (E2E) | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
+| Koofr | WebDAV | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
+| Koofr | Native API | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
+| WD MyCloud NAS | WebDAV | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
+| Backblaze B2 | S3 | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
+| Azure | Azure Blob | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
+| 4shared | OAuth 1.0 | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
 
-**12 providers tested**, all core operations verified.
+**12 providers tested**, all core operations verified. `about` tested on all 12 providers. `dedupe`, `track-renames`, and `bwlimit` tested on SFTP.
 
 ---
 

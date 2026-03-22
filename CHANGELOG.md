@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.9] - 2026-03-22
+
+### GitHub Batch Operations, CLI Dedup & Installer Polish
+
+GitHub multi-file atomic commits via GraphQL, unpushed local commit detection with push-first workflow, 2 new CLI commands (about, dedupe), bandwidth scheduling, rename tracking in sync, and WiX installer image fix.
+
+#### Added
+
+- **GitHub batch upload**: Multi-file upload creates a single atomic commit via GraphQL `createCommitOnBranch` — no more 1-commit-per-file pollution. Binary file support with base64 encoding, 50 MB batch limit
+- **GitHub batch delete**: Atomic multi-file deletion in a single commit via GraphQL
+- **GitHub pre-push detection**: Detects unpushed local commits before API upload — warns with push-first/continue/cancel dialog to prevent merge conflicts and skipped local changes
+- **GitHub `git push` from app**: "Push First" button in warning dialog runs `git push` on the local repo before proceeding with API upload
+- **CLI `about` command**: Show server info, account details, and storage quota (`aeroftp about sftp://host`)
+- **CLI `dedupe` command**: Find duplicate files by content hash with interactive/dry-run resolution modes
+- **CLI `--bwlimit` schedule**: Time-based bandwidth limiting with schedule syntax (e.g., `--bwlimit "08:00,512k 12:00,10M 18:00,off"`)
+- **CLI `--track-renames` sync**: Detect renamed files by hash to avoid unnecessary re-upload during sync
+- **Server duplicate button**: One-click server profile duplication in Settings with auto-renamed copy
+
+#### Fixed
+
+- **WiX installer dialog image**: Replaced dark background BMP with proper light-themed image — installer text now readable on Windows MSI wizard
+- **ProvidersDialog layout**: Refactored from 3-tab to unified single-table view with compact column labels (Share, Versions, Collab.)
+
+#### Changed
+
+- **CLI from 18 to 20 commands**: Added about, dedupe
+- **Screenshots updated**: 5 new screenshots (connection protocols, multi-tab, settings themes, sync queue, AeroAgent devtools)
+- **5 i18n keys**: GitHub sync warning + server duplicate translated in all 47 languages
+
 ## [3.0.8] - 2026-03-21
 
 ### CLI Feature Parity & rclone-class Commands

@@ -946,6 +946,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <Edit size={14} />
                                                             </button>
                                                             <button
+                                                                onClick={() => {
+                                                                    const cloned = {
+                                                                        ...server,
+                                                                        id: crypto.randomUUID(),
+                                                                        name: `${server.name} (${t('common.copy')})`,
+                                                                        lastConnected: undefined,
+                                                                    };
+                                                                    const updated = [...servers, cloned];
+                                                                    setServers(updated);
+                                                                    setHasChanges(true);
+                                                                    onServersChanged?.();
+                                                                }}
+                                                                className="p-2 text-gray-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
+                                                                title={t('common.duplicate')}
+                                                            >
+                                                                <Copy size={14} />
+                                                            </button>
+                                                            <button
                                                                 onClick={() => deleteServer(server.id)}
                                                                 className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                                                 title={t('common.delete')}

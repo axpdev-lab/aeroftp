@@ -46,6 +46,7 @@ import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
 import { GitHubCommitDialog } from './components/GitHubCommitDialog';
+import { GitHubLocalSyncWarning } from './components/GitHubLocalSyncWarning';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
@@ -348,6 +349,12 @@ const App: React.FC = () => {
   const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
   const [showFilenNotes, setShowFilenNotes] = useState(false);
+  const [gitHubSyncWarning, setGitHubSyncWarning] = useState<{
+    unpushedCount: number;
+    branch: string;
+    resolve: (action: 'push' | 'continue' | 'cancel') => void;
+  } | null>(null);
+  const gitHubSyncCheckedRef = useRef(false);
 
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
@@ -3913,6 +3920,38 @@ const App: React.FC = () => {
         const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
         let batchCommitMessage: string | undefined;
 
+        if (isGitHubRepoMode && !gitHubSyncCheckedRef.current) {
+          gitHubSyncCheckedRef.current = true;
+          try {
+            const syncStatus = await invoke<{
+              is_local_repo: boolean;
+              repo_matches?: boolean;
+              unpushed_count?: number;
+              branch?: string;
+            }>('github_check_local_sync', { localPath: currentLocalPath });
+            if (syncStatus.is_local_repo && syncStatus.repo_matches && (syncStatus.unpushed_count || 0) > 0) {
+              const action = await new Promise<'push' | 'continue' | 'cancel'>((resolve) => {
+                setGitHubSyncWarning({
+                  unpushedCount: syncStatus.unpushed_count!,
+                  branch: syncStatus.branch || 'main',
+                  resolve,
+                });
+              });
+              setGitHubSyncWarning(null);
+              if (action === 'cancel') return;
+              if (action === 'push') {
+                try {
+                  await invoke('github_push_local', { localPath: currentLocalPath });
+                  notify.success('Local commits pushed to GitHub');
+                } catch (e) {
+                  notify.error('Push failed', String(e));
+                  return;
+                }
+              }
+            }
+          } catch { /* git not available or not a repo — continue normally */ }
+        }
+
         if (isGitHubRepoMode) {
           const commitMessage = await requestGitHubBatchCommitMessage(
             filesToUpload.map(({ path: filePath, file }) => ({
@@ -3953,6 +3992,54 @@ const App: React.FC = () => {
         cancelLevelRef.current = 0;
         circuitBreaker.reset();
         try { await invoke('reset_cancel_flag'); } catch { }
+
+        // GitHub atomic batch upload: commit all non-dir files in a single commit
+        if (isGitHubRepoMode && batchCommitMessage && queueItems.filter(i => !i.file.is_dir).length > 1) {
+          const nonDirItems = queueItems.filter(i => !i.file.is_dir);
+          const totalSize = nonDirItems.reduce((sum, i) => sum + (i.file.size || 0), 0);
+          const MAX_BATCH_SIZE = 50 * 1024 * 1024; // 50 MB GraphQL limit
+
+          if (totalSize <= MAX_BATCH_SIZE) {
+            try {
+              const files = nonDirItems.map(item => ({
+                localPath: item.filePath,
+                remotePath: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${item.fileName}`,
+              }));
+              const result = await invoke<{ commit_sha: string; files_count: number }>(
+                'github_batch_upload', { files, message: batchCommitMessage }
+              );
+              // Mark all as complete
+              for (const item of nonDirItems) {
+                transferQueue.completeTransfer(item.id);
+              }
+              notify.success(
+                `Atomic commit: ${result.files_count} files`,
+                result.commit_sha.substring(0, 7)
+              );
+            } catch (error) {
+              for (const item of nonDirItems) {
+                transferQueue.failTransfer(item.id, String(error));
+              }
+              notify.error('Batch upload failed', String(error));
+            }
+            // Process remaining dir items sequentially if any
+            const dirItems = queueItems.filter(i => i.file.is_dir);
+            if (dirItems.length > 0) {
+              for (const item of dirItems) {
+                transferQueue.startTransfer(item.id);
+                try {
+                  await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage);
+                  transferQueue.completeTransfer(item.id);
+                } catch (error) {
+                  transferQueue.failTransfer(item.id, String(error));
+                }
+              }
+            }
+            loadRemoteFiles(undefined, true);
+            return;
+          }
+          // If total > 50MB, fall through to sequential upload
+        }
 
         // Upload sequentially with queue tracking and overwrite checking
         let skippedCount = 0;
@@ -6451,6 +6538,15 @@ const App: React.FC = () => {
           isOpen={showFilenNotes}
           onClose={() => setShowFilenNotes(false)}
         />
+        {gitHubSyncWarning && (
+          <GitHubLocalSyncWarning
+            unpushedCount={gitHubSyncWarning.unpushedCount}
+            branch={gitHubSyncWarning.branch}
+            onPushFirst={() => gitHubSyncWarning.resolve('push')}
+            onContinue={() => gitHubSyncWarning.resolve('continue')}
+            onCancel={() => gitHubSyncWarning.resolve('cancel')}
+          />
+        )}
         {batchRenameDialog && (
           <BatchRenameDialog
             isOpen={true}

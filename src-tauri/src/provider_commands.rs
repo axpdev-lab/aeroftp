@@ -4850,6 +4850,197 @@ pub async fn github_batch_commit(
     }))
 }
 
+/// Atomic batch upload of binary files to GitHub via GraphQL createCommitOnBranch.
+/// Unlike github_batch_commit (text-only), this reads files from disk as binary.
+#[tauri::command]
+pub async fn github_batch_upload(
+    state: State<'_, ProviderState>,
+    files: Vec<serde_json::Value>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let mut additions: Vec<(String, Vec<u8>)> = Vec::with_capacity(files.len());
+    for file_val in &files {
+        let local_path = file_val.get("localPath").and_then(|v| v.as_str())
+            .ok_or("Each file must have a 'localPath'")?;
+        let remote_path = file_val.get("remotePath").and_then(|v| v.as_str())
+            .ok_or("Each file must have a 'remotePath'")?;
+        let data = tokio::fs::read(local_path).await
+            .map_err(|e| format!("Failed to read {}: {}", local_path, e))?;
+        additions.push((remote_path.trim_start_matches('/').to_string(), data));
+    }
+
+    let oid = github.batch_upload(&message, &additions, &[]).await
+        .map_err(|e| format!("Batch upload failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "commit_sha": oid,
+        "files_count": additions.len(),
+    }))
+}
+
+/// Atomic batch delete of files on GitHub via GraphQL createCommitOnBranch.
+#[tauri::command]
+pub async fn github_batch_delete(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Err("This operation is only available for GitHub".to_string());
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let deletions: Vec<String> = paths.iter()
+        .map(|p| p.trim_start_matches('/').to_string())
+        .collect();
+
+    let oid = github.batch_upload(&message, &[], &deletions).await
+        .map_err(|e| format!("Batch delete failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "commit_sha": oid,
+        "files_count": deletions.len(),
+    }))
+}
+
+// ── GitHub Local Sync Detection ──────────────────────────────────
+
+/// Check if the local working directory has unpushed commits for the connected GitHub repo.
+#[tauri::command]
+pub async fn github_check_local_sync(
+    state: State<'_, ProviderState>,
+    local_path: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitHub {
+        return Ok(serde_json::json!({"is_local_repo": false}));
+    }
+    let github = provider.as_any_mut()
+        .downcast_mut::<crate::providers::github::GitHubProvider>()
+        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+
+    let owner = github.owner().to_string();
+    let repo = github.repo().to_string();
+
+    // Check if local_path is a git repo that matches this GitHub repo
+    let remote_output = match std::process::Command::new("git")
+        .args(["remote", "-v"])
+        .current_dir(&local_path)
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        _ => return Ok(serde_json::json!({"is_local_repo": false})),
+    };
+
+    // Check if any remote points to this repo
+    let ssh_pattern = format!("github.com:{}/{}", owner, repo);
+    let https_pattern = format!("github.com/{}/{}", owner, repo);
+    let matches = remote_output.lines().any(|line| {
+        let lower = line.to_lowercase();
+        lower.contains(&ssh_pattern.to_lowercase())
+            || lower.contains(&https_pattern.to_lowercase())
+    });
+
+    if !matches {
+        return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": false}));
+    }
+
+    // Get local HEAD
+    let local_head = match std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&local_path)
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        _ => return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": true, "error": "Cannot read local HEAD"})),
+    };
+
+    // Get remote HEAD via API — use batch_upload with empty additions to get head SHA
+    // (cheaper: just call the REST API for branch ref)
+    let branch = github.active_branch().to_string();
+    let remote_head = {
+        match github.client_mut().get_json::<serde_json::Value>(&format!(
+            "/repos/{}/{}/git/ref/heads/{}",
+            owner, repo, urlencoding::encode(&branch)
+        )).await {
+            Ok(val) => {
+                match val.get("object").and_then(|o| o.get("sha")).and_then(|s| s.as_str()) {
+                    Some(sha) => sha.to_string(),
+                    None => return Ok(serde_json::json!({
+                        "is_local_repo": true, "repo_matches": true,
+                        "error": "Cannot parse remote HEAD SHA"
+                    })),
+                }
+            }
+            Err(e) => return Ok(serde_json::json!({
+                "is_local_repo": true, "repo_matches": true,
+                "error": format!("Cannot fetch remote HEAD: {}", e)
+            })),
+        }
+    };
+
+    // Count unpushed commits
+    let unpushed_count = match std::process::Command::new("git")
+        .args(["rev-list", &format!("{}..HEAD", remote_head), "--count"])
+        .current_dir(&local_path)
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            String::from_utf8_lossy(&out.stdout).trim().parse::<u32>().unwrap_or(0)
+        }
+        _ => 0,
+    };
+
+    Ok(serde_json::json!({
+        "is_local_repo": true,
+        "repo_matches": true,
+        "local_head": local_head,
+        "remote_head": remote_head,
+        "unpushed_count": unpushed_count,
+        "branch": branch,
+    }))
+}
+
+/// Push local commits to the remote GitHub repository.
+#[tauri::command]
+pub async fn github_push_local(
+    local_path: String,
+) -> Result<serde_json::Value, String> {
+    let output = tokio::process::Command::new("git")
+        .args(["push"])
+        .current_dir(&local_path)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run git push: {}", e))?;
+
+    if output.status.success() {
+        Ok(serde_json::json!({
+            "status": "ok",
+            "message": String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        }))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(format!("git push failed: {}", stderr))
+    }
+}
+
 // ── GitHub Actions ────────────────────────────────────────────────
 
 /// List recent GitHub Actions workflow runs

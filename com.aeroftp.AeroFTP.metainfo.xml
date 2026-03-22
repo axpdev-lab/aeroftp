@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.0.9" date="2026-03-22">
+      <description>
+        <p>GitHub batch operations: atomic multi-file commits via GraphQL (no more 1-commit-per-file), unpushed local commit detection with push-first workflow. CLI: about and dedupe commands, bandwidth scheduling, rename tracking in sync. WiX installer image fix for readable text on Windows MSI wizard. ProvidersDialog unified layout.</p>
+      </description>
+    </release>
     <release version="3.0.8" date="2026-03-21">
       <description>
         <p>CLI Feature Parity: 5 new commands (head, tail, hashsum, touch, check), advanced filter system (include/exclude, size, age), sync safety (max-delete), profile UX overhaul (no URL placeholder needed). 4shared OAuth 1.0 and Azure container auto-detection from profiles. 12 providers tested live. Complete CLI documentation rewrite.</p>

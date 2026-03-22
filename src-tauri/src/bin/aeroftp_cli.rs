@@ -18,6 +18,8 @@
 //!   aeroftp find <url> <path> <pattern>       Search files
 //!   aeroftp df <url>                          Storage quota
 //!   aeroftp tree <url> [path] [-d depth]      Directory tree
+//!   aeroftp about <url>                       Server info and storage
+//!   aeroftp dedupe <url> [path]               Find duplicate files
 //!   aeroftp sync <url> <local> <remote>       Sync directories
 //!   aeroftp batch <file>                      Execute .aeroftp script
 //!
@@ -132,6 +134,10 @@ struct Cli {
     /// Speed limit (e.g., "1M", "500K")
     #[arg(long, global = true)]
     limit_rate: Option<String>,
+
+    /// Bandwidth schedule (e.g., "08:00,512k 12:00,10M 18:00,off")
+    #[arg(long, global = true)]
+    bwlimit: Option<String>,
 
     // ── Filter flags (apply to ls, get, put, sync, find, rm) ──
 
@@ -392,6 +398,27 @@ enum Commands {
         #[arg(default_value = "_")]
         url: String,
     },
+    /// Show detailed server info, account, and storage quota
+    About {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+    },
+    /// Find and resolve duplicate files by content hash
+    Dedupe {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote path to scan
+        #[arg(default_value = "/")]
+        path: String,
+        /// Resolution mode: interactive, skip, newest, oldest, largest, smallest
+        #[arg(long, default_value = "skip")]
+        mode: String,
+        /// Preview only (don't delete)
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Synchronize local and remote directories
     Sync {
         /// Server URL (omit when using --profile)
@@ -415,6 +442,9 @@ enum Commands {
         /// Exclude patterns (can repeat: --exclude "*.tmp" --exclude ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
+        /// Detect renamed files by hash to avoid re-upload
+        #[arg(long)]
+        track_renames: bool,
         /// Safety limit: abort if more than N files (or N%) would be deleted
         #[arg(long)]
         max_delete: Option<String>,
@@ -974,6 +1004,61 @@ fn build_filter(cli: &Cli) -> FilterFn {
         }
         true
     })
+}
+
+/// Resolve the current bandwidth limit from a time-based schedule.
+/// Format: "08:00,512k 12:00,10M 18:00,off" — space-separated entries.
+/// Returns the active rate in bytes/sec, or None if unlimited ("off").
+fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
+    let now = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // Extract HH:MM from epoch seconds (local time approximation)
+        let local_secs = secs % 86400; // seconds since midnight UTC
+        // For proper local time we'd need chrono, but UTC is good enough for scheduling
+        (local_secs / 3600, (local_secs % 3600) / 60) // (hour, minute)
+    };
+
+    let mut entries: Vec<(u32, Option<u64>)> = Vec::new(); // (minutes_since_midnight, rate)
+    for part in schedule.split_whitespace() {
+        if let Some((time_str, rate_str)) = part.split_once(',') {
+            let time_parts: Vec<&str> = time_str.split(':').collect();
+            if time_parts.len() == 2 {
+                if let (Ok(h), Ok(m)) = (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>()) {
+                    let minutes = h * 60 + m;
+                    let rate = if rate_str == "off" || rate_str == "0" {
+                        None
+                    } else {
+                        parse_size_filter(rate_str).ok()
+                    };
+                    entries.push((minutes, rate));
+                }
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        return parse_size_filter(schedule).ok(); // Treat as simple rate
+    }
+
+    entries.sort_by_key(|(m, _)| *m);
+    let now_minutes = now.0 as u32 * 60 + now.1 as u32;
+
+    // Find the last entry whose time <= now
+    let mut active_rate: Option<u64> = None;
+    for (minutes, rate) in &entries {
+        if *minutes <= now_minutes {
+            active_rate = *rate;
+        }
+    }
+    // If no entry matched (before first entry), use the last entry (wrap around midnight)
+    if active_rate.is_none() && !entries.is_empty() {
+        active_rate = entries.last().unwrap().1;
+    }
+
+    active_rate
 }
 
 /// Check if any filter flags are active.
@@ -2190,6 +2275,16 @@ async fn create_and_connect(
                 if cli.verbose > 0 {
                     eprintln!("Warning: invalid --limit-rate '{}': {}", rate, e);
                 }
+            }
+        }
+    }
+    // Apply bandwidth schedule if set (--bwlimit "08:00,512k 18:00,off")
+    if let Some(ref schedule) = cli.bwlimit {
+        if let Some(rate) = resolve_bwlimit_schedule(schedule) {
+            let kb = rate / 1024;
+            let _ = provider.set_speed_limit(kb, kb).await;
+            if cli.verbose > 0 {
+                eprintln!("Bandwidth limit: {} (from schedule)", format_size(rate));
             }
         }
     }
@@ -3461,6 +3556,211 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     }
 }
 
+async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let provider_name = provider.display_name();
+    let provider_type = provider.provider_type().to_string();
+    let server_info = provider.server_info().await.ok().unwrap_or_default();
+    let storage = provider.storage_info().await.ok();
+
+    match format {
+        OutputFormat::Text => {
+            eprintln!("Provider:  {} ({})", provider_name, provider_type);
+            if !server_info.is_empty() {
+                eprintln!("Server:    {}", server_info);
+            }
+            if let Some(ref info) = storage {
+                let pct = if info.total > 0 {
+                    (info.used as f64 / info.total as f64) * 100.0
+                } else { 0.0 };
+                eprintln!("Used:      {} ({:.1}%)", format_size(info.used), pct);
+                eprintln!("Free:      {}", format_size(info.free));
+                eprintln!("Total:     {}", format_size(info.total));
+            }
+        }
+        OutputFormat::Json => {
+            let mut result = serde_json::json!({
+                "status": "ok",
+                "provider": provider_type,
+                "display_name": provider_name,
+                "server_info": server_info,
+            });
+            if let Some(info) = storage {
+                result["used"] = serde_json::json!(info.used);
+                result["total"] = serde_json::json!(info.total);
+                result["free"] = serde_json::json!(info.free);
+                result["used_percent"] = serde_json::json!(
+                    if info.total > 0 { (info.used as f64 / info.total as f64) * 100.0 } else { 0.0 }
+                );
+            }
+            print_json(&result);
+        }
+    }
+    let _ = provider.disconnect().await;
+    0
+}
+
+async fn cmd_dedupe(
+    url: &str, path: &str, mode: &str, dry_run: bool,
+    cli: &Cli, format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    if !quiet { eprintln!("Scanning {} for duplicates...", path); }
+
+    // BFS scan to collect all files with sizes
+    let mut files: Vec<(String, u64)> = Vec::new();
+    let mut dirs = vec![path.to_string()];
+    let max_entries = 100_000usize;
+
+    while let Some(dir) = dirs.pop() {
+        if files.len() >= max_entries { break; }
+        match provider.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    if entry.is_dir {
+                        dirs.push(entry.path.clone());
+                    } else {
+                        files.push((entry.path.clone(), entry.size));
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    if !quiet { eprintln!("Scanned {} files. Grouping by size...", files.len()); }
+
+    // Group by size (fast pre-filter)
+    let mut size_groups: std::collections::HashMap<u64, Vec<String>> = std::collections::HashMap::new();
+    for (path, size) in &files {
+        if *size > 0 { // Skip empty files
+            size_groups.entry(*size).or_default().push(path.clone());
+        }
+    }
+
+    // Filter to groups with >1 file (potential duplicates)
+    let candidate_groups: Vec<(u64, Vec<String>)> = size_groups
+        .into_iter()
+        .filter(|(_, paths)| paths.len() > 1)
+        .collect();
+
+    if candidate_groups.is_empty() {
+        if !quiet { eprintln!("No potential duplicates found."); }
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
+        }
+        let _ = provider.disconnect().await;
+        return 0;
+    }
+
+    if !quiet {
+        eprintln!("{} size groups with potential duplicates. Hashing...", candidate_groups.len());
+    }
+
+    // Hash files within each group to confirm duplicates
+    let mut duplicate_groups: Vec<Vec<String>> = Vec::new();
+    let mut total_duplicates = 0u32;
+    let mut wasted_bytes = 0u64;
+
+    for (size, paths) in &candidate_groups {
+        let mut hash_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for p in paths {
+            match provider.download_to_bytes(p).await {
+                Ok(data) => {
+                    use sha2::Digest;
+                    let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                    hash_map.entry(hash).or_default().push(p.clone());
+                }
+                Err(_) => continue,
+            }
+        }
+        for (_, group) in hash_map {
+            if group.len() > 1 {
+                let dupes = group.len() as u32 - 1;
+                total_duplicates += dupes;
+                wasted_bytes += size * dupes as u64;
+                duplicate_groups.push(group);
+            }
+        }
+    }
+
+    if duplicate_groups.is_empty() {
+        if !quiet { eprintln!("No duplicates found (same size but different content)."); }
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
+        }
+        let _ = provider.disconnect().await;
+        return 0;
+    }
+
+    // Report duplicates
+    match format {
+        OutputFormat::Text => {
+            eprintln!("\nFound {} duplicate group(s), {} duplicate file(s), {} wasted",
+                duplicate_groups.len(), total_duplicates, format_size(wasted_bytes));
+
+            for (i, group) in duplicate_groups.iter().enumerate() {
+                eprintln!("\n  Group {} ({} files):", i + 1, group.len());
+                for (j, p) in group.iter().enumerate() {
+                    let marker = if j == 0 { "KEEP" } else {
+                        match mode {
+                            "skip" => "DUPE",
+                            _ => "DELETE",
+                        }
+                    };
+                    eprintln!("    [{}] {}", marker, p);
+                }
+            }
+
+            if !dry_run && mode != "skip" {
+                // Delete duplicates (keep first in each group)
+                let mut deleted = 0u32;
+                for group in &duplicate_groups {
+                    for p in group.iter().skip(1) {
+                        match provider.delete(p).await {
+                            Ok(()) => { deleted += 1; }
+                            Err(e) => { eprintln!("  Failed to delete {}: {}", p, e); }
+                        }
+                    }
+                }
+                eprintln!("\nDeleted {} duplicate file(s).", deleted);
+            } else if dry_run {
+                eprintln!("\n(dry run — no files deleted)");
+            }
+        }
+        OutputFormat::Json => {
+            let groups_json: Vec<serde_json::Value> = duplicate_groups.iter().map(|g| {
+                serde_json::json!({
+                    "files": g,
+                    "keep": g[0],
+                    "duplicates": &g[1..],
+                })
+            }).collect();
+            print_json(&serde_json::json!({
+                "status": "ok",
+                "groups": duplicate_groups.len(),
+                "duplicates": total_duplicates,
+                "wasted_bytes": wasted_bytes,
+                "mode": mode,
+                "dry_run": dry_run,
+                "details": groups_json,
+            }));
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    0
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
@@ -3470,6 +3770,7 @@ async fn cmd_sync(
     dry_run: bool,
     delete: bool,
     exclude: &[String],
+    track_renames: bool,
     max_delete: Option<&str>,
     _backup_dir: Option<&str>,
     _backup_suffix: &str,
@@ -3665,12 +3966,60 @@ async fn cmd_sync(
         }
     }
 
+    // --track-renames: detect files that were renamed (same hash, different path)
+    let mut renames: Vec<(String, String)> = Vec::new(); // (old_remote, new_local)
+    if track_renames && !to_upload.is_empty() && !to_delete_remote.is_empty() {
+        if !quiet { eprintln!("Checking for renamed files..."); }
+        // Build hash map of files to upload (local side)
+        let mut upload_hashes: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        for up_path in &to_upload {
+            let local_file = std::path::Path::new(local).join(up_path);
+            if let Ok(data) = std::fs::read(&local_file) {
+                use sha2::Digest;
+                let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                upload_hashes.entry(hash).or_default().push(up_path.to_string());
+            }
+        }
+        // For each file to delete, check if its hash matches an upload candidate
+        let mut matched_uploads: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut matched_deletes: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for del_path in &to_delete_remote {
+            let remote_full = if remote.ends_with('/') {
+                format!("{}{}", remote, del_path)
+            } else {
+                format!("{}/{}", remote, del_path)
+            };
+            if let Ok(data) = provider.download_to_bytes(&remote_full).await {
+                use sha2::Digest;
+                let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                if let Some(upload_paths) = upload_hashes.get(&hash) {
+                    if let Some(up) = upload_paths.first() {
+                        if !matched_uploads.contains(up) {
+                            renames.push((del_path.to_string(), up.clone()));
+                            matched_uploads.insert(up.clone());
+                            matched_deletes.insert(del_path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        // Remove matched items from upload/delete lists
+        if !renames.is_empty() {
+            to_upload.retain(|p| !matched_uploads.contains(*p));
+            to_delete_remote.retain(|p| !matched_deletes.contains(*p));
+            if !quiet {
+                eprintln!("  {} rename(s) detected — will rename instead of delete+upload", renames.len());
+            }
+        }
+    }
+
     if !quiet {
         eprintln!(
-            "\nSync plan: {} upload, {} download, {} delete, {} skipped (identical)",
+            "\nSync plan: {} upload, {} download, {} delete, {} rename, {} skipped",
             to_upload.len(),
             to_download.len(),
             to_delete_remote.len() + to_delete_local.len(),
+            renames.len(),
             skipped
         );
     }
@@ -3771,6 +4120,24 @@ async fn cmd_sync(
         }
     }
 
+    // Execute renames (--track-renames)
+    let mut renamed = 0u32;
+    for (old_remote, new_local) in &renames {
+        let old_path = format!("{}/{}", remote.trim_end_matches('/'), old_remote);
+        let new_path = format!("{}/{}", remote.trim_end_matches('/'), new_local);
+        if !dry_run {
+            match provider.rename(&old_path, &new_path).await {
+                Ok(()) => {
+                    renamed += 1;
+                    if !quiet { eprintln!("  RENAME {} → {}", old_remote, new_local); }
+                }
+                Err(e) => errors.push(format!("rename {} → {}: {}", old_remote, new_local, e)),
+            }
+        } else {
+            renamed += 1;
+        }
+    }
+
     for path in &to_delete_remote {
         if validate_relative_path(path).is_none() {
             errors.push(format!("delete remote {}: unsafe path (traversal rejected)", path));
@@ -3801,10 +4168,11 @@ async fn cmd_sync(
         OutputFormat::Text => {
             if !cli.quiet {
                 println!(
-                    "\nSync complete: {} uploaded, {} downloaded, {} deleted in {:.1}s",
+                    "\nSync complete: {} uploaded, {} downloaded, {} deleted, {} renamed in {:.1}s",
                     uploaded,
                     downloaded,
                     deleted,
+                    renamed,
                     elapsed.as_secs_f64()
                 );
                 for err in &errors {
@@ -4977,6 +5345,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     false,
                     &[],
+                    false,
                     None,
                     None,
                     "",
@@ -7293,16 +7662,30 @@ async fn main() {
             dry_run,
             delete,
             exclude,
+            track_renames,
             max_delete,
             backup_dir,
             backup_suffix,
         } => {
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), local.as_str())
+            } else {
+                ("_", local.as_str(), remote.as_str())
+            };
             cmd_sync(
-                url, local, remote, direction, *dry_run, *delete, exclude,
-                max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
+                u, l, r, direction, *dry_run, *delete, exclude,
+                *track_renames, max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
                 &cli, format, cancelled,
             )
             .await
+        }
+        Commands::About { url } => {
+            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url };
+            cmd_about(u, &cli, format).await
+        }
+        Commands::Dedupe { url, path, mode, dry_run } => {
+            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
+            cmd_dedupe("_", p, mode, *dry_run, &cli, format).await
         }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();

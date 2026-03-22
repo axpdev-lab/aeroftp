@@ -8037,6 +8037,10 @@ pub fn run() {
             provider_commands::github_download_release_asset,
             provider_commands::github_get_release,
             provider_commands::github_batch_commit,
+            provider_commands::github_batch_upload,
+            provider_commands::github_batch_delete,
+            provider_commands::github_check_local_sync,
+            provider_commands::github_push_local,
             // Filen Encrypted Notes
             provider_commands::filen_notes_list,
             provider_commands::filen_notes_create,

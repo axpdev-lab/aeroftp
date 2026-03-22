@@ -37,6 +37,7 @@
             "browse": "Sfoglia",
             "select": "Seleziona",
             "copy": "Copia",
+            "duplicate": "Duplica",
             "paste": "Incolla",
             "cut": "Taglia",
             "rename": "Rinomina",
@@ -2849,7 +2850,8 @@
             "close": "Chiudi",
             "awaitingCommands": "In attesa di comandi...",
             "copy": "Copia",
-            "jumpToLatest": "ULTIMI"
+            "jumpToLatest": "ULTIMI",
+            "duplicate": "Duplica"
         },
         "permissions": {
             "title": "Permessi",
@@ -3288,7 +3290,14 @@
             "collaborations": "Collab.",
             "watermark": "Filigrana",
             "folderLock": "Blocco cartella",
-            "filePassword": "Password"
+            "filePassword": "Password",
+            "commits": "Commit",
+            "branches": "Branch",
+            "releases": "Release",
+            "actions": "Actions",
+            "pages": "Pages",
+            "prs": "PR",
+            "devTools": "Dev Tools"
         },
         "zohoworkdrive": {
             "manageLabels": "Gestisci etichette",
@@ -3354,11 +3363,10 @@
             "commitMessage": "Messaggio di commit",
             "commitMessagePlaceholder": "Aggiornamento tramite AeroFTP",
             "commit": "Commit",
-            "commitFiles": "Commit {count} file",
+            "commitFiles": "Committa {count} file",
             "renameCommit": "Rinomina",
             "deleteCommit": "Elimina",
             "alreadyAuthorized": "Già autorizzato — pronto per la connessione",
-            "commitFiles": "Committa {count} file",
             "commitToBranch": "Commit su {branch}",
             "branchSelector": "Branch",
             "writeModeDirect": "Push diretto",
@@ -3385,6 +3393,11 @@
             "pagesWorkflowHint": "I deployment sono gestiti da GitHub Actions. Pusha un commit per avviare una nuova build.",
             "importChangelogTooltip": "Leggi CHANGELOG.md dal repository e estrai la sezione corrispondente alla versione del tag",
             "noReleases": "Nessuna release trovata",
+            "unpushedCommitsTitle": "Commit locali non pushati rilevati",
+            "unpushedCommitsDesc": "Il tuo repository locale ha commit non ancora pushati su GitHub. Il caricamento via AeroFTP crea commit sul HEAD remoto, saltando le modifiche locali e causando potenziali conflitti.",
+            "unpushedCommitsHint": "Consigliato: pusha i commit locali prima per mantenere la cronologia lineare.",
+            "pushFirst": "Pusha prima",
+            "continueAnyway": "Continua comunque",
             "tagName": "Nome tag",
             "releaseName": "Nome release",
             "releaseNamePlaceholder": "Titolo release",
@@ -3408,7 +3421,7 @@
             "createPr": "Crea Pull Request",
             "prTitle": "Titolo PR",
             "prBody": "Descrizione (opzionale)",
-            "switchBranch": "[NEEDS TRANSLATION] Switch branch"
+            "switchBranch": "Cambia branch"
         },
         "filenNotes": {
             "title": "Note crittografate",

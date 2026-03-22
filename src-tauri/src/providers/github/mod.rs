@@ -225,6 +225,11 @@ impl GitHubProvider {
 
     /// Append Co-authored-by trailer for bot mode.
     /// This ensures aeroftp[bot] appears as contributor on the commit.
+    /// Mutable reference to the HTTP client (for GraphQL calls from commands).
+    pub fn client_mut(&mut self) -> &mut client::GitHubHttpClient {
+        &mut self.client
+    }
+
     pub fn with_co_author(&self, message: &str) -> String {
         if self.is_bot_token {
             format!(
@@ -357,6 +362,41 @@ impl GitHubProvider {
             head_oid: &head_oid,
             message,
             additions: &additions_bytes,
+            deletions,
+        };
+
+        graphql::batch_commit(&mut self.client, &params)
+            .await
+            .map_err(ProviderError::from)
+    }
+
+    /// Atomic batch upload of binary files via GraphQL `createCommitOnBranch`.
+    ///
+    /// Unlike `batch_commit()` which takes `(String, String)` text content,
+    /// this accepts raw `Vec<u8>` for binary files. Uses the content branch
+    /// (working branch if branch-workflow is active) and appends co-author
+    /// trailer for bot tokens.
+    pub async fn batch_upload(
+        &mut self,
+        message: &str,
+        additions: &[(String, Vec<u8>)],
+        deletions: &[String],
+    ) -> Result<String, ProviderError> {
+        let branch = self.content_branch().to_string();
+        let head_oid =
+            graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, &branch)
+                .await
+                .map_err(ProviderError::from)?;
+
+        let full_message = self.with_co_author(message);
+
+        let params = graphql::BatchCommitParams {
+            owner: &self.owner,
+            repo: &self.repo,
+            branch: &branch,
+            head_oid: &head_oid,
+            message: &full_message,
+            additions,
             deletions,
         };
 
