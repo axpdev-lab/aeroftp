@@ -249,23 +249,9 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 
 AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and autonomous coding assistants become the standard way to interact with computers, AeroFTP provides native interfaces for both use cases.
 
-**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
+**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
 
 **For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across all 23 protocols. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
-
-```bash
-# Claude Code or any AI agent deploys files — zero credentials exposed
-aeroftp-cli put --profile "Production" ./dist/ /var/www/ --json
-
-# Agent checks server storage across multiple providers
-aeroftp-cli df --profile "AWS S3" --json
-aeroftp-cli df --profile "Google Drive" --json
-
-# Agent runs a batch deployment script
-aeroftp-cli batch deploy.aeroftp
-```
-
-In a world where AI agents increasingly manage files, deploy code, and orchestrate infrastructure, AeroFTP bridges the gap between 23 storage protocols and the agentic workflows that need them.
 
 ---
 
@@ -273,7 +259,7 @@ In a world where AI agents increasingly manage files, deploy code, and orchestra
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-A production command-line interface sharing the same Rust backend as the GUI. 15 commands across 23 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
+A production command-line interface sharing the same Rust backend as the GUI. 20 commands across 23 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
 
 ```bash
 # Zero-credential connection via saved profiles
@@ -295,7 +281,7 @@ aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST
 aeroftp-cli ls --profile "My Google Drive" /
 ```
 
-**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `find`, `stat`, `df`, `tree`, `sync`, `batch`, `profiles`
+**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `head`, `tail`, `touch`, `hashsum`, `check`, `find`, `stat`, `df`, `tree`, `about`, `dedupe`, `sync`, `batch`, `profiles`
 
 **Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
 
@@ -308,7 +294,6 @@ aeroftp-cli ls --profile "My Google Drive" /
 - `NO_COLOR` / `CLICOLOR` compliance
 - Password via stdin, env vars, or interactive prompt
 - SSH key authentication for SFTP
-- 10-auditor dual security audit (Claude Opus 4.6 + GPT 5.4, 83+ findings resolved)
 
 See the full **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** for usage, examples, profiles, and batch scripting reference.
 
