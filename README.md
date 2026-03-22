@@ -255,14 +255,14 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 ```bash
 # Claude Code or any AI agent deploys files — zero credentials exposed
-aeroftp put --profile "Production" ./dist/ /var/www/ --json
+aeroftp-cli put --profile "Production" ./dist/ /var/www/ --json
 
 # Agent checks server storage across multiple providers
-aeroftp df --profile "AWS S3" --json
-aeroftp df --profile "Google Drive" --json
+aeroftp-cli df --profile "AWS S3" --json
+aeroftp-cli df --profile "Google Drive" --json
 
 # Agent runs a batch deployment script
-aeroftp batch deploy.aeroftp
+aeroftp-cli batch deploy.aeroftp
 ```
 
 In a world where AI agents increasingly manage files, deploy code, and orchestrate infrastructure, AeroFTP bridges the gap between 23 storage protocols and the agentic workflows that need them.
@@ -277,22 +277,22 @@ A production command-line interface sharing the same Rust backend as the GUI. 15
 
 ```bash
 # Zero-credential connection via saved profiles
-aeroftp ls --profile "My Server" /var/www/ -l
+aeroftp-cli ls --profile "My Server" /var/www/ -l
 
 # List all saved servers from encrypted vault
-aeroftp profiles
+aeroftp-cli profiles
 
 # URL-based connection (classic mode)
-aeroftp ls sftp://user@myserver.com /var/www/ -l
+aeroftp-cli ls sftp://user@myserver.com /var/www/ -l
 
 # Download with glob patterns
-aeroftp get sftp://user@host "/data/*.csv"
+aeroftp-cli get sftp://user@host "/data/*.csv"
 
 # Pipe-friendly: data on stdout, messages on stderr
-aeroftp cat sftp://user@host /config.ini | grep DB_HOST
+aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST
 
 # OAuth providers via profile (Google Drive, Dropbox, OneDrive, etc.)
-aeroftp ls --profile "My Google Drive" /
+aeroftp-cli ls --profile "My Google Drive" /
 ```
 
 **Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `find`, `stat`, `df`, `tree`, `sync`, `batch`, `profiles`
@@ -325,11 +325,11 @@ AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelin
 
 ```bash
 # AI agent deploys a website — no credentials anywhere
-aeroftp put --profile "Production" ./dist/app.js /var/www/app.js
-aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run
+aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
+aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
 
 # CI/CD with env-based vault unlock
-AEROFTP_MASTER_PASSWORD=$SECRET aeroftp put --profile "Deploy" ./dist/ /www/ -r
+AEROFTP_MASTER_PASSWORD=$SECRET aeroftp-cli put --profile "Deploy" ./dist/ /www/ -r
 ```
 
 > AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool — listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
