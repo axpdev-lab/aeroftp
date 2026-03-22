@@ -7,19 +7,19 @@
 
 ```bash
 # 1. See available servers (no credentials shown)
-aeroftp profiles --json
+aeroftp-cli profiles --json
 
 # 2. List files on a server
-aeroftp ls --profile "Server Name" /path/ --json
+aeroftp-cli ls --profile "Server Name" /path/ --json
 
 # 3. Upload a file
-aeroftp put --profile "Server Name" ./local-file.txt /remote/path/file.txt
+aeroftp-cli put --profile "Server Name" ./local-file.txt /remote/path/file.txt
 
 # 4. Download a file
-aeroftp get --profile "Server Name" /remote/file.txt ./local-file.txt
+aeroftp-cli get --profile "Server Name" /remote/file.txt ./local-file.txt
 
 # 5. Sync a directory
-aeroftp sync --profile "Server Name" ./local-dir/ /remote-dir/ --dry-run
+aeroftp-cli sync --profile "Server Name" ./local-dir/ /remote-dir/ --dry-run
 ```
 
 ## How Credentials Work
@@ -28,20 +28,20 @@ You do NOT need passwords, tokens, or API keys. The user has saved their servers
 
 ```bash
 # WRONG — do not ask the user for passwords
-aeroftp ls sftp://user:password@host /path/
+aeroftp-cli ls sftp://user:password@host /path/
 
 # RIGHT — use saved profiles
-aeroftp ls --profile "My Server" /path/
+aeroftp-cli ls --profile "My Server" /path/
 ```
 
 ## Discovery
 
 ```bash
 # List all saved servers with protocol, host, path
-aeroftp profiles --json
+aeroftp-cli profiles --json
 
 # Get full CLI capabilities as structured JSON
-aeroftp agent-info --json
+aeroftp-cli agent-info --json
 ```
 
 The `profiles --json` output:
@@ -65,42 +65,42 @@ The `profiles --json` output:
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `ls` | `aeroftp ls --profile NAME /path/ [-l] [--json]` | List directory contents |
-| `get` | `aeroftp get --profile NAME /remote/file [./local]` | Download file |
-| `put` | `aeroftp put --profile NAME ./local /remote/path` | Upload file |
-| `cat` | `aeroftp cat --profile NAME /remote/file` | Print file to stdout |
-| `stat` | `aeroftp stat --profile NAME /remote/file [--json]` | File metadata |
-| `find` | `aeroftp find --profile NAME /path/ "*.ext" [--json]` | Search files |
-| `tree` | `aeroftp tree --profile NAME /path/ [-d depth] [--json]` | Directory tree |
+| `ls` | `aeroftp-cli ls --profile NAME /path/ [-l] [--json]` | List directory contents |
+| `get` | `aeroftp-cli get --profile NAME /remote/file [./local]` | Download file |
+| `put` | `aeroftp-cli put --profile NAME ./local /remote/path` | Upload file |
+| `cat` | `aeroftp-cli cat --profile NAME /remote/file` | Print file to stdout |
+| `stat` | `aeroftp-cli stat --profile NAME /remote/file [--json]` | File metadata |
+| `find` | `aeroftp-cli find --profile NAME /path/ "*.ext" [--json]` | Search files |
+| `tree` | `aeroftp-cli tree --profile NAME /path/ [-d depth] [--json]` | Directory tree |
 
 ### Modify Operations
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `mkdir` | `aeroftp mkdir --profile NAME /remote/new-dir` | Create directory |
-| `rm` | `aeroftp rm --profile NAME /remote/file` | Delete file |
-| `rm -rf` | `aeroftp rm --profile NAME /remote/dir/ -rf` | Delete directory recursively |
-| `mv` | `aeroftp mv --profile NAME /old/path /new/path` | Move or rename |
+| `mkdir` | `aeroftp-cli mkdir --profile NAME /remote/new-dir` | Create directory |
+| `rm` | `aeroftp-cli rm --profile NAME /remote/file` | Delete file |
+| `rm -rf` | `aeroftp-cli rm --profile NAME /remote/dir/ -rf` | Delete directory recursively |
+| `mv` | `aeroftp-cli mv --profile NAME /old/path /new/path` | Move or rename |
 
 ### Bulk Operations
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `get -r` | `aeroftp get --profile NAME /remote/dir/ ./local/ -r` | Download directory |
-| `put -r` | `aeroftp put --profile NAME ./local/ /remote/dir/ -r` | Upload directory |
-| `get glob` | `aeroftp get --profile NAME "/path/*.csv"` | Download matching files |
-| `put glob` | `aeroftp put --profile NAME "./*.json" /remote/` | Upload matching files |
-| `sync` | `aeroftp sync --profile NAME ./local/ /remote/` | Bidirectional sync |
-| `sync --dry-run` | `aeroftp sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
+| `get -r` | `aeroftp-cli get --profile NAME /remote/dir/ ./local/ -r` | Download directory |
+| `put -r` | `aeroftp-cli put --profile NAME ./local/ /remote/dir/ -r` | Upload directory |
+| `get glob` | `aeroftp-cli get --profile NAME "/path/*.csv"` | Download matching files |
+| `put glob` | `aeroftp-cli put --profile NAME "./*.json" /remote/` | Upload matching files |
+| `sync` | `aeroftp-cli sync --profile NAME ./local/ /remote/` | Bidirectional sync |
+| `sync --dry-run` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
 
 ### Info Operations
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `connect` | `aeroftp connect --profile NAME` | Test connection |
-| `df` | `aeroftp df --profile NAME [--json]` | Storage quota |
-| `profiles` | `aeroftp profiles [--json]` | List saved servers |
-| `agent-info` | `aeroftp agent-info --json` | Full capabilities JSON |
+| `connect` | `aeroftp-cli connect --profile NAME` | Test connection |
+| `df` | `aeroftp-cli df --profile NAME [--json]` | Storage quota |
+| `profiles` | `aeroftp-cli profiles [--json]` | List saved servers |
+| `agent-info` | `aeroftp-cli agent-info --json` | Full capabilities JSON |
 
 ## Output Modes
 
@@ -108,10 +108,10 @@ Always use `--json` when parsing output programmatically:
 
 ```bash
 # Structured JSON — parse with jq or directly
-aeroftp ls --profile "Server" /path/ --json
+aeroftp-cli ls --profile "Server" /path/ --json
 
 # Plain text — human-readable, for display to user
-aeroftp ls --profile "Server" /path/ -l
+aeroftp-cli ls --profile "Server" /path/ -l
 ```
 
 **stdout** contains data only (file listings, file content, JSON).
@@ -119,10 +119,10 @@ aeroftp ls --profile "Server" /path/ -l
 
 ```bash
 # Pipe file content cleanly
-aeroftp cat --profile "Server" /remote/config.ini 2>/dev/null
+aeroftp-cli cat --profile "Server" /remote/config.ini 2>/dev/null
 
 # Parse JSON without noise
-aeroftp ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
+aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 ```
 
 ## Exit Codes
@@ -163,13 +163,13 @@ Profiles match by name (case-insensitive). Use exact names to avoid ambiguity:
 
 ```bash
 # Good — exact name
-aeroftp ls --profile "Production Server" /
+aeroftp-cli ls --profile "Production Server" /
 
 # Risky — substring match, may be ambiguous
-aeroftp ls --profile "prod" /
+aeroftp-cli ls --profile "prod" /
 
 # Best for scripting — use profile index number
-aeroftp ls --profile 1 /
+aeroftp-cli ls --profile 1 /
 ```
 
 ## GitHub Integration
@@ -178,16 +178,16 @@ AeroFTP treats GitHub repositories as filesystems. Every upload creates a Git co
 
 ```bash
 # Browse repo
-aeroftp ls --profile "GitHub/myproject" /src/ -l
+aeroftp-cli ls --profile "GitHub/myproject" /src/ -l
 
 # Upload file → creates commit
-aeroftp put --profile "GitHub/myproject" ./fix.py /src/fix.py
+aeroftp-cli put --profile "GitHub/myproject" ./fix.py /src/fix.py
 
 # Read file
-aeroftp cat --profile "GitHub/myproject" /README.md
+aeroftp-cli cat --profile "GitHub/myproject" /README.md
 
 # Delete → creates commit
-aeroftp rm --profile "GitHub/myproject" /old-file.txt
+aeroftp-cli rm --profile "GitHub/myproject" /old-file.txt
 ```
 
 For protected branches, AeroFTP auto-creates a working branch and offers PR creation. The token never leaves the vault.
@@ -196,29 +196,29 @@ For protected branches, AeroFTP auto-creates a working branch and offers PR crea
 
 ### Deploy a website
 ```bash
-aeroftp put --profile "Production" ./dist/index.html /var/www/index.html
-aeroftp put --profile "Production" ./dist/app.js /var/www/app.js
-aeroftp ls --profile "Production" /var/www/ -l --json
+aeroftp-cli put --profile "Production" ./dist/index.html /var/www/index.html
+aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
+aeroftp-cli ls --profile "Production" /var/www/ -l --json
 ```
 
 ### Sync a project folder
 ```bash
 # Preview first
-aeroftp sync --profile "Staging" ./build/ /var/www/ --dry-run --json
+aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run --json
 # Then execute
-aeroftp sync --profile "Staging" ./build/ /var/www/
+aeroftp-cli sync --profile "Staging" ./build/ /var/www/
 ```
 
 ### Backup remote files
 ```bash
-aeroftp get --profile "Production" /var/www/database.sql ./backups/
-aeroftp get --profile "NAS" /shared/photos/ ./local-backup/ -r
+aeroftp-cli get --profile "Production" /var/www/database.sql ./backups/
+aeroftp-cli get --profile "NAS" /shared/photos/ ./local-backup/ -r
 ```
 
 ### Check server status
 ```bash
-aeroftp connect --profile "Production"
-aeroftp df --profile "Production" --json
+aeroftp-cli connect --profile "Production"
+aeroftp-cli df --profile "Production" --json
 ```
 
 ## Supported Protocols
