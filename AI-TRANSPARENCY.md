@@ -13,11 +13,11 @@ Every feature, design decision and architectural choice is human-driven. AI acce
 AI tools (primarily Claude Code, with Codex and Gemini for specific tasks) were used to write code **according to detailed specifications** provided by the developer. The workflow follows a consistent pattern:
 
 1. **Human defines the specification**: feature scope, API design, data structures, security requirements, UI behavior
-2. **AI generates implementation**: code is produced following the spec, project conventions (`CLAUDE.md`), and existing patterns
+2. **AI generates implementation**: code is produced following the spec, project conventions, and existing patterns
 3. **Human reviews line by line**: every generated file is reviewed, tested, and adjusted before committing
 4. **Human commits with intent**: commit messages reflect deliberate, understood changes
 
-The project maintains a `CLAUDE.md` file (1500+ lines) with strict coding guidelines, architectural decisions, dependency pins, security patterns and release procedures. This file acts as a living specification that constrains AI output to match the project's standards.
+The project maintains internal specification files with strict coding guidelines, architectural decisions, dependency pins, security patterns and release procedures. These act as a living specification that constrains AI output to match the project's standards.
 
 ### Translations (47 Languages)
 
@@ -54,14 +54,14 @@ AeroFTP is designed as a first-class tool for AI agents (CLI with `--json` outpu
 - **Security model**: Credential isolation, vault encryption, CSP policies, TOFU host key verification, all designed by the developer
 - **Feature prioritization**: Roadmap, release scope, provider selection, all human-driven
 - **User experience**: UI layout, theme system, keyboard shortcuts, modal behavior, all specified by the developer
-- **Dependency choices**: Every crate and npm package is selected and pinned by the developer (see `CLAUDE.md` dependency pins)
+- **Dependency choices**: Every crate and npm package is selected and pinned by the developer
 
 ## Verification
 
 Reviewers and auditors can verify the human-driven development model by examining:
 
 - **Git history**: Every commit has a descriptive message following Conventional Commits, reflecting deliberate changes
-- **`CLAUDE.md`**: The specification file that constrains all AI-generated code, demonstrating the developer's architectural control
+- **SPDX headers**: Every source file carries a license identifier and AI-assisted attribution
 - **Security audit trail**: `docs/dev/` contains audit reports showing human triage of AI-generated findings
 - **Issue tracker**: Feature requests, bug reports, and design discussions reflect human decision-making
 
