@@ -225,7 +225,7 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 
 **Advanced features**:
 - **RAG integration**: Auto-indexes workspace files; full-text search across your codebase
-- **Plugin system**: Extend with custom tools via JSON manifest + shell scripts (sandboxed, 30s timeout)
+- **Plugin system**: Extend with custom tools via JSON manifest + shell scripts (sandboxed, 30s timeout). [Browse and create plugins](https://github.com/axpnet/aeroftp-plugins)
 - **Multi-step autonomous tools**: Chains multiple tool calls with auto-resume after approval
 - **Ollama auto-detection**: Discovers local Ollama instances and available models
 - **Monaco bidirectional sync**: Live two-way sync between code editor and AI agent
