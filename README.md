@@ -515,3 +515,15 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 <p align="center">
   <em>Built with Rust (Tauri 2) + React 18 + TypeScript</em>
 </p>
+
+---
+
+<p align="center">
+  <sub>
+    Designed, architected and maintained by <a href="https://github.com/axpnet">axpnet</a>.<br>
+    AI tools (Claude Code, Codex, Gemini) were used extensively for translations, code review,<br>
+    implementation and documentation, always under strict human-defined specifications and patterns.<br>
+    Every feature, design decision and architectural choice is human-driven.<br>
+    AI accelerated development; it did not direct it.
+  </sub>
+</p>
