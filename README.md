@@ -16,18 +16,26 @@
   <a href="https://aeroftp.app">Website</a> · <a href="https://docs.aeroftp.app">Documentation</a> · <a href="https://github.com/axpnet/aeroftp/releases">Download</a>
 </p>
 
-<!-- Row 1: Project Identity -->
+<!-- Row 1: Project & Quality -->
 <p align="center">
   <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
-  <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
   <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
-  <img src="https://img.shields.io/badge/protocols-23-green" alt="Protocols" />
-  <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
-  <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
-  <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
+  <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://rust-reportcard.xuri.me/report/github.com/axpnet/aeroftp"><img src="https://rust-reportcard.xuri.me/badge/github.com/axpnet/aeroftp" alt="Rust Report Card" /></a>
 </p>
 
-<!-- Row 2: Tech Stack & OS -->
+<!-- Row 2: App Features -->
+<p align="center">
+  <img src="https://img.shields.io/badge/protocols-23-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
+  <img src="https://img.shields.io/badge/AI%20tools-47-ff6600" alt="AI Tools" />
+  <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
+  <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
+  <img src="https://img.shields.io/badge/CLI-ready-blue?logo=gnubash&logoColor=white" alt="CLI Ready" />
+  <img src="https://img.shields.io/badge/agent--ready-AI%20native-blueviolet" alt="Agent Ready" />
+</p>
+
+<!-- Row 3: Tech Stack & OS -->
 <p align="center">
   <img src="https://img.shields.io/badge/tauri-2-blue?logo=tauri&logoColor=white" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/rust-backend-B7410E?logo=rust&logoColor=white" alt="Rust" />
