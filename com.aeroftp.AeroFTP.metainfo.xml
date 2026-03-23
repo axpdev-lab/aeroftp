@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.0" date="2026-03-23">
+      <description>
+        <p>Co-Author address book for GitHub commits with persistent contact list and one-click toggle. Windows static CRT linking eliminates vcruntime140.dll dependency for clean installs and winget validation.</p>
+      </description>
+    </release>
     <release version="3.0.9" date="2026-03-22">
       <description>
         <p>GitHub batch operations: atomic multi-file commits via GraphQL (no more 1-commit-per-file), unpushed local commit detection with push-first workflow. CLI: about and dedupe commands, bandwidth scheduling, rename tracking in sync. WiX installer image fix for readable text on Windows MSI wizard. ProvidersDialog unified layout.</p>

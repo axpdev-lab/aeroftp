@@ -1395,9 +1395,9 @@
         "closed": "Terminal closed."
       },
       "editorPanel": {
-        "emptyState": "Right-click on a file and choose \"Edit\"",
+        "emptyState": "Right-click on a file and choose \"View Source\"",
         "loading": "Loading editor...",
-        "noFileSelected": "No file selected for editing",
+        "noFileSelected": "No file selected for viewing",
         "reset": "Reset",
         "save": "Save",
         "saving": "Saving..."
@@ -3212,7 +3212,7 @@
       "authorizeBrowserHint": "Opens browser for one-click authorization",
       "authorizationFailed": "Authorization failed: {error}",
       "appTitle": "GitHub App",
-      "appModeHint": "Commits will show your GitHub App identity and logo.",
+      "appModeHint": "Advanced: server-to-server auth with 1-hour tokens.",
       "appTokenDuration": "Installation tokens are valid for 1 hour and auto-refresh on connect.",
       "appIdPlaceholder": "App ID (e.g. 12345678)",
       "installationIdPlaceholder": "Installation ID (e.g. 98765432)",
@@ -3240,6 +3240,7 @@
       "commitDialogTitle": "Commit Message",
       "commitMessage": "Commit message",
       "commitMessagePlaceholder": "Update via AeroFTP",
+      "coAuthorPlaceholder": "username or app[bot]",
       "commit": "Commit",
       "commitFiles": "Commit {count} file(s)",
       "renameCommit": "Rename",

@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "आपकी लोकल git रिपॉज़िटरी में ऐसे कमिट हैं जो अभी तक GitHub पर पुश नहीं हुए हैं। AeroFTP के माध्यम से अपलोड करने से रिमोट HEAD पर कमिट बनते हैं, जो आपके लोकल बदलावों को छोड़ सकते हैं और मर्ज कॉन्फ़्लिक्ट पैदा कर सकते हैं।",
             "unpushedCommitsHint": "अनुशंसित: इतिहास को रैखिक रखने के लिए पहले लोकल कमिट पुश करें।",
             "pushFirst": "पहले पुश करें",
-            "continueAnyway": "फिर भी जारी रखें"
+            "continueAnyway": "फिर भी जारी रखें",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "एन्क्रिप्टेड नोट्स",

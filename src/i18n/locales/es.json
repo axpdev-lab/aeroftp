@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Su repositorio git local tiene commits que aún no se han enviado a GitHub. Subir archivos vía AeroFTP crea commits en el HEAD remoto, lo que puede omitir sus cambios locales y causar conflictos de fusión.",
             "unpushedCommitsHint": "Recomendado: envíe primero los commits locales para mantener el historial lineal.",
             "pushFirst": "Enviar primero",
-            "continueAnyway": "Continuar de todos modos"
+            "continueAnyway": "Continuar de todos modos",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Notas cifradas",

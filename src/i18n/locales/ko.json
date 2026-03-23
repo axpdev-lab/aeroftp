@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "로컬 git 저장소에 아직 GitHub에 푸시되지 않은 커밋이 있습니다. AeroFTP를 통해 업로드하면 원격 HEAD에 커밋이 생성되어 로컬 변경 사항이 건너뛰어지고 병합 충돌이 발생할 수 있습니다.",
             "unpushedCommitsHint": "권장: 히스토리를 선형으로 유지하려면 먼저 로컬 커밋을 푸시하세요.",
             "pushFirst": "먼저 푸시",
-            "continueAnyway": "계속 진행"
+            "continueAnyway": "계속 진행",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "암호화된 노트",

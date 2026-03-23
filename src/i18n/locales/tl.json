@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Ang iyong lokal na git repository ay may mga commit na hindi pa na-push sa GitHub. Ang pag-upload sa pamamagitan ng AeroFTP ay gumagawa ng mga commit sa remote HEAD, na maaaring lumaktaw sa iyong mga lokal na pagbabago at magdulot ng merge conflict.",
             "unpushedCommitsHint": "Inirerekomenda: i-push muna ang mga lokal na commit para mapanatili ang linear na kasaysayan.",
             "pushFirst": "I-push Muna",
-            "continueAnyway": "Magpatuloy Pa Rin"
+            "continueAnyway": "Magpatuloy Pa Rin",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Naka-encrypt na Mga Tala",

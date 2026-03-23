@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "El vostre repositori git local té commits que encara no s'han enviat a GitHub. Pujar mitjançant AeroFTP crea commits al remote HEAD, cosa que pot ometre els vostres canvis locals i causar conflictes de merge.",
             "unpushedCommitsHint": "Recomanat: envieu primer els commits locals per mantenir l'historial lineal.",
             "pushFirst": "Enviar primer",
-            "continueAnyway": "Continuar de totes maneres"
+            "continueAnyway": "Continuar de totes maneres",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Notes xifrades",

@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Uw lokale git-repository heeft commits die nog niet naar GitHub zijn gepusht. Uploaden via AeroFTP maakt commits op de remote HEAD, waardoor uw lokale wijzigingen overgeslagen kunnen worden en merge-conflicten kunnen ontstaan.",
             "unpushedCommitsHint": "Aanbevolen: push eerst lokale commits om de geschiedenis lineair te houden.",
             "pushFirst": "Eerst pushen",
-            "continueAnyway": "Toch doorgaan"
+            "continueAnyway": "Toch doorgaan",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Versleutelde notities",

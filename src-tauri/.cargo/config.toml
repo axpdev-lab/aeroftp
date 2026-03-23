@@ -1,0 +1,9 @@
+# Static CRT linking for Windows MSVC targets.
+# Tauri CLI already sets STATIC_VCRUNTIME=true for the main binary,
+# but aeroftp-cli (separate [[bin]] target) needs this to avoid
+# requiring vcruntime140.dll at runtime.
+# This eliminates STATUS_DLL_NOT_FOUND (0xC0000135) on clean Windows
+# installs and in the winget validation sandbox.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

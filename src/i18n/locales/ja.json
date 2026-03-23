@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "ローカル git リポジトリに GitHub にまだプッシュされていないコミットがあります。AeroFTP 経由でアップロードするとリモート HEAD にコミットが作成され、ローカルの変更がスキップされてマージコンフリクトが発生する可能性があります。",
             "unpushedCommitsHint": "推奨：履歴をリニアに保つため、先にローカルコミットをプッシュしてください。",
             "pushFirst": "先にプッシュ",
-            "continueAnyway": "続行する"
+            "continueAnyway": "続行する",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "暗号化ノート",

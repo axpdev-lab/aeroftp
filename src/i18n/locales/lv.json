@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Jūsu lokālajā git repozitorijā ir commiti, kas vēl nav nosūtīti uz GitHub. Augšupielāde caur AeroFTP izveido commitus uz attālā HEAD, kas var izlaist jūsu lokālās izmaiņas un izraisīt sapludināšanas konfliktus.",
             "unpushedCommitsHint": "Ieteicams: vispirms nosūtiet lokālos commitus, lai vēsture paliktu lineāra.",
             "pushFirst": "Vispirms nosūtīt",
-            "continueAnyway": "Turpināt jebkurā gadījumā"
+            "continueAnyway": "Turpināt jebkurā gadījumā",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Šifrētas piezīmes",

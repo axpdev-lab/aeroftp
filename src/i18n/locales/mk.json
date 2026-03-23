@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Вашето локално git складиште има commitи кои сеуште не се испратени на GitHub. Прикачувањето преку AeroFTP создава commitи на далечинскиот HEAD, што може да ги прескокне вашите локални промени и да предизвика конфликти при спојување.",
             "unpushedCommitsHint": "Препорачано: прво испратете ги локалните commitи за да ја задржите историјата линеарна.",
             "pushFirst": "Прво испрати",
-            "continueAnyway": "Сепак продолжи"
+            "continueAnyway": "Сепак продолжи",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Шифрирани белешки",

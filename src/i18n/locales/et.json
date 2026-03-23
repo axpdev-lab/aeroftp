@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Teie kohalikus git hoidlas on commite, mis pole veel GitHubi saadetud. Üleslaadimine AeroFTP kaudu loob commite kaugserveris HEAD-ile, mis võib jätta vahele teie kohalikud muudatused ja põhjustada liitmiskonflikte.",
             "unpushedCommitsHint": "Soovitatav: saatke esmalt kohalikud commitid, et ajalugu jääks lineaarseks.",
             "pushFirst": "Saada esmalt",
-            "continueAnyway": "Jätka siiski"
+            "continueAnyway": "Jätka siiski",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Krüpteeritud märkmed",

@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Zure tokiko git biltegiak oraindik GitHub-era bultzatu gabeko commit-ak ditu. AeroFTP bidez igotzeak commit-ak sortzen ditu remote HEAD-ean, eta horrek zure tokiko aldaketak saltatu eta merge gatazkak eragin ditzake.",
             "unpushedCommitsHint": "Gomendatua: lehenik tokiko commit-ak bultzatu historia lineala mantentzeko.",
             "pushFirst": "Lehenik Bultzatu",
-            "continueAnyway": "Jarraitu Dena Den"
+            "continueAnyway": "Jarraitu Dena Den",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Enkriptatutako oharrak",

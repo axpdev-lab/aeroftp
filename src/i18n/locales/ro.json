@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Depozitul git local are commituri care nu au fost încă trimise pe GitHub. Încărcarea prin AeroFTP creează commituri pe HEAD-ul remote, ceea ce poate sări peste modificările locale și cauza conflicte de fuzionare.",
             "unpushedCommitsHint": "Recomandat: trimiteți mai întâi commiturile locale pentru a păstra istoricul liniar.",
             "pushFirst": "Trimite mai întâi",
-            "continueAnyway": "Continuă oricum"
+            "continueAnyway": "Continuă oricum",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Note criptate",

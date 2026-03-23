@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Paikallisessa git-tietovarastossasi on committeja, joita ei ole vielä pushattu GitHubiin. Lataaminen AeroFTP:n kautta luo committeja etä-HEADiin, mikä voi ohittaa paikalliset muutoksesi ja aiheuttaa merge-konflikteja.",
             "unpushedCommitsHint": "Suositus: pushaa paikalliset commitit ensin pitääksesi historian lineaarisena.",
             "pushFirst": "Pushaa ensin",
-            "continueAnyway": "Jatka silti"
+            "continueAnyway": "Jatka silti",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Salatut muistiinpanot",

@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Votre dépôt git local a des commits non encore poussés vers GitHub. L'envoi via AeroFTP crée des commits sur le HEAD distant, ce qui peut ignorer vos modifications locales et provoquer des conflits de fusion.",
             "unpushedCommitsHint": "Recommandé : poussez d'abord les commits locaux pour garder l'historique linéaire.",
             "pushFirst": "Pousser d'abord",
-            "continueAnyway": "Continuer quand même"
+            "continueAnyway": "Continuer quand même",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Notes chiffrées",

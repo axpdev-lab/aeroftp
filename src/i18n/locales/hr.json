@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Vaš lokalni git repozitorij ima commitove koji još nisu poslani na GitHub. Prijenos putem AeroFTP stvara commitove na udaljenom HEAD-u, što može preskočiti vaše lokalne promjene i uzrokovati sukobe pri spajanju.",
             "unpushedCommitsHint": "Preporučeno: prvo pošaljite lokalne commitove kako bi povijest ostala linearna.",
             "pushFirst": "Prvo pošalji",
-            "continueAnyway": "Svejedno nastavi"
+            "continueAnyway": "Svejedno nastavi",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Šifrirane bilješke",

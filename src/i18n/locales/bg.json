@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Вашето локално git хранилище има commitи, които все още не са изпратени към GitHub. Качването чрез AeroFTP създава commitи на отдалечения HEAD, което може да пропусне локалните ви промени и да причини конфликти при сливане.",
             "unpushedCommitsHint": "Препоръчително: първо изпратете локалните commitи, за да запазите историята линейна.",
             "pushFirst": "Първо изпрати",
-            "continueAnyway": "Продължи въпреки това"
+            "continueAnyway": "Продължи въпреки това",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Криптирани бележки",

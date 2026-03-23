@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "您的本地 git 仓库有尚未推送到 GitHub 的提交。通过 AeroFTP 上传会在远程 HEAD 上创建提交，这可能会跳过您的本地更改并导致合并冲突。",
             "unpushedCommitsHint": "建议：先推送本地提交以保持历史记录线性。",
             "pushFirst": "先推送",
-            "continueAnyway": "仍然继续"
+            "continueAnyway": "仍然继续",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "加密笔记",

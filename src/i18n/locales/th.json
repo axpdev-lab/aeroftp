@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "รีโพซิทอรี git ในเครื่องของคุณมีคอมมิตที่ยังไม่ได้พุชไปยัง GitHub การอัปโหลดผ่าน AeroFTP จะสร้างคอมมิตบน remote HEAD ซึ่งอาจข้ามการเปลี่ยนแปลงในเครื่องของคุณและทำให้เกิดข้อขัดแย้งในการรวม",
             "unpushedCommitsHint": "แนะนำ: พุชคอมมิตในเครื่องก่อนเพื่อให้ประวัติเป็นเส้นตรง",
             "pushFirst": "พุชก่อน",
-            "continueAnyway": "ดำเนินการต่อ"
+            "continueAnyway": "ดำเนินการต่อ",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "บันทึกเข้ารหัส",

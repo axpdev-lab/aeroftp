@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Ditt lokala git-arkiv har commits som ännu inte pushats till GitHub. Uppladdning via AeroFTP skapar commits på fjärr-HEAD, vilket kan hoppa över dina lokala ändringar och orsaka merge-konflikter.",
             "unpushedCommitsHint": "Rekommenderat: pusha lokala commits först för att behålla linjär historik.",
             "pushFirst": "Pusha först",
-            "continueAnyway": "Fortsätt ändå"
+            "continueAnyway": "Fortsätt ändå",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Krypterade anteckningar",

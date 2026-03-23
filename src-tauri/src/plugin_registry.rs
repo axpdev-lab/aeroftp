@@ -86,6 +86,10 @@ pub async fn fetch_plugin_registry() -> Result<Vec<RegistryEntry>, String> {
         .await
         .map_err(|e| format!("Failed to fetch registry: {e}"))?;
 
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        // Registry repo not yet created — return empty list, not an error
+        return Ok(vec![]);
+    }
     if !resp.status().is_success() {
         return Err(format!("Registry returned HTTP {}", resp.status()));
     }

@@ -987,9 +987,9 @@
                 "closed": "Terminale chiuso."
             },
             "editorPanel": {
-                "emptyState": "Clicca col destro su un file e scegli \"Modifica\"",
+                "emptyState": "Clicca col destro su un file e scegli \"Visualizza Sorgente\"",
                 "loading": "Caricamento editor...",
-                "noFileSelected": "Nessun file selezionato per la modifica",
+                "noFileSelected": "Nessun file selezionato per la visualizzazione",
                 "reset": "Ripristina",
                 "save": "Salva",
                 "saving": "Salvataggio..."
@@ -3334,7 +3334,7 @@
             "authorizeBrowserHint": "Apre il browser per un'autorizzazione con un clic",
             "authorizationFailed": "Autorizzazione fallita: {error}",
             "appTitle": "GitHub App",
-            "appModeHint": "I commit mostreranno l'identità e il logo della tua GitHub App.",
+            "appModeHint": "Avanzato: autenticazione server-to-server con token di 1 ora.",
             "appTokenDuration": "I token di installazione sono validi per 1 ora e si rigenerano automaticamente alla connessione.",
             "appIdPlaceholder": "App ID (es. 12345678)",
             "installationIdPlaceholder": "Installation ID (es. 98765432)",
@@ -3362,6 +3362,7 @@
             "commitDialogTitle": "Messaggio di commit",
             "commitMessage": "Messaggio di commit",
             "commitMessagePlaceholder": "Aggiornamento tramite AeroFTP",
+            "coAuthorPlaceholder": "username o app[bot]",
             "commit": "Commit",
             "commitFiles": "Committa {count} file",
             "renameCommit": "Rinomina",

@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "ឃ្លាំង git មូលដ្ឋានរបស់អ្នកមាន commit ដែលមិនទាន់បានរុញទៅ GitHub។ ការផ្ទុកឡើងតាមរយៈ AeroFTP បង្កើត commit នៅលើ remote HEAD ដែលអាចរំលង​ការផ្លាស់ប្តូរមូលដ្ឋានរបស់អ្នក និងបណ្តាលឱ្យមានជម្លោះ merge។",
             "unpushedCommitsHint": "ណែនាំ: រុញ commit មូលដ្ឋានមុនដើម្បីរក្សាប្រវត្តិឱ្យមានលំដាប់លីនេអ៊ែរ។",
             "pushFirst": "រុញមុន",
-            "continueAnyway": "បន្តទោះយ៉ាងណា"
+            "continueAnyway": "បន្តទោះយ៉ាងណា",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "កំណត់ត្រាដែលបានអ៊ិនគ្រីប",

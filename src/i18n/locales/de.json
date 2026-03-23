@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Ihr lokales Git-Repository hat Commits, die noch nicht zu GitHub gepusht wurden. Das Hochladen über AeroFTP erstellt Commits auf dem Remote-HEAD, was Ihre lokalen Änderungen überspringen und Merge-Konflikte verursachen kann.",
             "unpushedCommitsHint": "Empfohlen: Pushen Sie zuerst lokale Commits, um den Verlauf linear zu halten.",
             "pushFirst": "Zuerst pushen",
-            "continueAnyway": "Trotzdem fortfahren"
+            "continueAnyway": "Trotzdem fortfahren",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Verschlüsselte Notizen",

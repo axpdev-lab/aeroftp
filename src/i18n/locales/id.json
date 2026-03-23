@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Repositori git lokal Anda memiliki commit yang belum dipush ke GitHub. Mengunggah melalui AeroFTP membuat commit di remote HEAD, yang mungkin melewatkan perubahan lokal Anda dan menyebabkan konflik merge.",
             "unpushedCommitsHint": "Disarankan: push commit lokal terlebih dahulu agar riwayat tetap linear.",
             "pushFirst": "Push Dulu",
-            "continueAnyway": "Tetap Lanjutkan"
+            "continueAnyway": "Tetap Lanjutkan",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Catatan Terenkripsi",

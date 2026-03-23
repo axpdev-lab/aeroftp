@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Kho git cục bộ của bạn có các commit chưa được đẩy lên GitHub. Tải lên qua AeroFTP sẽ tạo commit trên remote HEAD, có thể bỏ qua các thay đổi cục bộ của bạn và gây ra xung đột merge.",
             "unpushedCommitsHint": "Khuyến nghị: đẩy các commit cục bộ trước để giữ lịch sử tuyến tính.",
             "pushFirst": "Đẩy trước",
-            "continueAnyway": "Vẫn tiếp tục"
+            "continueAnyway": "Vẫn tiếp tục",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Ghi chú mã hóa",

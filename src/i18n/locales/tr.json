@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Yerel git deponuzda GitHub'a henüz gönderilmemiş commitler var. AeroFTP ile yükleme, uzak HEAD üzerinde commit oluşturur; bu da yerel değişikliklerinizi atlayabilir ve birleştirme çakışmalarına neden olabilir.",
             "unpushedCommitsHint": "Önerilen: Geçmişi doğrusal tutmak için önce yerel commitleri gönderin.",
             "pushFirst": "Önce Gönder",
-            "continueAnyway": "Yine de Devam Et"
+            "continueAnyway": "Yine de Devam Et",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Şifreli Notlar",

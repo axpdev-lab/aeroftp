@@ -4,9 +4,37 @@
  * Auto-generates a default message, supports branch/readonly mode awareness.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { GitCommit, X, FileUp, Trash2, AlertTriangle, GitBranch } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { GitCommit, X, FileUp, Trash2, AlertTriangle, GitBranch, UserPlus, Users, Plus } from 'lucide-react';
 import { useTranslation } from '../i18n';
+
+// ── Co-Author Storage ──────────────────────────────────────────────
+
+interface CoAuthor {
+  name: string;      // "username" or "appname[bot]"
+  enabled: boolean;  // whether to include in next commit
+}
+
+const CO_AUTHORS_KEY = 'github-co-authors';
+
+const DEFAULT_CO_AUTHORS: CoAuthor[] = [
+  { name: 'aeroftp[bot]', enabled: true },
+];
+
+function loadCoAuthors(): CoAuthor[] {
+  try {
+    const raw = localStorage.getItem(CO_AUTHORS_KEY);
+    return raw ? JSON.parse(raw) : DEFAULT_CO_AUTHORS;
+  } catch { return DEFAULT_CO_AUTHORS; }
+}
+
+function saveCoAuthors(authors: CoAuthor[]) {
+  localStorage.setItem(CO_AUTHORS_KEY, JSON.stringify(authors));
+}
+
+function formatCoAuthorTrailer(name: string): string {
+  return `Co-Authored-By: ${name} <${name}@users.noreply.github.com>`;
+}
 
 interface GitHubCommitDialogProps {
   isOpen: boolean;
@@ -32,6 +60,31 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
   const t = useTranslation();
   const [message, setMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const [coAuthors, setCoAuthors] = useState<CoAuthor[]>(loadCoAuthors);
+  const [showCoAuthors, setShowCoAuthors] = useState(() => loadCoAuthors().some(a => a.enabled));
+  const [newCoAuthor, setNewCoAuthor] = useState('');
+  const newCoAuthorRef = useRef<HTMLInputElement>(null);
+
+  const updateCoAuthors = useCallback((updated: CoAuthor[]) => {
+    setCoAuthors(updated);
+    saveCoAuthors(updated);
+  }, []);
+
+  const addCoAuthor = useCallback(() => {
+    const name = newCoAuthor.trim();
+    if (!name || coAuthors.some(a => a.name === name)) return;
+    updateCoAuthors([...coAuthors, { name, enabled: true }]);
+    setNewCoAuthor('');
+    newCoAuthorRef.current?.focus();
+  }, [newCoAuthor, coAuthors, updateCoAuthors]);
+
+  const toggleCoAuthor = useCallback((name: string) => {
+    updateCoAuthors(coAuthors.map(a => a.name === name ? { ...a, enabled: !a.enabled } : a));
+  }, [coAuthors, updateCoAuthors]);
+
+  const removeCoAuthor = useCallback((name: string) => {
+    updateCoAuthors(coAuthors.filter(a => a.name !== name));
+  }, [coAuthors, updateCoAuthors]);
 
   // Auto-generate default commit message and focus input on open
   useEffect(() => {
@@ -75,7 +128,13 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
 
   const handleSubmit = () => {
     if (isReadOnly || !message.trim()) return;
-    onCommit(message.trim());
+    const enabledAuthors = coAuthors.filter(a => a.enabled);
+    if (enabledAuthors.length === 0) {
+      onCommit(message.trim());
+    } else {
+      const trailers = enabledAuthors.map(a => formatCoAuthorTrailer(a.name)).join('\n');
+      onCommit(`${message.trim()}\n\n${trailers}`);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -218,6 +277,88 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
               color: 'var(--color-text-primary)',
             }}
           />
+        </div>
+
+        {/* Co-Authors section */}
+        <div className="px-5 pb-3">
+          <button
+            type="button"
+            onClick={() => setShowCoAuthors(!showCoAuthors)}
+            className="flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            <Users size={12} />
+            <span>Co-Authors</span>
+            {coAuthors.filter(a => a.enabled).length > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+              >
+                {coAuthors.filter(a => a.enabled).length}
+              </span>
+            )}
+          </button>
+
+          {showCoAuthors && (
+            <div className="mt-2 space-y-2">
+              {/* Saved co-authors as toggleable chips */}
+              {coAuthors.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {coAuthors.map(author => (
+                    <div
+                      key={author.name}
+                      className="group flex items-center gap-1 px-2 py-1 rounded-full text-xs cursor-pointer transition-all border"
+                      style={{
+                        backgroundColor: author.enabled ? 'var(--color-accent)' : 'var(--color-bg-primary)',
+                        borderColor: author.enabled ? 'var(--color-accent)' : 'var(--color-border)',
+                        color: author.enabled ? '#fff' : 'var(--color-text-secondary)',
+                      }}
+                      onClick={() => toggleCoAuthor(author.name)}
+                    >
+                      <UserPlus size={10} />
+                      <span>{author.name}</span>
+                      {!DEFAULT_CO_AUTHORS.some(d => d.name === author.name) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeCoAuthor(author.name); }}
+                          className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-300"
+                          title={t('common.delete') || 'Delete'}
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new co-author */}
+              <div className="flex items-center gap-1.5">
+                <input
+                  ref={newCoAuthorRef}
+                  type="text"
+                  value={newCoAuthor}
+                  onChange={e => setNewCoAuthor(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }}
+                  placeholder={t('github.coAuthorPlaceholder') || 'username or app[bot]'}
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1"
+                  style={{
+                    backgroundColor: 'var(--color-bg-primary)',
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                />
+                <button
+                  onClick={addCoAuthor}
+                  disabled={!newCoAuthor.trim()}
+                  className="p-1.5 rounded-lg transition-colors disabled:opacity-30"
+                  style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+                  title={t('common.add') || 'Add'}
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

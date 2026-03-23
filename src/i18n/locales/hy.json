@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Ձեր տեղական git պահոցն ունի commit-ներ՝ որոնք դեռ չեն ուղարկվել GitHub: AeroFTP-ով վերբեռնելը ստեղծում է commit-ներ remote HEAD-ում՝ որը կարող է բաց թողնել ձեր տեղական փոփոխությունները և առաջացնել merge կոնֆլիկտներ:",
             "unpushedCommitsHint": "Հանձնարարվում է՝ նախ push արեք տեղական commit-ները՝ պատմությունը գծային պահելու համար:",
             "pushFirst": "Նախ Push արեք",
-            "continueAnyway": "Ամեն դեպքում շարունակեք"
+            "continueAnyway": "Ամեն դեպքում շարունակեք",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Գաղտնագրված նոտաներ",

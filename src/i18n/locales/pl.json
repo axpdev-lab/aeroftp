@@ -3420,7 +3420,8 @@
             "unpushedCommitsDesc": "Twoje lokalne repozytorium git ma commity, które nie zostały jeszcze wypchnięte do GitHub. Przesyłanie przez AeroFTP tworzy commity na zdalnym HEAD, co może pominąć Twoje lokalne zmiany i spowodować konflikty scalania.",
             "unpushedCommitsHint": "Zalecane: najpierw wypchnij lokalne commity, aby zachować liniową historię.",
             "pushFirst": "Najpierw wypchnij",
-            "continueAnyway": "Kontynuuj mimo to"
+            "continueAnyway": "Kontynuuj mimo to",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Zaszyfrowane notatki",

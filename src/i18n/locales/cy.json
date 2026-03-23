@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Mae gan eich storfa git lleol gomitiau nad ydynt eto wedi'u gwthio i GitHub. Mae llwytho drwy AeroFTP yn creu comitiau ar y remote HEAD, a all osgoi eich newidiadau lleol ac achosi gwrthdaro uno.",
             "unpushedCommitsHint": "Argymhellir: gwthiwch gomitiau lleol yn gyntaf i gadw'r hanes yn llinol.",
             "pushFirst": "Gwthio'n Gyntaf",
-            "continueAnyway": "Parhau Beth Bynnag"
+            "continueAnyway": "Parhau Beth Bynnag",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Nodiadau Wedi'u Hamgryptio",

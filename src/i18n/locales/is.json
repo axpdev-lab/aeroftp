@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Staðbundið git gagnasafnið þitt hefur commita sem hafa ekki verið sendir á GitHub. Upphleðsla í gegnum AeroFTP býr til commita á fjarlæga HEAD-inum, sem getur sleppt yfir staðbundnar breytingar þínar og valdið sameiningarárekstrum.",
             "unpushedCommitsHint": "Ráðlagt: sendið staðbundna commita fyrst til að halda sögunni línulegri.",
             "pushFirst": "Senda fyrst",
-            "continueAnyway": "Halda áfram samt"
+            "continueAnyway": "Halda áfram samt",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Dulkóðaðar minnispunktar",

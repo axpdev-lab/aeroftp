@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Jūsų vietinėje git saugykloje yra commitų, kurie dar nebuvo nusiųsti į GitHub. Įkėlimas per AeroFTP sukuria commitus nuotolinėje HEAD versijoje, o tai gali praleisti jūsų vietinius pakeitimus ir sukelti sujungimo konfliktus.",
             "unpushedCommitsHint": "Rekomenduojama: pirmiausia nusiųskite vietinius commitus, kad istorija liktų linijinė.",
             "pushFirst": "Pirmiausia nusiųsti",
-            "continueAnyway": "Vis tiek tęsti"
+            "continueAnyway": "Vis tiek tęsti",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Šifruotos užrašai",

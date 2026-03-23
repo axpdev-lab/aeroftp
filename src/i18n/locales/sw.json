@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Hifadhi yako ya git ya ndani ina commit ambazo bado hazijasukumwa kwenye GitHub. Kupakia kupitia AeroFTP kunaunda commit kwenye remote HEAD, ambayo inaweza kuruka mabadiliko yako ya ndani na kusababisha migongano ya kuunganisha.",
             "unpushedCommitsHint": "Inapendekezwa: sukuma commit za ndani kwanza ili kuweka historia kuwa ya mstari.",
             "pushFirst": "Sukuma Kwanza",
-            "continueAnyway": "Endelea Hata Hivyo"
+            "continueAnyway": "Endelea Hata Hivyo",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Maelezo Yaliyofichwa",

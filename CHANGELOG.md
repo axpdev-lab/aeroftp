@@ -5,14 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2026-03-22
+## [3.1.0] - 2026-03-23
 
-### Co-Author Address Book & GitHub UX
+### Co-Author Address Book & Static CRT
 
 #### Added
 
-- **Co-Author address book**: Persistent contact list in GitHub commit dialog — add usernames or app[bot] names, toggle on/off per commit. Saved co-authors appear as colored chips with one-click enable/disable. Enabled co-authors automatically append `Co-Authored-By` trailers to commit messages. Works with all 3 GitHub connection methods (OAuth, PAT, PEM)
-- **i18n**: `coAuthorPlaceholder` key translated in English and Italian
+- **Co-Author address book**: Persistent contact list in GitHub commit dialog, add usernames or app[bot] names, toggle on/off per commit. Saved co-authors appear as colored chips with one-click enable/disable. Enabled co-authors automatically append `Co-Authored-By` trailers to commit messages. Works with all 3 GitHub connection methods (OAuth, PAT, PEM)
+
+#### Fixed
+
+- **Windows static CRT linking**: Added `.cargo/config.toml` with `+crt-static` for `x86_64-pc-windows-msvc` target. The CLI binary (`aeroftp-cli`) no longer requires `vcruntime140.dll` at runtime, resolving `STATUS_DLL_NOT_FOUND` (0xC0000135) on clean Windows installs and in the winget validation sandbox
+- **README CLI binary name**: Corrected `aeroftp` references to `aeroftp-cli` in CLI usage examples
 
 ## [3.0.9] - 2026-03-22
 

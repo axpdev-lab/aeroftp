@@ -3449,7 +3449,8 @@
             "unpushedCommitsDesc": "Det lokale git-repositoriet ditt har commits som ennå ikke er pushet til GitHub. Opplasting via AeroFTP oppretter commits på den fjerne HEAD, noe som kan hoppe over dine lokale endringer og forårsake merge-konflikter.",
             "unpushedCommitsHint": "Anbefalt: push lokale commits først for å holde historikken lineær.",
             "pushFirst": "Push først",
-            "continueAnyway": "Fortsett likevel"
+            "continueAnyway": "Fortsett likevel",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Krypterte notater",

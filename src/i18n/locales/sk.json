@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "Váš lokálny git repozitár má commity, ktoré ešte neboli odoslané na GitHub. Nahrávanie cez AeroFTP vytvára commity na vzdialenom HEAD, čo môže preskočiť vaše lokálne zmeny a spôsobiť konflikty pri zlučovaní.",
             "unpushedCommitsHint": "Odporúčané: najprv odošlite lokálne commity, aby história zostala lineárna.",
             "pushFirst": "Najprv odoslať",
-            "continueAnyway": "Napriek tomu pokračovať"
+            "continueAnyway": "Napriek tomu pokračovať",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Šifrované poznámky",

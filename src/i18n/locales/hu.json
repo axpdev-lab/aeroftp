@@ -3430,7 +3430,8 @@
             "unpushedCommitsDesc": "A helyi git tárhelyén vannak még GitHubra nem küldött commitok. Az AeroFTP-n keresztüli feltöltés commitokat hoz létre a távoli HEAD-en, ami kihagyhatja a helyi módosításait és egyesítési konfliktusokat okozhat.",
             "unpushedCommitsHint": "Ajánlott: először küldje el a helyi commitokat a lineáris előzmények megőrzéséhez.",
             "pushFirst": "Először küldés",
-            "continueAnyway": "Folytatás mindenképp"
+            "continueAnyway": "Folytatás mindenképp",
+            "coAuthorPlaceholder": "username or app[bot]"
         },
         "filenNotes": {
             "title": "Titkosított jegyzetek",
