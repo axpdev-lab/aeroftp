@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * Shared helper for getting localized tool labels across ToolApproval,
  * BatchToolApproval, and MarkdownRenderer.

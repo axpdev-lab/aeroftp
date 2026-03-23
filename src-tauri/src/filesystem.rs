@@ -15,6 +15,9 @@
 //! - `scan_disk_usage`: Disk usage tree for treemap visualization
 //! - `volumes_changed`: Fast change detection for mounted volumes (hash-based)
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::Serialize;
 use std::path::{Path, PathBuf, Component};
 use std::sync::{LazyLock, Mutex};

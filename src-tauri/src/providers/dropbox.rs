@@ -3,6 +3,9 @@
 //! Implements StorageProvider for Dropbox using the Dropbox API v2.
 //! Uses OAuth2 for authentication.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroSync Filesystem Watcher
 // Dropbox-style real-time change detection using notify v6 + notify-debouncer-full 0.6
 // Replaces dead watcher.rs (226 lines) with production-grade implementation

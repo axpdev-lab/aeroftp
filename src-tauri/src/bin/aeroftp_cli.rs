@@ -38,6 +38,9 @@
 //!   8  Timeout
 //!   99 Unknown error
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{

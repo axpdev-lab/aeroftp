@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroFTP Delta Sync Module
 // rsync-style rolling checksum + block matching for efficient file transfers
 #![allow(dead_code)]

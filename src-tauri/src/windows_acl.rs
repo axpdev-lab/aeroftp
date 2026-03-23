@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // Windows-specific utilities: ACL permissions + reserved filename validation
 // Equivalent to Unix chmod 0o600/0o700
 #![allow(dead_code)]

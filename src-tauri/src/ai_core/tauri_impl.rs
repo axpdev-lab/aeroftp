@@ -3,6 +3,9 @@
 //! Wraps existing AppHandle, ProviderState, AppState for backward compatibility.
 //! The GUI continues to work exactly as before via these wrappers.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use async_trait::async_trait;

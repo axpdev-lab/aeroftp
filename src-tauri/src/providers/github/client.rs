@@ -7,6 +7,9 @@
 //! - Rate-limit headers are extracted from **every** response.
 //! - Non-2xx responses are classified into [`GitHubError`] variants.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;

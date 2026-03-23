@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * MultiPathEditor — CRUD dialog for sync path pairs
  * Allows adding/removing multiple local↔remote path pairs

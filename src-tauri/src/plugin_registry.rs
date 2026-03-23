@@ -3,6 +3,9 @@
 //! Registry URL: https://raw.githubusercontent.com/axpnet/aeroftp-plugins/main/registry.json
 //! Plugins are downloaded, integrity-verified (SHA-256), and installed to ~/.config/aeroftp/plugins/.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use crate::plugins::PluginManifest;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

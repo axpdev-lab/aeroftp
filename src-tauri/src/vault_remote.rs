@@ -9,6 +9,9 @@
 //! - Null byte validation (RB-013)
 //! - UTF-8 path handling without unwrap (RB-011)
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::path::PathBuf;
 use tauri::State;
 use crate::provider_commands::ProviderState;

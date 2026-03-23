@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import React, { useState, useRef, useCallback } from 'react';
 import { Code, Terminal, Edit3, ChevronDown, ChevronUp, X, Maximize2, Minimize2, MessageSquare, FileX } from 'lucide-react';
 import { DevToolsTab, PreviewFile } from './types';

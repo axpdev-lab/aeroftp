@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroFTP Master Password UI State
 // Manages auto-lock timer and lock state for the Universal Vault
 // All crypto operations are handled by credential_store.rs

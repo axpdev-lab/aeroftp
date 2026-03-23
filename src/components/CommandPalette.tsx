@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n';
 import {

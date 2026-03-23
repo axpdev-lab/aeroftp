@@ -7,6 +7,9 @@
 //!
 //! Authentication uses a GitHub Personal Access Token (classic or fine-grained).
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 pub mod auth;
 mod client;
 mod errors;

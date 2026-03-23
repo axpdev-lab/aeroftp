@@ -6,6 +6,9 @@
 //!
 //! All functions are `#[cfg(windows)]` — this module is only compiled on Windows.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, RwLock};
 use tracing::{info, warn};

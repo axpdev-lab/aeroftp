@@ -4,6 +4,9 @@
 //! commits in a single API call.  GitHub GPG-signs these commits automatically
 //! on behalf of the authenticated user.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Deserialize;
 use serde_json::{json, Value};

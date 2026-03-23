@@ -6,6 +6,9 @@
 //! WebDAV extends HTTP with methods like PROPFIND, MKCOL, MOVE, COPY, and DELETE
 //! to provide full file system operations over HTTP/HTTPS.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use md5::{Md5, Digest as _};

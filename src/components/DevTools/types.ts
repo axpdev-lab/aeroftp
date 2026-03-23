@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // DevTools Types - Extensible architecture for future phases
 
 export type DevToolsTab = 'preview' | 'editor' | 'terminal' | 'chat';

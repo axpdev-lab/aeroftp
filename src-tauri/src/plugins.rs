@@ -9,6 +9,9 @@
 //! At install time, command file hashes are computed and stored in the manifest.
 //! At execution time, hashes are verified to detect post-install tampering.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

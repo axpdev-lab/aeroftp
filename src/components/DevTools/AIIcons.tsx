@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import React, { useId } from 'react';
 
 // SVG icons from simple-icons (https://github.com/simple-icons/simple-icons)

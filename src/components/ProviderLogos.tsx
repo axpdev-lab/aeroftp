@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * Official provider logo SVG components.
  * Each renders at the given `size` (default 24px) preserving aspect ratio.

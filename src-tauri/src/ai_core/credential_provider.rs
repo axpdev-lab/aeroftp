@@ -4,6 +4,9 @@
 //! CLI implementation reads from vault cache (if open) or env vars
 //! (AEROFTP_HOST / AEROFTP_USER / AEROFTP_PASS).
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /// Server profile metadata (no secrets).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServerProfile {

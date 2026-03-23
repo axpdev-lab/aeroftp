@@ -3,6 +3,9 @@
 //! Implements StorageProvider for pCloud using their REST API.
 //! Uses OAuth2 for authentication. Supports US and EU regions.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;

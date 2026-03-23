@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import { AIProviderType } from '../../types/ai';
 
 export type MarketplaceCategory = 'flagship' | 'fast' | 'specialized' | 'local' | 'chinese' | 'gateway';

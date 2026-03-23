@@ -3,6 +3,9 @@
 //! Implements StorageProvider for 4shared using their REST API v1.2.
 //! Uses OAuth 1.0a (HMAC-SHA1) for authentication.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer};

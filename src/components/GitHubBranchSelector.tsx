@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * GitHubBranchSelector Component
  * Compact toolbar dropdown for viewing and switching GitHub branches.

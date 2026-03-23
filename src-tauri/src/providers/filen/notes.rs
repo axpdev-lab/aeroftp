@@ -12,6 +12,9 @@
 //! - Preview:  `encrypt_metadata_with_key(JSON({"preview": "..."}), noteKey)`
 //! - Tag name: `encrypt_metadata(JSON({"name": "..."}))` with master key
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 

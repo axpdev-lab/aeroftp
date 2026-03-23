@@ -4,6 +4,9 @@
 //! Reuses the same russh library and authentication flow as the SFTP provider.
 //! Each shell session has its own SSH connection.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use russh::client::{self, Config, Handle, Handler, Msg};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
 use russh::client::AuthResult;

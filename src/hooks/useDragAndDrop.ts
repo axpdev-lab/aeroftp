@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * useDragAndDrop Hook
  * Wired into App.tsx during modularization (v1.3.1) - template existed since v1.2.x

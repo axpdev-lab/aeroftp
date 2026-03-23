@@ -10,6 +10,9 @@
 //! Upload: two-phase (allocate → upload)
 //! Listing: XML format parsed with quick-xml
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use base64::Engine;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};

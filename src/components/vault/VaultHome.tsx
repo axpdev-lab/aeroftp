@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import * as React from 'react';
 import { Lock, FolderPlus, Download, Loader2, Clock, X as XIcon, Trash2 } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';

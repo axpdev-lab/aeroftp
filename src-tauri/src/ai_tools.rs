@@ -4,6 +4,9 @@
 //! through the active StorageProvider (14 protocols). When no provider is
 //! connected, falls back to `AppState.ftp_manager` for FTP/FTPS sessions.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde_json::{json, Value};
 use tauri::{Emitter, State};
 use tokio::process::Command as TokioCommand;

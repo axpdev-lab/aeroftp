@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TransferEvent, TransferProgress } from '../types';

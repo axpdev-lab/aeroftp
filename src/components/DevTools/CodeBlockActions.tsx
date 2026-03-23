@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 import React, { useState, useCallback } from 'react';
 import { Copy, Check, Terminal, FileInput, AlertTriangle, FileDiff, ShieldAlert } from 'lucide-react';
 import { save } from '@tauri-apps/plugin-dialog';

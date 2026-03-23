@@ -6,6 +6,9 @@
 //! This implementation uses reqwest with AWS Signature Version 4 for authentication,
 //! avoiding the heavyweight aws-sdk-s3 dependency for better compile times and smaller binaries.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;

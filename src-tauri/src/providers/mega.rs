@@ -4,6 +4,9 @@
 //! Requires MEGAcmd to be installed: https://mega.nz/cmd
 //! On Ubuntu/Debian: sudo apt install megacmd
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use tokio::process::Command;
 use tokio::io::AsyncWriteExt;

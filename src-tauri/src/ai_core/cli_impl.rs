@@ -3,6 +3,9 @@
 //! Used by the aeroftp-cli binary when running in agent mode.
 //! No Tauri dependency — pure Rust.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde_json::Value;
 use async_trait::async_trait;
 use tokio::sync::Mutex;

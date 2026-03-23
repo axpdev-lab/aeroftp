@@ -5,6 +5,9 @@
 //! The core CRUD (list, download, upload, delete) is in `mod.rs` via the
 //! StorageProvider trait implementation.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use futures_util::StreamExt;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroFTP Security Toolkit — Hash Forge, CryptoLab, Password Forge
 // Production-grade cryptographic utilities for file integrity, encryption, and credential generation
 //

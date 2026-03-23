@@ -3,6 +3,9 @@
 //! Implementation of the StorageProvider trait for FTP and FTPS protocols.
 //! Uses the suppaftp crate for FTP operations.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use suppaftp::tokio::{AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
 use suppaftp::types::FileType;

@@ -4,6 +4,9 @@
 //! Uses client-side AES-256-GCM encryption (zero-knowledge).
 //! All file names, metadata, and content are encrypted locally.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 pub mod notes;
 
 use async_trait::async_trait;

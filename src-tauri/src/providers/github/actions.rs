@@ -3,6 +3,9 @@
 //! Provides workflow runs listing, status checking, re-run, and cancel
 //! for GitHub Actions CI/CD pipelines.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use super::client::GitHubHttpClient;
 use super::errors::GitHubError;

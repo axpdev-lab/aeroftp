@@ -3,6 +3,9 @@
 //! These traits allow the same AI tool execution and streaming logic to run
 //! in both the Tauri GUI and the standalone CLI binary.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 pub mod event_sink;
 pub mod credential_provider;
 pub mod remote_backend;

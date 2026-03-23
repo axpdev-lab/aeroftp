@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroFTP Shared Cryptographic Primitives
 // Argon2id key derivation + AES-256-GCM authenticated encryption
 // Shared by credential_store and profile_export modules

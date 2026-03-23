@@ -7,6 +7,9 @@
 //! API: <https://app.koofr.net/api/v2.1>
 //! Content: <https://app.koofr.net/content/api/v2.1>
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE, RANGE};
 use secrecy::{ExposeSecret, SecretString};

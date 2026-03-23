@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * CanaryResultDialog — Shows results of a canary (sample) sync analysis
  * Displays sampled file stats, action breakdown, and projection for full sync.

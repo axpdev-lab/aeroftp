@@ -4,6 +4,9 @@
 //! panels. Labels are color-coded and orderable; each file can carry multiple
 //! labels. Data is persisted in a per-user SQLite database with WAL mode.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use crate::filesystem::validate_path;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};

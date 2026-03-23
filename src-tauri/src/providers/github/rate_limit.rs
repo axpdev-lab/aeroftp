@@ -4,6 +4,9 @@
 //! a local snapshot so the provider can warn, pause, or surface quota info
 //! without an extra round-trip.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Snapshot of the current rate-limit state for the authenticated token.

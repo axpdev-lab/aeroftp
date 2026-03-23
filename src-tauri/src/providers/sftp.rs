@@ -5,6 +5,9 @@
 //!
 //! Status: v1.3.0
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
 use async_trait::async_trait;
 use russh::client::{self, Config, Handle, Handler};

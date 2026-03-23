@@ -3,6 +3,9 @@
 //! API response models, request payloads, and internal types used across
 //! the GitHub provider submodules.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 
 /// GitHub authenticated user

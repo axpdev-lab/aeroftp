@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * Open URL in default browser using Tauri shell plugin
  * This is required in Tauri 2.0 since target="_blank" doesn't work

@@ -3,6 +3,9 @@
 //! Maps GitHub Releases to virtual directories and release assets to files,
 //! providing a familiar file-manager experience over the Releases API.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::collections::HashMap;
 
 use futures_util::StreamExt;

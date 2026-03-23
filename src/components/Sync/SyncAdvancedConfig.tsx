@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 /**
  * SyncAdvancedConfig — Advanced tab with all granular sync controls
  * Direction, compare options, verify/retry, bandwidth, parallel, compression, delta

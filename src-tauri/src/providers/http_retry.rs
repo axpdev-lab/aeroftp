@@ -6,6 +6,9 @@
 //! - Configurable max retries and delay bounds
 //! - Transparent passthrough for non-retryable status codes (4xx except 429)
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use reqwest::{Request, Response, Client};
 use std::time::Duration;
 

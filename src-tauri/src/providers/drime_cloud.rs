@@ -9,6 +9,9 @@
 //! Pagination: page-based (page + perPage)
 //! File entries use hash-based download URLs
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;

@@ -9,6 +9,9 @@
 //! - AZ-010: Only block blob type supported (append/page blobs not used in file manager)
 //! - AZ-011: No storage quota API (Azure Blob has no native quota endpoint)
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use futures_util::StreamExt;

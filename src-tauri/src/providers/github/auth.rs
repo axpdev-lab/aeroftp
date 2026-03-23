@@ -5,6 +5,9 @@
 //! - GitHub App Device Flow (browser authorization)
 //! - GitHub App Installation Token (bot mode with .pem)
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::Deserialize;
 use std::time::Duration;
 use log::{info, debug};

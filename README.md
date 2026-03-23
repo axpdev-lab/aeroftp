@@ -524,6 +524,7 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
     AI tools (Claude Code, Codex, Gemini) were used extensively for translations, code review,<br>
     implementation and documentation, always under strict human-defined specifications and patterns.<br>
     Every feature, design decision and architectural choice is human-driven.<br>
-    AI accelerated development; it did not direct it.
+    AI accelerated development; it did not direct it.<br>
+    <a href="AI-TRANSPARENCY.md">Full AI Transparency Statement</a>
   </sub>
 </p>

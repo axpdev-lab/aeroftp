@@ -7,6 +7,9 @@
 //! - `read_agent_memory`: Read persistent agent memory for a project
 //! - `write_agent_memory`: Append entries to agent memory file
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Serialize, Deserialize};
 use std::path::{Path, PathBuf, Component};
 use std::sync::LazyLock;

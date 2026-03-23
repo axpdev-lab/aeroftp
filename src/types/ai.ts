@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AI Provider and Model Types for AeroFTP AI Agent
 
 export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek' | 'mistral' | 'groq' | 'perplexity' | 'cohere' | 'together' | 'ai21' | 'cerebras' | 'sambanova' | 'fireworks';

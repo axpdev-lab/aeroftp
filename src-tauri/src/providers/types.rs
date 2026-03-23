@@ -3,6 +3,9 @@
 //! This module contains all shared types used across different storage providers,
 //! including configuration structs, file entry representations, and error types.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;

@@ -4,6 +4,9 @@
 //! plus a `__aerovault_meta.json` metadata entry. Reuses the `zip` crate
 //! and `archive_browse` listing infrastructure.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use secrecy::{ExposeSecret, SecretString};
 use secrecy::zeroize::Zeroize;

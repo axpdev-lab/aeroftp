@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // Tray badge icon generation and management
 // Generates tray icons with colored dot badges + overlay icons for AeroCloud sync state
 

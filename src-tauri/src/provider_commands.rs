@@ -3,6 +3,9 @@
 //! This module provides Tauri commands that route operations through
 //! the StorageProvider abstraction, enabling support for FTP, WebDAV, S3, etc.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, State};

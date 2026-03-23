@@ -10,6 +10,9 @@
 //! Upload: 2-step — get upload server URL, then multipart POST
 //! Download: get direct link, then stream
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use reqwest::multipart;
 use secrecy::ExposeSecret;

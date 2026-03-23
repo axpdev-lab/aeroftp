@@ -3,6 +3,9 @@
 //! Provides HMAC-SHA1 request signing for 4shared and other OAuth 1.0 APIs.
 //! Zero new dependencies — uses hmac, sha1, base64, rand already in Cargo.toml.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use base64::Engine;

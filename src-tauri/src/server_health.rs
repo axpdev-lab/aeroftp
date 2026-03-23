@@ -4,6 +4,9 @@
 //! and HTTP endpoint probing. All measurements are taken from the user's position
 //! to deliver genuine, actionable performance data.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};

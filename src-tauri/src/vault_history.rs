@@ -4,6 +4,9 @@
 //! version, cascade mode, file count). Persisted in a per-user SQLite
 //! database with WAL mode. Automatically trims to 20 most-recent entries.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;

@@ -4,6 +4,9 @@
 //! then atomically renaming to the final path only on success.
 //! If the download fails mid-stream, the temp file is cleaned up.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

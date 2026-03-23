@@ -4,6 +4,9 @@
 //! published on crates.io. This module provides async Tauri command bindings
 //! with JSON serialization for the frontend.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use aerovault::{EncryptionMode, Vault, CreateOptions};
 use serde::{Deserialize, Serialize};
 

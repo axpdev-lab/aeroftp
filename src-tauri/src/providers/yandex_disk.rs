@@ -11,6 +11,9 @@
 //! - Auth header: `Authorization: OAuth {token}` (not Bearer)
 //! - 5 GB free storage
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
 use secrecy::{ExposeSecret, SecretString};

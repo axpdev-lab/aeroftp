@@ -3,6 +3,9 @@
 //! Replaces all `app.emit()` calls in ai_tools.rs and ai_stream.rs with
 //! a trait that can be implemented for both Tauri (GUI) and CLI contexts.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::Serialize;
 use serde_json::Value;
 use crate::ai_stream::StreamChunk;

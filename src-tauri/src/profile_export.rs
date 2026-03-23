@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // AeroFTP Server Profile Export/Import
 // Encrypted backup/restore using AES-256-GCM + Argon2id
 // File format: .aeroftp (JSON envelope with encrypted payload)

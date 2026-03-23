@@ -4,6 +4,9 @@
 //! Uses scrypt KDF, AES Key Wrap (RFC 3394), AES-SIV for filenames,
 //! and AES-GCM for file content encryption.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use aes_gcm::aead::generic_array::GenericArray;
 use data_encoding::BASE32;

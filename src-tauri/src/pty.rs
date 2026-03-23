@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 // PTY (Pseudo-Terminal) module for real shell integration
 // Uses portable-pty for cross-platform support (Linux/macOS/Windows)
 // Supports multiple concurrent sessions (one per terminal tab)

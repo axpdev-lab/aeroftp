@@ -3,6 +3,9 @@
 //! Pre-check probe for host key verification before actual connection.
 //! Returns fingerprint + algorithm to frontend for user approval dialog.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use russh::client::{self, Config, Handler};
 use russh::keys::{self, known_hosts, HashAlg, PublicKey};
 use serde::Serialize;

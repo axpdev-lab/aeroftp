@@ -9,6 +9,9 @@
 //! - Error propagation instead of .unwrap() on Mutex (RB-001)
 //! - M17: TOTP secrets wrapped in SecretString for automatic zeroization on drop
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use totp_rs::{Algorithm, TOTP, Secret};
 use tauri::State;
 use secrecy::{ExposeSecret, SecretString};

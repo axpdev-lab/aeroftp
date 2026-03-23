@@ -3,6 +3,9 @@
 //! Maps GitHub API responses to structured errors with actionable user-facing
 //! messages. Every variant tells the user *what happened* and *what to do next*.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use super::super::ProviderError;
 use std::fmt;
 

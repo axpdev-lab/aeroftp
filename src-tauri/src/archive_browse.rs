@@ -3,6 +3,9 @@
 //! Provides listing and single-entry extraction for ZIP, 7z, TAR, and RAR archives.
 //! Used by the ArchiveBrowser frontend component and AeroVault module.
 
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
 use serde::Serialize;
 use secrecy::{ExposeSecret, SecretString};
 
