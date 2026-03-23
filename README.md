@@ -509,9 +509,22 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 <p align="center">
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
 </p>
-<p align="center">
-  <a href="https://openinventionnetwork.com/"><img src="icons/oin-member-badge.png" alt="OIN 2.0 Community Member" height="48" /></a>
-</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://openinventionnetwork.com/"><img src="icons/oin-member-badge.png" alt="OIN 2.0 Community Member" height="60" /></a>
+    </td>
+    <td align="center">
+      <a href="https://opensource.org"><img src="icons/osi-member.png" alt="Open Source Initiative Member" height="60" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>OIN 2.0 Community Member</sub></td>
+    <td align="center"><sub>OSI Individual Member</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <em>Built with Rust (Tauri 2) + React 18 + TypeScript</em>
 </p>
