@@ -69,7 +69,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 23 protocols and a complete file management platform through six integrated product modules — the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 23 protocols and a complete file management platform through six integrated product modules - the **Aero Family**.
 
 ---
 
@@ -77,19 +77,19 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    — Personal cloud (23 protocols, sync, share)
-├── AeroFile     — Professional file manager
-├── AeroSync     — Bidirectional sync engine
-├── AeroVault    — Military-grade encryption
-├── AeroTools    — Code editor + Terminal + AI chat
-│   └── AeroAgent    — AI-powered assistant (47 tools, 19 providers)
-├── AeroFTP CLI  — Production command-line client (15 commands, 23 protocols, vault profiles)
-└── AeroPlayer   — Media player with visualizers
+├── AeroCloud    - Personal cloud (23 protocols, sync, share)
+├── AeroFile     - Professional file manager
+├── AeroSync     - Bidirectional sync engine
+├── AeroVault    - Military-grade encryption
+├── AeroTools    - Code editor + Terminal + AI chat
+│   └── AeroAgent    - AI-powered assistant (47 tools, 19 providers)
+├── AeroFTP CLI  - Production command-line client (15 commands, 23 protocols, vault profiles)
+└── AeroPlayer   - Media player with visualizers
 ```
 
 ---
 
-### AeroCloud — Your Personal Cloud
+### AeroCloud - Your Personal Cloud
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
@@ -123,11 +123,11 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 
 **Cloud features**: Background sync works with all 23 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
 
-**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors — directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
+**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors - directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
 ---
 
-### AeroFile — Professional File Manager
+### AeroFile - Professional File Manager
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerofile.html)
 
@@ -138,7 +138,7 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 - **3 View Modes**: List (detailed table), Grid (icon thumbnails), Large Icons (96px with full thumbnails). Toggle via Ctrl+1/2/3
 - **Drive Detection**: Cross-platform volume detection (internal, removable, network, optical) with filesystem type, free/total space, and colored usage bars
 - **Customizable Columns**: Show/hide Size, Type, Permissions, Modified columns per preference. Sort folders first and file extension visibility toggles
-- **Quick Look**: Press Space to preview any file — images, video, audio, code with syntax highlighting, markdown. Arrow keys navigate between files without closing
+- **Quick Look**: Press Space to preview any file - images, video, audio, code with syntax highlighting, markdown. Arrow keys navigate between files without closing
 - **Properties Dialog**: Tabbed UI with General (3 dates, symlink target), Permissions (rwx matrix, octal, owner:group), and Checksum (MD5, SHA-1, SHA-256, SHA-512)
 - **Trash Browser**: Soft delete to system trash by default. Browse trash contents, restore individual files, or empty trash. Full trash lifecycle management
 - **Duplicate File Finder**: Content-aware duplicate detection (size grouping + MD5 hash). Interactive dialog with KEEP/DELETE/SKIP per file and batch delete
@@ -153,15 +153,15 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 
 ---
 
-### AeroSync — Bidirectional Sync Engine
+### AeroSync - Bidirectional Sync Engine
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerosync.html)
 
 Enterprise-grade file synchronization with operational reliability features built for real-world use.
 
-- **Smart Sync**: 3 intelligent conflict resolution modes — overwrite if newer, overwrite if different, skip if identical
+- **Smart Sync**: 3 intelligent conflict resolution modes - overwrite if newer, overwrite if different, skip if identical
 - **Sync Profiles**: 3 built-in presets (Mirror, Two-way, Backup) plus custom save/load. Each profile bundles direction, compare options, retry/verify policies, and delete behavior
-- **Conflict Resolution Center**: Per-file resolution strategies (keep local, keep remote, skip) with batch actions — Keep Newer for All, Keep Local for All, Keep Remote for All
+- **Conflict Resolution Center**: Per-file resolution strategies (keep local, keep remote, skip) with batch actions - Keep Newer for All, Keep Local for All, Keep Remote for All
 - **Bandwidth control**: Upload and download speed limits (128 KB/s to 10 MB/s) directly in the sync panel
 - **Transfer journal with checkpoint/resume**: Persistent journal tracks every sync operation. Interrupted syncs resume from where they left off. Auto-cleanup after 30 days
 - **SHA-256 checksum verification**: Content-based comparison with streaming 64KB-chunk hashing during scan phase
@@ -174,7 +174,7 @@ Enterprise-grade file synchronization with operational reliability features buil
 
 ---
 
-### AeroVault — Military-Grade Encryption
+### AeroVault - Military-Grade Encryption
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerovault.html)
 
@@ -187,9 +187,9 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 | Component | Algorithm | Details |
 | --------- | --------- | ------- |
-| **Content encryption** | AES-256-GCM-SIV (RFC 8452) | Nonce misuse-resistant — even nonce reuse doesn't compromise security |
+| **Content encryption** | AES-256-GCM-SIV (RFC 8452) | Nonce misuse-resistant - even nonce reuse doesn't compromise security |
 | **Key wrapping** | AES-256-KW (RFC 3394) | Built-in integrity check on unwrap |
-| **Filename encryption** | AES-256-SIV | Deterministic — file names are hidden, not just content |
+| **Filename encryption** | AES-256-SIV | Deterministic - file names are hidden, not just content |
 | **Key derivation** | Argon2id | 128 MiB memory / 4 iterations / 4 parallelism (exceeds OWASP 2024) |
 | **Header integrity** | HMAC-SHA512 | 512-bit MAC, quantum-resistance margin |
 | **Cascade mode** | ChaCha20-Poly1305 | Optional double encryption layer for defense-in-depth |
@@ -205,7 +205,7 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 ---
 
-### AeroTools — Code Editor, Terminal & AI Chat
+### AeroTools - Code Editor, Terminal & AI Chat
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerotools.html)
 
@@ -216,20 +216,20 @@ The integrated development panel combining three tools in a tabbed interface.
 - **AeroAgent AI Chat**: Full AI assistant panel (see below)
 - **Bidirectional sync**: Editor and AI agent edits flow in both directions in real time
 
-#### AeroAgent — AI-Powered Assistant
+#### AeroAgent - AI-Powered Assistant
 
 An AI assistant with **47 provider-agnostic tools** that work across all 23 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 
 **Core capabilities**:
-- **File operations**: List, read, search, create, edit, rename, delete — local and remote
+- **File operations**: List, read, search, create, edit, rename, delete - local and remote
 - **Batch transfers**: Multi-file upload/download with sync preview
 - **Find and replace**: Edit text in local and remote files directly from chat
 - **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
 - **Streaming responses**: Real-time incremental rendering for all providers
 - **Context-aware**: Knows your connected server, current paths, selected files, and protocol
-- **Vision/Multimodal**: Attach images for analysis — GPT-4o, Claude, Gemini, Ollama llava
+- **Vision/Multimodal**: Attach images for analysis - GPT-4o, Claude, Gemini, Ollama llava
 
 **Advanced features**:
 - **RAG integration**: Auto-indexes workspace files; full-text search across your codebase
@@ -263,7 +263,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 ---
 
-### AeroFTP CLI — Command-Line Client
+### AeroFTP CLI - Command-Line Client
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
@@ -271,13 +271,13 @@ A production command-line interface sharing the same Rust backend as the GUI. 20
 
 ```bash
 # Zero-credential connection via saved profiles
-aeroftp-cli ls --profile "My Server" /var/www/ -l
+aeroftp-cli ls --profile "My Server" /var/www/ - l
 
 # List all saved servers from encrypted vault
 aeroftp-cli profiles
 
 # URL-based connection (classic mode)
-aeroftp-cli ls sftp://user@myserver.com /var/www/ -l
+aeroftp-cli ls sftp://user@myserver.com /var/www/ - l
 
 # Download with glob patterns
 aeroftp-cli get sftp://user@host "/data/*.csv"
@@ -294,7 +294,7 @@ aeroftp-cli ls --profile "My Google Drive" /
 **Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
 
 **Features**:
-- **`--profile` vault profiles** — connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows
+- **`--profile` vault profiles** - connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows
 - `--json` structured output for all commands
 - Glob pattern transfers (`*.csv`, `*.json`)
 - `.aeroftp` batch scripts with variables, error policies, and 17 commands
@@ -307,37 +307,37 @@ See the full **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** for
 
 #### AI Agent & CI/CD Integration
 
-AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines. The `--profile` flag is the key enabler — agents connect to servers without ever seeing passwords:
+AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines. The `--profile` flag is the key enabler - agents connect to servers without ever seeing passwords:
 
-- **`--profile "Name"`** — connect via encrypted vault, zero credentials in the command line, shell history, or process list
-- **`--json` on every command** — structured output parsable by any agent (Claude Code, Codex, Cursor, Devin)
-- **Semantic exit codes** (0-8) — agents know exactly what failed without parsing text
-- **`NO_COLOR` compliant** — no ANSI escape sequences polluting agent output
-- **stderr/stdout separation** — data on stdout for piping, errors on stderr for logging
-- **Batch scripts** (`.aeroftp`) — define multi-step deployment flows as files, execute atomically
+- **`--profile "Name"`** - connect via encrypted vault, zero credentials in the command line, shell history, or process list
+- **`--json` on every command** - structured output parsable by any agent (Claude Code, Codex, Cursor, Devin)
+- **Semantic exit codes** (0-8) - agents know exactly what failed without parsing text
+- **`NO_COLOR` compliant** - no ANSI escape sequences polluting agent output
+- **stderr/stdout separation** - data on stdout for piping, errors on stderr for logging
+- **Batch scripts** (`.aeroftp`) - define multi-step deployment flows as files, execute atomically
 
 ```bash
-# AI agent deploys a website — no credentials anywhere
+# AI agent deploys a website - no credentials anywhere
 aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
 aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
 
 # CI/CD with env-based vault unlock
-AEROFTP_MASTER_PASSWORD=$SECRET aeroftp-cli put --profile "Deploy" ./dist/ /www/ -r
+AEROFTP_MASTER_PASSWORD=$SECRET aeroftp-cli put --profile "Deploy" ./dist/ /www/ - r
 ```
 
-> AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool — listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
+> AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool - listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
 
 #### Credential Isolation for AI Agents
 
-As of March 2026, no other file transfer client, cloud storage CLI, or multi-protocol transfer tool provides native credential isolation for AI agents operating on remote servers. Existing tools in this category store credentials in plaintext files, reversible encodings, or OS keystores accessible to any same-user process. Credential proxy services that have emerged for AI workflows only cover HTTP APIs — they cannot handle FTP, SFTP, WebDAV, or OAuth token refresh cycles.
+As of March 2026, no other file transfer client, cloud storage CLI, or multi-protocol transfer tool provides native credential isolation for AI agents operating on remote servers. Existing tools in this category store credentials in plaintext files, reversible encodings, or OS keystores accessible to any same-user process. Credential proxy services that have emerged for AI workflows only cover HTTP APIs - they cannot handle FTP, SFTP, WebDAV, or OAuth token refresh cycles.
 
-AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary — the agent receives only operation results, never the authentication material that produced them. This works across all 23 protocols, including OAuth-authenticated cloud providers.
+AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary - the agent receives only operation results, never the authentication material that produced them. This works across all 23 protocols, including OAuth-authenticated cloud providers.
 
-Read the full analysis: **[Credential Isolation for AI Agents](docs/CREDENTIAL-ISOLATION.md)** — architecture, protocol coverage, practical workflows, and implementation references.
+Read the full analysis: **[Credential Isolation for AI Agents](docs/CREDENTIAL-ISOLATION.md)** - architecture, protocol coverage, practical workflows, and implementation references.
 
 ---
 
-### AeroPlayer — Media Engine
+### AeroPlayer - Media Engine
 
 > [Full documentation →](https://docs.aeroftp.app/features/aeroplayer.html)
 
@@ -346,7 +346,7 @@ Built-in media player with GPU-accelerated visualizations and professional audio
 - **14 visualizer modes**: 8 Canvas 2D + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
 - **10-band graphic EQ**: Real Web Audio BiquadFilterNode per band (32Hz-16kHz) with 10 presets and stereo balance
 - **Beat detection**: Onset energy algorithm driving beat-reactive effects across all modes
-- **WebGL shader engine**: 6 GLSL fragment shaders — GPU-accelerated ray marching, metaballs, fractals, particles
+- **WebGL shader engine**: 6 GLSL fragment shaders - GPU-accelerated ray marching, metaballs, fractals, particles
 - **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
 - **Resilient startup buffering**: First Play now queues during prebuffer and auto-starts when ready
 - **Zero dependencies**: Native HTML5 `<audio>` + Web Audio API
@@ -359,12 +359,12 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 
 | Feature | Details |
 | ------- | ------- |
-| **Master Password** | Optional Argon2id vault encryption — all credentials locked behind a single password |
-| **Encrypted Vault** | All sensitive data in AES-256-GCM encrypted storage — zero plaintext on disk |
+| **Master Password** | Optional Argon2id vault encryption - all credentials locked behind a single password |
+| **Encrypted Vault** | All sensitive data in AES-256-GCM encrypted storage - zero plaintext on disk |
 | **Zero Telemetry** | No analytics, no phone-home, no network requests beyond user-initiated connections |
 | **Memory Zeroization** | Passwords and keys cleared from RAM immediately after use |
 | **Clearable History** | One-click clear for recent locations. No persistent browsing traces |
-| **Portable Deployment** | AppImage runs without installation. Remove it and the config directory — no traces remain |
+| **Portable Deployment** | AppImage runs without installation. Remove it and the config directory - no traces remain |
 
 See [SECURITY.md](SECURITY.md) for the complete security architecture and privacy comparison, and [docs/security-evidence/README.md](docs/security-evidence/README.md) for release-by-release security evidence.
 
@@ -372,8 +372,8 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 
 | | |
 |---|---|
-| **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) — all 67 criteria met |
-| **Aikido Security** | Continuous SAST/SCA monitoring — **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
+| **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
+| **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
 | **Dependency Scanning** | 1,071 packages monitored (316 JS + 755 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled |
 | **Security Audit** | [Download Official Report (Aikido)](https://app.aikido.dev/reports/audit-reports/XjkFN27VKYT2772IC79C4hmF/external/report/download?secret=TF9MK1qiVN6WFPYN5qH3iKgccbIyBwLXBY9g1wfC3rbVjzzUv3XJ61M7CFLk&group_id=68884) |
@@ -383,7 +383,7 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 ## Additional Features
 
 ### 4 Themes
-Light, Dark, Tokyo Night, and Cyber — with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
+Light, Dark, Tokyo Night, and Cyber - with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.
 
 ### Security Toolkit (Cyber theme)
 Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCha20-Poly1305 encrypt/decrypt), Password Forge (CSPRNG + BIP39 passphrase generator with entropy display).
@@ -407,7 +407,7 @@ Quality-audited translations with native script integrity. Automatic browser lan
 
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA
-- "Install & Restart" for .deb, .rpm, and AppImage — detached relaunch survives parent exit
+- "Install & Restart" for .deb, .rpm, and AppImage - detached relaunch survives parent exit
 - Non-intrusive update toast with auto-dismiss (StatusBar badge for persistent access)
 - Periodic background check every 24 hours
 
@@ -432,9 +432,9 @@ sudo snap install aeroftp
 
 #### AUR (Arch Linux)
 ```bash
-yay -S aeroftp-bin
+yay - S aeroftp-bin
 # or
-paru -S aeroftp-bin
+paru - S aeroftp-bin
 ```
 
 <p align="center">
@@ -443,7 +443,7 @@ paru -S aeroftp-bin
   </a>
 </p>
 
-> Available on Arch Linux and derivatives (Manjaro, EndeavourOS, Garuda). Binary package — no compilation needed.
+> Available on Arch Linux and derivatives (Manjaro, EndeavourOS, Garuda). Binary package - no compilation needed.
 
 #### Launchpad PPA (Ubuntu / Debian)
 
@@ -451,9 +451,9 @@ Visit [launchpad.net/aeroftp](https://launchpad.net/aeroftp) for PPA instruction
 
 #### Other Linux Formats
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
-- **.deb** — Ubuntu, Debian, Linux Mint, Pop!_OS
-- **.rpm** — Fedora, openSUSE, RHEL
-- **.AppImage** — Portable, runs on any distro ([AppImageHub](https://appimage.github.io/AeroFTP/))
+- **.deb** - Ubuntu, Debian, Linux Mint, Pop!_OS
+- **.rpm** - Fedora, openSUSE, RHEL
+- **.AppImage** - Portable, runs on any distro ([AppImageHub](https://appimage.github.io/AeroFTP/))
 
 ### Windows
 
@@ -472,17 +472,17 @@ winget install axpnet.AeroFTP
 
 #### Other Windows Formats
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
-- **.exe** — NSIS installer
-- **.msi** — Windows Installer
+- **.exe** - NSIS installer
+- **.msi** - Windows Installer
 
-> **Note:** Windows builds are not currently published on the Microsoft Store. The installer is not code-signed (no EV certificate), so Windows SmartScreen may show a warning on first run — this is safe to dismiss.
+> **Note:** Windows builds are not currently published on the Microsoft Store. The installer is not code-signed (no EV certificate), so Windows SmartScreen may show a warning on first run - this is safe to dismiss.
 
 ### macOS
 
 Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
-- **.dmg** — Universal disk image
+- **.dmg** - Universal disk image
 
-> **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch — right-click the app and select "Open" to bypass. See [#47](https://github.com/axpnet/aeroftp/issues/47) for known issues on Apple Silicon.
+> **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch - right-click the app and select "Open" to bypass. See [#47](https://github.com/axpnet/aeroftp/issues/47) for known issues on Apple Silicon.
 
 ---
 
