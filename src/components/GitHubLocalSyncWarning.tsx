@@ -60,7 +60,7 @@ export function GitHubLocalSyncWarning({
           <p>
             {t('github.unpushedCommitsDesc')}
           </p>
-          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-secondary)' }}>
             <GitBranch size={14} />
             <span>{t('github.unpushedCommitsHint')}</span>
           </div>

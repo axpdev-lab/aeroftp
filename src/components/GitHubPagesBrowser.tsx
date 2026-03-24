@@ -181,7 +181,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
           ) : (
             <>
               {/* Site Info Card */}
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4 space-y-3">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3" style={{ backgroundColor: 'var(--color-bg-primary)' }}>
                 {/* Status + Actions */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
