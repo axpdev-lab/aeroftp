@@ -1952,13 +1952,18 @@ const App: React.FC = () => {
         // and provider_connect consumes it automatically for GitHub protocol.
         let tokenExpiresAt: string;
 
-        if (pemStored) {
+        // Try vault first (most common path after initial import), then disk, then vault fallback
+        const hasVaultPem = await invoke<boolean>('github_has_vault_pem', { appId, installationId }).catch(() => false);
+
+        if (pemStored || hasVaultPem) {
+          // PEM in vault — preferred path, no file on disk needed
           const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_vault', {
             appId,
             installationId,
           });
           tokenExpiresAt = resp.expires_at;
         } else if (pemPath) {
+          // PEM not in vault — try reading from disk (first import or vault lost)
           const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_pem', {
             pemPath,
             appId,
@@ -1966,16 +1971,7 @@ const App: React.FC = () => {
           });
           tokenExpiresAt = resp.expires_at;
         } else {
-          const hasVaultPem = await invoke<boolean>('github_has_vault_pem', { appId, installationId }).catch(() => false);
-          if (hasVaultPem) {
-            const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_vault', {
-              appId,
-              installationId,
-            });
-            tokenExpiresAt = resp.expires_at;
-          } else {
-            throw new Error('No PEM key found. Import a .pem file first or check your App ID and Installation ID.');
-          }
+          throw new Error('No PEM key found. Import a .pem file first or check your App ID and Installation ID.');
         }
 
         // Password left empty — backend will inject the held token during connect
