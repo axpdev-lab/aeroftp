@@ -213,7 +213,7 @@ pub async fn get_installation_token(
         let body = resp.text().await.unwrap_or_default();
         return Err(match status.as_u16() {
             401 => format!("Authentication failed (401): invalid PEM key or App ID. {}", body),
-            404 => format!("Installation not found (404): check Installation ID '{}'. {}", installation_id, body),
+            404 => format!("Installation ID '{}' not found. Verify the ID at: github.com/organizations/YOUR-ORG/settings/installations (the number at the end of the URL)", installation_id),
             403 => format!("Forbidden (403): app may not be installed or lacks permissions. {}", body),
             _ => format!("GitHub installation token failed ({}): {}", status, body),
         });
