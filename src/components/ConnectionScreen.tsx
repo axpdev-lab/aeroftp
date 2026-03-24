@@ -533,25 +533,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Auto-populate App ID + Installation ID from vault when switching to App (.pem) mode
     useEffect(() => {
-        if (connectionParams.options?.githubAuthMode !== 'app') {
+        const currentMode = connectionParams.options?.githubAuthMode;
+        if (currentMode !== 'app') {
             setGitHubPemInVault(false);
             return;
         }
+        // Race guard: capture mode at effect start, check before applying async results
+        let cancelled = false;
         const appId = connectionParams.options?.githubAppId?.trim();
         const installId = connectionParams.options?.githubInstallationId?.trim();
 
         if (appId && installId) {
-            // Fields already filled — just check vault for PEM
             invoke('github_has_vault_pem', { appId, installationId: installId })
                 .then((has) => {
+                    if (cancelled) return;
                     setGitHubPemInVault(has as boolean);
                     setGitHubAppFieldsLocked(has as boolean);
                 })
-                .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+                .catch(() => { if (!cancelled) { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); } });
         } else {
-            // Fields empty — try to load saved credentials from vault
             invoke('github_get_app_credentials')
                 .then((result) => {
+                    if (cancelled) return;
                     const creds = result as { app_id?: string; installation_id?: string } | null;
                     if (creds?.app_id && creds?.installation_id) {
                         onConnectionParamsChange({
@@ -564,35 +567,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         });
                         invoke('github_has_vault_pem', { appId: creds.app_id, installationId: creds.installation_id })
                             .then((has) => {
+                                if (cancelled) return;
                                 setGitHubPemInVault(has as boolean);
                                 setGitHubAppFieldsLocked(has as boolean);
                             })
-                            .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+                            .catch(() => { if (!cancelled) { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); } });
                     } else {
                         setGitHubPemInVault(false);
                         setGitHubAppFieldsLocked(false);
                     }
                 })
-                .catch(() => { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); });
+                .catch(() => { if (!cancelled) { setGitHubPemInVault(false); setGitHubAppFieldsLocked(false); } });
         }
+        return () => { cancelled = true; };
     }, [connectionParams.options?.githubAuthMode]);
 
-    // Auto-populate token from vault when switching to PAT or Authorize mode
+    // SEC-GH-001: Check if PAT/OAuth token exists in vault (token stays backend-side)
+    const [hasVaultToken, setHasVaultToken] = useState(false);
     useEffect(() => {
         const mode = connectionParams.options?.githubAuthMode;
-        if ((mode !== 'pat' && mode !== 'authorize' && mode !== undefined) || connectionParams.password) return;
-        // Both PAT and OAuth tokens are stored under the same vault key
+        if (mode !== 'pat' && mode !== 'authorize' && mode !== undefined) return;
         invoke('github_get_pat')
-            .then((pat) => {
-                if (pat && typeof pat === 'string') {
-                    onConnectionParamsChange({
-                        ...connectionParams,
-                        password: pat,
-                        port: 443,
-                    });
-                }
-            })
-            .catch(() => {});
+            .then(() => setHasVaultToken(true))
+            .catch(() => setHasVaultToken(false));
     }, [connectionParams.options?.githubAuthMode]);
 
     // Fetch AeroCloud config when AeroCloud is selected
@@ -2039,7 +2036,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             {connectionParams.options?.githubAuthMode === 'authorize' && (
                                                 <div className="pt-1">
                                                     {/* Show "already authorized" if token exists in vault */}
-                                                    {connectionParams.password && !gitHubDeviceFlow && (
+                                                    {(connectionParams.password || hasVaultToken) && !gitHubDeviceFlow && (
                                                         <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1 mb-2">
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                                                             {t('github.alreadyAuthorized')}
@@ -3174,13 +3171,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onClick={async () => {
                                     try {
                                         setGitHubDeviceFlowLoading(true);
-                                        const token = await invoke('github_device_flow_complete', {
+                                        // SEC-GH-001: Token held backend-side, never returned to frontend
+                                        const result = await invoke<{ success: boolean }>('github_device_flow_complete', {
                                             deviceCode: gitHubDeviceFlow.deviceCode,
                                             interval: gitHubDeviceFlow.interval,
-                                        }) as string;
-                                        // Store OAuth token in vault for multi-repo reuse
-                                        invoke('github_store_pat', { pat: token }).catch(() => {});
-                                        onConnectionParamsChange({ ...connectionParams, password: token });
+                                        });
+                                        if (result.success) {
+                                            // Store token in vault for multi-repo reuse (backend already holds it)
+                                            invoke('github_store_pat_from_held').catch(() => {});
+                                            setHasVaultToken(true);
+                                            // Password left empty — backend injects held token during connect
+                                            onConnectionParamsChange({ ...connectionParams, password: '' });
+                                        }
                                         setGitHubDeviceFlow(null);
                                         setGitHubAlert({
                                             title: t('github.authTitle'),

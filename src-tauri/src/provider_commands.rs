@@ -4214,11 +4214,20 @@ pub async fn github_device_flow_start() -> Result<serde_json::Value, String> {
     }))
 }
 
-/// GitHub Device Flow — Step 2: Poll for token
-/// Blocks until user authorizes or timeout
+/// GitHub Device Flow — Step 2: Poll for token.
+/// SEC-GH-001: Token held backend-side, never returned to frontend.
 #[tauri::command]
-pub async fn github_device_flow_complete(device_code: String, interval: u64) -> Result<String, String> {
-    crate::providers::github::auth::poll_for_token(&device_code, interval).await
+pub async fn github_device_flow_complete(
+    state: State<'_, ProviderState>,
+    device_code: String,
+    interval: u64,
+) -> Result<serde_json::Value, String> {
+    let token = crate::providers::github::auth::poll_for_token(&device_code, interval).await?;
+    {
+        let mut held = state.held_github_app_token.lock().await;
+        *held = Some(token);
+    }
+    Ok(serde_json::json!({"success": true}))
 }
 
 /// Vault key for a GitHub App PEM, keyed by app_id + installation_id
@@ -4382,13 +4391,41 @@ pub async fn github_store_pat(pat: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Get stored GitHub PAT from vault
+/// Store the held GitHub token into vault as PAT (for Device Flow persistence).
+/// SEC-GH-001: Takes from held_github_app_token and stores in vault without IPC exposure.
 #[tauri::command]
-pub async fn github_get_pat() -> Result<String, String> {
+pub async fn github_store_pat_from_held(
+    state: State<'_, ProviderState>,
+) -> Result<(), String> {
+    let token = {
+        let held = state.held_github_app_token.lock().await;
+        held.clone()
+    };
+    if let Some(pat) = token {
+        let store = crate::credential_store::CredentialStore::from_cache()
+            .ok_or_else(|| "Vault not ready".to_string())?;
+        store.store("github_pat", &pat)
+            .map_err(|e| format!("Failed to store PAT: {}", e))?;
+        log::info!("GitHub Device Flow token stored in vault as PAT");
+    }
+    Ok(())
+}
+
+/// Get stored GitHub PAT from vault.
+/// SEC-GH-001: Token held backend-side for connect, returns only success status.
+#[tauri::command]
+pub async fn github_get_pat(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    store.get("github_pat")
-        .map_err(|_| "No PAT stored in vault".to_string())
+    let pat = store.get("github_pat")
+        .map_err(|_| "No PAT stored in vault".to_string())?;
+    {
+        let mut held = state.held_github_app_token.lock().await;
+        *held = Some(pat);
+    }
+    Ok(serde_json::json!({"success": true}))
 }
 
 /// Check if a GitHub App PEM is stored in the vault

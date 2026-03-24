@@ -8018,6 +8018,7 @@ pub fn run() {
             provider_commands::github_app_token_from_vault,
             provider_commands::github_get_app_credentials,
             provider_commands::github_store_pat,
+            provider_commands::github_store_pat_from_held,
             provider_commands::github_get_pat,
             provider_commands::github_has_vault_pem,
             // GitHub Release management

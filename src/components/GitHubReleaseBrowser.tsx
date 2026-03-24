@@ -232,8 +232,8 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
         assetName: fileName,
       });
       // Refresh assets for this tag
-      const tagAssets = await invoke<Asset[]>('github_list_release_assets', { tag });
-      setAssets(prev => ({ ...prev, [tag]: tagAssets }));
+      const result = await invoke<{ assets: Asset[]; count: number; tag: string }>('github_list_release_assets', { tag });
+      setAssets(prev => ({ ...prev, [tag]: result.assets }));
     } catch (err) {
       if (onError) onError('Upload Asset', String(err));
     }
@@ -841,7 +841,6 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
             style={{ ...inputStyle, minHeight: '12rem', maxHeight: '24rem' }}
             dangerouslySetInnerHTML={{ __html: body
               .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/&amp;lt;/g, '&lt;').replace(/&amp;gt;/g, '&gt;')
               .replace(/#### (.+)/g, '<h4>$1</h4>')
               .replace(/### (.+)/g, '<h3>$1</h3>')
               .replace(/## (.+)/g, '<h2>$1</h2>')
