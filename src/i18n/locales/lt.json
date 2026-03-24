@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 GB nemokamos saugyklos",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB komandos saugykla"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB komandos saugykla",
+      "oauthProviders": "OAuth Providers",
+      "githubOauthDesc": "Device Flow OAuth — no Client ID needed",
+      "githubOauthInfo": "GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials required."
     },
     "devtools": {
       "title": "AeroTools",
@@ -3451,7 +3454,17 @@
       "previewButton": "Peržiūra",
       "pagesConfig": "Pages konfigūracija",
       "pagesBranch": "Šaka",
-      "pagesPath": "Kelias"
+      "pagesPath": "Kelias",
+      "authMethod": "Authentication",
+      "modeAuthorize": "OAuth",
+      "modePat": "Access Token",
+      "modeApp": "App (.pem)",
+      "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
+      "notAuthorized": "Not yet authorized. Connect first to authorize.",
+      "accessToken": "Personal Access Token",
+      "patHint": "Fine-grained PAT with repository access",
+      "appHint": "PEM key is imported and stored in the vault from the connection screen.",
+      "branchOptional": "Branch (optional)"
     },
     "filenNotes": {
       "title": "Šifruotos užrašai",

@@ -931,7 +931,10 @@
       "protocolFilelu": "FileLu",
       "protocolKoofr": "Koofr",
       "protocolOpendrive": "OpenDrive",
-      "protocolYandexdisk": "Yandex Disk"
+      "protocolYandexdisk": "Yandex Disk",
+      "oauthProviders": "Provider OAuth",
+      "githubOauthDesc": "Device Flow OAuth — non serve Client ID",
+      "githubOauthInfo": "GitHub utilizza Device Flow OAuth con l'app AeroFTP integrata. Non sono necessarie credenziali client. Puoi anche usare un Personal Access Token o una chiave .pem dalla schermata di connessione."
     },
     "appearance": {
       "patternCross": "Croce",
@@ -3442,7 +3445,17 @@
       "previewButton": "Anteprima",
       "pagesConfig": "Configurazione Pages",
       "pagesBranch": "Branch",
-      "pagesPath": "Percorso"
+      "pagesPath": "Percorso",
+      "authMethod": "Autenticazione",
+      "modeAuthorize": "OAuth",
+      "modePat": "Token di accesso",
+      "modeApp": "App (.pem)",
+      "oauthHint": "Usa \"Autorizza con GitHub\" nella schermata di connessione per autenticarti tramite Device Flow. Il token viene memorizzato nel vault.",
+      "notAuthorized": "Non ancora autorizzato. Connettiti prima per autorizzare.",
+      "accessToken": "Token di accesso personale",
+      "patHint": "PAT fine-grained con accesso al repository",
+      "appHint": "La chiave PEM viene importata e memorizzata nel vault dalla schermata di connessione.",
+      "branchOptional": "Branch (opzionale)"
     },
     "filenNotes": {
       "title": "Note crittografate",

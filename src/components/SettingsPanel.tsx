@@ -568,7 +568,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'general', label: t('settings.general'), icon: <Settings size={16} /> },
         { id: 'connection', label: t('settings.connection'), icon: <Wifi size={16} /> },
         { id: 'servers', label: t('settings.servers'), icon: <Server size={16} /> },
-        { id: 'cloudproviders', label: t('settings.cloudProviders'), icon: <Cloud size={16} /> },
+        { id: 'cloudproviders', label: t('settings.oauthProviders') || t('settings.cloudProviders'), icon: <Cloud size={16} /> },
         { id: 'transfers', label: t('settings.transfers'), icon: <Upload size={16} /> },
         { id: 'filehandling', label: t('settings.fileHandling'), icon: <FileCheck size={16} /> },
         { id: 'ui', label: t('settings.appearance'), icon: <Palette size={16} /> },
@@ -996,8 +996,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         const isKoofr = protocol === 'koofr';
                                         const isOpenDrive = protocol === 'opendrive';
                                         const isYandexDisk = protocol === 'yandexdisk';
-                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk;
-                                        const needsPassword = !isOAuth;
+                                        const isGitHub = protocol === 'github';
+                                        const githubAuthMode = editingServer.options?.githubAuthMode || 'authorize';
+                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk && !isGitHub;
+                                        const needsPassword = !isOAuth && !isGitHub;
                                         const isNewServer = !servers.some(s => s.id === editingServer.id);
                                         const logoKey = editingServer.providerId || protocol;
                                         const hasProviderLogo = !!PROVIDER_LOGOS[logoKey];
@@ -1026,6 +1028,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             { value: 'yandexdisk', label: 'Yandex Disk', port: 443 },
                                             { value: 'drime', label: 'Drime Cloud', port: 443 },
                                             { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
+                                            { value: 'github', label: 'GitHub', port: 443 },
                                         ];
 
                                         const handleProtocolChange = (newProtocol: string) => {
@@ -1425,6 +1428,129 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     </div>
                                                                 </div>
                                                                 <p className="text-xs text-gray-400">{t('connection.drimeTokenHelp')}</p>
+                                                            </>
+                                                        )}
+
+                                                        {/* GitHub — Owner/Repo + 3 Auth Modes */}
+                                                        {isGitHub && (
+                                                            <>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.ownerRepo') || 'Owner / Repository'}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="owner/repository"
+                                                                        value={editingServer.host || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, host: e.target.value, port: 443 })}
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                                {/* Auth Mode Selector */}
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.authMethod') || 'Authentication'}</label>
+                                                                    <div className="flex gap-1.5">
+                                                                        {(['authorize', 'pat', 'app'] as const).map((mode) => {
+                                                                            const isActive = githubAuthMode === mode;
+                                                                            return (
+                                                                                <button
+                                                                                    key={mode}
+                                                                                    type="button"
+                                                                                    onClick={() => setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: '',
+                                                                                        options: { ...editingServer.options, githubAuthMode: mode },
+                                                                                    })}
+                                                                                    className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                                                                                        isActive
+                                                                                            ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                                                                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
+                                                                                    }`}
+                                                                                >
+                                                                                    {mode === 'authorize' && (t('github.modeAuthorize') || 'OAuth')}
+                                                                                    {mode === 'pat' && (t('github.modePat') || 'Access Token')}
+                                                                                    {mode === 'app' && (t('github.modeApp') || 'App (.pem)')}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                                {/* Mode: OAuth (Device Flow) */}
+                                                                {githubAuthMode === 'authorize' && (
+                                                                    <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-2">
+                                                                        <p className="text-xs text-gray-500">{t('github.oauthHint') || 'Use "Authorize with GitHub" on the connection screen to authenticate via Device Flow. The token is stored securely in the vault.'}</p>
+                                                                        {editingServer.password ? (
+                                                                            <p className="text-xs text-green-500 flex items-center gap-1">
+                                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                {t('github.alreadyAuthorized') || 'Already authorized — ready to connect'}
+                                                                            </p>
+                                                                        ) : (
+                                                                            <p className="text-xs text-amber-500">{t('github.notAuthorized') || 'Not yet authorized. Connect first to authorize.'}</p>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {/* Mode: PAT */}
+                                                                {githubAuthMode === 'pat' && (
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.accessToken') || 'Personal Access Token'}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-400 mt-1">{t('github.patHint') || 'Fine-grained PAT with repository access'}</p>
+                                                                    </div>
+                                                                )}
+                                                                {/* Mode: App (.pem) */}
+                                                                {githubAuthMode === 'app' && (
+                                                                    <div className="space-y-2">
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            <div>
+                                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.appId') || 'App ID'}</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="123456"
+                                                                                    value={editingServer.options?.githubAppId || ''}
+                                                                                    onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubAppId: e.target.value } })}
+                                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.installationId') || 'Installation ID'}</label>
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="12345678"
+                                                                                    value={editingServer.options?.githubInstallationId || ''}
+                                                                                    onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubInstallationId: e.target.value } })}
+                                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-400">{t('github.appHint') || 'PEM key is imported and stored in the vault from the connection screen.'}</p>
+                                                                        {editingServer.options?.githubPemStored && (
+                                                                            <p className="text-xs text-green-500 flex items-center gap-1">
+                                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                {t('github.pemStoredInVault') || 'PEM key stored in vault'}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {/* Optional branch override */}
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.branchOptional') || 'Branch (optional)'}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="main"
+                                                                        value={editingServer.options?.githubBranch || ''}
+                                                                        onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubBranch: e.target.value } })}
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
                                                             </>
                                                         )}
 
@@ -2301,6 +2427,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 />
                                             </div>
                                         </div>
+                                    </div>
+
+                                    {/* GitHub — Device Flow OAuth */}
+                                    <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
+                                                    {PROVIDER_LOGOS.github ? <PROVIDER_LOGOS.github size={18} /> : <Cloud size={16} />}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-medium">GitHub</h4>
+                                                    <p className="text-xs text-gray-500">{t('settings.githubOauthDesc') || 'Device Flow OAuth — no Client ID needed'}</p>
+                                                </div>
+                                            </div>
+                                            <span className="text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">
+                                                {t('settings.noApiKeysNeeded') || 'No API keys needed'}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            {t('settings.githubOauthInfo') || 'GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials are required. You can also use a Personal Access Token or a GitHub App .pem key from the connection screen.'}
+                                        </p>
                                     </div>
 
                                     <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700 flex items-start gap-2">

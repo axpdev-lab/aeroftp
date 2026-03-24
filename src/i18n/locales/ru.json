@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 ГБ бесплатного хранилища",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 ГБ командного хранилища"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 ГБ командного хранилища",
+      "oauthProviders": "Провайдеры OAuth",
+      "githubOauthDesc": "Device Flow OAuth — Client ID не требуется",
+      "githubOauthInfo": "GitHub использует Device Flow OAuth со встроенным приложением AeroFTP. Клиентские учётные данные не требуются. Можно также использовать персональный токен или .pem-ключ."
     },
     "devtools": {
       "title": "AeroTools",
@@ -3441,7 +3444,17 @@
       "previewButton": "Предпросмотр",
       "pagesConfig": "Конфигурация Pages",
       "pagesBranch": "Ветка",
-      "pagesPath": "Путь"
+      "pagesPath": "Путь",
+      "authMethod": "Аутентификация",
+      "modeAuthorize": "OAuth",
+      "modePat": "Токен доступа",
+      "modeApp": "App (.pem)",
+      "oauthHint": "Используйте \"Авторизация через GitHub\" на экране подключения для аутентификации через Device Flow. Токен хранится в хранилище.",
+      "notAuthorized": "Ещё не авторизован. Сначала подключитесь.",
+      "accessToken": "Персональный токен доступа",
+      "patHint": "Точечный PAT с доступом к репозиторию",
+      "appHint": "PEM-ключ импортируется и хранится в хранилище с экрана подключения.",
+      "branchOptional": "Ветка (необязательно)"
     },
     "filenNotes": {
       "title": "Зашифрованные заметки",

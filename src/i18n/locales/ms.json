@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 GB storan percuma",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB storan pasukan"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB storan pasukan",
+      "oauthProviders": "OAuth Providers",
+      "githubOauthDesc": "Device Flow OAuth — no Client ID needed",
+      "githubOauthInfo": "GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials required."
     },
     "devtools": {
       "title": "AeroTools",
@@ -3451,7 +3454,17 @@
       "previewButton": "Pratonton",
       "pagesConfig": "Konfigurasi Pages",
       "pagesBranch": "Cabang",
-      "pagesPath": "Laluan"
+      "pagesPath": "Laluan",
+      "authMethod": "Authentication",
+      "modeAuthorize": "OAuth",
+      "modePat": "Access Token",
+      "modeApp": "App (.pem)",
+      "oauthHint": "Use \"Authorize with GitHub\" on the connection screen to authenticate via Device Flow.",
+      "notAuthorized": "Not yet authorized. Connect first to authorize.",
+      "accessToken": "Personal Access Token",
+      "patHint": "Fine-grained PAT with repository access",
+      "appHint": "PEM key is imported and stored in the vault from the connection screen.",
+      "branchOptional": "Branch (optional)"
     },
     "filenNotes": {
       "title": "Nota Tersulit",

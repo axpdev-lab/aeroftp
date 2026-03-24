@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 GB de armazenamento gratuito",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB de armazenamento em equipe"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB de armazenamento em equipe",
+      "oauthProviders": "Provedores OAuth",
+      "githubOauthDesc": "Device Flow OAuth — sem Client ID",
+      "githubOauthInfo": "GitHub usa Device Flow OAuth com o app AeroFTP integrado. Nenhuma credencial de cliente necessária. Você também pode usar um token de acesso pessoal ou uma chave .pem."
     },
     "devtools": {
       "title": "AeroTools",
@@ -3441,7 +3444,17 @@
       "previewButton": "Pré-visualizar",
       "pagesConfig": "Configuração do Pages",
       "pagesBranch": "Branch",
-      "pagesPath": "Caminho"
+      "pagesPath": "Caminho",
+      "authMethod": "Autenticação",
+      "modeAuthorize": "OAuth",
+      "modePat": "Token de acesso",
+      "modeApp": "App (.pem)",
+      "oauthHint": "Use \"Autorizar com GitHub\" na tela de conexão para autenticar via Device Flow. O token é armazenado no cofre.",
+      "notAuthorized": "Ainda não autorizado. Conecte-se primeiro.",
+      "accessToken": "Token de acesso pessoal",
+      "patHint": "PAT de granularidade fina com acesso ao repositório",
+      "appHint": "A chave PEM é importada e armazenada no cofre na tela de conexão.",
+      "branchOptional": "Branch (opcional)"
     },
     "filenNotes": {
       "title": "Notas criptografadas",

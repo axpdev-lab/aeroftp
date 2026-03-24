@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 GB 免费存储",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB 团队存储"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB 团队存储",
+      "oauthProviders": "OAuth 提供商",
+      "githubOauthDesc": "Device Flow OAuth — 无需 Client ID",
+      "githubOauthInfo": "GitHub 使用内置 AeroFTP 应用的 Device Flow OAuth。不需要客户端凭据。您也可以使用个人访问令牌或 .pem 密钥。"
     },
     "devtools": {
       "title": "AeroTools",
@@ -3441,7 +3444,17 @@
       "previewButton": "预览",
       "pagesConfig": "Pages 配置",
       "pagesBranch": "分支",
-      "pagesPath": "路径"
+      "pagesPath": "路径",
+      "authMethod": "认证",
+      "modeAuthorize": "OAuth",
+      "modePat": "访问令牌",
+      "modeApp": "App (.pem)",
+      "oauthHint": "在连接屏幕上使用通过GitHub授权进行Device Flow认证。令牌安全存储在保险库中。",
+      "notAuthorized": "尚未授权。请先连接。",
+      "accessToken": "个人访问令牌",
+      "patHint": "具有仓库访问权限的细粒度PAT",
+      "appHint": "PEM密钥从连接屏幕导入并存储在保险库中。",
+      "branchOptional": "分支（可选）"
     },
     "filenNotes": {
       "title": "加密笔记",

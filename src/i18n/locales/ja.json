@@ -757,7 +757,10 @@
       "protocolYandexdisk": "Yandex Disk",
       "protocolOpendrive": "OpenDrive",
       "yandexDiskDesc": "OAuth 2.0 — 5 GB 無料ストレージ",
-      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB チームストレージ"
+      "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB チームストレージ",
+      "oauthProviders": "OAuthプロバイダー",
+      "githubOauthDesc": "Device Flow OAuth — Client ID不要",
+      "githubOauthInfo": "GitHubは内蔵のAeroFTPアプリでDevice Flow OAuthを使用します。クライアント資格情報は不要です。個人アクセストークンまたは.pemキーも使用できます。"
     },
     "devtools": {
       "title": "AeroTools",
@@ -3441,7 +3444,17 @@
       "previewButton": "プレビュー",
       "pagesConfig": "Pages 設定",
       "pagesBranch": "ブランチ",
-      "pagesPath": "パス"
+      "pagesPath": "パス",
+      "authMethod": "認証",
+      "modeAuthorize": "OAuth",
+      "modePat": "アクセストークン",
+      "modeApp": "App (.pem)",
+      "oauthHint": "接続画面で「GitHubで認証」を使用してDevice Flowで認証します。トークンはVaultに安全に保存されます。",
+      "notAuthorized": "まだ認証されていません。先に接続してください。",
+      "accessToken": "個人アクセストークン",
+      "patHint": "リポジトリアクセス付きの細粒度PAT",
+      "appHint": "PEMキーは接続画面からインポートされVaultに保存されます。",
+      "branchOptional": "ブランチ（オプション）"
     },
     "filenNotes": {
       "title": "暗号化ノート",
