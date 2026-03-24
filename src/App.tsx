@@ -359,6 +359,7 @@ const App: React.FC = () => {
   const [showGitHubPages, setShowGitHubPages] = useState(false);
   const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
+  const [hasActiveGitHubActions, setHasActiveGitHubActions] = useState(false);
   const [showFilenNotes, setShowFilenNotes] = useState(false);
   const [gitHubSyncWarning, setGitHubSyncWarning] = useState<{
     unpushedCount: number;
@@ -2046,6 +2047,11 @@ const App: React.FC = () => {
         .then(result => setHasGitHubPages(result !== null))
         .catch(() => setHasGitHubPages(false));
 
+      // Check if any GitHub Actions runs are active (in_progress/queued)
+      invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
+        .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
+        .catch(() => setHasActiveGitHubActions(false));
+
       if (refreshBranches) {
         const branches = await invoke<Array<{ name: string; protected: boolean }>>('github_list_branches');
         setGitHubBranches(branches);
@@ -2055,8 +2061,20 @@ const App: React.FC = () => {
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
       setHasGitHubPages(false);
+      setHasActiveGitHubActions(false);
     }
   }, [activeSessionId, connectionParams.protocol, isConnected, sessions]);
+
+  // Poll GitHub Actions status every 60s when connected to GitHub
+  useEffect(() => {
+    if (!isConnected || getActiveProviderProtocol() !== 'github') return;
+    const interval = setInterval(() => {
+      invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
+        .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
+        .catch(() => {});
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [isConnected, getActiveProviderProtocol]);
 
   const switchGitHubBranch = useCallback(async (branch: string) => {
     const activeSession = sessions.find(s => s.id === activeSessionId);
@@ -7606,10 +7624,17 @@ const App: React.FC = () => {
                         )}
                         <button
                           onClick={() => setShowGitHubActions(true)}
-                          className="flex-shrink-0 p-1.5 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-                          title={t('github.viewOnGithub') ? 'GitHub Actions' : 'GitHub Actions'}
+                          className={`relative flex-shrink-0 p-1.5 rounded transition-colors ${
+                            hasActiveGitHubActions
+                              ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                              : 'text-green-400 hover:text-green-300 hover:bg-green-500/10'
+                          }`}
+                          title={hasActiveGitHubActions ? 'GitHub Actions (running)' : 'GitHub Actions'}
                         >
-                          <GitHubActionsIcon size={13} className="text-amber-400" />
+                          <GitHubActionsIcon size={13} />
+                          {hasActiveGitHubActions && (
+                            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                          )}
                         </button>
                       </>
                     )}
