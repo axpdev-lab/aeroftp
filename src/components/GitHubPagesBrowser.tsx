@@ -78,6 +78,19 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
     if (isOpen) fetchData();
   }, [isOpen, fetchData]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    document.documentElement.classList.add('modal-open');
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.documentElement.classList.remove('modal-open');
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [isOpen, onClose]);
+
   const handleRebuild = useCallback(async () => {
     setRebuilding(true);
     try {
@@ -126,9 +139,9 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
     const d = new Date(iso);
     const now = Date.now();
     const diff = now - d.getTime();
-    if (diff < 60000) return 'just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    if (diff < 60000) return t('cloud.justNow');
+    if (diff < 3600000) return t('cloud.minutesAgo', { count: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t('cloud.hoursAgo', { count: Math.floor(diff / 3600000) });
     return d.toLocaleDateString();
   };
 

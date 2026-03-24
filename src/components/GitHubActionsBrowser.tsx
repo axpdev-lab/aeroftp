@@ -66,13 +66,13 @@ function formatDuration(seconds: number): string {
   return `${hrs}h ${mins % 60}m`;
 }
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, t: ReturnType<typeof useTranslation>): string {
   const now = Date.now();
   const date = new Date(dateStr).getTime();
   const diff = Math.floor((now - date) / 1000);
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 60) return t('cloud.justNow');
+  if (diff < 3600) return t('cloud.minutesAgo', { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t('cloud.hoursAgo', { count: Math.floor(diff / 3600) });
   return new Date(dateStr).toLocaleDateString();
 }
 
@@ -120,6 +120,19 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
       }
     };
   }, [isOpen, fetchRuns]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    document.documentElement.classList.add('modal-open');
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      document.documentElement.classList.remove('modal-open');
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [isOpen, onClose]);
 
   const runAction = async (command: string, runId: number) => {
     setActionInProgress(runId);
@@ -238,7 +251,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
 
                     {/* Duration & time */}
                     <div className="flex flex-col items-end text-[11px] text-gray-500 dark:text-gray-400 shrink-0">
-                      <span>{formatRelativeTime(run.created_at)}</span>
+                      <span>{formatRelativeTime(run.created_at, t)}</span>
                       {run.duration_seconds > 0 && (
                         <span className="text-gray-400 dark:text-gray-500">
                           {formatDuration(run.duration_seconds)}

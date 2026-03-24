@@ -1,6 +1,6 @@
 # AeroFTP × GitHub Integration
 
-> Browse repositories as filesystems. Upload files that become commits. Use your own GitHub App identity for bot-style commit attribution.
+> Browse repositories as filesystems. Upload files that become commits. Connect with Device Flow, PAT, or GitHub App installation tokens.
 
 ---
 
@@ -74,17 +74,18 @@ aeroftp tree --profile "My GitHub Repo" /src/ -d 3
 
 ## Authentication
 
-Three ways to connect, each suited to different workflows.
+The integration supports three authentication modes.
 
-### 1. Authorize with GitHub (recommended)
+### 1. Device Flow
 
-One-click browser authorization. AeroFTP opens your browser, you authorize the app, and the token is saved in the encrypted vault.
+Used for the official AeroFTP GitHub App authorization flow.
 
-- Best for: personal use, daily development
-- Commit identity: your GitHub username and avatar
-- Token management: automatic, stored in vault
+- The user completes authorization in the browser
+- access tokens are acquired in Rust and held backend-side
+- after authentication, the token is not returned via Tauri IPC
+- best for: personal use and normal day-to-day repository access
 
-### 2. Personal Access Token
+### 2. Fine-Grained PAT
 
 Generate a Fine-grained PAT at [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens/new) and paste it in AeroFTP.
 
@@ -93,13 +94,22 @@ Required permissions:
 - **Contents**: Read and write
 - **Metadata**: Read-only (automatic)
 
-- Best for: automation, CI/CD, scripting
-- Commit identity: your GitHub username and avatar
-- Token management: manual, you control expiry
+Current handling:
 
-### 3. GitHub App with Custom Identity (.pem)
+- The user pastes a PAT manually
+- the PAT is stored in the local encrypted vault
+- on reuse, the PAT is loaded backend-side and consumed only at connection time
 
-Create your own GitHub App with a custom name and logo. Commits made through AeroFTP will show your app's identity and avatar in the repository's contributor list.
+### 3. GitHub App Installation Token (.pem)
+
+Create your own GitHub App, install it on the target account or organization, and import its private key into AeroFTP.
+
+Current handling:
+
+- The user imports a GitHub App private key
+- the PEM is encrypted in the local vault after import
+- AeroFTP generates short-lived installation tokens in Rust only
+- installation tokens are held and consumed backend-side only
 
 **Setup:**
 
@@ -112,34 +122,34 @@ Create your own GitHub App with a custom name and logo. Commits made through Aer
 7. Enter your App ID and Installation ID
 8. Import the .pem file
 
-**Result:**
+**Current behavior:**
 
-Your commits will show your app's name with a `[bot]` suffix and your custom logo in the repository's contributor list. This is the same GitHub installation-token attribution model used by GitHub-native automations.
+Installation-token mode is supported and audited, but commit attribution is implementation-specific:
 
-- Best for: teams, branded automation, CI/CD bots, open-source projects
-- Commit identity: `yourapp[bot]` with your custom logo
+- AeroFTP sets commit author and committer fields to the repository owner identity for content writes
+- AeroFTP appends a `Co-authored-by: aeroftp[bot]` trailer in bot mode so the bot identity is visible in commit metadata
+- the exact avatar and commit presentation remain subject to GitHub's UI rules
+
+- Authentication identity: your GitHub App installation token
 - Token management: automatic (1-hour tokens generated from .pem on demand)
 - PEM key storage: encrypted in vault (AES-256-GCM) after first import — original .pem file can be deleted
 - Token expiry: dynamic badge shows valid/expiring/expired state with auto-refresh on connect
-- Co-authoring: commits show **both** the human user (author) and `aeroftp[bot]` (committer) with dual avatars on GitHub
 
-**Example:**
-
-If you create a GitHub App called "DeployBot" with a rocket logo, your commits will appear as:
-
-```text
-🚀 deploybot[bot]  Create index.html    2 minutes ago
-🚀 deploybot[bot]  Update styles.css     5 minutes ago
-👤 axpnet          Fix typo in README    1 hour ago
-```
-
-Your app appears in the repository's Contributors section alongside human contributors.
+If you need exact reviewer validation of how your app appears in the GitHub web UI, use a test repository and inspect the resulting commit metadata directly on GitHub.
 
 ---
 
 ## Credential Isolation
 
-AeroFTP's GitHub integration follows the same credential isolation architecture as all other protocols. The token — whether PAT, Device Flow, or installation token — is stored in the AES-256-GCM encrypted vault and resolved exclusively inside the Rust backend process.
+AeroFTP's GitHub integration follows the same credential isolation architecture as all other protocols. After initial entry or authorization, credentials are stored in the local AeroFTP vault and resolved inside the Rust backend process.
+
+Security-sensitive details relevant to reviewers:
+
+- Device Flow tokens are obtained in Rust and then held backend-side
+- stored PATs are loaded from the encrypted vault and moved into backend-held state only for connection use
+- installation tokens derived from PEM files are minted and consumed entirely in Rust
+- imported PEM material is encrypted in the vault after first import
+- tokens are not returned to frontend JavaScript after authentication completes
 
 When an AI coding agent uses `--profile "GitHub"` from the CLI, it never sees the token. It receives only the operation result: a directory listing, a commit confirmation, a file download.
 
@@ -167,7 +177,9 @@ Current public GitHub flows in AeroFTP are built primarily on the GitHub REST AP
 | Releases | `GET/POST /repos/{owner}/{repo}/releases` |
 | Release assets | Upload as raw binary stream |
 | Branches | `GET/POST /repos/{owner}/{repo}/branches` |
-| Pull request helper foundation | `GET/POST /repos/{owner}/{repo}/pulls` |
+| Pull requests | `GET/POST /repos/{owner}/{repo}/pulls` |
+| Pages | `GET/POST/PUT /repos/{owner}/{repo}/pages` |
+| Actions runs | `GET /repos/{owner}/{repo}/actions/runs` |
 
 ### Rate Limits
 
@@ -195,9 +207,9 @@ Files larger than 100 MiB cannot be stored in GitHub repositories. Use Release a
 | -------------- | ------ | --------- | ------ |
 | PAT | Authenticated user | Authenticated user | User's avatar |
 | Device Flow | Authenticated user | Authenticated user | User's avatar |
-| Installation token (.pem) | Repository owner | `yourapp[bot]` | Both avatars (user + app) |
+| Installation token (.pem) | Repository owner identity | Repository owner identity | GitHub UI-dependent |
 
-The commit identity is determined by GitHub based on the token used, not by AeroFTP. Installation tokens produce bot-attributed commits with the app's logo because they represent the app itself, not a user.
+The final presentation on GitHub is a combination of the token type, the explicit author/committer fields sent by AeroFTP, and GitHub's own UI rendering. Reviewers should treat the table above as the current implementation behavior, not a promise about how every GitHub surface will render avatars.
 
 ---
 
@@ -205,16 +217,72 @@ The commit identity is determined by GitHub based on the token used, not by Aero
 
 AeroFTP's official GitHub App is available at [github.com/apps/aeroftp](https://github.com/apps/aeroftp).
 
-When you click "Authorize with GitHub" in AeroFTP, this is the app that handles the authorization. It requests only the permissions needed for file operations:
+When you click "Authorize with GitHub" in AeroFTP, this app's client ID is used for Device Flow authorization. The integration currently relies on the following repository permissions:
 
 - **Contents**: Read and write (browse, upload, delete)
 - **Metadata**: Read-only (repository info)
-- **Pull requests**: Read and write (create PRs from branch workflow)
-- **Issues**: Read and write (future)
-- **Actions**: Read-only (future)
-- **Pages**: Read and write (future)
+- **Pull requests**: Read and write (branch-workflow PR creation)
+- **Actions**: Read-only (workflow run listing)
+- **Pages**: Read and write (Pages status, rebuild, configuration)
 
 The app does not access your email, profile, or any data outside the repositories you grant access to.
+
+---
+
+## Security and Permission Summary
+
+This section is written for GitHub reviewers evaluating the AeroFTP integration for the Developer Program.
+
+### What the Integration Does
+
+- Lists repository files and directories
+- reads and downloads repository content
+- uploads or updates files by creating normal Git commits through the Contents API
+- deletes files by creating normal Git commits through the Contents API
+- renames or moves files through API-backed content operations
+- creates folders by writing `.gitkeep` placeholders
+- lists releases and manages release assets
+- lists GitHub Actions workflow runs
+- reads GitHub Pages status and build history
+- triggers Pages rebuilds and updates Pages source configuration
+- creates pull requests when protected-branch workflow mode is active
+
+### What the Integration Does Not Do
+
+- Does not request email or profile scopes
+- does not read user data outside repositories explicitly granted by the user
+- does not clone repositories or access local Git credentials
+- does not require or expose raw GitHub tokens to AI agents using AeroFTP profiles
+- does not send GitHub credentials to frontend JavaScript after authentication is complete
+
+### Credential Handling
+
+- Tokens and imported PEM material are stored in the local AeroFTP vault
+- the local vault is encrypted at rest with AES-256-GCM
+- Device Flow tokens are held backend-side after authorization
+- stored PATs are rehydrated into backend-held state rather than returned to the renderer
+- installation tokens are minted and consumed entirely in Rust
+- CLI profile-based usage resolves credentials internally; callers receive only operation results
+
+### Requested Repository Permissions
+
+| Permission | Access | Why it is needed |
+| ---------- | ------ | ---------------- |
+| Contents | Read and write | Required for repository browsing, file upload, file update, file delete, file rename, and folder creation through commit-backed operations |
+| Metadata | Read-only | Required to resolve repository identity, repository visibility, and capability information |
+| Pull requests | Read and write | Required only for branch-workflow mode when a protected branch requires changes to be proposed through a pull request |
+| Actions | Read-only | Required to list workflow runs and display their status in the UI |
+| Pages | Read and write | Required to read Pages status, list build history, trigger rebuilds, and update Pages source settings |
+
+### Data Minimization Notes
+
+- The integration is repository-scoped
+- it accesses only the repository data necessary to perform the user-requested operation
+- it does not request unrelated personal data
+- it does not require access to email, contacts, or profile information
+- no token value is required by, or exposed to, AI assistant workflows using AeroFTP profiles
+
+For implementation references, see the source table below.
 
 ---
 
@@ -233,7 +301,7 @@ AeroFTP is open source. The GitHub provider implementation is fully auditable:
 | Error handling | [src-tauri/src/providers/github/errors.rs](../src-tauri/src/providers/github/errors.rs) |
 | CLI integration | [src-tauri/src/bin/aeroftp_cli.rs](../src-tauri/src/bin/aeroftp_cli.rs) |
 
-The implementation has been reviewed by multiple independent auditors (Claude Opus 4.6 and GPT 5.4) with all critical findings resolved.
+The implementation was cross-reviewed during the March 2026 GitHub remediation cycle, with critical findings resolved before publication of this document.
 
 ---
 
