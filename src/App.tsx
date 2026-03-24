@@ -1933,6 +1933,21 @@ const App: React.FC = () => {
   const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
     let effectiveParams = normalizeProviderConnectionParams(params);
 
+    // GitHub OAuth mode: clear stale saved password, use held token from Device Flow.
+    // On app restart (held empty), reload OAuth token from vault (saved under 'github_oauth_token').
+    if (effectiveParams.protocol === 'github' &&
+        effectiveParams.options?.githubAuthMode === 'authorize') {
+      effectiveParams = { ...effectiveParams, password: '' };
+      await invoke('github_load_oauth_token').catch(() => {});
+    }
+
+    // GitHub PAT mode: load PAT from vault if password is empty (reconnect scenario)
+    if (effectiveParams.protocol === 'github' &&
+        effectiveParams.options?.githubAuthMode === 'pat' &&
+        !effectiveParams.password) {
+      await invoke('github_get_pat').catch(() => {});
+    }
+
     if (effectiveParams.protocol === 'github' && effectiveParams.options?.githubAuthMode === 'app') {
       // App mode: token always comes from PEM/vault, never from saved password
       effectiveParams = { ...effectiveParams, password: '', options: effectiveParams.options || {} };

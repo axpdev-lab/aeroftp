@@ -3178,7 +3178,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         });
                                         if (result.success) {
                                             // Store token in vault for multi-repo reuse (backend already holds it)
-                                            invoke('github_store_pat_from_held').catch(() => {});
+                                            await invoke('github_store_pat_from_held').catch((e: unknown) => console.error('Failed to store token in vault:', e));
                                             setHasVaultToken(true);
                                             // Password left empty — backend injects held token during connect
                                             onConnectionParamsChange({ ...connectionParams, password: '' });

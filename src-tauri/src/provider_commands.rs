@@ -4398,14 +4398,31 @@ pub async fn github_store_pat_from_held(
         let held = state.held_github_app_token.lock().await;
         held.clone()
     };
-    if let Some(pat) = token {
+    if let Some(token) = token {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Vault not ready".to_string())?;
-        store.store("github_pat", &pat)
-            .map_err(|e| format!("Failed to store PAT: {}", e))?;
-        log::info!("GitHub Device Flow token stored in vault as PAT");
+        store.store("github_oauth_token", &token)
+            .map_err(|e| format!("Failed to store OAuth token: {}", e))?;
+        log::info!("GitHub Device Flow token stored in vault as OAuth token");
     }
     Ok(())
+}
+
+/// Load stored GitHub OAuth token from vault into held token.
+/// Used on app restart when OAuth mode reconnects.
+#[tauri::command]
+pub async fn github_load_oauth_token(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let store = crate::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not ready".to_string())?;
+    let token = store.get("github_oauth_token")
+        .map_err(|_| "No OAuth token stored in vault".to_string())?;
+    {
+        let mut held = state.held_github_app_token.lock().await;
+        *held = Some(token);
+    }
+    Ok(serde_json::json!({"success": true}))
 }
 
 /// Get stored GitHub PAT from vault.
