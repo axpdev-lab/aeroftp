@@ -3467,7 +3467,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Breyta",
-      "previewButton": "Forskoðun"
+      "previewButton": "Forskoðun",
+      "pagesConfig": "Pages stillingar",
+      "pagesBranch": "Grein",
+      "pagesPath": "Slóð"
     },
     "filenNotes": {
       "title": "Dulkóðaðar minnispunktar",

@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Upraviť",
-      "previewButton": "Náhľad"
+      "previewButton": "Náhľad",
+      "pagesConfig": "Konfigurácia Pages",
+      "pagesBranch": "Vetva",
+      "pagesPath": "Cesta"
     },
     "filenNotes": {
       "title": "Šifrované poznámky",

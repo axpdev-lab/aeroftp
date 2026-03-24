@@ -3448,7 +3448,10 @@
       "draftBadge": "Juodraštis",
       "prereleaseBadge": "Pre-release",
       "editButton": "Redaguoti",
-      "previewButton": "Peržiūra"
+      "previewButton": "Peržiūra",
+      "pagesConfig": "Pages konfigūracija",
+      "pagesBranch": "Šaka",
+      "pagesPath": "Kelias"
     },
     "filenNotes": {
       "title": "Šifruotos užrašai",

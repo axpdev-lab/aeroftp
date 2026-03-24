@@ -3438,7 +3438,10 @@
       "draftBadge": "Brouillon",
       "prereleaseBadge": "Pré-version",
       "editButton": "Modifier",
-      "previewButton": "Aperçu"
+      "previewButton": "Aperçu",
+      "pagesConfig": "Configuration Pages",
+      "pagesBranch": "Branche",
+      "pagesPath": "Chemin"
     },
     "filenNotes": {
       "title": "Notes chiffrées",

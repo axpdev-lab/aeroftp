@@ -3438,7 +3438,10 @@
       "draftBadge": "下書き",
       "prereleaseBadge": "プレリリース",
       "editButton": "編集",
-      "previewButton": "プレビュー"
+      "previewButton": "プレビュー",
+      "pagesConfig": "Pages 設定",
+      "pagesBranch": "ブランチ",
+      "pagesPath": "パス"
     },
     "filenNotes": {
       "title": "暗号化ノート",

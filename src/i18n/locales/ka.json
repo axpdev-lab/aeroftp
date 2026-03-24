@@ -3448,7 +3448,10 @@
       "draftBadge": "მონახაზი",
       "prereleaseBadge": "Pre-release",
       "editButton": "რედაქტირება",
-      "previewButton": "გადახედვა"
+      "previewButton": "გადახედვა",
+      "pagesConfig": "Pages კონფიგურაცია",
+      "pagesBranch": "შტო",
+      "pagesPath": "გზა"
     },
     "filenNotes": {
       "title": "დაშიფრული ჩანაწერები",

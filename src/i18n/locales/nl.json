@@ -3438,7 +3438,10 @@
       "draftBadge": "Concept",
       "prereleaseBadge": "Pre-release",
       "editButton": "Bewerken",
-      "previewButton": "Voorbeeld"
+      "previewButton": "Voorbeeld",
+      "pagesConfig": "Pages-configuratie",
+      "pagesBranch": "Branch",
+      "pagesPath": "Pad"
     },
     "filenNotes": {
       "title": "Versleutelde notities",

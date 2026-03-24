@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Rediger",
-      "previewButton": "Forhåndsvisning"
+      "previewButton": "Forhåndsvisning",
+      "pagesConfig": "Pages-konfiguration",
+      "pagesBranch": "Gren",
+      "pagesPath": "Sti"
     },
     "filenNotes": {
       "title": "Krypterede noter",

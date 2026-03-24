@@ -51,6 +51,11 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
   const [dnsHealth, setDnsHealth] = useState<{ healthy?: boolean; reason?: string } | null>(null);
+  const [showConfigEdit, setShowConfigEdit] = useState(false);
+  const [configBranch, setConfigBranch] = useState('');
+  const [configPath, setConfigPath] = useState('');
+  const [configCname, setConfigCname] = useState('');
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -284,6 +289,91 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                     <div className={`flex items-center gap-1.5 text-xs ${dnsHealth.healthy ? 'text-green-500' : 'text-amber-500'}`}>
                       {dnsHealth.healthy ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
                       <span>{dnsHealth.healthy ? (t('github.pagesDnsHealthy') || 'DNS configured correctly') : (dnsHealth.reason || 'DNS issue detected')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Pages Configuration — W3-02: wire github_update_pages */}
+              {site.build_type === 'legacy' && (
+                <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)' }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+                      {t('github.pagesConfig') || 'Pages Configuration'}
+                    </h3>
+                    <button
+                      onClick={() => {
+                        setConfigBranch(site.source?.branch || '');
+                        setConfigPath(site.source?.path || '/');
+                        setConfigCname(site.cname || '');
+                        setShowConfigEdit(!showConfigEdit);
+                      }}
+                      className="text-xs px-2 py-0.5 rounded transition-colors"
+                      style={{ color: 'var(--color-accent)' }}
+                    >
+                      {showConfigEdit ? (t('common.close') || 'Close') : (t('common.edit') || 'Edit')}
+                    </button>
+                  </div>
+                  {showConfigEdit && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs w-16 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                          {t('github.pagesBranch') || 'Branch'}
+                        </label>
+                        <input
+                          value={configBranch}
+                          onChange={e => setConfigBranch(e.target.value)}
+                          className="flex-1 text-xs px-2 py-1 rounded border"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs w-16 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                          {t('github.pagesPath') || 'Path'}
+                        </label>
+                        <input
+                          value={configPath}
+                          onChange={e => setConfigPath(e.target.value)}
+                          className="flex-1 text-xs px-2 py-1 rounded border"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+                          placeholder="/ or /docs"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs w-16 flex-shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                          CNAME
+                        </label>
+                        <input
+                          value={configCname}
+                          onChange={e => setConfigCname(e.target.value)}
+                          className="flex-1 text-xs px-2 py-1 rounded border"
+                          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-secondary)', color: 'var(--color-text-primary)' }}
+                          placeholder="docs.example.com"
+                        />
+                      </div>
+                      <button
+                        disabled={savingConfig}
+                        onClick={async () => {
+                          setSavingConfig(true);
+                          try {
+                            await invoke('github_update_pages', {
+                              cname: configCname || null,
+                              httpsEnforced: null,
+                              sourceBranch: configBranch || null,
+                              sourcePath: configPath || null,
+                            });
+                            await fetchData();
+                            setShowConfigEdit(false);
+                          } catch (err) {
+                            setError(String(err));
+                          } finally {
+                            setSavingConfig(false);
+                          }
+                        }}
+                        className="w-full text-xs py-1.5 rounded-lg font-medium text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                      >
+                        {savingConfig ? (t('common.saving') || 'Saving...') : (t('common.save') || 'Save')}
+                      </button>
                     </div>
                   )}
                 </div>

@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Edytuj",
-      "previewButton": "Podgląd"
+      "previewButton": "Podgląd",
+      "pagesConfig": "Konfiguracja Pages",
+      "pagesBranch": "Gałąź",
+      "pagesPath": "Ścieżka"
     },
     "filenNotes": {
       "title": "Zaszyfrowane notatki",

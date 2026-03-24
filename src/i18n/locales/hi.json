@@ -3448,7 +3448,10 @@
       "draftBadge": "ड्राफ़्ट",
       "prereleaseBadge": "Pre-release",
       "editButton": "संपादित करें",
-      "previewButton": "पूर्वावलोकन"
+      "previewButton": "पूर्वावलोकन",
+      "pagesConfig": "Pages कॉन्फ़िगरेशन",
+      "pagesBranch": "शाखा",
+      "pagesPath": "पथ"
     },
     "filenNotes": {
       "title": "एन्क्रिप्टेड नोट्स",

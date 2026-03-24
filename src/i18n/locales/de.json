@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Bearbeiten",
-      "previewButton": "Vorschau"
+      "previewButton": "Vorschau",
+      "pagesConfig": "Pages-Konfiguration",
+      "pagesBranch": "Branch",
+      "pagesPath": "Pfad"
     },
     "filenNotes": {
       "title": "Verschlüsselte Notizen",

@@ -3448,7 +3448,10 @@
       "draftBadge": "Draf",
       "prereleaseBadge": "Pre-release",
       "editButton": "Edit",
-      "previewButton": "Pratonton"
+      "previewButton": "Pratonton",
+      "pagesConfig": "Konfigurasi Pages",
+      "pagesBranch": "Cabang",
+      "pagesPath": "Laluan"
     },
     "filenNotes": {
       "title": "Nota Tersulit",

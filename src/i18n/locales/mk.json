@@ -3467,7 +3467,10 @@
       "draftBadge": "Нацрт",
       "prereleaseBadge": "Pre-release",
       "editButton": "Уреди",
-      "previewButton": "Преглед"
+      "previewButton": "Преглед",
+      "pagesConfig": "Конфигурација на Pages",
+      "pagesBranch": "Гранка",
+      "pagesPath": "Патека"
     },
     "filenNotes": {
       "title": "Шифрирани белешки",

@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Muuda",
-      "previewButton": "Eelvaade"
+      "previewButton": "Eelvaade",
+      "pagesConfig": "Pages seadistus",
+      "pagesBranch": "Haru",
+      "pagesPath": "Tee"
     },
     "filenNotes": {
       "title": "Krüpteeritud märkmed",

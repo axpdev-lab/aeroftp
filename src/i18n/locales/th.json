@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "แก้ไข",
-      "previewButton": "ดูตัวอย่าง"
+      "previewButton": "ดูตัวอย่าง",
+      "pagesConfig": "การตั้งค่า Pages",
+      "pagesBranch": "สาขา",
+      "pagesPath": "เส้นทาง"
     },
     "filenNotes": {
       "title": "บันทึกเข้ารหัส",

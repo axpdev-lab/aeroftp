@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "编辑",
-      "previewButton": "预览"
+      "previewButton": "预览",
+      "pagesConfig": "Pages 配置",
+      "pagesBranch": "分支",
+      "pagesPath": "路径"
     },
     "filenNotes": {
       "title": "加密笔记",

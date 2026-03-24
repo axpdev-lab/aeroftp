@@ -3467,7 +3467,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "I-edit",
-      "previewButton": "I-preview"
+      "previewButton": "I-preview",
+      "pagesConfig": "Pagsasaayos ng Pages",
+      "pagesBranch": "Sangay",
+      "pagesPath": "Landas"
     },
     "filenNotes": {
       "title": "Naka-encrypt na Mga Tala",

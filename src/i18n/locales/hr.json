@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Uredi",
-      "previewButton": "Pretpregled"
+      "previewButton": "Pretpregled",
+      "pagesConfig": "Konfiguracija Pages",
+      "pagesBranch": "Grana",
+      "pagesPath": "Putanja"
     },
     "filenNotes": {
       "title": "Šifrirane bilješke",

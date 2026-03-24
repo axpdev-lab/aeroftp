@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "সম্পাদনা",
-      "previewButton": "প্রিভিউ"
+      "previewButton": "প্রিভিউ",
+      "pagesConfig": "Pages কনফিগারেশন",
+      "pagesBranch": "শাখা",
+      "pagesPath": "পাথ"
     },
     "filenNotes": {
       "title": "এনক্রিপ্টেড নোট",

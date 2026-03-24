@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Editar",
-      "previewButton": "Vista previa"
+      "previewButton": "Vista previa",
+      "pagesConfig": "Configuración de Pages",
+      "pagesBranch": "Rama",
+      "pagesPath": "Ruta"
     },
     "filenNotes": {
       "title": "Notas cifradas",

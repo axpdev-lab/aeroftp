@@ -3467,7 +3467,10 @@
       "draftBadge": "សេចក្តីព្រាង",
       "prereleaseBadge": "Pre-release",
       "editButton": "កែសម្រួល",
-      "previewButton": "មើលជាមុន"
+      "previewButton": "មើលជាមុន",
+      "pagesConfig": "ការកំណត់ Pages",
+      "pagesBranch": "សាខា",
+      "pagesPath": "ផ្លូវ"
     },
     "filenNotes": {
       "title": "កំណត់ត្រាដែលបានអ៊ិនគ្រីប",

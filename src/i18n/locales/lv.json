@@ -3448,7 +3448,10 @@
       "draftBadge": "Melnraksts",
       "prereleaseBadge": "Pre-release",
       "editButton": "Rediģēt",
-      "previewButton": "Priekšskatījums"
+      "previewButton": "Priekšskatījums",
+      "pagesConfig": "Pages konfigurācija",
+      "pagesBranch": "Zars",
+      "pagesPath": "Ceļš"
     },
     "filenNotes": {
       "title": "Šifrētas piezīmes",

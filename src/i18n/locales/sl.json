@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Uredi",
-      "previewButton": "Predogled"
+      "previewButton": "Predogled",
+      "pagesConfig": "Konfiguracija Pages",
+      "pagesBranch": "Veja",
+      "pagesPath": "Pot"
     },
     "filenNotes": {
       "title": "Šifrirane beležke",

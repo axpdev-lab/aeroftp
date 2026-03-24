@@ -3438,7 +3438,10 @@
       "draftBadge": "초안",
       "prereleaseBadge": "Pre-release",
       "editButton": "편집",
-      "previewButton": "미리보기"
+      "previewButton": "미리보기",
+      "pagesConfig": "Pages 설정",
+      "pagesBranch": "브랜치",
+      "pagesPath": "경로"
     },
     "filenNotes": {
       "title": "암호화된 노트",

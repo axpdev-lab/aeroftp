@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Редагувати",
-      "previewButton": "Попередній перегляд"
+      "previewButton": "Попередній перегляд",
+      "pagesConfig": "Конфігурація Pages",
+      "pagesBranch": "Гілка",
+      "pagesPath": "Шлях"
     },
     "filenNotes": {
       "title": "Зашифровані нотатки",

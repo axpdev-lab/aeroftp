@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Szerkesztés",
-      "previewButton": "Előnézet"
+      "previewButton": "Előnézet",
+      "pagesConfig": "Pages konfiguráció",
+      "pagesBranch": "Ág",
+      "pagesPath": "Útvonal"
     },
     "filenNotes": {
       "title": "Titkosított jegyzetek",

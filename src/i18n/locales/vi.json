@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Chỉnh sửa",
-      "previewButton": "Xem trước"
+      "previewButton": "Xem trước",
+      "pagesConfig": "Cấu hình Pages",
+      "pagesBranch": "Nhánh",
+      "pagesPath": "Đường dẫn"
     },
     "filenNotes": {
       "title": "Ghi chú mã hóa",

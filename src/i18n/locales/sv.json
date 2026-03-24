@@ -3448,7 +3448,10 @@
       "draftBadge": "Utkast",
       "prereleaseBadge": "Pre-release",
       "editButton": "Redigera",
-      "previewButton": "Förhandsgranska"
+      "previewButton": "Förhandsgranska",
+      "pagesConfig": "Pages-konfiguration",
+      "pagesBranch": "Gren",
+      "pagesPath": "Sökväg"
     },
     "filenNotes": {
       "title": "Krypterade anteckningar",

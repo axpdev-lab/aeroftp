@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Редактировать",
-      "previewButton": "Предпросмотр"
+      "previewButton": "Предпросмотр",
+      "pagesConfig": "Конфигурация Pages",
+      "pagesBranch": "Ветка",
+      "pagesPath": "Путь"
     },
     "filenNotes": {
       "title": "Зашифрованные заметки",

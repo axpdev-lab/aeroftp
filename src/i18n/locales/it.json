@@ -3439,7 +3439,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Modifica",
-      "previewButton": "Anteprima"
+      "previewButton": "Anteprima",
+      "pagesConfig": "Configurazione Pages",
+      "pagesBranch": "Branch",
+      "pagesPath": "Percorso"
     },
     "filenNotes": {
       "title": "Note crittografate",

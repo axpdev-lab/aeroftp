@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Düzenle",
-      "previewButton": "Önizleme"
+      "previewButton": "Önizleme",
+      "pagesConfig": "Pages yapılandırması",
+      "pagesBranch": "Dal",
+      "pagesPath": "Yol"
     },
     "filenNotes": {
       "title": "Şifreli Notlar",

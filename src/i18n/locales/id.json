@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Edit",
-      "previewButton": "Pratinjau"
+      "previewButton": "Pratinjau",
+      "pagesConfig": "Konfigurasi Pages",
+      "pagesBranch": "Cabang",
+      "pagesPath": "Jalur"
     },
     "filenNotes": {
       "title": "Catatan Terenkripsi",

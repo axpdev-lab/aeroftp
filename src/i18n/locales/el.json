@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Επεξεργασία",
-      "previewButton": "Προεπισκόπηση"
+      "previewButton": "Προεπισκόπηση",
+      "pagesConfig": "Ρυθμίσεις Pages",
+      "pagesBranch": "Κλάδος",
+      "pagesPath": "Διαδρομή"
     },
     "filenNotes": {
       "title": "Κρυπτογραφημένες σημειώσεις",

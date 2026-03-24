@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Hariri",
-      "previewButton": "Hakiki"
+      "previewButton": "Hakiki",
+      "pagesConfig": "Usanidi wa Pages",
+      "pagesBranch": "Tawi",
+      "pagesPath": "Njia"
     },
     "filenNotes": {
       "title": "Maelezo Yaliyofichwa",

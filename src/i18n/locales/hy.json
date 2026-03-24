@@ -3448,7 +3448,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Խմբագրել",
-      "previewButton": "Նախադիտում"
+      "previewButton": "Նախադիտում",
+      "pagesConfig": "Տողանքներ",
+      "pagesBranch": "Ճիւղ",
+      "pagesPath": "Ուղի"
     },
     "filenNotes": {
       "title": "Գաղտնագրված նոտաներ",

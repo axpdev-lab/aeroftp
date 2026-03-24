@@ -3448,7 +3448,10 @@
       "draftBadge": "Luonnos",
       "prereleaseBadge": "Pre-release",
       "editButton": "Muokkaa",
-      "previewButton": "Esikatselu"
+      "previewButton": "Esikatselu",
+      "pagesConfig": "Pages-asetukset",
+      "pagesBranch": "Haara",
+      "pagesPath": "Polku"
     },
     "filenNotes": {
       "title": "Salatut muistiinpanot",

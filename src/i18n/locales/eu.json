@@ -3467,7 +3467,10 @@
       "draftBadge": "Zirriborroa",
       "prereleaseBadge": "Pre-release",
       "editButton": "Editatu",
-      "previewButton": "Aurrebista"
+      "previewButton": "Aurrebista",
+      "pagesConfig": "Pages konfigurazioa",
+      "pagesBranch": "Adarra",
+      "pagesPath": "Bidea"
     },
     "filenNotes": {
       "title": "Enkriptatutako oharrak",

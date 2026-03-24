@@ -3438,7 +3438,10 @@
       "draftBadge": "Draft",
       "prereleaseBadge": "Pre-release",
       "editButton": "Editare",
-      "previewButton": "Previzualizare"
+      "previewButton": "Previzualizare",
+      "pagesConfig": "Configurare Pages",
+      "pagesBranch": "Ramură",
+      "pagesPath": "Cale"
     },
     "filenNotes": {
       "title": "Note criptate",
