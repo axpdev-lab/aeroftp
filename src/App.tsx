@@ -6576,6 +6576,7 @@ const App: React.FC = () => {
         <GitHubReleaseBrowser
           isOpen={showGitHubReleaseBrowser}
           onClose={() => setShowGitHubReleaseBrowser(false)}
+          onError={(title, msg) => notify.error(title, msg)}
         />
         <FilenNotesPanel
           isOpen={showFilenNotes}
@@ -8356,6 +8357,7 @@ const App: React.FC = () => {
                 writeMode={gitHubRepoInfo.writeModeKind}
                 workingBranch={gitHubRepoInfo.workingBranch || undefined}
                 isPrivate={gitHubRepoInfo.repoPrivate}
+                onError={(title, msg) => notify.error(title, msg)}
               />
             ) : undefined}
             connectionSecurity={isConnected ? (() => {

@@ -20,6 +20,7 @@ import { formatBytes } from '../utils/formatters';
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
   onClose: () => void;
+  onError?: (title: string, message: string) => void;
 }
 
 interface Release {
@@ -58,6 +59,7 @@ const formatDate = (dateStr: string | null): string => {
 export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   isOpen,
   onClose,
+  onError,
 }) => {
   const t = useTranslation();
   const [view, setView] = useState<View>('list');
@@ -289,7 +291,8 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in bg-white dark:bg-gray-800"
+        className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in"
+        style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -395,6 +398,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             onToggleExpand={handleToggleExpand}
             onDeleteRelease={handleDeleteRelease}
             onDeleteAsset={handleDeleteAsset}
+            onError={onError}
           />
         )}
       </div>
@@ -402,7 +406,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       {/* Confirmation dialog */}
       {confirmDelete && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-5 mx-6 max-w-sm animate-scale-in">
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-5 mx-6 max-w-sm animate-scale-in" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
             <p className="text-sm text-gray-700 dark:text-gray-200 mb-4">
               {confirmDelete.type === 'release'
                 ? (t('github.confirmDeleteRelease') || `Delete release "${confirmDelete.tag}"? This cannot be undone.`)
@@ -443,11 +447,12 @@ interface ReleaseListProps {
   onToggleExpand: (tag: string) => void;
   onDeleteRelease: (tag: string) => void;
   onDeleteAsset: (tag: string, assetName: string) => void;
+  onError?: (title: string, message: string) => void;
 }
 
 const ReleaseList: React.FC<ReleaseListProps> = ({
   releases, loading, expandedTag, assets, assetsLoading,
-  onToggleExpand, onDeleteRelease, onDeleteAsset,
+  onToggleExpand, onDeleteRelease, onDeleteAsset, onError,
 }) => {
   const t = useTranslation();
 
@@ -647,7 +652,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                         });
                                       }
                                     } catch (err) {
-                                      alert(`Download failed: ${err}`);
+                                      if (onError) onError('Download', String(err));
                                     }
                                   }}
                                   className="p-1 rounded transition-colors hover:opacity-80"

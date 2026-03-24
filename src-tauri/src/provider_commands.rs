@@ -1013,16 +1013,12 @@ pub async fn provider_delete_dir(
     info!("Deleting directory: {} (recursive: {})", path, recursive);
 
     if provider.provider_type() == ProviderType::GitHub {
+        // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
         let github = provider.as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        if recursive {
-            github.delete_directory_recursive(&path, commit_message.as_deref()).await
-                .map_err(|e| format!("Failed to delete directory: {}", e))?;
-        } else {
-            github.delete_directory_recursive(&path, commit_message.as_deref()).await
-                .map_err(|e| format!("Failed to delete directory: {}", e))?;
-        }
+        github.delete_directory_recursive(&path, commit_message.as_deref()).await
+            .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else if recursive {
         provider.rmdir_recursive(&path).await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;

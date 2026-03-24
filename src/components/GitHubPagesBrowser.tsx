@@ -130,7 +130,8 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl overflow-hidden rounded-xl bg-white dark:bg-gray-800 shadow-2xl animate-scale-in"
+        className="relative w-full max-w-2xl overflow-hidden rounded-xl shadow-2xl animate-scale-in"
+        style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

@@ -46,8 +46,6 @@ pub enum GitHubError {
 
     // ── Releases ────────────────────────────────────────────────────
     /// Attempted to upload an asset that already exists on the release.
-    DuplicateReleaseAsset(String),
-    /// Duplicate asset — alias used by releases_mode.
     DuplicateAsset(String),
     /// Release tag not found.
     ReleaseNotFound(String),
@@ -145,7 +143,7 @@ impl fmt::Display for GitHubError {
             ),
 
             // Releases
-            Self::DuplicateReleaseAsset(name) | Self::DuplicateAsset(name) => write!(
+            Self::DuplicateAsset(name) => write!(
                 f,
                 "Release asset '{}' already exists. Delete it first or use a different name.",
                 name
@@ -224,7 +222,7 @@ impl From<GitHubError> for ProviderError {
             GitHubError::StaleObject { .. } => ProviderError::TransferFailed(e.to_string()),
 
             // Duplicate
-            GitHubError::DuplicateReleaseAsset(_) | GitHubError::DuplicateAsset(_) => {
+            GitHubError::DuplicateAsset(_) => {
                 ProviderError::AlreadyExists(e.to_string())
             }
 
@@ -335,7 +333,7 @@ pub fn classify_api_error(
         }
         409 => {
             if error_code == "already_exists" {
-                GitHubError::DuplicateReleaseAsset(
+                GitHubError::DuplicateAsset(
                     path_hint.unwrap_or("unknown").to_string(),
                 )
             } else {

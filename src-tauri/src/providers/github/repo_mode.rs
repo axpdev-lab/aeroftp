@@ -34,7 +34,7 @@ const WARN_GITHUB_FILE_SIZE: u64 = 50 * 1024 * 1024;
 /// Contents API truncation threshold — switch to Trees API above this
 const CONTENTS_API_MAX_ENTRIES: usize = 1000;
 
-const API_BASE: &str = "https://api.github.com";
+use super::client::API_BASE;
 
 // ─── Git Trees API response types ───
 

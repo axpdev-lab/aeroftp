@@ -19,14 +19,12 @@ use super::rate_limit::RateLimitState;
 use crate::providers::sanitize_api_error;
 
 /// Base URL for the GitHub REST API.
-const API_BASE: &str = "https://api.github.com";
+pub(super) const API_BASE: &str = "https://api.github.com";
 
 /// Base URL for the GitHub GraphQL API.
-#[allow(dead_code)]
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 
 /// Upload host for release assets.
-#[allow(dead_code)]
 const UPLOADS_BASE: &str = "https://uploads.github.com";
 
 /// User-Agent sent with every request (auto-derived from Cargo.toml version).
@@ -40,14 +38,12 @@ const MAX_PAGINATION_PAGES: usize = 100;
 
 /// HTTP client wrapper that handles auth, versioning, and rate-limit bookkeeping.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct GitHubHttpClient {
     pub(super) client: Client,
     pub(super) token: SecretString,
     rate_limit: RateLimitState,
 }
 
-#[allow(dead_code)]
 impl GitHubHttpClient {
     /// Create a new client with the given personal access token.
     /// QA-GH-004: Returns Result instead of panicking on TLS init failure.

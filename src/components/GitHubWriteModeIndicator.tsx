@@ -18,12 +18,14 @@ interface GitHubWriteModeIndicatorProps {
   writeMode: 'direct' | 'branch' | 'readonly';
   workingBranch?: string;
   isPrivate?: boolean;
+  onError?: (title: string, message: string) => void;
 }
 
 export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> = ({
   writeMode,
   workingBranch,
   isPrivate,
+  onError,
 }) => {
   const t = useTranslation();
   const [showPrPrompt, setShowPrPrompt] = useState(false);
@@ -47,7 +49,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
       }
     } catch (err) {
       console.error('Failed to create PR:', err);
-      alert(`Failed to create PR: ${err}`);
+      if (onError) onError('Pull Request', String(err));
     } finally {
       setCreating(false);
     }
