@@ -6,19 +6,21 @@ import * as React from 'react';
 interface GitHubActionsIconProps {
     size?: number;
     className?: string;
+    style?: React.CSSProperties;
 }
 
 /**
  * GitHub Actions icon — official octicon-play from GitHub's UI.
  * Circle with play triangle, used in workflow run displays.
  */
-export const GitHubActionsIcon: React.FC<GitHubActionsIconProps> = ({ size = 16, className = '' }) => (
+export const GitHubActionsIcon: React.FC<GitHubActionsIconProps> = ({ size = 16, className = '', style }) => (
     <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 16 16"
         width={size}
         height={size}
         fill="currentColor"
+        style={style}
         className={className}
         aria-hidden="true"
     >
