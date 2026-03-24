@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-03-24
+
+### GitHub Integration Hardening & Settings Overhaul
+
+Enterprise-grade security audit remediation (5 independent auditors: 4x Claude Opus 4.6 + GPT 5.4), GitHub provider performance upgrades, Settings panel modularization, and AeroCloud full configuration.
+
+#### Added
+
+- **GitHub Settings edit form**: 3-mode auth selector (OAuth / PAT / App .pem) with per-mode fields replaces generic Host/Port form when editing GitHub servers
+- **GitHub auth mode badges**: Colored APP (purple), PAT (amber), OAuth (blue) badges in Settings server list, matching connection screen
+- **GitHub release asset upload UI**: "Upload Asset" button in Release Browser with file dialog and auto-refresh
+- **GitHub Pages configuration editor**: Edit source branch, path, and CNAME directly from Pages Browser via `github_update_pages`
+- **GitHub Pages DNS health check**: One-click DNS health verification for custom domains
+- **GitHub Actions live status indicator**: Toolbar button changes green (idle) to amber + pulsing dot (running), polled every 60s
+- **GitHub official octicons**: Actions (octicon-play) and Releases (octicon-tag) icons replace generic Lucide icons
+- **AeroCloud dedicated Settings tab**: Full configuration panel extracted from OAuth Providers tab with all options: cloud name, remote folder, sync interval, sync on change, sync on startup, conflict strategy (5 modes), exclude patterns editor, public URL, SyncScheduler, WatcherStatus, enable/disable toggle, sync now, badge integration
+- **OAuth Providers tab**: Renamed from "Cloud Providers", GitHub card added with "No API keys needed" badge
+- **Rate limit retry with backoff**: `execute_with_retry()` for secondary rate limits (sleep + retry) and 5xx (1s delay), wired to all high-level client methods
+- **40 new i18n keys**: GitHub settings (13) + AeroCloud settings (17) + GitHub UI (10), propagated to all 47 languages
+
+#### Fixed
+
+- **GitHub App token no longer crosses IPC**: Installation token held in Rust `ProviderState`, injected only for App auth mode. Frontend never sees the raw token (SEC-GH-001)
+- **Local git command hardening**: `github_check_local_sync` and `github_push_local` now validate paths (canonicalize + is_dir + .git check), verify repo remote matches connected owner/repo with boundary detection, use async `tokio::process::Command` with `GIT_TERMINAL_PROMPT=0` (SEC-GH-002/003)
+- **XSS in release body preview**: HTML entities escaped before Markdown regex conversion (FT-GH-008)
+- **URL domain allowlist**: `resolve_url()` rejects non-GitHub domains, pagination `Link` URLs validated. `http://` rejected entirely (SEC-GH-004/005)
+- **Streaming download**: `StorageProvider::download()` streams to disk via `bytes_stream()` + `AtomicFile` instead of buffering entire file (QA-GH-002)
+- **Upload memory reduction**: `drop(data)` after base64 encode, protected-branch retry mutates body in-place instead of cloning (QA-GH-003/019)
+- **Non-panicking HTTP client**: `GitHubHttpClient::new()` returns `Result` instead of `.expect()` panic (QA-GH-004)
+- **Structured error matching**: Protected-branch fallback uses `GitHubError` enum matching instead of string `contains()` (QA-GH-009)
+- **5xx explicit classification**: `classify_api_error()` maps 500-599 to `ServerError` instead of generic catch-all (API-GH-004)
+- **User-Agent auto-versioned**: Derived from `CARGO_PKG_VERSION` at build time, no longer stale (QA-GH-013)
+- **Duplicate i18n key removed**: `github.commitFiles` appeared twice in en.json (FT-GH-006)
+- **GitHub batch upload for single files**: Threshold changed from >1 to >=1, all uploads use atomic GraphQL commit
+- **GitHub atomic batch delete**: Multi-file delete now uses `github_batch_delete` (was sequential)
+- **Pre-push check on every upload**: Removed once-per-session guard, checks for unpushed commits before every upload
+
+#### Changed
+
+- **Settings panel modularization**: AeroCloud extracted to `SettingsAeroCloudTab` component in `src/components/settings/`
+- **4-theme CSS migration**: 5 GitHub modal containers + 2 inner elements migrated from Tailwind `bg-white dark:bg-gray-800` to `var(--color-bg-secondary)` for Tokyo Night and Cyber support
+- **Dead code cleanup**: Identical if/else branch removed, `DuplicateReleaseAsset` consolidated into `DuplicateAsset`, `API_BASE` single source, blanket `#[allow(dead_code)]` removed from active code
+- **alert() replaced with toast**: `GitHubWriteModeIndicator` and `GitHubReleaseBrowser` use `onError` prop routed to `notify.error()`
+- **PEM byte size removed from logs**: Reduced secret-adjacent logging
+
 ## [3.1.0] - 2026-03-23
 
 ### Co-Author Address Book & Static CRT
