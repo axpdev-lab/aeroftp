@@ -85,19 +85,19 @@ Every operation is available from the command line:
 
 ```bash
 # List repository contents
-aeroftp ls --profile "My GitHub Repo" /src/ -l
+aeroftp-cli ls --profile "My GitHub Repo" /src/ -l
 
 # Upload a file (creates a commit)
-aeroftp put --profile "My GitHub Repo" ./fix.py /src/fix.py
+aeroftp-cli put --profile "My GitHub Repo" ./fix.py /src/fix.py
 
 # Download a file
-aeroftp get --profile "My GitHub Repo" /README.md ./
+aeroftp-cli get --profile "My GitHub Repo" /README.md ./
 
 # Delete a file (creates a commit)
-aeroftp rm --profile "My GitHub Repo" /old-file.txt
+aeroftp-cli rm --profile "My GitHub Repo" /old-file.txt
 
 # Directory tree
-aeroftp tree --profile "My GitHub Repo" /src/ -d 3
+aeroftp-cli tree --profile "My GitHub Repo" /src/ -d 3
 ```
 
 ---
@@ -185,7 +185,7 @@ When an AI coding agent uses `--profile "GitHub"` from the CLI, it never sees th
 
 ```bash
 # AI agent commits code — zero credentials exposed
-aeroftp put --profile "GitHub/myproject" ./fix.py /src/fix.py
+aeroftp-cli put --profile "GitHub/myproject" ./fix.py /src/fix.py
 ```
 
 Read more: [Credential Isolation for AI Agents](CREDENTIAL-ISOLATION.md)
