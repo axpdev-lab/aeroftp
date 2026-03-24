@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.1" date="2026-03-24">
+      <description>
+        <p>GitHub integration hardening: 5-auditor security audit remediation, streaming downloads, rate limit retry, Settings 3-mode auth editor, AeroCloud dedicated tab with full configuration, official GitHub octicons, live Actions status indicator. All 3 GitHub auth modes (OAuth, PAT, App) verified with separate vault storage.</p>
+      </description>
+    </release>
     <release version="3.1.0" date="2026-03-23">
       <description>
         <p>Co-Author address book for GitHub commits with persistent contact list and one-click toggle. Windows static CRT linking eliminates vcruntime140.dll dependency for clean installs and winget validation.</p>
