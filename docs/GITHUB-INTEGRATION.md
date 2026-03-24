@@ -10,6 +10,36 @@ AeroFTP treats GitHub repositories as remote filesystems. Every repository write
 
 This is not a Git client. AeroFTP does not clone repositories, manage staging areas, or handle merge conflicts. It is a file manager that happens to speak the GitHub API, making repository content accessible through the same workflow you already use for every other server.
 
+The desktop application is the primary GitHub integration surface. Separately, the official AeroFTP website also uses GitHub-backed flows for public release downloads and OAuth-based issue submission. Those website flows are documented below as separate surfaces so reviewers can distinguish them from the desktop repository-access integration.
+
+---
+
+## Official Website Surfaces
+
+In addition to the desktop application, AeroFTP uses GitHub on the official website in two limited ways.
+
+### 1. Download Page
+
+Page: <https://www.aeroftp.app/page/download>
+
+- Exposes public release assets published on GitHub Releases
+- Links users to official release binaries hosted on GitHub
+- Surfaces release metadata such as version, date, asset count, and download links
+- Uses GitHub as the canonical release distribution source for desktop builds
+
+This website flow is read-only from the user's perspective and does not grant the site write access to the user's repositories.
+
+### 2. Report Issue Page
+
+Page: <https://www.aeroftp.app/page/report-issue>
+
+- Lets a user sign in with GitHub to report bugs, request features, or ask questions
+- Submits issues directly to the AeroFTP GitHub repository
+- Uses a website OAuth flow that is separate from the desktop application's repository-access integration
+- Public page text states that it requests permission to create issues and read the user's profile
+
+This website flow should be considered a separate GitHub surface from the desktop app's repository browsing and commit workflow.
+
 ---
 
 ## What You Can Do
@@ -233,6 +263,8 @@ The app does not access your email, profile, or any data outside the repositorie
 
 This section is written for GitHub reviewers evaluating the AeroFTP integration for the Developer Program.
 
+Unless explicitly stated otherwise, the points below describe the desktop application's repository-access integration. The official website download page and issue-reporting page are separate GitHub-backed surfaces with narrower scope.
+
 ### What the Integration Does
 
 - Lists repository files and directories
@@ -254,6 +286,8 @@ This section is written for GitHub reviewers evaluating the AeroFTP integration 
 - does not clone repositories or access local Git credentials
 - does not require or expose raw GitHub tokens to AI agents using AeroFTP profiles
 - does not send GitHub credentials to frontend JavaScript after authentication is complete
+
+For clarity: the official website's issue-reporting page is a separate OAuth flow and is not the same permission surface as the desktop repository integration described above.
 
 ### Credential Handling
 
@@ -281,6 +315,8 @@ This section is written for GitHub reviewers evaluating the AeroFTP integration 
 - it does not request unrelated personal data
 - it does not require access to email, contacts, or profile information
 - no token value is required by, or exposed to, AI assistant workflows using AeroFTP profiles
+
+The official website download page is limited to public release distribution, and the official website issue-reporting page is limited to user-initiated issue submission.
 
 For implementation references, see the source table below.
 
