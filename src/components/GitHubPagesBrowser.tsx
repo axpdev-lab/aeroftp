@@ -50,6 +50,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
+  const [dnsHealth, setDnsHealth] = useState<{ healthy?: boolean; reason?: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -145,7 +146,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
               onClick={fetchData}
               disabled={loading}
               className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-              title="Refresh"
+              title={t('github.pagesRefresh') || 'Refresh'}
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -234,7 +235,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                   )}
                   {site.build_type && (
                     <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700">
-                      {site.build_type === 'workflow' ? 'GitHub Actions' : 'Legacy'}
+                      {site.build_type === 'workflow' ? (t('github.buildTypeActions') || 'GitHub Actions') : (t('github.buildTypeLegacy') || 'Legacy')}
                     </span>
                   )}
                   {site.https_enforced && (
@@ -257,6 +258,37 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                 )}
               </div>
 
+              {/* DNS Health & Config — W3-02 */}
+              {site.cname && (
+                <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)' }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+                      {t('github.pagesDnsHealth') || 'DNS Health'}
+                    </h3>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await invoke<{ healthy?: boolean; reason?: string }>('github_pages_health');
+                          setDnsHealth(result);
+                        } catch (err) {
+                          setDnsHealth({ healthy: false, reason: String(err) });
+                        }
+                      }}
+                      className="text-xs px-2 py-0.5 rounded transition-colors"
+                      style={{ color: 'var(--color-accent)' }}
+                    >
+                      {t('common.check') || 'Check'}
+                    </button>
+                  </div>
+                  {dnsHealth && (
+                    <div className={`flex items-center gap-1.5 text-xs ${dnsHealth.healthy ? 'text-green-500' : 'text-amber-500'}`}>
+                      {dnsHealth.healthy ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                      <span>{dnsHealth.healthy ? (t('github.pagesDnsHealthy') || 'DNS configured correctly') : (dnsHealth.reason || 'DNS issue detected')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Build History */}
               <div>
                 <h3 className="text-xs font-medium mb-2 uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -266,7 +298,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                 {loading ? (
                   <div className="flex items-center justify-center py-4 gap-2">
                     <Loader2 size={14} className="animate-spin text-gray-400" />
-                    <span className="text-xs text-gray-400 dark:text-gray-500">Loading deployments...</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{t('github.pagesLoadingDeployments') || 'Loading deployments...'}</span>
                   </div>
                 ) : builds.length === 0 ? (
                   <p className="text-xs py-4 text-center text-gray-400 dark:text-gray-500">

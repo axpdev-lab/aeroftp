@@ -162,7 +162,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
               onClick={fetchRuns}
               disabled={loading}
               className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
-              title="Refresh"
+              title={t('github.actionsRefresh') || 'Refresh'}
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -187,11 +187,11 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
           {loading && runs.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-gray-500 dark:text-gray-400">
               <Loader2 size={20} className="animate-spin mr-2" />
-              Loading workflow runs...
+              {t('github.actionsLoadingRuns') || 'Loading workflow runs...'}
             </div>
           ) : runs.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              No workflow runs found.
+              {t('github.actionsNoRuns') || 'No workflow runs found.'}
             </div>
           ) : (
             <div className="space-y-0.5">
@@ -253,7 +253,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
                           onClick={() => runAction('github_cancel_workflow', run.id)}
                           disabled={isActioning}
                           className="p-1 rounded hover:bg-red-500/20 text-red-400"
-                          title="Cancel"
+                          title={t('github.cancelRun') || 'Cancel'}
                         >
                           {isActioning ? <Loader2 size={14} className="animate-spin" /> : <StopCircle size={14} />}
                         </button>
@@ -263,7 +263,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
                           onClick={() => runAction('github_rerun_failed_jobs', run.id)}
                           disabled={isActioning}
                           className="p-1 rounded hover:bg-amber-500/20 text-amber-400"
-                          title="Re-run failed jobs"
+                          title={t('github.rerunFailedJobs') || 'Re-run failed jobs'}
                         >
                           {isActioning ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                         </button>
@@ -273,7 +273,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
                           onClick={() => runAction('github_rerun_workflow', run.id)}
                           disabled={isActioning}
                           className="p-1 rounded hover:bg-green-500/20 text-green-400"
-                          title="Re-run all jobs"
+                          title={t('github.rerunAllJobs') || 'Re-run all jobs'}
                         >
                           {isActioning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                         </button>
@@ -281,7 +281,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
                       <button
                         onClick={() => run.html_url && shellOpen(run.html_url)}
                         className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-gray-500 dark:text-gray-400"
-                        title="View on GitHub"
+                        title={t('github.viewOnGithub') || 'View on GitHub'}
                       >
                         <ExternalLink size={14} />
                       </button>

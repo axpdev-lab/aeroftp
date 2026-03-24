@@ -9,11 +9,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Package, X, Plus, ArrowLeft, Trash2, ChevronDown, ChevronRight,
+  Package, X, Plus, ArrowLeft, Trash2, ChevronDown, ChevronRight, Upload,
   FileDown, Download, Loader2, Tag, Calendar, FileBox, RefreshCw, FileText,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 
@@ -216,6 +216,28 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
     setConfirmDelete({ type: 'asset', tag, assetName });
   }, []);
 
+  const handleUploadAsset = useCallback(async (tag: string) => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        title: t('github.uploadAsset') || 'Upload Asset',
+      });
+      if (!selected) return;
+      const filePath = typeof selected === 'string' ? selected : (selected as { path: string }).path;
+      const fileName = filePath.split(/[/\\]/).pop() || filePath;
+      await invoke('github_upload_release_asset', {
+        tag,
+        localPath: filePath,
+        assetName: fileName,
+      });
+      // Refresh assets for this tag
+      const tagAssets = await invoke<Asset[]>('github_list_release_assets', { tag });
+      setAssets(prev => ({ ...prev, [tag]: tagAssets }));
+    } catch (err) {
+      if (onError) onError('Upload Asset', String(err));
+    }
+  }, [onError, t]);
+
   const executeDelete = useCallback(async () => {
     if (!confirmDelete) return;
     const { type, tag, assetName } = confirmDelete;
@@ -398,6 +420,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             onToggleExpand={handleToggleExpand}
             onDeleteRelease={handleDeleteRelease}
             onDeleteAsset={handleDeleteAsset}
+            onUploadAsset={handleUploadAsset}
             onError={onError}
           />
         )}
@@ -447,12 +470,13 @@ interface ReleaseListProps {
   onToggleExpand: (tag: string) => void;
   onDeleteRelease: (tag: string) => void;
   onDeleteAsset: (tag: string, assetName: string) => void;
+  onUploadAsset: (tag: string) => void;
   onError?: (title: string, message: string) => void;
 }
 
 const ReleaseList: React.FC<ReleaseListProps> = ({
   releases, loading, expandedTag, assets, assetsLoading,
-  onToggleExpand, onDeleteRelease, onDeleteAsset, onError,
+  onToggleExpand, onDeleteRelease, onDeleteAsset, onUploadAsset, onError,
 }) => {
   const t = useTranslation();
 
@@ -515,12 +539,12 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                   </span>
                   {release.draft && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-yellow-500 bg-yellow-500/10">
-                      Draft
+                      {t('github.draftBadge') || 'Draft'}
                     </span>
                   )}
                   {release.prerelease && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-orange-500 bg-orange-500/10">
-                      Pre-release
+                      {t('github.prereleaseBadge') || 'Pre-release'}
                     </span>
                   )}
                 </div>
@@ -682,6 +706,19 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                     </table>
                   </div>
                 )}
+                {/* Upload Asset button */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onUploadAsset(release.tag); }}
+                  className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors hover:opacity-80"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-accent)',
+                    backgroundColor: 'var(--color-bg-primary)',
+                  }}
+                >
+                  <Upload size={12} />
+                  {t('github.uploadAsset') || 'Upload Asset'}
+                </button>
               </div>
             )}
           </div>
@@ -793,7 +830,7 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
               className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors hover:opacity-80"
               style={{ color: previewBody ? 'var(--color-accent)' : 'var(--color-text-secondary)' }}
             >
-              {previewBody ? 'Edit' : 'Preview'}
+              {previewBody ? (t('github.editButton') || 'Edit') : (t('github.previewButton') || 'Preview')}
             </button>
           )}
         </div>
