@@ -1317,7 +1317,7 @@ impl StorageProvider for GitHubProvider {
         };
 
         let url = self.contents_mutation_url(&resolved);
-        let body = serde_json::to_value(&update)
+        let mut body = serde_json::to_value(&update)
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let result = self
@@ -1349,13 +1349,12 @@ impl StorageProvider for GitHubProvider {
                         )))?;
                     self.write_mode = GitHubWriteMode::BranchWorkflow { branch: workflow_branch };
 
-                    // QA-GH-019: Retry without cloning the large base64 content —
-                    // reuse the already-serialized body with updated branch.
-                    let mut retry_body = body.clone();
-                    if let Some(obj) = retry_body.as_object_mut() {
+                    // QA-GH-019: Mutate the existing body in-place — no clone of the
+                    // large base64 content. `body` is already a serde_json::Value on the stack.
+                    if let Some(obj) = body.as_object_mut() {
                         obj.insert("branch".to_string(), serde_json::json!(self.content_branch()));
                     }
-                    self.client.put_json(&url, &retry_body).await.map_err(ProviderError::from)?
+                    self.client.put_json(&url, &body).await.map_err(ProviderError::from)?
                 } else {
                     return Err(ProviderError::from(result.unwrap_err()));
                 }

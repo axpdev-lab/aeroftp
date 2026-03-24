@@ -199,7 +199,7 @@ impl GitHubHttpClient {
     ) -> Result<T, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::GET, &full_url);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<T>().await.map_err(|e| GitHubError::ParseError(
             format!("JSON parse error: {}", e),
         ))
@@ -226,7 +226,7 @@ impl GitHubHttpClient {
             }
 
             let builder = self.request(Method::GET, &current_url);
-            let resp = self.execute(builder, None).await?;
+            let resp = self.execute_with_retry(builder, None).await?;
             let next_link = parse_next_link(
                 resp.headers()
                     .get(reqwest::header::LINK)
@@ -252,7 +252,7 @@ impl GitHubHttpClient {
     ) -> Result<serde_json::Value, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PUT, &full_url).json(body);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
@@ -266,7 +266,7 @@ impl GitHubHttpClient {
     ) -> Result<T, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url).json(body);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<T>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
@@ -280,7 +280,7 @@ impl GitHubHttpClient {
     ) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url);
-        self.execute(builder, None).await?;
+        self.execute_with_retry(builder, None).await?;
         Ok(())
     }
 
@@ -292,7 +292,7 @@ impl GitHubHttpClient {
     ) -> Result<serde_json::Value, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PATCH, &full_url).json(body);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
@@ -306,7 +306,7 @@ impl GitHubHttpClient {
     ) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url).json(body);
-        self.execute(builder, None).await?;
+        self.execute_with_retry(builder, None).await?;
         Ok(())
     }
 
@@ -317,7 +317,7 @@ impl GitHubHttpClient {
     ) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url);
-        self.execute(builder, None).await?;
+        self.execute_with_retry(builder, None).await?;
         Ok(())
     }
 
@@ -332,7 +332,7 @@ impl GitHubHttpClient {
             "variables": variables,
         });
         let builder = self.request(Method::POST, GRAPHQL_URL).json(&body);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         let json: serde_json::Value =
             resp.json().await.map_err(|e| GitHubError::ParseError(
                 format!("GraphQL parse error: {}", e),
@@ -364,7 +364,7 @@ impl GitHubHttpClient {
         body: &serde_json::Value,
     ) -> Result<serde_json::Value, GitHubError> {
         let builder = self.request(Method::POST, GRAPHQL_URL).json(body);
-        let resp = self.execute(builder, None).await?;
+        let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
             .map_err(|e| GitHubError::ParseError(format!("GraphQL parse error: {}", e)))
@@ -388,7 +388,7 @@ impl GitHubHttpClient {
             .header("Accept", "application/octet-stream")
             .header("User-Agent", USER_AGENT);
 
-        self.execute(builder, None).await
+        self.execute_with_retry(builder, None).await
     }
 
     /// Download raw bytes (convenience wrapper over `get_raw`).
