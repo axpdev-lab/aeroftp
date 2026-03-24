@@ -487,8 +487,16 @@ const ALLOWED_URL_PREFIXES: &[&str] = &[
 ];
 
 /// Check if a URL matches the GitHub domain allowlist.
+/// Ensures the prefix is followed by `/` or `?` or end-of-string
+/// to prevent subdomain spoofing (e.g., api.github.com.evil.com).
 fn is_allowed_github_url(url: &str) -> bool {
-    ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix))
+    ALLOWED_URL_PREFIXES.iter().any(|prefix| {
+        if !url.starts_with(prefix) {
+            return false;
+        }
+        let rest = &url[prefix.len()..];
+        rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')
+    })
 }
 
 fn parse_next_link(link_header: Option<&str>) -> Option<String> {
@@ -518,7 +526,7 @@ fn parse_next_link(link_header: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_next_link;
+    use super::{is_allowed_github_url, parse_next_link};
 
     #[test]
     fn test_parse_next_link_extracts_next_url() {
@@ -538,5 +546,37 @@ mod tests {
         let header = "<https://api.github.com/repositories/1/branches?per_page=100&page=4>; rel=\"last\"";
         assert_eq!(parse_next_link(Some(header)), None);
         assert_eq!(parse_next_link(None), None);
+    }
+
+    // SEC-GH-014: Pagination URL must be on allowlisted GitHub domain
+    #[test]
+    fn test_parse_next_link_rejects_non_github_url() {
+        let header = "<https://evil.example.com/steal?token=xxx>; rel=\"next\"";
+        assert_eq!(parse_next_link(Some(header)), None);
+    }
+
+    #[test]
+    fn test_parse_next_link_rejects_http_url() {
+        let header = "<http://api.github.com/repos/o/r?page=2>; rel=\"next\"";
+        assert_eq!(parse_next_link(Some(header)), None);
+    }
+
+    // SEC-GH-004/005: URL allowlist validation
+    #[test]
+    fn test_is_allowed_github_url_accepts_valid() {
+        assert!(is_allowed_github_url("https://api.github.com/repos/o/r"));
+        assert!(is_allowed_github_url("https://uploads.github.com/repos/o/r/releases/1/assets"));
+        assert!(is_allowed_github_url("https://raw.githubusercontent.com/o/r/main/file"));
+        assert!(is_allowed_github_url("https://codeload.github.com/o/r/tar.gz/v1"));
+        assert!(is_allowed_github_url("https://github.com/login/device/code"));
+    }
+
+    #[test]
+    fn test_is_allowed_github_url_rejects_invalid() {
+        assert!(!is_allowed_github_url("https://evil.com/api.github.com"));
+        assert!(!is_allowed_github_url("http://api.github.com/repos"));
+        assert!(!is_allowed_github_url("https://api.github.com.evil.com/"));
+        assert!(!is_allowed_github_url("ftp://api.github.com/"));
+        assert!(!is_allowed_github_url(""));
     }
 }

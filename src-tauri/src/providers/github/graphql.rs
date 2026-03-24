@@ -205,7 +205,7 @@ fn classify_graphql_error(err: &GraphQLError) -> GitHubError {
             expected_sha: String::new(),
         },
         "UNPROCESSABLE" => classify_unprocessable(msg),
-        "FORBIDDEN" => GitHubError::PermissionDenied(msg.clone()),
+        "FORBIDDEN" | "INSUFFICIENT_SCOPES" => GitHubError::PermissionDenied(msg.clone()),
         _ => GitHubError::GraphQLError {
             error_type: etype.to_string(),
             message: msg.clone(),
@@ -311,5 +311,37 @@ mod tests {
             head_ref_path("axpnet", "aeroftp", "feature/github-audit"),
             "/repos/axpnet/aeroftp/git/ref/heads/feature%2Fgithub-audit"
         );
+    }
+
+    // W4: Additional GraphQL error edge cases
+    #[test]
+    fn test_classify_insufficient_scopes() {
+        let err = GraphQLError {
+            error_type: Some("INSUFFICIENT_SCOPES".into()),
+            message: "Your token has not been granted the required scopes".into(),
+            path: None,
+        };
+        assert!(matches!(classify_graphql_error(&err), GitHubError::PermissionDenied(_)));
+    }
+
+    #[test]
+    fn test_classify_none_type_falls_back_to_generic() {
+        let err = GraphQLError {
+            error_type: None,
+            message: "Something went wrong".into(),
+            path: None,
+        };
+        assert!(matches!(classify_graphql_error(&err), GitHubError::GraphQLError { .. }));
+    }
+
+    #[test]
+    fn test_classify_stale_data_with_oid_hint() {
+        let err = GraphQLError {
+            error_type: Some("STALE_DATA".into()),
+            message: "The expected head OID did not match the actual head OID".into(),
+            path: None,
+        };
+        let result = classify_graphql_error(&err);
+        assert!(matches!(result, GitHubError::StaleObject { .. }));
     }
 }

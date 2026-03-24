@@ -5590,3 +5590,72 @@ pub async fn filen_notes_untag_note(
 fn parse_note_type_str(s: &str) -> crate::providers::filen::notes::NoteType {
     crate::providers::filen::notes::parse_note_type(s)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::remote_matches_repo;
+
+    // SEC-GH-002: Exact repo matching with boundary detection
+    #[test]
+    fn test_remote_matches_exact_ssh() {
+        assert!(remote_matches_repo(
+            "origin\tgit@github.com:axpdev-lab/aeroftp.git (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_matches_exact_https() {
+        assert!(remote_matches_repo(
+            "origin\thttps://github.com/axpdev-lab/aeroftp.git (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_matches_without_git_suffix() {
+        assert!(remote_matches_repo(
+            "origin\thttps://github.com/axpdev-lab/aeroftp (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_rejects_prefix_collision() {
+        // "aeroftp" should NOT match "aeroftp-old"
+        assert!(!remote_matches_repo(
+            "origin\tgit@github.com:axpdev-lab/aeroftp-old.git (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_rejects_different_owner() {
+        assert!(!remote_matches_repo(
+            "origin\tgit@github.com:other-org/aeroftp.git (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_case_insensitive() {
+        assert!(remote_matches_repo(
+            "origin\tgit@GitHub.com:AxpDev-Lab/AeroFTP.git (fetch)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+
+    #[test]
+    fn test_remote_rejects_empty_line() {
+        assert!(!remote_matches_repo("", "axpdev-lab", "aeroftp"));
+    }
+
+    #[test]
+    fn test_remote_matches_end_of_line_boundary() {
+        // URL ends at whitespace (fetch/push marker)
+        assert!(remote_matches_repo(
+            "origin\thttps://github.com/axpdev-lab/aeroftp (push)",
+            "axpdev-lab", "aeroftp"
+        ));
+    }
+}

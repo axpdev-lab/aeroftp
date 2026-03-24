@@ -404,4 +404,48 @@ mod tests {
         let err: ProviderError = GitHubError::DuplicateAsset("app.deb".into()).into();
         assert!(matches!(err, ProviderError::AlreadyExists(_)));
     }
+
+    // API-GH-004: 5xx explicitly classified as ServerError
+    #[test]
+    fn test_classify_500_server_error() {
+        let body = serde_json::json!({"message": "Internal Server Error"});
+        let err = classify_api_error(500, &body, None);
+        assert!(matches!(err, GitHubError::ServerError(_)));
+    }
+
+    #[test]
+    fn test_classify_502_server_error() {
+        let body = serde_json::json!({"message": "Bad Gateway"});
+        let err = classify_api_error(502, &body, None);
+        assert!(matches!(err, GitHubError::ServerError(_)));
+    }
+
+    #[test]
+    fn test_classify_503_server_error() {
+        let body = serde_json::json!({"message": "Service Unavailable"});
+        let err = classify_api_error(503, &body, None);
+        assert!(matches!(err, GitHubError::ServerError(_)));
+    }
+
+    // Verify protected branch classification for structured matching
+    #[test]
+    fn test_classify_403_protected_branch() {
+        let body = serde_json::json!({"message": "Cannot push to protected branch"});
+        let err = classify_api_error(403, &body, None);
+        assert!(matches!(err, GitHubError::ProtectedBranch(_)));
+    }
+
+    #[test]
+    fn test_classify_403_primary_rate_limit_explicit() {
+        let body = serde_json::json!({"message": "API rate limit exceeded for user"});
+        let err = classify_api_error(403, &body, None);
+        assert!(matches!(err, GitHubError::PrimaryRateLimit { .. }));
+    }
+
+    #[test]
+    fn test_classify_422_pull_request_required() {
+        let body = serde_json::json!({"message": "Required pull request reviews before merging"});
+        let err = classify_api_error(422, &body, None);
+        assert!(matches!(err, GitHubError::RequiredPullRequest));
+    }
 }

@@ -1908,4 +1908,74 @@ mod tests {
             })
         );
     }
+
+    // W4: Write mode detection tests
+    #[test]
+    fn test_write_mode_direct_allows_content_branch() {
+        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
+            "axpnet/aeroftp-test-playground", Some("main"), Some("/"),
+        )).unwrap()).unwrap();
+        provider.write_mode = GitHubWriteMode::DirectWrite;
+        assert_eq!(provider.content_branch(), "main");
+    }
+
+    #[test]
+    fn test_write_mode_branch_workflow_uses_working_branch() {
+        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
+            "axpnet/aeroftp-test-playground", Some("main"), Some("/"),
+        )).unwrap()).unwrap();
+        provider.write_mode = GitHubWriteMode::BranchWorkflow {
+            branch: "aeroftp/tester/main".to_string(),
+        };
+        assert_eq!(provider.content_branch(), "aeroftp/tester/main");
+        assert_eq!(provider.active_branch(), "main");
+    }
+
+    #[test]
+    fn test_write_mode_readonly_preserves_branch() {
+        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
+            "axpnet/aeroftp-test-playground", Some("develop"), Some("/"),
+        )).unwrap()).unwrap();
+        provider.write_mode = GitHubWriteMode::ReadOnly {
+            reason: "No push access".to_string(),
+        };
+        assert_eq!(provider.active_branch(), "develop");
+        assert_eq!(provider.content_branch(), "develop");
+    }
+
+    // W4: Branch sanitization edge cases
+    #[test]
+    fn test_workflow_branch_sanitizes_special_chars() {
+        assert_eq!(
+            GitHubProvider::workflow_branch_name("user@email", "feat/new thing!"),
+            "aeroftp/user-email/feat-new-thing"
+        );
+    }
+
+    #[test]
+    fn test_workflow_branch_preserves_consecutive_hyphens() {
+        // The sanitizer replaces invalid chars with hyphens but does not collapse
+        // consecutive valid chars. Hyphens are valid in branch names.
+        assert_eq!(
+            GitHubProvider::workflow_branch_name("user", "release---v2"),
+            "aeroftp/user/release---v2"
+        );
+    }
+
+    // W4: Path normalization edge cases
+    #[test]
+    fn test_normalise_path_traversal() {
+        assert_eq!(GitHubProvider::normalise_path("src/../README.md"), "README.md");
+        assert_eq!(GitHubProvider::normalise_path("/a/b/../c"), "a/c");
+    }
+
+    #[test]
+    fn test_normalise_path_double_slash() {
+        assert_eq!(GitHubProvider::normalise_path("//src//main.rs"), "src/main.rs");
+    }
+
+    #[test]
+    fn test_normalise_path_above_root() {
+        assert_eq!(GitHubProvider::normalise_path("../../etc/passwd"), "etc/passwd");
+    }
 }
