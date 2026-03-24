@@ -462,6 +462,7 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
     // A8-03: Whitelist update URLs to prevent XSS → arbitrary download → root RCE chain
     const ALLOWED_URL_PREFIXES: &[&str] = &[
         "https://github.com/axpdev-lab/aeroftp/releases/",
+        "https://github.com/axpnet/aeroftp/releases/",  // legacy org redirect
         "https://objects.githubusercontent.com/",
     ];
     if !ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix)) {
