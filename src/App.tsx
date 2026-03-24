@@ -363,8 +363,6 @@ const App: React.FC = () => {
     branch: string;
     resolve: (action: 'push' | 'continue' | 'cancel') => void;
   } | null>(null);
-  const gitHubSyncCheckedRef = useRef(false);
-
   // SEC-P1-06: TOFU host key dialog state
   const [hostKeyDialog, setHostKeyDialog] = useState<{
     visible: boolean;
@@ -1945,42 +1943,46 @@ const App: React.FC = () => {
           throw new Error('GitHub App mode requires App ID and Installation ID to refresh the installation token');
         }
 
-        let tokenResponse: { token: string; expires_at: string };
+        // SEC-GH-001: Installation token is held backend-side and never returned via IPC.
+        // The backend stores the token in ProviderState.held_github_app_token,
+        // and provider_connect consumes it automatically for GitHub protocol.
+        let tokenExpiresAt: string;
 
         if (pemStored) {
-          // PEM stored in vault — no file needed
-          tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_vault', {
+          const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_vault', {
             appId,
             installationId,
           });
+          tokenExpiresAt = resp.expires_at;
         } else if (pemPath) {
-          // Fallback: read PEM from disk (also stores in vault for next time)
-          tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_pem', {
+          const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_pem', {
             pemPath,
             appId,
             installationId,
           });
+          tokenExpiresAt = resp.expires_at;
         } else {
-          // Try vault as last resort — PEM may have been imported in another connection
           const hasVaultPem = await invoke<boolean>('github_has_vault_pem', { appId, installationId }).catch(() => false);
           if (hasVaultPem) {
-            tokenResponse = await invoke<{ token: string; expires_at: string }>('github_app_token_from_vault', {
+            const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_vault', {
               appId,
               installationId,
             });
+            tokenExpiresAt = resp.expires_at;
           } else {
             throw new Error('No PEM key found. Import a .pem file first or check your App ID and Installation ID.');
           }
         }
 
+        // Password left empty — backend will inject the held token during connect
         effectiveParams = {
           ...effectiveParams,
-          password: tokenResponse.token,
+          password: '',
           options: {
             ...effectiveParams.options,
             githubPemPath: pemPath,
-            githubPemStored: true, // Mark as stored after successful token refresh
-            githubTokenExpiresAt: tokenResponse.expires_at,
+            githubPemStored: true,
+            githubTokenExpiresAt: tokenExpiresAt,
           },
         };
       }
@@ -3929,8 +3931,7 @@ const App: React.FC = () => {
         const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
         let batchCommitMessage: string | undefined;
 
-        if (isGitHubRepoMode && !gitHubSyncCheckedRef.current) {
-          gitHubSyncCheckedRef.current = true;
+        if (isGitHubRepoMode) {
           try {
             const syncStatus = await invoke<{
               is_local_repo: boolean;
@@ -4003,7 +4004,7 @@ const App: React.FC = () => {
         try { await invoke('reset_cancel_flag'); } catch { }
 
         // GitHub atomic batch upload: commit all non-dir files in a single commit
-        if (isGitHubRepoMode && batchCommitMessage && queueItems.filter(i => !i.file.is_dir).length > 1) {
+        if (isGitHubRepoMode && batchCommitMessage && queueItems.filter(i => !i.file.is_dir).length >= 1) {
           const nonDirItems = queueItems.filter(i => !i.file.is_dir);
           const totalSize = nonDirItems.reduce((sum, i) => sum + (i.file.size || 0), 0);
           const MAX_BATCH_SIZE = 50 * 1024 * 1024; // 50 MB GraphQL limit
@@ -4549,32 +4550,65 @@ const App: React.FC = () => {
       cancelLevelRef.current = 0;
       try { await invoke('reset_cancel_flag'); } catch { }
 
-      for (const name of names) {
-        // Check if batch was cancelled
-        if (batchCancelledRef.current) break;
+      // GitHub atomic batch delete: single commit for all non-dir files
+      if (isGitHubRepoMode && batchCommitMessage) {
+        const resolvedFiles = names
+          .map(name => remoteFiles.find(f => f.name === name))
+          .filter(Boolean) as RemoteFile[];
+        const filePaths = resolvedFiles.filter(f => !f.is_dir).map(f => f.path);
+        const dirFiles = resolvedFiles.filter(f => f.is_dir);
 
-        const file = remoteFiles.find(f => f.name === name);
-        if (file) {
+        // Atomic delete for all non-dir files in one commit
+        if (filePaths.length > 0) {
           try {
-            if (isProvider) {
-              if (file.is_dir) {
-                await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
-              } else {
-                await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
-              }
-            } else {
-              await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
-            }
-
-            if (file.is_dir) {
-              deletedFolders.push(file.path);
-            } else {
-              deletedFiles.push(file.path);
-            }
+            await invoke('github_batch_delete', {
+              paths: filePaths,
+              message: batchCommitMessage,
+            });
+            deletedFiles.push(...filePaths);
           } catch (err) {
-            // If cancelled, don't show error notification for each remaining file
+            notify.error(t('toast.deleteFail'), String(err));
+          }
+        }
+
+        // Dirs: sequential delete (GitHub needs recursive tree traversal)
+        for (const dir of dirFiles) {
+          if (batchCancelledRef.current) break;
+          try {
+            await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage });
+            deletedFolders.push(dir.path);
+          } catch (err) {
             if (batchCancelledRef.current) break;
-            notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
+            notify.error(t('toast.deleteFail'), `${dir.name}: ${String(err)}`);
+          }
+        }
+      } else {
+        // Non-GitHub: sequential delete
+        for (const name of names) {
+          if (batchCancelledRef.current) break;
+
+          const file = remoteFiles.find(f => f.name === name);
+          if (file) {
+            try {
+              if (isProvider) {
+                if (file.is_dir) {
+                  await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
+                } else {
+                  await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
+                }
+              } else {
+                await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
+              }
+
+              if (file.is_dir) {
+                deletedFolders.push(file.path);
+              } else {
+                deletedFiles.push(file.path);
+              }
+            } catch (err) {
+              if (batchCancelledRef.current) break;
+              notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
+            }
           }
         }
       }

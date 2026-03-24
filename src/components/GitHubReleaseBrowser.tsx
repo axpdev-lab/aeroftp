@@ -797,13 +797,14 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
             className="w-full px-4 py-3 pl-6 text-sm rounded-lg border overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
             style={{ ...inputStyle, minHeight: '12rem', maxHeight: '24rem' }}
             dangerouslySetInnerHTML={{ __html: body
-              .replace(/#### /g, '<h4>')
-              .replace(/### /g, '<h3>')
-              .replace(/## /g, '<h2>')
-              .replace(/# /g, '<h1>')
+              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+              .replace(/&amp;lt;/g, '&lt;').replace(/&amp;gt;/g, '&gt;')
+              .replace(/#### (.+)/g, '<h4>$1</h4>')
+              .replace(/### (.+)/g, '<h3>$1</h3>')
+              .replace(/## (.+)/g, '<h2>$1</h2>')
+              .replace(/# (.+)/g, '<h1>$1</h1>')
               .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
               .replace(/\n- /g, '\n<li>')
-              .replace(/<li>/g, '</li><li>')
               .replace(/\n\n/g, '<br/><br/>')
               .replace(/\n/g, '<br/>')
             }}

@@ -2160,14 +2160,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                     }
                                                                     setGitHubPemLoading(true);
                                                                     // PEM read securely in backend — only path crosses IPC
+                                                                    // SEC-GH-001: Token held backend-side, never returned via IPC
                                                                     const result = await invoke('github_app_token_from_pem', {
                                                                         pemPath: selected as string,
                                                                         appId,
                                                                         installationId: installId,
-                                                                    }) as { token: string; expires_at: string };
+                                                                    }) as { success: boolean; expires_at: string };
                                                                     onConnectionParamsChange({
                                                                         ...connectionParams,
-                                                                        password: result.token,
+                                                                        password: '',
                                                                         options: {
                                                                             ...connectionParams.options,
                                                                             githubPemPath: selected as string,

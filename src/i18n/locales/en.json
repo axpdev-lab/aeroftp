@@ -3246,7 +3246,6 @@
       "renameCommit": "Rename",
       "deleteCommit": "Delete",
       "alreadyAuthorized": "Already authorized — ready to connect",
-      "commitFiles": "Commit {count} file(s)",
       "commitToBranch": "Commit to {branch}",
       "branchSelector": "Branch",
       "switchBranch": "Switch branch",

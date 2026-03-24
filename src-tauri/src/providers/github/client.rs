@@ -29,8 +29,8 @@ const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 #[allow(dead_code)]
 const UPLOADS_BASE: &str = "https://uploads.github.com";
 
-/// User-Agent sent with every request.
-const USER_AGENT: &str = "AeroFTP/2.9.9";
+/// User-Agent sent with every request (auto-derived from Cargo.toml version).
+const USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
 
 /// GitHub API version header value.
 const API_VERSION: &str = "2022-11-28";
@@ -159,7 +159,7 @@ impl GitHubHttpClient {
         &mut self,
         url: &str,
     ) -> Result<T, GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::GET, &full_url);
         let resp = self.execute(builder, None).await?;
         resp.json::<T>().await.map_err(|e| GitHubError::ParseError(
@@ -172,7 +172,7 @@ impl GitHubHttpClient {
         &mut self,
         url: &str,
     ) -> Result<Vec<T>, GitHubError> {
-        let mut next_url = Some(self.resolve_url(url));
+        let mut next_url = Some(self.resolve_url(url)?);
         let mut pages = 0usize;
         let mut all_items = Vec::new();
 
@@ -212,7 +212,7 @@ impl GitHubHttpClient {
         url: &str,
         body: &serde_json::Value,
     ) -> Result<serde_json::Value, GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PUT, &full_url).json(body);
         let resp = self.execute(builder, None).await?;
         resp.json::<serde_json::Value>()
@@ -226,7 +226,7 @@ impl GitHubHttpClient {
         url: &str,
         body: &serde_json::Value,
     ) -> Result<T, GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url).json(body);
         let resp = self.execute(builder, None).await?;
         resp.json::<T>()
@@ -240,7 +240,7 @@ impl GitHubHttpClient {
         &mut self,
         url: &str,
     ) -> Result<(), GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url);
         self.execute(builder, None).await?;
         Ok(())
@@ -252,7 +252,7 @@ impl GitHubHttpClient {
         url: &str,
         body: &serde_json::Value,
     ) -> Result<serde_json::Value, GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PATCH, &full_url).json(body);
         let resp = self.execute(builder, None).await?;
         resp.json::<serde_json::Value>()
@@ -266,7 +266,7 @@ impl GitHubHttpClient {
         url: &str,
         body: &serde_json::Value,
     ) -> Result<(), GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url).json(body);
         self.execute(builder, None).await?;
         Ok(())
@@ -277,7 +277,7 @@ impl GitHubHttpClient {
         &mut self,
         url: &str,
     ) -> Result<(), GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url);
         self.execute(builder, None).await?;
         Ok(())
@@ -338,7 +338,7 @@ impl GitHubHttpClient {
         &mut self,
         url: &str,
     ) -> Result<Response, GitHubError> {
-        let full_url = self.resolve_url(url);
+        let full_url = self.resolve_url(url)?;
         let builder = self
             .client
             .get(&full_url)
@@ -420,13 +420,18 @@ impl GitHubHttpClient {
     }
 
     /// Resolve a URL: if it starts with `/`, prepend the API base.
-    fn resolve_url(&self, url: &str) -> String {
-        if url.starts_with("http://") || url.starts_with("https://") {
-            url.to_string()
+    /// SEC-GH-004/005: Only allowlisted GitHub domains accepted for absolute URLs.
+    /// Rejects http:// entirely (TLS enforcement). Unknown URLs are errors.
+    fn resolve_url(&self, url: &str) -> Result<String, GitHubError> {
+        if is_allowed_github_url(url) {
+            Ok(url.to_string())
         } else if url.starts_with('/') {
-            format!("{}{}", API_BASE, url)
+            Ok(format!("{}{}", API_BASE, url))
         } else {
-            url.to_string()
+            log::warn!("resolve_url: rejected non-GitHub URL: {}", url);
+            Err(GitHubError::InvalidInput(
+                format!("URL not on GitHub domain allowlist: {}", url),
+            ))
         }
     }
 
@@ -435,6 +440,21 @@ impl GitHubHttpClient {
     pub(super) fn token_str(&self) -> &str {
         self.token.expose_secret()
     }
+}
+
+/// GitHub domain allowlist for absolute URLs.
+/// SEC-GH-004/014: Any URL not matching these prefixes is rejected.
+const ALLOWED_URL_PREFIXES: &[&str] = &[
+    "https://api.github.com",
+    "https://uploads.github.com",
+    "https://raw.githubusercontent.com",
+    "https://codeload.github.com",
+    "https://github.com",
+];
+
+/// Check if a URL matches the GitHub domain allowlist.
+fn is_allowed_github_url(url: &str) -> bool {
+    ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix))
 }
 
 fn parse_next_link(link_header: Option<&str>) -> Option<String> {
@@ -450,7 +470,12 @@ fn parse_next_link(link_header: Option<&str>) -> Option<String> {
         }
 
         if let Some(url) = url_part.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
-            return Some(url.to_string());
+            // SEC-GH-014: Validate pagination URL against GitHub domain allowlist
+            if is_allowed_github_url(url) {
+                return Some(url.to_string());
+            }
+            log::warn!("parse_next_link: rejected non-GitHub pagination URL: {}", url);
+            return None;
         }
     }
 

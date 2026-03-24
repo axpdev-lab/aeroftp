@@ -30,6 +30,9 @@ pub struct ProviderState {
     pub config: Mutex<Option<ProviderConfig>>,
     /// Cancel flag for aborting folder transfers
     pub cancel_flag: Mutex<bool>,
+    /// Held GitHub App installation token — never crosses IPC.
+    /// Set by `github_app_token_from_pem`/`_from_vault`, consumed by `provider_connect`.
+    pub held_github_app_token: Mutex<Option<String>>,
 }
 
 impl ProviderState {
@@ -38,6 +41,7 @@ impl ProviderState {
             provider: Mutex::new(None),
             config: Mutex::new(None),
             cancel_flag: Mutex::new(false),
+            held_github_app_token: Mutex::new(None),
         }
     }
 }
@@ -332,6 +336,24 @@ pub async fn provider_connect(
     info!("Connecting to {} provider: {}", params.protocol, params.server);
 
     let mut config = params.to_provider_config()?;
+
+    // SEC-GH-001: For GitHub App mode, inject the held installation token
+    // so the token never crosses the IPC boundary.
+    // Only inject when password is empty/missing (App mode sends empty password).
+    // PAT and Device Flow provide their own password — never overwrite.
+    if config.provider_type == ProviderType::GitHub {
+        let password_empty = config.password.as_ref().map_or(true, |p| p.is_empty());
+        if password_empty {
+            let mut held = state.held_github_app_token.lock().await;
+            if let Some(token) = held.take() {
+                config.password = Some(token);
+            }
+        } else {
+            // Clear any stale held token to prevent it leaking into a future connection
+            let mut held = state.held_github_app_token.lock().await;
+            *held = None;
+        }
+    }
 
     // Create provider using factory
     let mut provider = ProviderFactory::create(&config)
@@ -4225,10 +4247,12 @@ fn validate_pem_contents(pem_contents: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// GitHub App Bot Mode — Read .pem from disk, store in vault, and get installation token
-/// The private key never leaves the Rust backend — only the path is received from frontend
+/// GitHub App Bot Mode — Read .pem from disk, store in vault, and get installation token.
+/// SEC-GH-001: The installation token is held backend-side and never crosses IPC.
+/// The frontend receives only success status and expiry metadata.
 #[tauri::command]
 pub async fn github_app_token_from_pem(
+    state: State<'_, ProviderState>,
     pem_path: String,
     app_id: String,
     installation_id: String,
@@ -4248,7 +4272,7 @@ pub async fn github_app_token_from_pem(
     let pem_contents = std::fs::read_to_string(&pem_path)
         .map_err(|e| format!("Cannot read .pem file '{}': {}", pem_path, e))?;
 
-    log::info!("GitHub App token: PEM read OK ({} bytes), validating...", pem_contents.len());
+    log::info!("GitHub App token: PEM read OK, validating...");
 
     validate_pem_contents(&pem_contents)?;
 
@@ -4280,16 +4304,23 @@ pub async fn github_app_token_from_pem(
         &installation_id,
     ).await?;
 
+    // SEC-GH-001: Hold the token backend-side — never return it to the frontend
+    {
+        let mut held = state.held_github_app_token.lock().await;
+        *held = Some(token_resp.token);
+    }
+
     Ok(serde_json::json!({
-        "token": token_resp.token,
+        "success": true,
         "expires_at": token_resp.expires_at,
     }))
 }
 
-/// GitHub App Bot Mode — Read PEM from vault (previously imported) and refresh installation token
-/// Used for reconnection without needing the .pem file on disk
+/// GitHub App Bot Mode — Read PEM from vault (previously imported) and refresh installation token.
+/// SEC-GH-001: The installation token is held backend-side and never crosses IPC.
 #[tauri::command]
 pub async fn github_app_token_from_vault(
+    state: State<'_, ProviderState>,
     app_id: String,
     installation_id: String,
 ) -> Result<serde_json::Value, String> {
@@ -4320,8 +4351,14 @@ pub async fn github_app_token_from_vault(
         &installation_id,
     ).await?;
 
+    // SEC-GH-001: Hold the token backend-side — never return it to the frontend
+    {
+        let mut held = state.held_github_app_token.lock().await;
+        *held = Some(token_resp.token);
+    }
+
     Ok(serde_json::json!({
-        "token": token_resp.token,
+        "success": true,
         "expires_at": token_resp.expires_at,
     }))
 }
@@ -4923,7 +4960,59 @@ pub async fn github_batch_delete(
 
 // ── GitHub Local Sync Detection ──────────────────────────────────
 
+/// Check if a git remote line matches a specific owner/repo exactly.
+/// Prevents partial matches like `repo-old` matching `repo`.
+fn remote_matches_repo(line: &str, owner: &str, repo: &str) -> bool {
+    let lower = line.to_lowercase();
+    let ssh = format!("github.com:{}/{}", owner, repo).to_lowercase();
+    let https = format!("github.com/{}/{}", owner, repo).to_lowercase();
+
+    for pattern in [&ssh, &https] {
+        if let Some(idx) = lower.find(pattern) {
+            let after = idx + pattern.len();
+            // Must be followed by `.git`, whitespace, or end of string
+            let rest = &lower[after..];
+            if rest.is_empty()
+                || rest.starts_with(".git")
+                || rest.starts_with(char::is_whitespace)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// SEC-GH-002/003: Validate and canonicalize a local path for git operations.
+/// Returns the canonical path only if it is a real directory containing a `.git` folder.
+fn validate_local_git_path(local_path: &str) -> Result<std::path::PathBuf, String> {
+    let canonical = std::fs::canonicalize(local_path)
+        .map_err(|e| format!("Invalid local path '{}': {}", local_path, e))?;
+    let meta = std::fs::metadata(&canonical)
+        .map_err(|e| format!("Cannot access '{}': {}", canonical.display(), e))?;
+    if !meta.is_dir() {
+        return Err(format!("'{}' is not a directory", canonical.display()));
+    }
+    if !canonical.join(".git").exists() {
+        return Err(format!("'{}' is not a git repository", canonical.display()));
+    }
+    Ok(canonical)
+}
+
+/// Helper: run an async git command with non-interactive environment guards.
+async fn git_command(args: &[&str], dir: &std::path::Path) -> Result<std::process::Output, String> {
+    tokio::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", "")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run git {}: {}", args.first().unwrap_or(&""), e))
+}
+
 /// Check if the local working directory has unpushed commits for the connected GitHub repo.
+/// SEC-GH-002/003: Path is canonicalized, validated as git repo, and all commands are async.
 #[tauri::command]
 pub async fn github_check_local_sync(
     state: State<'_, ProviderState>,
@@ -4942,41 +5031,34 @@ pub async fn github_check_local_sync(
     let owner = github.owner().to_string();
     let repo = github.repo().to_string();
 
-    // Check if local_path is a git repo that matches this GitHub repo
-    let remote_output = match std::process::Command::new("git")
-        .args(["remote", "-v"])
-        .current_dir(&local_path)
-        .output()
-    {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
-        _ => return Ok(serde_json::json!({"is_local_repo": false})),
+    // Validate and canonicalize the local path
+    let canonical = match validate_local_git_path(&local_path) {
+        Ok(p) => p,
+        Err(_) => return Ok(serde_json::json!({"is_local_repo": false})),
     };
 
-    // Check if any remote points to this repo
-    let ssh_pattern = format!("github.com:{}/{}", owner, repo);
-    let https_pattern = format!("github.com/{}/{}", owner, repo);
-    let matches = remote_output.lines().any(|line| {
-        let lower = line.to_lowercase();
-        lower.contains(&ssh_pattern.to_lowercase())
-            || lower.contains(&https_pattern.to_lowercase())
-    });
+    // Check if local repo's remote matches this GitHub repo
+    let remote_out = git_command(&["remote", "-v"], &canonical).await?;
+    if !remote_out.status.success() {
+        return Ok(serde_json::json!({"is_local_repo": false}));
+    }
+    let remote_output = String::from_utf8_lossy(&remote_out.stdout).to_string();
+
+    let matches = remote_output.lines().any(|line| remote_matches_repo(line, &owner, &repo));
 
     if !matches {
         return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": false}));
     }
 
     // Get local HEAD
-    let local_head = match std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(&local_path)
-        .output()
-    {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
-        _ => return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": true, "error": "Cannot read local HEAD"})),
+    let head_out = git_command(&["rev-parse", "HEAD"], &canonical).await?;
+    let local_head = if head_out.status.success() {
+        String::from_utf8_lossy(&head_out.stdout).trim().to_string()
+    } else {
+        return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": true, "error": "Cannot read local HEAD"}));
     };
 
-    // Get remote HEAD via API — use batch_upload with empty additions to get head SHA
-    // (cheaper: just call the REST API for branch ref)
+    // Get remote HEAD via GitHub API
     let branch = github.active_branch().to_string();
     let remote_head = {
         match github.client_mut().get_json::<serde_json::Value>(&format!(
@@ -5000,15 +5082,14 @@ pub async fn github_check_local_sync(
     };
 
     // Count unpushed commits
-    let unpushed_count = match std::process::Command::new("git")
-        .args(["rev-list", &format!("{}..HEAD", remote_head), "--count"])
-        .current_dir(&local_path)
-        .output()
-    {
-        Ok(out) if out.status.success() => {
-            String::from_utf8_lossy(&out.stdout).trim().parse::<u32>().unwrap_or(0)
-        }
-        _ => 0,
+    let count_out = git_command(
+        &["rev-list", &format!("{}..HEAD", remote_head), "--count"],
+        &canonical,
+    ).await?;
+    let unpushed_count = if count_out.status.success() {
+        String::from_utf8_lossy(&count_out.stdout).trim().parse::<u32>().unwrap_or(0)
+    } else {
+        0
     };
 
     Ok(serde_json::json!({
@@ -5022,16 +5103,40 @@ pub async fn github_check_local_sync(
 }
 
 /// Push local commits to the remote GitHub repository.
+/// SEC-GH-002: Path validated and verified to match the connected repo before executing push.
 #[tauri::command]
 pub async fn github_push_local(
+    state: State<'_, ProviderState>,
     local_path: String,
 ) -> Result<serde_json::Value, String> {
-    let output = tokio::process::Command::new("git")
-        .args(["push"])
-        .current_dir(&local_path)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git push: {}", e))?;
+    // Validate the local path
+    let canonical = validate_local_git_path(&local_path)?;
+
+    // Verify the repo remote matches the connected GitHub repo
+    {
+        let mut provider_guard = state.provider.lock().await;
+        let provider = provider_guard.as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        if provider.provider_type() == ProviderType::GitHub {
+            let github = provider.as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            let owner = github.owner().to_string();
+            let repo = github.repo().to_string();
+
+            let remote_out = git_command(&["remote", "-v"], &canonical).await?;
+            let remote_output = String::from_utf8_lossy(&remote_out.stdout).to_string();
+                let matches = remote_output.lines().any(|line| remote_matches_repo(line, &owner, &repo));
+            if !matches {
+                return Err(format!(
+                    "Local repo remote does not match connected GitHub repo {}/{}",
+                    owner, repo
+                ));
+            }
+        }
+    }
+
+    let output = git_command(&["push"], &canonical).await?;
 
     if output.status.success() {
         Ok(serde_json::json!({
