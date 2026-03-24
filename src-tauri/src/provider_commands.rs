@@ -341,17 +341,14 @@ pub async fn provider_connect(
     // so the token never crosses the IPC boundary.
     // Only inject when password is empty/missing (App mode sends empty password).
     // PAT and Device Flow provide their own password — never overwrite.
+    // Uses clone() instead of take() so the token survives connection retries.
     if config.provider_type == ProviderType::GitHub {
         let password_empty = config.password.as_ref().map_or(true, |p| p.is_empty());
         if password_empty {
-            let mut held = state.held_github_app_token.lock().await;
-            if let Some(token) = held.take() {
-                config.password = Some(token);
+            let held = state.held_github_app_token.lock().await;
+            if let Some(ref token) = *held {
+                config.password = Some(token.clone());
             }
-        } else {
-            // Clear any stale held token to prevent it leaking into a future connection
-            let mut held = state.held_github_app_token.lock().await;
-            *held = None;
         }
     }
 
