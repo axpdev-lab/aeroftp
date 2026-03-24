@@ -871,7 +871,21 @@
       "authorize": "Авторизовать",
       "authorized": "Авторизовано",
       "reauthorize": "Повторная авторизация",
-      "protocolType": "Протокол"
+      "protocolType": "Протокол",
+      "syncOnStartup": "Синхронизация при запуске",
+      "syncSettings": "Настройки синхронизации",
+      "conflictStrategy": "Конфликты",
+      "conflictAskUser": "Спросить",
+      "conflictKeepBoth": "Сохранить оба (переименовать)",
+      "conflictPreferLocal": "Предпочесть локальный",
+      "conflictPreferRemote": "Предпочесть удалённый",
+      "conflictPreferNewer": "Предпочесть новый",
+      "excludePatterns": "Шаблоны исключений",
+      "excludePatternsDesc": "Один шаблон на строку. Поддержка glob-синтаксиса.",
+      "protocol": "Протокол",
+      "idle": "Ожидание",
+      "neverSynced": "Не синхронизировано",
+      "openDashboard": "Панель"
     },
     "statusBar": {
       "connected": "Подключено",

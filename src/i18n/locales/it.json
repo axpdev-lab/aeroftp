@@ -1059,7 +1059,21 @@
       "authorize": "Autorizza",
       "authorized": "Autorizzato",
       "reauthorize": "Riautorizza",
-      "protocolType": "Protocollo"
+      "protocolType": "Protocollo",
+      "syncOnStartup": "Sincronizza all'avvio dell'applicazione",
+      "syncSettings": "Impostazioni sincronizzazione",
+      "conflictStrategy": "Conflitti",
+      "conflictAskUser": "Chiedi a me",
+      "conflictKeepBoth": "Mantieni entrambi (rinomina)",
+      "conflictPreferLocal": "Preferisci locale",
+      "conflictPreferRemote": "Preferisci remoto",
+      "conflictPreferNewer": "Preferisci più recente",
+      "excludePatterns": "Pattern di esclusione",
+      "excludePatternsDesc": "Un pattern per riga. Supporta sintassi glob.",
+      "protocol": "Protocollo",
+      "idle": "Inattivo",
+      "neverSynced": "Mai sincronizzato",
+      "openDashboard": "Dashboard"
     },
     "statusBar": {
       "connected": "Connesso",

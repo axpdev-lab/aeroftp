@@ -871,7 +871,21 @@
       "authorize": "Baimendu",
       "authorized": "Baimenduta",
       "reauthorize": "Berriro baimendu",
-      "protocolType": "Protokoloa"
+      "protocolType": "Protokoloa",
+      "syncOnStartup": "Sync on application startup",
+      "syncSettings": "Sync Settings",
+      "conflictStrategy": "Conflicts",
+      "conflictAskUser": "Ask me",
+      "conflictKeepBoth": "Keep both (rename)",
+      "conflictPreferLocal": "Prefer local",
+      "conflictPreferRemote": "Prefer remote",
+      "conflictPreferNewer": "Prefer newer",
+      "excludePatterns": "Exclude Patterns",
+      "excludePatternsDesc": "One pattern per line. Supports glob syntax.",
+      "protocol": "Protocol",
+      "idle": "Idle",
+      "neverSynced": "Never synced",
+      "openDashboard": "Dashboard"
     },
     "statusBar": {
       "connected": "Konektatuta",

@@ -871,7 +871,21 @@
       "authorize": "Autorisieren",
       "authorized": "Autorisiert",
       "reauthorize": "Erneut autorisieren",
-      "protocolType": "Protokoll"
+      "protocolType": "Protokoll",
+      "syncOnStartup": "Bei Anwendungsstart synchronisieren",
+      "syncSettings": "Synchronisierungseinstellungen",
+      "conflictStrategy": "Konflikte",
+      "conflictAskUser": "Nachfragen",
+      "conflictKeepBoth": "Beide behalten (umbenennen)",
+      "conflictPreferLocal": "Lokal bevorzugen",
+      "conflictPreferRemote": "Remote bevorzugen",
+      "conflictPreferNewer": "Neuere bevorzugen",
+      "excludePatterns": "Ausschlussmuster",
+      "excludePatternsDesc": "Ein Muster pro Zeile. Glob-Syntax unterstützt.",
+      "protocol": "Protokoll",
+      "idle": "Bereit",
+      "neverSynced": "Nie synchronisiert",
+      "openDashboard": "Dashboard"
     },
     "statusBar": {
       "connected": "Verbunden",

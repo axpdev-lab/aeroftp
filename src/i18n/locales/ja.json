@@ -871,7 +871,21 @@
       "authorize": "認証",
       "authorized": "認証済み",
       "reauthorize": "再認証",
-      "protocolType": "プロトコル"
+      "protocolType": "プロトコル",
+      "syncOnStartup": "アプリ起動時に同期",
+      "syncSettings": "同期設定",
+      "conflictStrategy": "競合",
+      "conflictAskUser": "確認する",
+      "conflictKeepBoth": "両方保持（リネーム）",
+      "conflictPreferLocal": "ローカル優先",
+      "conflictPreferRemote": "リモート優先",
+      "conflictPreferNewer": "新しい方を優先",
+      "excludePatterns": "除外パターン",
+      "excludePatternsDesc": "1行に1パターン。glob構文対応。",
+      "protocol": "プロトコル",
+      "idle": "アイドル",
+      "neverSynced": "未同期",
+      "openDashboard": "ダッシュボード"
     },
     "statusBar": {
       "connected": "接続済み",

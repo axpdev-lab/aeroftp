@@ -871,7 +871,21 @@
       "authorize": "授权",
       "authorized": "已授权",
       "reauthorize": "重新授权",
-      "protocolType": "协议"
+      "protocolType": "协议",
+      "syncOnStartup": "应用启动时同步",
+      "syncSettings": "同步设置",
+      "conflictStrategy": "冲突",
+      "conflictAskUser": "询问我",
+      "conflictKeepBoth": "保留两者（重命名）",
+      "conflictPreferLocal": "优先本地",
+      "conflictPreferRemote": "优先远程",
+      "conflictPreferNewer": "优先较新",
+      "excludePatterns": "排除模式",
+      "excludePatternsDesc": "每行一个模式。支持 glob 语法。",
+      "protocol": "协议",
+      "idle": "空闲",
+      "neverSynced": "从未同步",
+      "openDashboard": "仪表板"
     },
     "statusBar": {
       "connected": "已连接",

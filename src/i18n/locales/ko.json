@@ -871,7 +871,21 @@
       "authorize": "인증",
       "authorized": "인증됨",
       "reauthorize": "재인증",
-      "protocolType": "프로토콜"
+      "protocolType": "프로토콜",
+      "syncOnStartup": "앱 시작 시 동기화",
+      "syncSettings": "동기화 설정",
+      "conflictStrategy": "충돌",
+      "conflictAskUser": "묻기",
+      "conflictKeepBoth": "둘 다 유지 (이름 변경)",
+      "conflictPreferLocal": "로컬 우선",
+      "conflictPreferRemote": "원격 우선",
+      "conflictPreferNewer": "최신 우선",
+      "excludePatterns": "제외 패턴",
+      "excludePatternsDesc": "줄당 하나의 패턴. glob 구문 지원.",
+      "protocol": "프로토콜",
+      "idle": "유휴",
+      "neverSynced": "동기화한 적 없음",
+      "openDashboard": "대시보드"
     },
     "statusBar": {
       "connected": "연결됨",
