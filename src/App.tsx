@@ -1941,11 +1941,10 @@ const App: React.FC = () => {
       const installationId = opts.githubInstallationId?.trim();
       const pemPath = opts.githubPemPath?.trim();
       const pemStored = opts.githubPemStored === true;
-      const expiresAt = opts.githubTokenExpiresAt;
-      const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-      const mustRefreshToken = !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + (5 * 60 * 1000);
-
-      if (mustRefreshToken) {
+      // App mode: always refresh the installation token from PEM/vault.
+      // Installation tokens are short-lived (1h) and the held token does not
+      // survive app restarts, so we always generate a fresh one on connect.
+      {
         if (!appId || !installationId) {
           throw new Error('GitHub App mode requires App ID and Installation ID to refresh the installation token');
         }
