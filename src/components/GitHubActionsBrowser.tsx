@@ -10,11 +10,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, RefreshCw, Loader2, ExternalLink, CheckCircle, XCircle,
   Clock, AlertTriangle, Play, RotateCcw, StopCircle, GitBranch,
-  Zap,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
+import { GitHubActionsIcon } from './icons/GitHubActionsIcon';
 
 interface WorkflowRun {
   id: number;
@@ -148,7 +148,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <Zap size={18} className="text-amber-400" />
+            <GitHubActionsIcon size={18} className="text-amber-400" />
             <span className="font-semibold text-gray-900 dark:text-gray-100">GitHub Actions</span>
             {hasActiveRuns && (
               <span className="flex items-center gap-1 text-xs text-amber-400">

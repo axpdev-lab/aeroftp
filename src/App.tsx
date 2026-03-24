@@ -52,6 +52,8 @@ import { GitHubCommitDialog } from './components/GitHubCommitDialog';
 import { GitHubLocalSyncWarning } from './components/GitHubLocalSyncWarning';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
+import { GitHubActionsIcon } from './components/icons/GitHubActionsIcon';
+import { GitHubReleaseIcon } from './components/icons/GitHubReleaseIcon';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
 import { GitHubPagesBrowser } from './components/GitHubPagesBrowser';
 import { GitHubActionsBrowser } from './components/GitHubActionsBrowser';
@@ -7588,10 +7590,10 @@ const App: React.FC = () => {
                       <>
                         <button
                           onClick={() => setShowGitHubReleaseBrowser(true)}
-                          className="flex-shrink-0 p-1.5 rounded text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                          className="flex-shrink-0 p-1.5 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
                           title="Releases"
                         >
-                          <Package size={13} />
+                          <GitHubReleaseIcon size={13} className="text-green-400" />
                         </button>
                         {hasGitHubPages && (
                           <button
@@ -7605,9 +7607,9 @@ const App: React.FC = () => {
                         <button
                           onClick={() => setShowGitHubActions(true)}
                           className="flex-shrink-0 p-1.5 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
-                          title="GitHub Actions"
+                          title={t('github.viewOnGithub') ? 'GitHub Actions' : 'GitHub Actions'}
                         >
-                          <Zap size={13} />
+                          <GitHubActionsIcon size={13} className="text-amber-400" />
                         </button>
                       </>
                     )}

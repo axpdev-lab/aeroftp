@@ -16,6 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
+import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
 
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
@@ -332,7 +333,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
                 <ArrowLeft size={16} />
               </button>
             ) : (
-              <Package size={16} style={{ color: 'var(--color-accent)' }} />
+              <GitHubReleaseIcon size={16} style={{ color: 'var(--color-accent)' }} />
             )}
             <h2
               className="text-sm font-semibold"
