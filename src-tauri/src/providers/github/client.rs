@@ -50,18 +50,19 @@ pub struct GitHubHttpClient {
 #[allow(dead_code)]
 impl GitHubHttpClient {
     /// Create a new client with the given personal access token.
-    pub fn new(token: SecretString) -> Self {
+    /// QA-GH-004: Returns Result instead of panicking on TLS init failure.
+    pub fn new(token: SecretString) -> Result<Self, GitHubError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .user_agent(USER_AGENT)
             .build()
-            .expect("failed to build reqwest client");
+            .map_err(|e| GitHubError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
 
-        Self {
+        Ok(Self {
             client,
             token,
             rate_limit: RateLimitState::new(),
-        }
+        })
     }
 
     // ── Low-level helpers ──────────────────────────────────────────
@@ -127,6 +128,43 @@ impl GitHubHttpClient {
         }
 
         Err(err)
+    }
+
+    /// API-GH-011: Execute with bounded retry for secondary rate limits and transient 5xx.
+    /// - SecondaryRateLimit: sleep `retry_after` seconds, retry once
+    /// - 5xx ServerError: sleep 1s, retry once
+    /// - All other errors: return immediately
+    pub async fn execute_with_retry(
+        &mut self,
+        builder: RequestBuilder,
+        path_hint: Option<&str>,
+    ) -> Result<Response, GitHubError> {
+        // First attempt — try_clone() the builder so we can retry
+        let retry_builder = builder.try_clone();
+        match self.execute(builder, path_hint).await {
+            Ok(resp) => Ok(resp),
+            Err(GitHubError::SecondaryRateLimit { retry_after }) => {
+                let wait = retry_after.min(120); // cap at 2 minutes
+                log::info!("GitHub: secondary rate limit — waiting {}s before retry", wait);
+                tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                if let Some(rb) = retry_builder {
+                    self.execute(rb, path_hint).await
+                } else {
+                    Err(GitHubError::SecondaryRateLimit { retry_after })
+                }
+            }
+            Err(GitHubError::ServerError(ref msg)) => {
+                let msg_owned = msg.clone();
+                log::info!("GitHub: server error — retrying after 1s: {}", msg_owned);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if let Some(rb) = retry_builder {
+                    self.execute(rb, path_hint).await
+                } else {
+                    Err(GitHubError::ServerError(msg_owned))
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Send a request and update rate-limit state without interpreting status.

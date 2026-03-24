@@ -357,6 +357,8 @@ pub fn classify_api_error(
                 GitHubError::ApiError { status, message }
             }
         }
+        // API-GH-004: Explicitly classify 5xx as ServerError for retry logic
+        500..=599 => GitHubError::ServerError(format!("HTTP {}: {}", status, message)),
         _ => GitHubError::ApiError { status, message },
     }
 }

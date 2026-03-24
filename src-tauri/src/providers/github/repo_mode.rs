@@ -535,6 +535,7 @@ impl GitHubProvider {
         }
 
         let encoded = BASE64.encode(&data);
+        drop(data); // QA-GH-003: free raw buffer — only base64 remains in memory
 
         let existing_sha = match self.resolve_sha(remote_path).await {
             Ok(sha) => Some(sha),

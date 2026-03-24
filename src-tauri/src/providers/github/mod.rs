@@ -164,11 +164,12 @@ impl std::fmt::Debug for GitHubProvider {
 
 impl GitHubProvider {
     /// Create a new provider from a parsed config.
-    pub fn new(config: GitHubConfig) -> Self {
+    /// QA-GH-004: Returns Result — HTTP client construction can fail.
+    pub fn new(config: GitHubConfig) -> Result<Self, ProviderError> {
         let token = SecretString::from(config.token);
         let current_path = Self::normalise_path(config.initial_path.as_deref().unwrap_or(""));
-        Self {
-            client: GitHubHttpClient::new(token),
+        Ok(Self {
+            client: GitHubHttpClient::new(token).map_err(ProviderError::from)?,
             owner: config.owner,
             repo: config.repo,
             branch: config.branch,
@@ -182,7 +183,7 @@ impl GitHubProvider {
             repo_private: false,
             is_bot_token: false,
             default_branch: String::from("main"),
-        }
+        })
     }
 
     // ── Public accessors for Tauri commands ──────────────────────────
@@ -1162,21 +1163,35 @@ impl StorageProvider for GitHubProvider {
             ))
         })?;
 
+        // QA-GH-002: Stream to disk instead of buffering entire file in memory
         let total_size = content.size.unwrap_or(0);
-        let data = self
+        let resp = self
             .client
-            .get_raw_bytes(&download_url)
+            .get_raw(&download_url)
             .await
             .map_err(ProviderError::from)?;
 
-        if let Some(ref cb) = on_progress {
-            cb(data.len() as u64, total_size);
+        let content_len = resp.content_length().unwrap_or(total_size);
+        let mut stream = resp.bytes_stream();
+        let mut atomic = crate::providers::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut downloaded: u64 = 0;
+
+        use futures_util::StreamExt;
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result
+                .map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
+            atomic.write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            downloaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(downloaded, content_len);
+            }
         }
 
-        tokio::fs::write(local_path, &data)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
+        atomic.commit().await.map_err(ProviderError::IoError)?;
         Ok(())
     }
 
@@ -1263,6 +1278,7 @@ impl StorageProvider for GitHubProvider {
         }
 
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+        drop(data); // QA-GH-003: free raw buffer immediately — only base64 remains in memory
 
         // Check if the file already exists (need its SHA for update).
         let sha = self.get_cached_sha(&resolved).cloned();
@@ -1309,11 +1325,16 @@ impl StorageProvider for GitHubProvider {
             .put_json(&url, &body)
             .await;
 
-        // If DirectWriteProtected and push was rejected, fallback to BranchWorkflow
+        // QA-GH-009: Structured error matching instead of string parsing
         let resp = match result {
             Err(ref e) if matches!(self.write_mode, GitHubWriteMode::DirectWriteProtected { .. }) => {
-                let err_str = format!("{}", e);
-                if err_str.contains("protected") || err_str.contains("403") || err_str.contains("422") {
+                let is_protected_rejection = matches!(e,
+                    GitHubError::ProtectedBranch(_)
+                    | GitHubError::InsufficientPermissions(_)
+                    | GitHubError::RequiredPullRequest
+                    | GitHubError::ApiError { status: 403 | 422, .. }
+                );
+                if is_protected_rejection {
                     log::info!("GitHub: direct push rejected on protected branch — falling back to working branch");
                     let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } = self.write_mode {
                         base_sha.clone()
@@ -1328,17 +1349,12 @@ impl StorageProvider for GitHubProvider {
                         )))?;
                     self.write_mode = GitHubWriteMode::BranchWorkflow { branch: workflow_branch };
 
-                    // Retry with the new branch
-                    let retry_update = GitHubContentUpdate {
-                        message: update.message.clone(),
-                        content: update.content.clone(),
-                        sha: update.sha.clone(),
-                        branch: Some(self.content_branch().to_string()),
-                        committer: self.content_committer(),
-            author: self.content_author(),
-                    };
-                    let retry_body = serde_json::to_value(&retry_update)
-                        .map_err(|e3| ProviderError::TransferFailed(e3.to_string()))?;
+                    // QA-GH-019: Retry without cloning the large base64 content —
+                    // reuse the already-serialized body with updated branch.
+                    let mut retry_body = body.clone();
+                    if let Some(obj) = retry_body.as_object_mut() {
+                        obj.insert("branch".to_string(), serde_json::json!(self.content_branch()));
+                    }
                     self.client.put_json(&url, &retry_body).await.map_err(ProviderError::from)?
                 } else {
                     return Err(ProviderError::from(result.unwrap_err()));
@@ -1827,7 +1843,7 @@ mod tests {
             None,
             Some("/"),
         ))
-        .unwrap());
+        .unwrap()).unwrap();
         assert_eq!(provider.current_path, "");
     }
 
@@ -1838,7 +1854,7 @@ mod tests {
             Some("main"),
             Some("/docs"),
         ))
-        .unwrap());
+        .unwrap()).unwrap();
         provider.current_path = "docs/guides".to_string();
         assert_eq!(provider.resolve_path("/README.md"), "README.md");
         assert_eq!(provider.resolve_path("guide.md"), "docs/guides/guide.md");
@@ -1859,7 +1875,7 @@ mod tests {
             Some("main"),
             Some("/"),
         ))
-        .unwrap());
+        .unwrap()).unwrap();
         provider.write_mode = GitHubWriteMode::BranchWorkflow {
             branch: "aeroftp/tester/main".to_string(),
         };
@@ -1875,7 +1891,7 @@ mod tests {
             Some("main"),
             Some("/"),
         ))
-        .unwrap());
+        .unwrap()).unwrap();
 
         assert_eq!(
             provider.parse_virtual_path("/.github-releases"),

@@ -603,7 +603,7 @@ impl ProviderFactory {
             }
             ProviderType::GitHub => {
                 let gh_config = github::GitHubConfig::from_provider_config(config)?;
-                Ok(Box::new(GitHubProvider::new(gh_config)))
+                Ok(Box::new(GitHubProvider::new(gh_config)?))
             }
         }
     }
