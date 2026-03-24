@@ -63,7 +63,8 @@
       "name": "Գնոճ",
       "size": "Միերության",
       "retry": "Կրկնել",
-      "optional": "ոչ պարտադիր"
+      "optional": "ոչ պարտադիր",
+      "check": "Check"
     },
     "connection": {
       "title": "Կապվել սերվերուհն",

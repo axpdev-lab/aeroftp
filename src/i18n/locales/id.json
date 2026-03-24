@@ -63,7 +63,8 @@
       "name": "Nama",
       "size": "Ukuran",
       "retry": "Coba lagi",
-      "optional": "opsional"
+      "optional": "opsional",
+      "check": "Check"
     },
     "connection": {
       "title": "Hubungkan ke Server",

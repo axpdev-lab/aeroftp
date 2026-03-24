@@ -63,7 +63,8 @@
       "name": "Ime",
       "size": "Velikost",
       "retry": "Poskusi znova",
-      "optional": "neobvezno"
+      "optional": "neobvezno",
+      "check": "Check"
     },
     "connection": {
       "title": "Poveži se s strežnikom",

@@ -63,7 +63,8 @@
       "name": "Nafn",
       "size": "Stærð",
       "retry": "Reyna aftur",
-      "optional": "valfrjalst"
+      "optional": "valfrjalst",
+      "check": "Check"
     },
     "connection": {
       "title": "Tengjast þjóni",

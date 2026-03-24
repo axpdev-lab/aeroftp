@@ -333,7 +333,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
                 <ArrowLeft size={16} />
               </button>
             ) : (
-              <GitHubReleaseIcon size={16} style={{ color: 'var(--color-accent)' }} />
+              <GitHubReleaseIcon size={16} className="text-gray-500 dark:text-gray-400" />
             )}
             <h2
               className="text-sm font-semibold"

@@ -63,7 +63,8 @@
       "name": "नाम",
       "size": "आकार",
       "retry": "पुनः प्रयास करें",
-      "optional": "वैकल्पिक"
+      "optional": "वैकल्पिक",
+      "check": "Check"
     },
     "connection": {
       "title": "सर्वर से कनेक्ट करें",

@@ -63,7 +63,8 @@
       "name": "Nimi",
       "size": "Suurus",
       "retry": "Proovi uuesti",
-      "optional": "valikuline"
+      "optional": "valikuline",
+      "check": "Check"
     },
     "connection": {
       "title": "Ühenda serveriga",

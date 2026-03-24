@@ -63,7 +63,8 @@
       "name": "Name",
       "size": "Größe",
       "retry": "Wiederholen",
-      "optional": "optional"
+      "optional": "optional",
+      "check": "Prüfen"
     },
     "connection": {
       "title": "Mit Server verbinden",

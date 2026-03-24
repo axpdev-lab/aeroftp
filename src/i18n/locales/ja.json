@@ -63,7 +63,8 @@
       "name": "名前",
       "size": "サイズ",
       "retry": "再試行",
-      "optional": "任意"
+      "optional": "任意",
+      "check": "確認"
     },
     "connection": {
       "title": "サーバーに接続",

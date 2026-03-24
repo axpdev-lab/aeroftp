@@ -63,7 +63,8 @@
       "name": "Име",
       "size": "Величина",
       "retry": "Покушај поново",
-      "optional": "опционално"
+      "optional": "опционално",
+      "check": "Check"
     },
     "connection": {
       "title": "Повежи се на сервер",

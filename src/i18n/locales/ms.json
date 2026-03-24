@@ -63,7 +63,8 @@
       "name": "Nama",
       "size": "Saiz",
       "retry": "Cuba lagi",
-      "optional": "pilihan"
+      "optional": "pilihan",
+      "check": "Check"
     },
     "connection": {
       "title": "Sambung ke Pelayan",

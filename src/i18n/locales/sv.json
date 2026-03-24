@@ -63,7 +63,8 @@
       "name": "Namn",
       "size": "Storlek",
       "retry": "Försök igen",
-      "optional": "valfritt"
+      "optional": "valfritt",
+      "check": "Check"
     },
     "connection": {
       "title": "Anslut till server",

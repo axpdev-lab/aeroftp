@@ -63,7 +63,8 @@
       "name": "Pavadinimas",
       "size": "Dydis",
       "retry": "Bandyti dar kartą",
-      "optional": "neprivaloma"
+      "optional": "neprivaloma",
+      "check": "Check"
     },
     "connection": {
       "title": "Prisijungti prie serverio",

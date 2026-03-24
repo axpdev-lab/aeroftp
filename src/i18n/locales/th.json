@@ -63,7 +63,8 @@
       "name": "ชื่อ",
       "size": "ขนาด",
       "retry": "ลองใหม่",
-      "optional": "ไม่บังคับ"
+      "optional": "ไม่บังคับ",
+      "check": "Check"
     },
     "connection": {
       "title": "เชื่อมต่อเซิร์ฟเวอร์",

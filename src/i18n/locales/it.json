@@ -64,7 +64,8 @@
       "modified": "Modificato",
       "name": "Nome",
       "size": "Dimensione",
-      "retry": "Riprova"
+      "retry": "Riprova",
+      "check": "Verifica"
     },
     "lockScreen": {
       "locked": "App Bloccata",

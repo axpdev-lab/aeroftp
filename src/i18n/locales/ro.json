@@ -63,7 +63,8 @@
       "name": "Nume",
       "size": "Dimensiune",
       "retry": "Reîncercare",
-      "optional": "optional"
+      "optional": "optional",
+      "check": "Check"
     },
     "connection": {
       "title": "Conectare la server",

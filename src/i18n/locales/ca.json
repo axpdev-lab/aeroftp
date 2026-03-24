@@ -63,7 +63,8 @@
       "name": "Nom",
       "size": "Mida",
       "retry": "Reintentar",
-      "optional": "opcional"
+      "optional": "opcional",
+      "check": "Check"
     },
     "connection": {
       "title": "Connectar al Servidor",

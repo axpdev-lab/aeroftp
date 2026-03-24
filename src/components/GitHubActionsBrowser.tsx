@@ -161,7 +161,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <GitHubActionsIcon size={18} style={{ color: 'var(--color-accent)' }} />
+            <GitHubActionsIcon size={18} className="text-gray-500 dark:text-gray-400" />
             <span className="font-semibold text-gray-900 dark:text-gray-100">GitHub Actions</span>
             {hasActiveRuns && (
               <span className="flex items-center gap-1 text-xs text-amber-400">

@@ -63,7 +63,8 @@
       "name": "Ad",
       "size": "Boyut",
       "retry": "Tekrar dene",
-      "optional": "isteğe bağlı"
+      "optional": "isteğe bağlı",
+      "check": "Check"
     },
     "connection": {
       "title": "Sunucuya Bağlan",

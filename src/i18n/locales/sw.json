@@ -63,7 +63,8 @@
       "name": "Jina",
       "size": "Ukubwa",
       "retry": "Jaribu tena",
-      "optional": "hiari"
+      "optional": "hiari",
+      "check": "Check"
     },
     "connection": {
       "title": "Unganisha na Seva",

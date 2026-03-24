@@ -63,7 +63,8 @@
       "name": "Naam",
       "size": "Grootte",
       "retry": "Opnieuw",
-      "optional": "optioneel"
+      "optional": "optioneel",
+      "check": "Check"
     },
     "connection": {
       "title": "Verbinden met Server",

@@ -63,7 +63,8 @@
       "name": "Navn",
       "size": "Størrelse",
       "retry": "Prøv igjen",
-      "optional": "valgfritt"
+      "optional": "valgfritt",
+      "check": "Check"
     },
     "connection": {
       "title": "Koble til server",

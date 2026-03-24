@@ -63,7 +63,8 @@
       "name": "Név",
       "size": "Méret",
       "retry": "Újra",
-      "optional": "nem kotelezo"
+      "optional": "nem kotelezo",
+      "check": "Check"
     },
     "connection": {
       "title": "Csatlakozás szerverhez",

@@ -63,7 +63,8 @@
       "name": "Tên",
       "size": "Kích thước",
       "retry": "Thử lại",
-      "optional": "tùy chọn"
+      "optional": "tùy chọn",
+      "check": "Check"
     },
     "connection": {
       "title": "Kết nối đến máy chủ",

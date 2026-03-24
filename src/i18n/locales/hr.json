@@ -63,7 +63,8 @@
       "name": "Naziv",
       "size": "Veličina",
       "retry": "Pokušaj ponovo",
-      "optional": "neobavezno"
+      "optional": "neobavezno",
+      "check": "Check"
     },
     "connection": {
       "title": "Poveži se na poslužitelj",

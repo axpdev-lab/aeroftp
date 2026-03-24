@@ -63,7 +63,8 @@
       "name": "Název",
       "size": "Velikost",
       "retry": "Zkusit znovu",
-      "optional": "volitelné"
+      "optional": "volitelné",
+      "check": "Check"
     },
     "connection": {
       "title": "Připojení k serveru",

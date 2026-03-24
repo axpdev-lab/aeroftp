@@ -63,7 +63,8 @@
       "name": "Enw",
       "size": "Maint",
       "retry": "Ailgeisio",
-      "optional": "dewisol"
+      "optional": "dewisol",
+      "check": "Check"
     },
     "connection": {
       "title": "Cysylltu a'r Gweinydd",

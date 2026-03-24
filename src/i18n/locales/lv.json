@@ -63,7 +63,8 @@
       "name": "Nosaukums",
       "size": "Izmērs",
       "retry": "Mēģināt vēlreiz",
-      "optional": "neobligats"
+      "optional": "neobligats",
+      "check": "Check"
     },
     "connection": {
       "title": "Savienoties ar serveri",

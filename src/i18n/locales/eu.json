@@ -63,7 +63,8 @@
       "name": "Izena",
       "size": "Tamaina",
       "retry": "Saiatu berriro",
-      "optional": "aukerakoa"
+      "optional": "aukerakoa",
+      "check": "Check"
     },
     "connection": {
       "title": "Zerbitzarira Konektatu",

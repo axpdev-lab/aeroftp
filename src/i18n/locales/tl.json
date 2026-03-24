@@ -63,7 +63,8 @@
       "name": "Pangalan",
       "size": "Laki",
       "retry": "Subukan muli",
-      "optional": "opsyonal"
+      "optional": "opsyonal",
+      "check": "Check"
     },
     "connection": {
       "title": "Kumonekta sa Server",

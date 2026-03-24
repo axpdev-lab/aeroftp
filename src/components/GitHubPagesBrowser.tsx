@@ -14,6 +14,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
+import { GitHubPagesIcon } from './icons/GitHubPagesIcon';
 
 interface PagesSite {
   url: string | null;
@@ -156,7 +157,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2 font-medium text-sm text-gray-900 dark:text-gray-100">
-            <Globe size={16} className="text-green-500" />
+            <GitHubPagesIcon size={16} className="text-gray-500 dark:text-gray-400" />
             GitHub Pages
           </div>
           <div className="flex items-center gap-2">

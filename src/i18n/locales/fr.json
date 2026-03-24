@@ -63,7 +63,8 @@
       "name": "Nom",
       "size": "Taille",
       "retry": "Réessayer",
-      "optional": "facultatif"
+      "optional": "facultatif",
+      "check": "Vérifier"
     },
     "connection": {
       "title": "Connexion au Serveur",

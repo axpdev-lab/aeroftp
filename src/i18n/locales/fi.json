@@ -63,7 +63,8 @@
       "name": "Nimi",
       "size": "Koko",
       "retry": "Yritä uudelleen",
-      "optional": "valinnainen"
+      "optional": "valinnainen",
+      "check": "Check"
     },
     "connection": {
       "title": "Yhdistä palvelimeen",

@@ -63,7 +63,8 @@
       "name": "Nazwa",
       "size": "Rozmiar",
       "retry": "Ponów",
-      "optional": "opcjonalne"
+      "optional": "opcjonalne",
+      "check": "Check"
     },
     "connection": {
       "title": "Połącz z serwerem",

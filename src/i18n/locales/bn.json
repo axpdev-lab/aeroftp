@@ -63,7 +63,8 @@
       "name": "নাম",
       "size": "আকার",
       "retry": "পুনরায় চেষ্টা করুন",
-      "optional": "ঐচ্ছিক"
+      "optional": "ঐচ্ছিক",
+      "check": "Check"
     },
     "connection": {
       "title": "সার্ভারে সংযোগ করুন",

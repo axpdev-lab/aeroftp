@@ -54,6 +54,7 @@ import { GitHubBranchSelector } from './components/GitHubBranchSelector';
 import { GitHubWriteModeIndicator } from './components/GitHubWriteModeIndicator';
 import { GitHubActionsIcon } from './components/icons/GitHubActionsIcon';
 import { GitHubReleaseIcon } from './components/icons/GitHubReleaseIcon';
+import { GitHubPagesIcon } from './components/icons/GitHubPagesIcon';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
 import { GitHubPagesBrowser } from './components/GitHubPagesBrowser';
 import { GitHubActionsBrowser } from './components/GitHubActionsBrowser';
@@ -7619,7 +7620,7 @@ const App: React.FC = () => {
                             className="flex-shrink-0 p-1.5 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
                             title="GitHub Pages"
                           >
-                            <Globe size={13} />
+                            <GitHubPagesIcon size={13} />
                           </button>
                         )}
                         <button
