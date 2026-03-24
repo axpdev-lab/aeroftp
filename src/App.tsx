@@ -1934,13 +1934,16 @@ const App: React.FC = () => {
     let effectiveParams = normalizeProviderConnectionParams(params);
 
     if (effectiveParams.protocol === 'github' && effectiveParams.options?.githubAuthMode === 'app') {
-      const appId = effectiveParams.options.githubAppId?.trim();
-      const installationId = effectiveParams.options.githubInstallationId?.trim();
-      const pemPath = effectiveParams.options.githubPemPath?.trim();
-      const pemStored = effectiveParams.options.githubPemStored === true;
-      const expiresAt = effectiveParams.options.githubTokenExpiresAt;
+      // App mode: token always comes from PEM/vault, never from saved password
+      effectiveParams = { ...effectiveParams, password: '', options: effectiveParams.options || {} };
+      const opts = effectiveParams.options!;
+      const appId = opts.githubAppId?.trim();
+      const installationId = opts.githubInstallationId?.trim();
+      const pemPath = opts.githubPemPath?.trim();
+      const pemStored = opts.githubPemStored === true;
+      const expiresAt = opts.githubTokenExpiresAt;
       const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-      const mustRefreshToken = !effectiveParams.password || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + (5 * 60 * 1000);
+      const mustRefreshToken = !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() + (5 * 60 * 1000);
 
       if (mustRefreshToken) {
         if (!appId || !installationId) {
