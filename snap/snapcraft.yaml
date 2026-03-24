@@ -46,7 +46,7 @@ description: |
   Note: Snap version can access ~/home and removable media. For system-wide
   access, use .deb or .AppImage from GitHub releases.
 
-  https://github.com/axpnet/aeroftp/releases
+  https://github.com/axpdev-lab/aeroftp/releases
 
   Built with Rust (Tauri 2) + React 18. GPL-3.0 license.
 
@@ -55,9 +55,9 @@ grade: stable
 confinement: strict
 compression: lzo
 
-contact: https://github.com/axpnet/aeroftp/discussions
-issues: https://github.com/axpnet/aeroftp/issues
-source-code: https://github.com/axpnet/aeroftp
+contact: https://github.com/axpdev-lab/aeroftp/discussions
+issues: https://github.com/axpdev-lab/aeroftp/issues
+source-code: https://github.com/axpdev-lab/aeroftp
 website: https://aeroftp.app
 license: GPL-3.0
 

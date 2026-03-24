@@ -7881,15 +7881,15 @@ mod tests {
         let cli = Cli::parse_from([
             "aeroftp",
             "connect",
-            "github://token:secret@axpnet/aeroftp-test-playground",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground",
         ]);
         let (config, path) = url_to_provider_config(
-            "github://token:secret@axpnet/aeroftp-test-playground",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground",
             &cli,
         )
         .unwrap();
         assert_eq!(config.provider_type, ProviderType::GitHub);
-        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
+        assert_eq!(config.host, "axpdev-lab/aeroftp-test-playground");
         assert_eq!(config.extra.get("branch"), None);
         assert_eq!(path, "/");
     }
@@ -7899,14 +7899,14 @@ mod tests {
         let cli = Cli::parse_from([
             "aeroftp",
             "connect",
-            "github://token:secret@axpnet/aeroftp-test-playground@main",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground@main",
         ]);
         let (config, _) = url_to_provider_config(
-            "github://token:secret@axpnet/aeroftp-test-playground@main",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground@main",
             &cli,
         )
         .unwrap();
-        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
+        assert_eq!(config.host, "axpdev-lab/aeroftp-test-playground");
         assert_eq!(config.extra.get("branch").map(|s| s.as_str()), Some("main"));
     }
 
@@ -7915,15 +7915,15 @@ mod tests {
         let cli = Cli::parse_from([
             "aeroftp",
             "connect",
-            "github://token:secret@axpnet/aeroftp-test-playground",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground",
         ]);
         let (config, _) = url_to_provider_config(
-            "github://token:secret@axpnet/aeroftp-test-playground",
+            "github://token:secret@axpdev-lab/aeroftp-test-playground",
             &cli,
         )
         .unwrap();
         assert_eq!(config.provider_type, ProviderType::GitHub);
-        assert_eq!(config.host, "axpnet/aeroftp-test-playground");
+        assert_eq!(config.host, "axpdev-lab/aeroftp-test-playground");
     }
 
     // ── validate_relative_path tests ──────────────────────────────────

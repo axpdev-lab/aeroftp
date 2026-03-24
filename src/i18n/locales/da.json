@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Repository (gennemse, commit, udgivelser)",
             "githubTooltip": "Gennemse GitHub-repos som filsystem. Uploads opretter Git-commits. Udgivelsesressourcer op til 2 GiB.",
             "githubAuthHelp": "Brug et Fine-grained Personal Access Token fra github.com/settings/personal-access-tokens. Påkrævede tilladelser: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (f.eks. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (f.eks. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

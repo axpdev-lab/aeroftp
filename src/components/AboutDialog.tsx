@@ -437,7 +437,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             {/* Links */}
                             <div className="flex justify-center gap-3">
                                 <button
-                                    onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                    onClick={() => openUrl('https://github.com/axpdev-lab/aeroftp')}
                                     className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition-colors text-sm text-gray-600 dark:text-gray-300"
                                 >
                                     <Github size={16} />

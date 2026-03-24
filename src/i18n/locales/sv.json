@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub-arkiv (bläddra, commits, utgåvor)",
             "githubTooltip": "Bläddra i GitHub-arkiv som filsystem. Uppladdningar skapar Git-commits. Utgåvefiler upp till 2 GiB.",
             "githubAuthHelp": "Använd en Fine-grained Personal Access Token från github.com/settings/personal-access-tokens. Nödvändiga behörigheter: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (t.ex. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (t.ex. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

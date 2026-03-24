@@ -1239,7 +1239,7 @@
             "githubDesc": "ឃ្លាំងផ្ទុក GitHub (រុករក, commit, ការចេញផ្សាយ)",
             "githubTooltip": "រុករកឃ្លាំងផ្ទុក GitHub ជាប្រព័ន្ធឯកសារ។ ការផ្ទុកឡើងបង្កើត Git commit។ ទ្រព្យចេញផ្សាយរហូតដល់ 2 GiB។",
             "githubAuthHelp": "ប្រើ Token ចូលប្រើផ្ទាល់ខ្លួនលម្អិតពី github.com/settings/personal-access-tokens។ សិទ្ធិដែលត្រូវការ: Contents (Read & Write), Metadata (Read)។",
-            "githubOwnerRepoPlaceholder": "owner/repo (ឧ. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ឧ. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

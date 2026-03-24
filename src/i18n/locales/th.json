@@ -1239,7 +1239,7 @@
             "githubDesc": "คลังเก็บ GitHub (เรียกดู, คอมมิต, รีลีส)",
             "githubTooltip": "เรียกดูคลังเก็บ GitHub เสมือนระบบไฟล์ การอัปโหลดจะสร้างคอมมิต Git ไฟล์รีลีสสูงสุด 2 GiB",
             "githubAuthHelp": "ใช้ Fine-grained Personal Access Token จาก github.com/settings/personal-access-tokens สิทธิ์ที่จำเป็น: Contents (Read & Write), Metadata (Read)",
-            "githubOwnerRepoPlaceholder": "owner/repo (เช่น axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (เช่น axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

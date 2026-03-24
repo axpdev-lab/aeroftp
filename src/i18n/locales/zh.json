@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub 仓库（浏览、提交、发布）",
             "githubTooltip": "像文件系统一样浏览 GitHub 仓库。上传会创建 Git 提交。发布资源最大 2 GiB。",
             "githubAuthHelp": "请使用来自 github.com/settings/personal-access-tokens 的 Fine-grained Personal Access Token。所需权限：Contents（Read & Write）、Metadata（Read）。",
-            "githubOwnerRepoPlaceholder": "owner/repo（例如 axpnet/aeroftp）"
+            "githubOwnerRepoPlaceholder": "owner/repo（例如 axpdev-lab/aeroftp）"
         },
         "shortcuts": {
             "title": "键盘快捷键",

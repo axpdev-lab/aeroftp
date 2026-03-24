@@ -4,7 +4,7 @@
 <policyconfig>
 
   <vendor>AeroFTP</vendor>
-  <vendor_url>https://github.com/axpnet/aeroftp</vendor_url>
+  <vendor_url>https://github.com/axpdev-lab/aeroftp</vendor_url>
 
   <action id="com.aeroftp.update.install">
     <description>Install AeroFTP update</description>

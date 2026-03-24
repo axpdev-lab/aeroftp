@@ -237,4 +237,4 @@ The implementation has been reviewed by multiple independent auditors (Claude Op
 
 ---
 
-*AeroFTP — [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp) — GPL-3.0*
+*AeroFTP — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) — GPL-3.0*

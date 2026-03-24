@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Repositorio (explorar, commit, versións)",
             "githubTooltip": "Explore repositorios GitHub como sistema de ficheiros. As subidas crean commits Git. Recursos de versión ata 2 GiB.",
             "githubAuthHelp": "Use un Fine-grained Personal Access Token de github.com/settings/personal-access-tokens. Permisos requiridos: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

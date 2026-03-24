@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub geymsla (skoða, commit, útgáfur)",
             "githubTooltip": "Skoðaðu GitHub geymslur sem skráakerfi. Upphal búa til Git commit. Útgáfuskrár allt að 2 GiB.",
             "githubAuthHelp": "Notaðu fínstilltan persónulegan aðgangslykil frá github.com/settings/personal-access-tokens. Nauðsynlegar heimildir: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (t.d. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (t.d. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

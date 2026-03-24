@@ -1,7 +1,7 @@
 # AeroFTP
 
 <p align="center">
-  <img src="https://github.com/axpnet/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
+  <img src="https://github.com/axpdev-lab/aeroftp/raw/main/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP Logo" width="128" height="128">
 </p>
 
 <p align="center">
@@ -13,15 +13,15 @@
 </p>
 
 <p align="center">
-  <a href="https://aeroftp.app">Website</a> · <a href="https://docs.aeroftp.app">Documentation</a> · <a href="https://github.com/axpnet/aeroftp/releases">Download</a>
+  <a href="https://aeroftp.app">Website</a> · <a href="https://docs.aeroftp.app">Documentation</a> · <a href="https://github.com/axpdev-lab/aeroftp/releases">Download</a>
 </p>
 
 <!-- Row 1: Project & Quality -->
 <p align="center">
-  <a href="https://github.com/axpnet/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpnet/aeroftp" alt="Release" /></a>
-  <img src="https://img.shields.io/github/license/axpnet/aeroftp" alt="License" />
+  <a href="https://github.com/axpdev-lab/aeroftp/releases"><img src="https://img.shields.io/github/v/release/axpdev-lab/aeroftp" alt="Release" /></a>
+  <img src="https://img.shields.io/github/license/axpdev-lab/aeroftp" alt="License" />
   <a href="https://www.bestpractices.dev/projects/11994"><img src="https://www.bestpractices.dev/projects/11994/badge" alt="OpenSSF Best Practices" /></a>
-  <a href="https://rust-reportcard.xuri.me/report/github.com/axpnet/aeroftp"><img src="https://rust-reportcard.xuri.me/badge/github.com/axpnet/aeroftp" alt="Rust Report Card" /></a>
+  <a href="https://rust-reportcard.xuri.me/report/github.com/axpdev-lab/aeroftp"><img src="https://rust-reportcard.xuri.me/badge/github.com/axpdev-lab/aeroftp" alt="Rust Report Card" /></a>
 </p>
 
 <!-- Row 2: App Features -->
@@ -59,7 +59,7 @@
 <p align="center">
   <a href="https://openinventionnetwork.com/"><img src="https://img.shields.io/badge/OIN-Community%20Member-E87722" alt="OIN Community Member" /></a>
   <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
-  <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
+  <a href="https://gitster.dev/repo/axpdev-lab/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmlvgk6mj00002g6soo0qyh82" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
   <a href="https://buymeacoffee.com/AXPNetwork"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
   <a href="https://github.com/sponsors/axpnet"><img src="https://img.shields.io/badge/sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
@@ -233,7 +233,7 @@ An AI assistant with **47 provider-agnostic tools** that work across all 23 prot
 
 **Advanced features**:
 - **RAG integration**: Auto-indexes workspace files; full-text search across your codebase
-- **Plugin system**: Extend with custom tools via JSON manifest + shell scripts (sandboxed, 30s timeout). [Browse and create plugins](https://github.com/axpnet/aeroftp-plugins)
+- **Plugin system**: Extend with custom tools via JSON manifest + shell scripts (sandboxed, 30s timeout). [Browse and create plugins](https://github.com/axpdev-lab/aeroftp-plugins)
 - **Multi-step autonomous tools**: Chains multiple tool calls with auto-resume after approval
 - **Ollama auto-detection**: Discovers local Ollama instances and available models
 - **Monaco bidirectional sync**: Live two-way sync between code editor and AI agent
@@ -450,7 +450,7 @@ paru - S aeroftp-bin
 Visit [launchpad.net/aeroftp](https://launchpad.net/aeroftp) for PPA instructions and .deb packages.
 
 #### Other Linux Formats
-Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/latest):
 - **.deb** - Ubuntu, Debian, Linux Mint, Pop!_OS
 - **.rpm** - Fedora, openSUSE, RHEL
 - **.AppImage** - Portable, runs on any distro ([AppImageHub](https://appimage.github.io/AeroFTP/))
@@ -471,7 +471,7 @@ winget install axpnet.AeroFTP
 > Available on Windows 10 (1709+) and Windows 11. Requires [App Installer](https://apps.microsoft.com/detail/9NBLGGH4NNS1) from Microsoft Store.
 
 #### Other Windows Formats
-Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/latest):
 - **.exe** - NSIS installer
 - **.msi** - Windows Installer
 
@@ -479,10 +479,10 @@ Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/lates
 
 ### macOS
 
-Download from [GitHub Releases](https://github.com/axpnet/aeroftp/releases/latest):
+Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/latest):
 - **.dmg** - Universal disk image
 
-> **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch - right-click the app and select "Open" to bypass. See [#47](https://github.com/axpnet/aeroftp/issues/47) for known issues on Apple Silicon.
+> **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch - right-click the app and select "Open" to bypass. See [#47](https://github.com/axpdev-lab/aeroftp/issues/47) for known issues on Apple Silicon.
 
 ---
 

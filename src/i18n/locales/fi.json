@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub-tietovarasto (selaa, commit, julkaisut)",
             "githubTooltip": "Selaa GitHub-repoja tiedostojärjestelmänä. Lataukset luovat Git-commiteja. Julkaisuresurssit enintään 2 GiB.",
             "githubAuthHelp": "Käytä Fine-grained Personal Access Token -tunnusta osoitteesta github.com/settings/personal-access-tokens. Vaaditut oikeudet: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (esim. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (esim. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

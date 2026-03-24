@@ -242,7 +242,7 @@ Both engines produced fix roadmaps organized by architectural leverage:
 4. **Dependency auditing**: `cargo audit` + `npm audit` integrated in CI
 5. **Property-based testing**: `validate_path()`, `parse_server_field()`, `is_safe_archive_entry()` with proptest
 
-Evidence pack & remediation details: [SECURITY-EVIDENCE-v2.8.7.md](https://github.com/axpnet/aeroftp/blob/main/docs/security-evidence/SECURITY-EVIDENCE-v2.8.7.md)
+Evidence pack & remediation details: [SECURITY-EVIDENCE-v2.8.7.md](https://github.com/axpdev-lab/aeroftp/blob/main/docs/security-evidence/SECURITY-EVIDENCE-v2.8.7.md)
 
 ---
 
@@ -705,4 +705,4 @@ This audit was conducted by AI-powered code review agents with full source acces
 **Revision**: 5.0
 **Date**: 13 March 2026
 **Classification**: Public
-**Repository**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)
+**Repository**: [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)

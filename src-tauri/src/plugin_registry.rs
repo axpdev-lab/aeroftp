@@ -1,6 +1,6 @@
 //! Plugin Registry — fetches and installs plugins from a remote GitHub-based registry.
 //!
-//! Registry URL: https://raw.githubusercontent.com/axpnet/aeroftp-plugins/main/registry.json
+//! Registry URL: https://raw.githubusercontent.com/axpdev-lab/aeroftp-plugins/main/registry.json
 //! Plugins are downloaded, integrity-verified (SHA-256), and installed to ~/.config/aeroftp/plugins/.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -17,7 +17,7 @@ use tauri::Manager;
 use tracing::info;
 
 const REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/axpnet/aeroftp-plugins/main/registry.json";
+    "https://raw.githubusercontent.com/axpdev-lab/aeroftp-plugins/main/registry.json";
 const CACHE_TTL_SECS: u64 = 3600; // 1 hour
 const FETCH_TIMEOUT_SECS: u64 = 30;
 

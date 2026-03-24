@@ -664,7 +664,7 @@ AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https:/
 
 #### Fixed
 
-- **Updater URL whitelist**: Corrected GitHub repository URL in `ALLOWED_URL_PREFIXES` from `AXP-OS/AeroFTP` to `axpnet/aeroftp` — without this fix, auto-update would reject all legitimate release downloads
+- **Updater URL whitelist**: Corrected GitHub repository URL in `ALLOWED_URL_PREFIXES` from `AXP-OS/AeroFTP` to `axpdev-lab/aeroftp` — without this fix, auto-update would reject all legitimate release downloads
 
 #### Added
 

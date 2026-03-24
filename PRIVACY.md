@@ -57,7 +57,7 @@ AeroFTP does not knowingly collect any data from children or any other users.
 ## Open Source Transparency
 
 AeroFTP is fully open source under GPL-3.0. You can audit the complete source code at:
-https://github.com/axpnet/aeroftp
+https://github.com/axpdev-lab/aeroftp
 
 ## Changes to This Policy
 
@@ -67,7 +67,7 @@ Updates to this privacy policy will be reflected in this document with an update
 
 For privacy-related questions or concerns:
 - **Email**: aeroftp@axpdev.it
-- **GitHub Issues**: https://github.com/axpnet/aeroftp/issues
+- **GitHub Issues**: https://github.com/axpdev-lab/aeroftp/issues
 
 ---
 

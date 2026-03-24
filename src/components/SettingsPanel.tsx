@@ -238,7 +238,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
                     alert(t('settings.updateAvailableAlert', {
                         version: info.latest_version || '',
                         format: info.install_format || '',
-                        url: info.download_url || 'https://github.com/axpnet/aeroftp/releases/latest'
+                        url: info.download_url || 'https://github.com/axpdev-lab/aeroftp/releases/latest'
                     }));
                 }
             } else {

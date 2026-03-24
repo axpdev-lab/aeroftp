@@ -103,4 +103,4 @@ AeroAgent features **47 tools** across 10 categories, **19 AI providers** (OpenA
 ---
 
 **Maintainer**: axpnet
-**Project**: [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)
+**Project**: [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)

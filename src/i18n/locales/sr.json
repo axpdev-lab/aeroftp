@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub репозиторијум (прегледање, комитови, издања)",
             "githubTooltip": "Прегледајте GitHub репозиторијуме као фајл систем. Отпремања креирају Git комитове. Ресурси издања до 2 GiB.",
             "githubAuthHelp": "Користите Fine-grained Personal Access Token са github.com/settings/personal-access-tokens. Потребне дозволе: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (нпр. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (нпр. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",

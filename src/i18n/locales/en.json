@@ -1909,7 +1909,7 @@
       "githubDesc": "GitHub Repository (browse, commit, releases)",
       "githubTooltip": "Browse GitHub repos as filesystem. Uploads create Git commits. Release assets up to 2 GiB.",
       "githubAuthHelp": "Use a Fine-grained Personal Access Token from github.com/settings/personal-access-tokens. Required permissions: Contents (Read & Write), Metadata (Read).",
-      "githubOwnerRepoPlaceholder": "owner/repo (e.g. axpnet/aeroftp)",
+      "githubOwnerRepoPlaceholder": "owner/repo (e.g. axpdev-lab/aeroftp)",
       "fileluFtpDesc": "FileLu via FTP",
       "fileluFtpsDesc": "FileLu via secure FTPS",
       "fileluWebdavDesc": "FileLu via WebDAV",

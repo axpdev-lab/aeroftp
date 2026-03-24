@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub saugykla (naršymas, commitai, leidimai)",
             "githubTooltip": "Naršykite GitHub saugyklas kaip failų sistemą. Įkėlimai sukuria Git commitus. Leidimo failai iki 2 GiB.",
             "githubAuthHelp": "Naudokite detalų asmeninį prieigos raktą iš github.com/settings/personal-access-tokens. Reikalingi leidimai: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (pvz. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (pvz. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

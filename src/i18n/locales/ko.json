@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub 저장소 (탐색, 커밋, 릴리스)",
             "githubTooltip": "GitHub 저장소를 파일 시스템으로 탐색합니다. 업로드 시 Git 커밋이 생성됩니다. 릴리스 에셋은 최대 2 GiB.",
             "githubAuthHelp": "github.com/settings/personal-access-tokens에서 세분화된 개인 액세스 토큰을 사용하세요. 필요한 권한: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (예: axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (예: axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "단축키",

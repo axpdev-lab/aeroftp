@@ -1239,7 +1239,7 @@
             "githubDesc": "Repositoryo ng GitHub (mag-browse, commit, release)",
             "githubTooltip": "I-browse ang mga repositoryo ng GitHub bilang filesystem. Ang mga upload ay gumagawa ng Git commit. Mga asset ng release hanggang 2 GiB.",
             "githubAuthHelp": "Gumamit ng Fine-grained Personal Access Token mula sa github.com/settings/personal-access-tokens. Mga kinakailangang pahintulot: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (hal. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (hal. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

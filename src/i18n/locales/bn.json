@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub রিপোজিটরি (ব্রাউজ, কমিট, রিলিজ)",
             "githubTooltip": "GitHub রিপো ফাইল সিস্টেম হিসেবে ব্রাউজ করুন। আপলোড Git কমিট তৈরি করে। রিলিজ অ্যাসেট ২ GiB পর্যন্ত।",
             "githubAuthHelp": "github.com/settings/personal-access-tokens থেকে একটি Fine-grained Personal Access Token ব্যবহার করুন। প্রয়োজনীয় অনুমতি: Contents (Read & Write), Metadata (Read)।",
-            "githubOwnerRepoPlaceholder": "owner/repo (যেমন axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (যেমন axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub リポジトリ（閲覧、コミット、リリース）",
             "githubTooltip": "GitHub リポジトリをファイルシステムとして閲覧します。アップロードで Git コミットが作成されます。リリースアセットは最大 2 GiB。",
             "githubAuthHelp": "github.com/settings/personal-access-tokens からきめ細かい個人アクセストークンを使用してください。必要な権限: Contents (Read & Write)、Metadata (Read)。",
-            "githubOwnerRepoPlaceholder": "owner/repo（例: axpnet/aeroftp）"
+            "githubOwnerRepoPlaceholder": "owner/repo（例: axpdev-lab/aeroftp）"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

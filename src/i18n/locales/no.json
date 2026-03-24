@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub-depot (bla gjennom, commits, utgivelser)",
             "githubTooltip": "Bla gjennom GitHub-depoter som filsystem. Opplastinger oppretter Git-commits. Utgivelsesfiler opptil 2 GiB.",
             "githubAuthHelp": "Bruk et finkornet personlig tilgangstoken fra github.com/settings/personal-access-tokens. Nødvendige tillatelser: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (f.eks. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (f.eks. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

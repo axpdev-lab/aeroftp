@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Hoidla (sirvimine, commit, väljalasked)",
             "githubTooltip": "Sirvige GitHub hoidlaid failisüsteemina. Üleslaadimised loovad Git commite. Väljalaskefailid kuni 2 GiB.",
             "githubAuthHelp": "Kasutage Fine-grained Personal Access Token'it aadressilt github.com/settings/personal-access-tokens. Nõutavad õigused: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (nt axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (nt axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

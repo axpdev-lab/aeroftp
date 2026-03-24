@@ -1239,7 +1239,7 @@
             "githubDesc": "Repozitár GitHub (prehliadanie, commity, vydania)",
             "githubTooltip": "Prehliadajte repozitáre GitHub ako súborový systém. Nahrávanie vytvára commity Git. Súbory vydaní do 2 GiB.",
             "githubAuthHelp": "Použite Fine-grained Personal Access Token z github.com/settings/personal-access-tokens. Požadované oprávnenia: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (napr. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (napr. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

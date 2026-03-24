@@ -431,4 +431,4 @@ Available only in Cyber theme. Auto-approves all tool calls for fully autonomous
 
 ---
 
-*AeroAgent is part of the [AeroFTP](https://github.com/axpnet/aeroftp) ecosystem by AXP Development.*
+*AeroAgent is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) ecosystem by AXP Development.*

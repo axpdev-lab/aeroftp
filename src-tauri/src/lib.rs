@@ -336,7 +336,7 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     info!("Checking for updates... Current: v{}, Format: {}", current_version, install_format);
     
     let client = HttpClient::new();
-    let url = "https://api.github.com/repos/axpnet/aeroftp/releases/latest";
+    let url = "https://api.github.com/repos/axpdev-lab/aeroftp/releases/latest";
     
     let response = client.get(url)
         .header("User-Agent", "AeroFTP")
@@ -461,7 +461,7 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
 
     // A8-03: Whitelist update URLs to prevent XSS → arbitrary download → root RCE chain
     const ALLOWED_URL_PREFIXES: &[&str] = &[
-        "https://github.com/axpnet/aeroftp/releases/",
+        "https://github.com/axpdev-lab/aeroftp/releases/",
         "https://objects.githubusercontent.com/",
     ];
     if !ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix)) {
@@ -2225,7 +2225,7 @@ fn get_dependencies() -> Vec<DependencyInfo> {
 #[tauri::command]
 async fn check_crate_versions(crate_names: Vec<String>) -> Vec<CrateVersionResult> {
     let client = reqwest::Client::builder()
-        .user_agent("AeroFTP (https://github.com/axpnet/aeroftp)")
+        .user_agent("AeroFTP (https://github.com/axpdev-lab/aeroftp)")
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 

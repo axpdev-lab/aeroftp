@@ -1232,7 +1232,7 @@
             "githubDesc": "GitHub Պահոց (դիտարկում, կոմիտներ, թողարկումներ)",
             "githubTooltip": "Դիտարկեք GitHub պահոցները որպես ֆայլային համակարգ։ Վերբեռնման ֆայլերը ստեղծում են Git կոմիտներ։ Թողարկման ֆայլերը մինչև 2 GiB։",
             "githubAuthHelp": "Օգտագործեք մանրամասն կարգավորված անձնական մուտքի տոկեն github.com/settings/personal-access-tokens էջից։ Պահանջվող թույլտվություններ՝ Contents (Read & Write), Metadata (Read)։",
-            "githubOwnerRepoPlaceholder": "owner/repo (օր. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (օր. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

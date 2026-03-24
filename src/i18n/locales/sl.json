@@ -1239,7 +1239,7 @@
             "githubDesc": "Repozitorij GitHub (brskanje, commiti, izdaje)",
             "githubTooltip": "Brskajte po repozitorijih GitHub kot po datotečnem sistemu. Nalaganja ustvarijo commite Git. Datoteke izdaj do 2 GiB.",
             "githubAuthHelp": "Uporabite Fine-grained Personal Access Token z github.com/settings/personal-access-tokens. Potrebna dovoljenja: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (npr. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (npr. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

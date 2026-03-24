@@ -1239,7 +1239,7 @@
             "githubDesc": "Hifadhi ya GitHub (vinjari, commits, matoleo)",
             "githubTooltip": "Vinjari hifadhi za GitHub kama mfumo wa faili. Upakiaji huunda commits za Git. Mali za matoleo hadi 2 GiB.",
             "githubAuthHelp": "Tumia Fine-grained Personal Access Token kutoka github.com/settings/personal-access-tokens. Ruhusa zinazohitajika: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (mf. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (mf. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",

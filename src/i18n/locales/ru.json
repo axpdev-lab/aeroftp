@@ -1239,7 +1239,7 @@
             "githubDesc": "Репозиторий GitHub (обзор, коммиты, релизы)",
             "githubTooltip": "Просматривайте репозитории GitHub как файловую систему. Загрузки создают коммиты Git. Ресурсы релизов до 2 ГиБ.",
             "githubAuthHelp": "Используйте Fine-grained Personal Access Token с github.com/settings/personal-access-tokens. Необходимые разрешения: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Горячие клавиши",

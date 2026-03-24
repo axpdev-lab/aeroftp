@@ -194,7 +194,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                             ))}
                             {/* Star on GitHub - free support */}
                             <button
-                                onClick={() => openUrl('https://github.com/axpnet/aeroftp')}
+                                onClick={() => openUrl('https://github.com/axpdev-lab/aeroftp')}
                                 className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:border-amber-300 dark:hover:border-amber-600 transition-all hover:scale-105"
                             >
                                 <Star size={24} className="text-amber-500" />

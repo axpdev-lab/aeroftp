@@ -57,7 +57,7 @@ aeroftp-cli --help
 ### Building from Source
 
 ```bash
-git clone https://github.com/axpnet/aeroftp.git
+git clone https://github.com/axpdev-lab/aeroftp.git
 cd aeroftp/src-tauri
 cargo build --release --bin aeroftp-cli
 # Binary at target/release/aeroftp-cli
@@ -910,4 +910,4 @@ The following providers have been tested live via CLI with `--profile`:
 
 ---
 
-*AeroFTP CLI is part of the [AeroFTP](https://github.com/axpnet/aeroftp) project — GPL-3.0*
+*AeroFTP CLI is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) project — GPL-3.0*

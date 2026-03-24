@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Αποθετήριο (περιήγηση, commit, εκδόσεις)",
             "githubTooltip": "Περιηγηθείτε στα GitHub repos ως σύστημα αρχείων. Τα ανεβάσματα δημιουργούν Git commits. Πόροι εκδόσεων έως 2 GiB.",
             "githubAuthHelp": "Χρησιμοποιήστε ένα Fine-grained Personal Access Token από github.com/settings/personal-access-tokens. Απαιτούμενα δικαιώματα: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (π.χ. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (π.χ. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub repozitorijs (pārlūkošana, commiti, laidienu)",
             "githubTooltip": "Pārlūkojiet GitHub repozitorijus kā failu sistēmu. Augšupielādes izveido Git commitus. Laidiena faili līdz 2 GiB.",
             "githubAuthHelp": "Izmantojiet detalizētu personīgo piekļuves pilnvaru no github.com/settings/personal-access-tokens. Nepieciešamās atļaujas: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (piem. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (piem. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

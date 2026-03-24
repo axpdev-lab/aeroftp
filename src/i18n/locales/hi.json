@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub रिपॉजिटरी (ब्राउज़, कमिट, रिलीज़)",
             "githubTooltip": "GitHub repos को फाइल सिस्टम के रूप में ब्राउज़ करें। अपलोड Git कमिट बनाते हैं। रिलीज़ संपत्तियाँ 2 GiB तक।",
             "githubAuthHelp": "github.com/settings/personal-access-tokens से Fine-grained Personal Access Token का उपयोग करें। आवश्यक अनुमतियाँ: Contents (Read & Write), Metadata (Read)।",
-            "githubOwnerRepoPlaceholder": "owner/repo (जैसे axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (जैसे axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

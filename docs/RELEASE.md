@@ -77,11 +77,11 @@ After GitHub Actions publishes artifacts (AppImage available on GitHub Releases)
 ```bash
 # Download AppImage
 curl -L -o /tmp/AeroFTP.AppImage \
-  "https://github.com/axpnet/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64.AppImage"
+  "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64.AppImage"
 
 # Download icon
 curl -L -o /tmp/aeroftp-icon.png \
-  "https://raw.githubusercontent.com/axpnet/aeroftp/main/src-tauri/icons/128x128.png"
+  "https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/src-tauri/icons/128x128.png"
 
 # Compute hashes
 sha256sum /tmp/AeroFTP.AppImage

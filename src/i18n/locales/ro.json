@@ -1239,7 +1239,7 @@
             "githubDesc": "Depozit GitHub (navigare, commituri, versiuni)",
             "githubTooltip": "Navighează în depozitele GitHub ca sistem de fișiere. Încărcările creează commituri Git. Resurse de versiune până la 2 GiB.",
             "githubAuthHelp": "Folosește un Fine-grained Personal Access Token de la github.com/settings/personal-access-tokens. Permisiuni necesare: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

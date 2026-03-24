@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Repozitář (procházení, commit, vydání)",
             "githubTooltip": "Procházejte GitHub repozitáře jako souborový systém. Nahrávání vytváří Git commity. Soubory vydání až do 2 GiB.",
             "githubAuthHelp": "Použijte Fine-grained Personal Access Token z github.com/settings/personal-access-tokens. Požadovaná oprávnění: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (např. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (např. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

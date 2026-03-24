@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Biltegia (arakatu, commit, bertsioak)",
             "githubTooltip": "Arakatu GitHub biltegiak fitxategi-sistema gisa. Igoerek Git commitak sortzen dituzte. Bertsio-baliabideak 2 GiB arte.",
             "githubAuthHelp": "Erabili Fine-grained Personal Access Token bat github.com/settings/personal-access-tokens helbidetik. Beharrezko baimenak: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (adib. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (adib. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

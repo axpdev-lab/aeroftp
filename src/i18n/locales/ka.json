@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub საცავი (დათვალიერება, კომიტები, რელიზები)",
             "githubTooltip": "დაათვალიერეთ GitHub საცავები ფაილური სისტემის სახით. ატვირთვები ქმნიან Git კომიტებს. რელიზის ფაილები 2 GiB-მდე.",
             "githubAuthHelp": "გამოიყენეთ დეტალური პირადი წვდომის ტოკენი github.com/settings/personal-access-tokens გვერდიდან. საჭირო უფლებები: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (მაგ. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (მაგ. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

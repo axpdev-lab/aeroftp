@@ -168,4 +168,4 @@ The architecture has been reviewed by 10 independent auditors (5 Claude Opus 4.6
 
 ---
 
-*AeroFTP — [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp) — GPL-3.0*
+*AeroFTP — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) — GPL-3.0*

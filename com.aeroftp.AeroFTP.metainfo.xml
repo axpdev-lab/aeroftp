@@ -61,21 +61,21 @@
   <screenshots>
     <screenshot type="default">
       <caption>AeroFTP main window showing dual-pane file browser</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-1.png</image>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-1.png</image>
     </screenshot>
     <screenshot>
       <caption>Connection screen with saved servers</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-2.png</image>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-2.png</image>
     </screenshot>
     <screenshot>
       <caption>AeroTools with code editor, terminal and AI assistant</caption>
-      <image>https://raw.githubusercontent.com/axpnet/aeroftp/main/docs/screenshots/screenshot-3.png</image>
+      <image>https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/docs/screenshots/screenshot-3.png</image>
     </screenshot>
   </screenshots>
 
-  <url type="homepage">https://github.com/axpnet/aeroftp</url>
-  <url type="bugtracker">https://github.com/axpnet/aeroftp/issues</url>
-  <url type="vcs-browser">https://github.com/axpnet/aeroftp</url>
+  <url type="homepage">https://github.com/axpdev-lab/aeroftp</url>
+  <url type="bugtracker">https://github.com/axpdev-lab/aeroftp/issues</url>
+  <url type="vcs-browser">https://github.com/axpdev-lab/aeroftp</url>
   <url type="donation">https://github.com/sponsors/axpnet</url>
 
   <developer id="com.aeroftp">

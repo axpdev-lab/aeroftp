@@ -1239,7 +1239,7 @@
             "githubDesc": "Repozytorium GitHub (przeglądanie, commity, wydania)",
             "githubTooltip": "Przeglądaj repozytoria GitHub jako system plików. Przesyłanie tworzy commity Git. Zasoby wydań do 2 GiB.",
             "githubAuthHelp": "Użyj Fine-grained Personal Access Token z github.com/settings/personal-access-tokens. Wymagane uprawnienia: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (np. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (np. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

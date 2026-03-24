@@ -76,7 +76,7 @@ Reviewers and auditors can verify the human-driven development model by examinin
 
 ## Contact
 
-For questions about AI usage in this project, open an issue on [GitHub](https://github.com/axpnet/aeroftp/issues).
+For questions about AI usage in this project, open an issue on [GitHub](https://github.com/axpdev-lab/aeroftp/issues).
 
 ---
 

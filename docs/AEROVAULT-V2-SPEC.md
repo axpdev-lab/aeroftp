@@ -6,7 +6,7 @@
 **Authors**: AXP Development
 
 > Canonical source: [`aerovault` crate on crates.io](https://crates.io/crates/aerovault)
-> Reference implementation: [github.com/axpnet/aerovault](https://github.com/axpnet/aerovault)
+> Reference implementation: [github.com/axpdev-lab/aerovault](https://github.com/axpdev-lab/aerovault)
 
 ---
 
@@ -172,7 +172,7 @@ All HKDF derivations use SHA-256 with:
 | `AeroVault v2 AES-SIV filename encryption` | 64 bytes | AES-256-SIV key for filenames |
 | `AeroVault v2 ChaCha20-Poly1305 cascade` | 32 bytes | ChaCha20-Poly1305 key for cascade |
 
-> **Note**: These labels match the constants in the [reference implementation](https://github.com/axpnet/aerovault/blob/main/aerovault/src/constants.rs). Third-party implementations MUST use these exact byte strings.
+> **Note**: These labels match the constants in the [reference implementation](https://github.com/axpdev-lab/aerovault/blob/main/aerovault/src/constants.rs). Third-party implementations MUST use these exact byte strings.
 
 ---
 
@@ -760,8 +760,8 @@ Hex: 2a 00 00 00    (uint32 LE)
 | Language | Implementation | Status |
 |----------|---------------|--------|
 | **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.3.2) |
-| **Rust** | [AeroFTP Desktop](https://github.com/axpnet/aeroftp) (GUI integration) | Production |
-| **Java** | [AeroFTP Mobile](https://github.com/axpnet/aeroftp-mobile) `VaultPlugin.java` | Production |
+| **Rust** | [AeroFTP Desktop](https://github.com/axpdev-lab/aeroftp) (GUI integration) | Production |
+| **Java** | [AeroFTP Mobile](https://github.com/axpdev-lab/aeroftp-mobile) `VaultPlugin.java` | Production |
 
 ---
 
@@ -781,4 +781,4 @@ This specification is released under the [GPL-3.0 License](../LICENSE). The `aer
 
 ---
 
-*AeroVault v2 is part of the [AeroFTP](https://github.com/axpnet/aeroftp) ecosystem by AXP Development.*
+*AeroVault v2 is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) ecosystem by AXP Development.*

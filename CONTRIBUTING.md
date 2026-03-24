@@ -35,7 +35,7 @@ Be respectful, inclusive, and professional. We're here to build great software t
 
 ```bash
 # Clone the repo
-git clone https://github.com/axpnet/aeroftp.git
+git clone https://github.com/axpdev-lab/aeroftp.git
 cd aeroftp
 
 # Install dependencies

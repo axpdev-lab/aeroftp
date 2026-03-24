@@ -1239,7 +1239,7 @@
             "githubDesc": "Репозиторій GitHub (перегляд, коміти, релізи)",
             "githubTooltip": "Переглядайте репозиторії GitHub як файлову систему. Завантаження створюють коміти Git. Ресурси релізів до 2 ГіБ.",
             "githubAuthHelp": "Використовуйте Fine-grained Personal Access Token з github.com/settings/personal-access-tokens. Необхідні дозволи: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Грячі клавіші",

@@ -1239,7 +1239,7 @@
             "githubDesc": "Repositório GitHub (navegar, commits, releases)",
             "githubTooltip": "Navegue em repositórios GitHub como sistema de ficheiros. Uploads criam commits Git. Assets de release até 2 GiB.",
             "githubAuthHelp": "Use um Fine-grained Personal Access Token de github.com/settings/personal-access-tokens. Permissões necessárias: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

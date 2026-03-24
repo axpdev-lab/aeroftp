@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub repozitorij (pregledavanje, commitovi, izdanja)",
             "githubTooltip": "Pregledajte GitHub repozitorije kao datotečni sustav. Prijenosi stvaraju Git commitove. Datoteke izdanja do 2 GiB.",
             "githubAuthHelp": "Koristite detaljni osobni pristupni token s github.com/settings/personal-access-tokens. Potrebne dozvole: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (npr. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (npr. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

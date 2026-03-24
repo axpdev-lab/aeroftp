@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub-repository (bladeren, commits, releases)",
             "githubTooltip": "Blader door GitHub-repositories als bestandssysteem. Uploads maken Git-commits aan. Release-bestanden tot 2 GiB.",
             "githubAuthHelp": "Gebruik een fijnmazig persoonlijk toegangstoken van github.com/settings/personal-access-tokens. Vereiste machtigingen: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (bijv. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (bijv. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Репозиторий (преглед, комит, издания)",
             "githubTooltip": "Преглеждайте GitHub репозитории като файлова система. Качванията създават Git комити. Ресурси на издания до 2 GiB.",
             "githubAuthHelp": "Използвайте персонален токън за достъп с фина настройка от github.com/settings/personal-access-tokens. Необходими права: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (напр. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

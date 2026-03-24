@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Dépôt (parcourir, commit, versions)",
             "githubTooltip": "Parcourez les dépôts GitHub comme un système de fichiers. Les téléversements créent des commits Git. Ressources de version jusqu'à 2 GiB.",
             "githubAuthHelp": "Utilisez un Fine-grained Personal Access Token depuis github.com/settings/personal-access-tokens. Permissions requises : Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ex. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Ystorfa (pori, commit, rhyddhau)",
             "githubTooltip": "Poriwch ystorfaoedd GitHub fel system ffeiliau. Mae llwythiadau'n creu commitiau Git. Asedau rhyddhau hyd at 2 GiB.",
             "githubAuthHelp": "Defnyddiwch Fine-grained Personal Access Token o github.com/settings/personal-access-tokens. Caniatâd angenrheidiol: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (e.e. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (e.e. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

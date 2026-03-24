@@ -231,4 +231,4 @@ aeroftp-cli df --profile "Production" --json
 
 ---
 
-*AeroFTP CLI v2.9.9+ — [github.com/axpnet/aeroftp](https://github.com/axpnet/aeroftp)*
+*AeroFTP CLI v2.9.9+ — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

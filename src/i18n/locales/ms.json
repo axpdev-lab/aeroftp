@@ -1239,7 +1239,7 @@
             "githubDesc": "Repositori GitHub (layari, commit, keluaran)",
             "githubTooltip": "Layari repositori GitHub sebagai sistem fail. Muat naik mencipta Git commit. Aset keluaran sehingga 2 GiB.",
             "githubAuthHelp": "Gunakan Token Akses Peribadi Terperinci daripada github.com/settings/personal-access-tokens. Kebenaran diperlukan: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (cth. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (cth. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

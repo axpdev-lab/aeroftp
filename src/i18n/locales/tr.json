@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Deposu (göz at, commit, sürümler)",
             "githubTooltip": "GitHub depolarına dosya sistemi olarak göz atın. Yüklemeler Git commitleri oluşturur. Sürüm dosyaları 2 GiB'a kadar.",
             "githubAuthHelp": "github.com/settings/personal-access-tokens adresinden bir Fine-grained Personal Access Token kullanın. Gerekli izinler: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (ör. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (ör. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

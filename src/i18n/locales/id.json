@@ -1239,7 +1239,7 @@
             "githubDesc": "Repositori GitHub (jelajah, commit, rilis)",
             "githubTooltip": "Jelajahi repositori GitHub sebagai sistem berkas. Unggahan membuat Git commit. Aset rilis hingga 2 GiB.",
             "githubAuthHelp": "Gunakan Token Akses Pribadi Terperinci dari github.com/settings/personal-access-tokens. Izin yang diperlukan: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (mis. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (mis. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

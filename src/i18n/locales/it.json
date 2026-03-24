@@ -381,7 +381,7 @@
             "githubDesc": "Repository GitHub (esplora, commit, release)",
             "githubTooltip": "Esplora i repository GitHub come filesystem. I caricamenti creano commit Git. Asset delle release fino a 2 GiB.",
             "githubAuthHelp": "Usa un Fine-grained Personal Access Token da github.com/settings/personal-access-tokens. Permessi richiesti: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (es. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (es. axpdev-lab/aeroftp)"
         },
         "browser": {
             "remote": "Remoto",

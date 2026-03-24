@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub adattár (böngészés, commitok, kiadások)",
             "githubTooltip": "GitHub adattárak böngészése fájlrendszerként. A feltöltések Git commitokat hoznak létre. Kiadási fájlok legfeljebb 2 GiB.",
             "githubAuthHelp": "Használjon részletes személyes hozzáférési tokent a github.com/settings/personal-access-tokens oldalról. Szükséges engedélyek: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (pl. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (pl. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

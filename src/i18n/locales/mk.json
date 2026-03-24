@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub складиште (прелистување, комитови, изданија)",
             "githubTooltip": "Прелистувајте GitHub складишта како датотечен систем. Прикачувањата создаваат Git комитови. Датотеки за издание до 2 GiB.",
             "githubAuthHelp": "Користете детален личен пристапен токен од github.com/settings/personal-access-tokens. Потребни дозволи: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (на пр. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (на пр. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",

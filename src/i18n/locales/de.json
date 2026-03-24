@@ -1239,7 +1239,7 @@
             "githubDesc": "GitHub Repository (durchsuchen, Commit, Releases)",
             "githubTooltip": "GitHub-Repos als Dateisystem durchsuchen. Uploads erstellen Git-Commits. Release-Assets bis zu 2 GiB.",
             "githubAuthHelp": "Verwenden Sie ein Fine-grained Personal Access Token von github.com/settings/personal-access-tokens. Erforderliche Berechtigungen: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (z. B. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (z. B. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

@@ -1239,7 +1239,7 @@
             "githubDesc": "Kho lưu trữ GitHub (duyệt, commit, phát hành)",
             "githubTooltip": "Duyệt các kho GitHub như hệ thống tệp. Tải lên tạo commit Git. Tài nguyên phát hành tối đa 2 GiB.",
             "githubAuthHelp": "Sử dụng Fine-grained Personal Access Token từ github.com/settings/personal-access-tokens. Quyền cần thiết: Contents (Read & Write), Metadata (Read).",
-            "githubOwnerRepoPlaceholder": "owner/repo (vd. axpnet/aeroftp)"
+            "githubOwnerRepoPlaceholder": "owner/repo (vd. axpdev-lab/aeroftp)"
         },
         "shortcuts": {
             "title": "Phím tắt",
