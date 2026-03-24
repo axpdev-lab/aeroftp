@@ -97,7 +97,7 @@ mega://user@example.com
 Passwords can be provided in several ways (in order of preference):
 
 1. **stdin** (most secure): `echo "password" | aeroftp --password-stdin connect sftp://user@host`
-2. **Environment variable**: `AEROFTP_TOKEN=mytoken aeroftp connect jottacloud://user@host`
+2. **Environment variable**: `AEROFTP_TOKEN=mytoken aeroftp-cli connect jottacloud://user@host`
 3. **Interactive prompt**: If no password is provided, the CLI prompts on TTY
 4. **URL** (least secure): `sftp://user:password@host` — a warning is displayed
 
@@ -142,7 +142,7 @@ The CLI matches profiles in this order:
 3. **Substring match** — if only one profile matches, it connects. If multiple match, an error lists the candidates
 
 ```bash
-$ aeroftp ls --profile "SSH" /
+$ aeroftp-cli ls --profile "SSH" /
 Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exact name or index number.
 ```
 
@@ -167,7 +167,7 @@ If the vault is protected with a master password:
 
 ```bash
 # Via environment variable (recommended)
-AEROFTP_MASTER_PASSWORD=secret aeroftp ls --profile "server" /
+AEROFTP_MASTER_PASSWORD=secret aeroftp-cli ls --profile "server" /
 
 # Interactive prompt (hidden input)
 aeroftp-cli ls --profile "server" /
@@ -758,7 +758,7 @@ aeroftp-cli ls webdav://user@webdav.example.com /
 
 ```bash
 # Jottacloud (token via env)
-AEROFTP_TOKEN=mytoken aeroftp ls jottacloud://user@jottacloud.com /
+AEROFTP_TOKEN=mytoken aeroftp-cli ls jottacloud://user@jottacloud.com /
 
 # FileLu (API key as token)
 aeroftp-cli ls filelu://user@filelu.com --token my-api-key /
@@ -824,7 +824,7 @@ aeroftp-cli get sftp://backup@nas:2222 /data/database.sql \
 
 ```bash
 # Check storage quota and alert
-USAGE=$(aeroftp df sftp://user@host --json 2>/dev/null | jq '.used_pct')
+USAGE=$(aeroftp-cli df sftp://user@host --json 2>/dev/null | jq '.used_pct')
 if (( $(echo "$USAGE > 90" | bc -l) )); then
   echo "WARNING: Storage at ${USAGE}%"
 fi

@@ -49,7 +49,7 @@ The vault is not a wrapper around the OS keystore. It is a self-contained encryp
 
 When an AI agent needs to operate on a remote server, it never receives the credentials. Instead:
 
-1. The agent calls `aeroftp ls --profile "My Server" /path/` (CLI) or invokes the `server_exec` tool (AeroAgent)
+1. The agent calls `aeroftp-cli ls --profile "My Server" /path/` (CLI) or invokes the `server_exec` tool (AeroAgent)
 2. The Rust backend receives the request with only the profile name and the operation to perform
 3. The backend opens the encrypted vault, loads the credential material, and authenticates to the remote server
 4. The operation executes entirely within the Rust process
@@ -68,16 +68,16 @@ The credential material exists only inside the Rust process memory during the op
 
 ```bash
 # List saved server profiles (names only, never credentials)
-aeroftp profiles
+aeroftp-cli profiles
 
 # Connect and operate using a saved profile
-aeroftp ls --profile "Production" /var/www/
-aeroftp put --profile "Staging" ./dist/app.js /var/www/app.js
-aeroftp sync --profile "NAS Backup" ./data/ /backups/ --dry-run
+aeroftp-cli ls --profile "Production" /var/www/
+aeroftp-cli put --profile "Staging" ./dist/app.js /var/www/app.js
+aeroftp-cli sync --profile "NAS Backup" ./data/ /backups/ --dry-run
 
 # OAuth providers work the same way (authorize once in GUI, reuse from CLI)
-aeroftp ls --profile "Google Drive" /
-aeroftp get --profile "Dropbox" /Documents/report.pdf
+aeroftp-cli ls --profile "Google Drive" /
+aeroftp-cli get --profile "Dropbox" /Documents/report.pdf
 ```
 
 Profile matching supports exact names, IDs, and disambiguated substring matching. If a query matches multiple profiles, the CLI reports the candidates and asks for clarification rather than guessing.
@@ -111,11 +111,11 @@ A developer using Claude Code, Cursor, or a similar AI coding agent can set up a
 
 ```bash
 # Agent edits files locally, then deploys
-aeroftp put --profile "axpdev.it" ./dist/app.js /var/www/app.js
-aeroftp put --profile "axpdev.it" ./dist/styles.css /var/www/styles.css
+aeroftp-cli put --profile "axpdev.it" ./dist/app.js /var/www/app.js
+aeroftp-cli put --profile "axpdev.it" ./dist/styles.css /var/www/styles.css
 
 # Agent verifies deployment
-aeroftp ls --profile "axpdev.it" /var/www/ -l
+aeroftp-cli ls --profile "axpdev.it" /var/www/ -l
 ```
 
 The developer saved the server once in the AeroFTP GUI. The agent uses it indefinitely without ever seeing the FTP password.
@@ -125,7 +125,7 @@ The developer saved the server once in the AeroFTP GUI. The agent uses it indefi
 ```bash
 # The vault master password is the only secret the pipeline needs
 AEROFTP_MASTER_PASSWORD=${{ secrets.VAULT_KEY }} \
-  aeroftp sync --profile "Production" ./build/ /var/www/ --delete
+  aeroftp-cli sync --profile "Production" ./build/ /var/www/ --delete
 ```
 
 A single secret (the vault master password) unlocks access to all configured servers. Individual server credentials never appear in CI/CD configuration, logs, or environment dumps.
@@ -134,7 +134,7 @@ A single secret (the vault master password) unlocks access to all configured ser
 
 ```bash
 # Batch script: deploy to staging, verify, then deploy to production
-aeroftp batch deploy.aeroftp --json
+aeroftp-cli batch deploy.aeroftp --json
 ```
 
 ```
