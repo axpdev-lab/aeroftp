@@ -927,6 +927,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                                                         {protocol}
                                                                     </span>
+                                                                    {/* GitHub auth mode badge */}
+                                                                    {protocol === 'github' && server.options?.githubAuthMode && (
+                                                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                                                            server.options.githubAuthMode === 'app'
+                                                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                                                                                : server.options.githubAuthMode === 'pat'
+                                                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                                                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                                                                        }`}>
+                                                                            {server.options.githubAuthMode === 'app' ? 'APP' : server.options.githubAuthMode === 'pat' ? 'PAT' : 'OAuth'}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                                                     {getServerDisplayInfo(server)}
