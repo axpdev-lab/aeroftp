@@ -768,7 +768,9 @@
             "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB チームストレージ",
             "oauthProviders": "OAuthプロバイダー",
             "githubOauthDesc": "Device Flow OAuth — Client ID不要",
-            "githubOauthInfo": "GitHubは内蔵のAeroFTPアプリでDevice Flow OAuthを使用します。クライアント資格情報は不要です。個人アクセストークンまたは.pemキーも使用できます。"
+            "githubOauthInfo": "GitHubは内蔵のAeroFTPアプリでDevice Flow OAuthを使用します。クライアント資格情報は不要です。個人アクセストークンまたは.pemキーも使用できます。",
+            "swapPanels": "[NEEDS TRANSLATION] Swap Local & Remote Panels",
+            "swapPanelsDesc": "[NEEDS TRANSLATION] Place the local panel on the left and the remote panel on the right"
         },
         "devtools": {
             "title": "AeroTools",

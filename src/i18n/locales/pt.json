@@ -768,7 +768,9 @@
             "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB de armazenamento em equipe",
             "oauthProviders": "Provedores OAuth",
             "githubOauthDesc": "Device Flow OAuth — sem Client ID",
-            "githubOauthInfo": "GitHub usa Device Flow OAuth com o app AeroFTP integrado. Nenhuma credencial de cliente necessária. Você também pode usar um token de acesso pessoal ou uma chave .pem."
+            "githubOauthInfo": "GitHub usa Device Flow OAuth com o app AeroFTP integrado. Nenhuma credencial de cliente necessária. Você também pode usar um token de acesso pessoal ou uma chave .pem.",
+            "swapPanels": "[NEEDS TRANSLATION] Swap Local & Remote Panels",
+            "swapPanelsDesc": "[NEEDS TRANSLATION] Place the local panel on the left and the remote panel on the right"
         },
         "devtools": {
             "title": "AeroTools",

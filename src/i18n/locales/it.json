@@ -942,7 +942,9 @@
             "protocolYandexdisk": "Yandex Disk",
             "oauthProviders": "Provider OAuth",
             "githubOauthDesc": "Device Flow OAuth — non serve Client ID",
-            "githubOauthInfo": "GitHub utilizza Device Flow OAuth con l'app AeroFTP integrata. Non sono necessarie credenziali client. Puoi anche usare un Personal Access Token o una chiave .pem dalla schermata di connessione."
+            "githubOauthInfo": "GitHub utilizza Device Flow OAuth con l'app AeroFTP integrata. Non sono necessarie credenziali client. Puoi anche usare un Personal Access Token o una chiave .pem dalla schermata di connessione.",
+            "swapPanels": "[NEEDS TRANSLATION] Swap Local & Remote Panels",
+            "swapPanelsDesc": "[NEEDS TRANSLATION] Place the local panel on the left and the remote panel on the right"
         },
         "appearance": {
             "patternCross": "Croce",

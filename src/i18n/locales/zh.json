@@ -768,7 +768,9 @@
             "zohoWorkDriveDesc": "OAuth 2.0 — 5 GB 团队存储",
             "oauthProviders": "OAuth 提供商",
             "githubOauthDesc": "Device Flow OAuth — 无需 Client ID",
-            "githubOauthInfo": "GitHub 使用内置 AeroFTP 应用的 Device Flow OAuth。不需要客户端凭据。您也可以使用个人访问令牌或 .pem 密钥。"
+            "githubOauthInfo": "GitHub 使用内置 AeroFTP 应用的 Device Flow OAuth。不需要客户端凭据。您也可以使用个人访问令牌或 .pem 密钥。",
+            "swapPanels": "[NEEDS TRANSLATION] Swap Local & Remote Panels",
+            "swapPanelsDesc": "[NEEDS TRANSLATION] Place the local panel on the left and the remote panel on the right"
         },
         "devtools": {
             "title": "AeroTools",
