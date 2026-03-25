@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-03-25
+
+### Zoho WorkDrive — Full MCP Parity & Native Document Support
+
+Complete Zoho WorkDrive integration upgrade: all 22 MCP tools covered, native Zoho document creation and auto-conversion, share link management UI, and enhanced OAuth scopes.
+
+#### Added
+
+- **Zoho getUserInfo**: New `zoho_get_user_info` command returning display name, email, ZUID, team ID, and team name
+- **Zoho getFileShareLinks**: New `zoho_get_file_share_links` command listing all external share links for a file/folder with full attributes (URL, type, expiration, password protection)
+- **Zoho deleteShareLink**: New `zoho_delete_share_link` command to revoke external share links by ID
+- **Zoho createNativeDocument**: New `zoho_create_native_document` command to create Zoho Writer, Sheet, and Show documents directly in WorkDrive
+- **Zoho native doc export**: Download auto-converts native Zoho documents to Office formats (.docx, .xlsx, .pptx) with correct file extension
+- **Manage Share Links dialog**: Dark-themed modal listing all share links with one-click copy and delete, accessible via right-click context menu on Zoho WorkDrive files
+- **New Document context menu**: Right-click empty area shows "Zoho Writer", "Zoho Sheet", "Zoho Show" options with themed InputDialog for document name
+- **Share link session tracking**: Deleted link IDs tracked per-session to filter Zoho GET cache returning stale entries
+- **7 new i18n keys**: manageShareLinks, noShareLinks, noShareLinksDesc, shareLinksFor, deleteShareLinkPrompt, shareLinkDeleted, newDocumentName — translated to all 46 languages
+
+#### Changed
+
+- **OAuth scope upgrade**: `WorkDrive.links.CREATE` + `WorkDrive.links.READ` replaced with `WorkDrive.links.ALL` to enable link deletion
+- **Native doc detection**: File listing metadata now includes `file_type`, `extn`, `isZohoNativeDoc`, `exportFormat`, and `exportExtension` for Zoho native documents
+- **Swap Panels**: New option in Settings > UI > Interface to swap Local and Remote panel positions, plus a quick-flip button in the toolbar. Places local panel on the left and remote on the right, matching the classic FTP client layout. Default remains Remote (left) / Local (right). Persisted in vault/localStorage, applies instantly without restart. Resolves [#61](https://github.com/axpdev-lab/aeroftp/issues/61)
+
 ## [3.1.1] - 2026-03-24
 
 ### GitHub Integration Hardening & Settings Overhaul

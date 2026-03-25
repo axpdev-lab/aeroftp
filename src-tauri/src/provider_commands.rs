@@ -2734,6 +2734,102 @@ pub async fn zoho_remove_file_label(
         .map_err(|e| format!("Failed to remove label: {}", e))
 }
 
+// ── Zoho WorkDrive MCP-parity Operations ──────────────────────────────
+
+/// Get authenticated user info (MCP parity: getUserInfo)
+#[tauri::command]
+pub async fn zoho_get_user_info(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    let info = zoho.get_user_info().await
+        .map_err(|e| format!("Failed to get user info: {}", e))?;
+
+    serde_json::to_value(info).map_err(|e| format!("Serialize error: {}", e))
+}
+
+/// List all share links for a file/folder (MCP parity: getFileShareLinks)
+#[tauri::command]
+pub async fn zoho_get_file_share_links(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    let links = zoho.get_file_share_links(&path).await
+        .map_err(|e| format!("Failed to get share links: {}", e))?;
+
+    Ok(links.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+}
+
+/// Delete an external share link (MCP parity: deleteExternalShareLink)
+#[tauri::command]
+pub async fn zoho_delete_share_link(
+    state: State<'_, ProviderState>,
+    link_id: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    zoho.delete_share_link(&link_id).await
+        .map_err(|e| format!("Failed to delete share link: {}", e))
+}
+
+/// Create a native Zoho document (MCP parity: createNativeDocument)
+/// doc_type: "writer"/"zw", "sheet"/"zs", "show"/"presentation"/"zp"
+#[tauri::command]
+pub async fn zoho_create_native_document(
+    state: State<'_, ProviderState>,
+    name: String,
+    doc_type: String,
+    folder_path: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::ZohoWorkdrive {
+        return Err("This operation is only available for Zoho WorkDrive".to_string());
+    }
+
+    let zoho = provider.as_any_mut()
+        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
+        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
+
+    zoho.create_native_document(&name, &doc_type, &folder_path).await
+        .map_err(|e| format!("Failed to create native document: {}", e))
+}
+
 // ── Jottacloud Trash Operations ───────────────────────────────────────
 
 /// Move files to Jottacloud Trash (soft delete)

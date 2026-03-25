@@ -210,8 +210,52 @@ struct UserResource {
 #[derive(Debug, Deserialize)]
 struct UserAttributes {
     email_id: Option<String>,
-    #[allow(dead_code)]
     display_name: Option<String>,
+    /// WorkDrive role (e.g. "admin", "organizer")
+    #[serde(default)]
+    #[allow(dead_code)]
+    role: Option<String>,
+}
+
+/// Public user info returned by get_user_info()
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ZohoUserInfo {
+    pub user_id: String,
+    pub display_name: String,
+    pub email: String,
+    pub team_id: String,
+    pub team_name: String,
+}
+
+// ── Share link response structures ────────────────────────────────────────
+
+/// Share link resource from WorkDrive Links API
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+pub struct ZohoShareLink {
+    pub id: String,
+    pub attributes: ZohoShareLinkAttributes,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+pub struct ZohoShareLinkAttributes {
+    #[serde(default)]
+    pub link: Option<String>,
+    #[serde(default)]
+    pub link_name: Option<String>,
+    #[serde(default)]
+    pub link_type: Option<String>,
+    #[serde(default)]
+    pub allow_download: Option<bool>,
+    #[serde(default)]
+    pub request_user_data: Option<bool>,
+    #[serde(default)]
+    pub expiry_date: Option<String>,
+    #[serde(default)]
+    pub is_password_protected: Option<bool>,
+    #[serde(default)]
+    pub created_time: Option<String>,
+    #[serde(default)]
+    pub resource_id: Option<String>,
 }
 
 // ── Version response structures ───────────────────────────────────────────
@@ -259,6 +303,31 @@ pub struct ZohoLabelAttributes {
     pub label_id: Option<String>,
     #[serde(default)]
     pub index: Option<i64>,
+}
+
+// ── Zoho native document export map ───────────────────────────────────────
+
+/// Zoho native doc type → (Writer/Sheet/Show API path, export format, Office extension)
+/// When downloading native docs, we use the Zoho Writer/Sheet/Show API for conversion.
+const ZOHO_NATIVE_EXPORT_MAP: &[(&str, &str, &str, &str)] = &[
+    // (extension/file_type, API product path, export format, Office extension)
+    ("zw",          "writer", "docx", ".docx"),
+    ("zohowriter",  "writer", "docx", ".docx"),
+    ("writer",      "writer", "docx", ".docx"),
+    ("zs",          "sheet",  "xlsx", ".xlsx"),
+    ("zohosheet",   "sheet",  "xlsx", ".xlsx"),
+    ("spreadsheet", "sheet",  "xlsx", ".xlsx"),
+    ("zp",          "show",   "pptx", ".pptx"),
+    ("zohoshow",    "show",   "pptx", ".pptx"),
+    ("presentation","show",   "pptx", ".pptx"),
+];
+
+/// Check if file extension is a Zoho native document, return export info
+fn zoho_native_export_info(extn: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    let lower = extn.to_lowercase();
+    ZOHO_NATIVE_EXPORT_MAP.iter()
+        .find(|(ext, _, _, _)| *ext == lower)
+        .map(|(_, product, format, office_ext)| (*product, *format, *office_ext))
 }
 
 // ── Provider implementation ───────────────────────────────────────────────
@@ -722,6 +791,178 @@ impl ZohoWorkdriveProvider {
         Ok(())
     }
 
+    // ── MCP-parity tools ──────────────────────────────────────────────────
+
+    /// Get authenticated user info (MCP parity: getUserInfo)
+    pub async fn get_user_info(&self) -> Result<ZohoUserInfo, ProviderError> {
+        let user_url = format!("{}/users/me", self.api_base());
+        let resp = self.client
+            .get(&user_url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send().await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Get user info failed ({}): {}", status, sanitize_api_error(&text)
+            )));
+        }
+
+        let user: JsonApiResponse<UserResource> = resp.json().await
+            .map_err(|e| ProviderError::ParseError(format!("Parse user info: {}", e)))?;
+
+        // Get team name if we have a team_id
+        let team_name = if let Some(ref team_id) = self.team_id {
+            let url = format!("{}/teams/{}", self.api_base(), team_id);
+            let resp = self.client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send().await;
+            if let Ok(resp) = resp {
+                if let Ok(body) = resp.json::<JsonApiResponse<TeamResource>>().await {
+                    body.data.attributes.name
+                } else {
+                    "Unknown".to_string()
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        } else {
+            "Unknown".to_string()
+        };
+
+        Ok(ZohoUserInfo {
+            user_id: user.data.id,
+            display_name: user.data.attributes.display_name.unwrap_or_default(),
+            email: user.data.attributes.email_id.unwrap_or_default(),
+            team_id: self.team_id.clone().unwrap_or_default(),
+            team_name,
+        })
+    }
+
+    /// List all share links for a file/folder (MCP parity: getFileShareLinks)
+    pub async fn get_file_share_links(&mut self, path: &str) -> Result<Vec<ZohoShareLink>, ProviderError> {
+        let file_id = self.resolve_file_id(path).await?;
+
+        let url = format!("{}/files/{}/links", self.api_base(), file_id);
+        info!("Zoho WorkDrive get share links: GET {} for file {}", url, file_id);
+
+        let resp = self.client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send().await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        let status = resp.status();
+        let resp_body = resp.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            return Err(ProviderError::Other(format!(
+                "Get share links failed ({}): {}", status, sanitize_api_error(&resp_body)
+            )));
+        }
+
+        let parsed: JsonApiListResponse<ZohoShareLink> = serde_json::from_str(&resp_body)
+            .map_err(|e| ProviderError::ParseError(format!("Parse share links: {}", e)))?;
+
+        info!("Found {} share link(s) for {}", parsed.data.len(), path);
+        Ok(parsed.data)
+    }
+
+    /// Delete an external share link by ID (MCP parity: deleteExternalShareLink)
+    pub async fn delete_share_link(&self, link_id: &str) -> Result<(), ProviderError> {
+        let url = format!("{}/links/{}", self.api_base(), link_id);
+        info!("Zoho WorkDrive delete share link: DELETE {}", url);
+
+        let resp = self.client
+            .delete(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .send().await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        let status_code = resp.status().as_u16();
+        if status_code != 200 && status_code != 204 {
+            let resp_body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Delete share link failed ({}): {}", status_code, sanitize_api_error(&resp_body)
+            )));
+        }
+
+        info!("Deleted share link {}", link_id);
+        Ok(())
+    }
+
+    /// Create a native Zoho document (MCP parity: createNativeDocument)
+    /// doc_type: "zw" (Writer), "zs" (Sheet), "zp" (Show/Presentation)
+    pub async fn create_native_document(&mut self, name: &str, doc_type: &str, folder_path: &str) -> Result<String, ProviderError> {
+        // Validate doc_type
+        let zoho_type = match doc_type {
+            "writer" | "zw" => "zw",
+            "sheet" | "zs" => "zs",
+            "show" | "presentation" | "zp" => "zp",
+            _ => return Err(ProviderError::Other(format!(
+                "Invalid document type '{}'. Use: writer/zw, sheet/zs, show/zp", doc_type
+            ))),
+        };
+
+        // Resolve parent folder
+        let folder_path = folder_path.trim_matches('/');
+        let parent_id = if folder_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(folder_path).await?
+        };
+
+        let body = serde_json::json!({
+            "data": {
+                "attributes": {
+                    "name": name,
+                    "parent_id": parent_id,
+                    "service_type": zoho_type
+                },
+                "type": "files"
+            }
+        });
+
+        let url = format!("{}/files", self.api_base());
+        info!("Zoho WorkDrive create native doc '{}' (type {}): POST {}", name, zoho_type, url);
+
+        let resp = self.client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .body(body.to_string())
+            .send().await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        let status = resp.status();
+        let resp_body = resp.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            return Err(ProviderError::Other(format!(
+                "Create native document failed ({}): {}", status, sanitize_api_error(&resp_body)
+            )));
+        }
+
+        // Parse response to get the created file's permalink/URL
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
+            .map_err(|e| ProviderError::ParseError(format!("Parse create doc response: {}", e)))?;
+
+        let permalink = parsed["data"]["attributes"]["permalink"]
+            .as_str()
+            .unwrap_or("");
+
+        let file_id = parsed["data"]["id"]
+            .as_str()
+            .unwrap_or("unknown");
+
+        info!("Created native Zoho document '{}' (id: {}, type: {})", name, file_id, zoho_type);
+        Ok(if permalink.is_empty() { file_id.to_string() } else { permalink.to_string() })
+    }
+
     /// Resolve a file path to its Zoho ID (helper that splits parent/file)
     async fn resolve_file_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let path = path.trim_matches('/');
@@ -1109,6 +1350,24 @@ impl ZohoWorkdriveProvider {
             }
         }
 
+        // Store file_type and extn for debugging / native doc detection
+        if !file.attributes.file_type.is_empty() {
+            metadata.insert("file_type".to_string(), file.attributes.file_type.clone());
+        }
+        if let Some(ref extn) = file.attributes.extn {
+            metadata.insert("extn".to_string(), extn.clone());
+        }
+
+        // Detect Zoho native documents by extn OR file_type
+        let native_export = file.attributes.extn.as_deref()
+            .and_then(zoho_native_export_info)
+            .or_else(|| zoho_native_export_info(&file.attributes.file_type));
+        if let Some((_, format, office_ext)) = native_export {
+            metadata.insert("isZohoNativeDoc".to_string(), "true".to_string());
+            metadata.insert("exportFormat".to_string(), format.to_string());
+            metadata.insert("exportExtension".to_string(), office_ext.to_string());
+        }
+
         RemoteEntry {
             name: file.attributes.name.clone(),
             path,
@@ -1365,19 +1624,29 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        // Zoho uses a DEDICATED download domain: download.zoho.{tld}
-        // Path: /v1/workdrive/download/{resource_id}
-        // Clean client (no default Accept: application/vnd.api+json header)
+        // WorkDrive download URL (same for regular files and native docs — auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
-            self.config.download_domain(),
-            file.id
+            self.config.download_domain(), file.id
         );
-        info!("Zoho WorkDrive download: GET {}", download_url);
 
+        // For native Zoho docs, append Office extension to local path
+        let actual_local_path = if let Some((_, _, office_ext)) = file.attributes.extn.as_deref()
+            .and_then(zoho_native_export_info)
+            .or_else(|| zoho_native_export_info(&file.attributes.file_type))
+        {
+            if !local_path.ends_with(office_ext) {
+                format!("{}{}", local_path, office_ext)
+            } else {
+                local_path.to_string()
+            }
+        } else {
+            local_path.to_string()
+        };
+
+        info!("Zoho WorkDrive download: GET {}", download_url);
         let auth = self.auth_header().await?;
 
-        // Reuse self.client (connection pool) but override Accept header for binary download
         let resp = self.client
             .get(&download_url)
             .header(AUTHORIZATION, auth)
@@ -1400,7 +1669,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(&actual_local_path).await
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
         let mut downloaded: u64 = 0;
 
@@ -1416,7 +1685,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         atomic.commit().await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
 
-        info!("Downloaded {} to {} ({} bytes)", remote_path, local_path, downloaded);
+        info!("Downloaded {} to {} ({} bytes)", remote_path, actual_local_path, downloaded);
         Ok(())
     }
 
@@ -1437,15 +1706,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        // Zoho dedicated download domain: download.zoho.{tld}/v1/workdrive/download/{id}
+        // Check if this is a Zoho native doc — use same download URL (WorkDrive auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
-            self.config.download_domain(),
-            file.id
+            self.config.download_domain(), file.id
         );
         info!("Zoho WorkDrive download_to_bytes: GET {}", download_url);
 
-        // Reuse self.client (connection pool) but override Accept header for binary download
         let resp = self.client
             .get(&download_url)
             .header(AUTHORIZATION, self.auth_header().await?)

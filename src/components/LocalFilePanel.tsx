@@ -82,6 +82,7 @@ export interface LocalFilePanelProps {
   showFileExtensions: boolean;
   debugMode: boolean;
   doubleClickAction: string;
+  className?: string;
 
   // --- Inline Rename ---
   inlineRename: { path: string; name: string; isRemote: boolean } | null;
@@ -185,6 +186,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   showFileExtensions,
   debugMode,
   doubleClickAction,
+  className: extraClassName,
   inlineRename,
   inlineRenameValue,
   setInlineRenameValue,
@@ -312,7 +314,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     <div
       role="region"
       aria-label="Local files"
-      className={`${isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+      className={`${isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
       onDragOver={(e) => onPanelDragOver(e, false)}
       onDrop={(e) => onPanelDrop(e, false)}
       onDragLeave={onPanelDragLeave}

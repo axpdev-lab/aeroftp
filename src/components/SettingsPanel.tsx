@@ -158,6 +158,7 @@ interface AppSettings {
     showStatusBar: boolean;
     compactMode: boolean;
     showSystemMenu: boolean;
+    swapPanels: boolean;
     fontSize: 'small' | 'medium' | 'large';
     // Columns
     visibleColumns: string[];
@@ -191,6 +192,7 @@ const defaultSettings: AppSettings = {
     showStatusBar: true,
     compactMode: false,
     showSystemMenu: false,
+    swapPanels: false,
     fontSize: 'medium',
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
@@ -2564,6 +2566,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <div>
                                                     <p className="font-medium">{t('settings.compactMode')}</p>
                                                     <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
+                                                </div>
+                                            </label>
+
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input type="checkbox" checked={settings.swapPanels} onChange={e => updateSetting('swapPanels', e.target.checked)} className="w-4 h-4 rounded" />
+                                                <div>
+                                                    <p className="font-medium">{t('settings.swapPanels')}</p>
+                                                    <p className="text-sm text-gray-500">{t('settings.swapPanelsDesc')}</p>
                                                 </div>
                                             </label>
 

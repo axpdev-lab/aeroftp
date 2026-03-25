@@ -40,6 +40,7 @@ export interface AppSettings {
   sortFoldersFirst: boolean;
   showFileExtensions: boolean;
   fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
+  swapPanels: boolean;
   lastLocalPath?: string;
   showSystemMenu?: boolean;
 }
@@ -65,6 +66,7 @@ const DEFAULTS: AppSettings = {
   sortFoldersFirst: true,
   showFileExtensions: true,
   fileExistsAction: 'ask',
+  swapPanels: false,
 };
 
 export const useSettings = () => {
@@ -86,6 +88,7 @@ export const useSettings = () => {
   const [sortFoldersFirst, setSortFoldersFirst] = useState(DEFAULTS.sortFoldersFirst);
   const [showFileExtensions, setShowFileExtensions] = useState(DEFAULTS.showFileExtensions);
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
+  const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -112,6 +115,7 @@ export const useSettings = () => {
     ) {
       setFileExistsAction(parsed.fileExistsAction as AppSettings['fileExistsAction']);
     }
+    if (typeof parsed.swapPanels === 'boolean') setSwapPanels(parsed.swapPanels);
   }, []);
 
   // Load settings on mount + listen for changes
@@ -190,6 +194,7 @@ export const useSettings = () => {
     sortFoldersFirst,
     showFileExtensions,
     fileExistsAction,
+    swapPanels,
     showSettingsPanel,
 
     // Setters
@@ -211,6 +216,7 @@ export const useSettings = () => {
     setSortFoldersFirst,
     setShowFileExtensions,
     setFileExistsAction,
+    setSwapPanels,
     setShowSettingsPanel,
 
     // Constants

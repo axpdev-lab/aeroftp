@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.2" date="2026-03-25">
+      <description>
+        <p>Zoho WorkDrive full MCP parity: all 22 tools covered, native Zoho document creation with auto-conversion to Office formats, share link management UI, getUserInfo, enhanced OAuth scopes. New Swap Panels setting to place local panel on the left and remote on the right, matching classic FTP client layout.</p>
+      </description>
+    </release>
     <release version="3.1.1" date="2026-03-24">
       <description>
         <p>GitHub integration hardening: 5-auditor security audit remediation, streaming downloads, rate limit retry, Settings 3-mode auth editor, AeroCloud dedicated tab with full configuration, official GitHub octicons, live Actions status indicator. All 3 GitHub auth modes (OAuth, PAT, App) verified with separate vault storage.</p>

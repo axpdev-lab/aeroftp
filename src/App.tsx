@@ -95,7 +95,8 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon,
+  ArrowLeftRight
 } from 'lucide-react';
 
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
@@ -181,13 +182,25 @@ const App: React.FC = () => {
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
     showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder, visibleColumns,
-    sortFoldersFirst, showFileExtensions, fileExistsAction,
+    sortFoldersFirst, showFileExtensions, fileExistsAction, swapPanels,
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowActivityLog,
     setShowHiddenFiles, debugMode, setDebugMode,
+    setSwapPanels,
     SETTINGS_KEY,
   } = settings;
+
+  const toggleSwapPanels = useCallback(async () => {
+    const next = !swapPanels;
+    setSwapPanels(next);
+    try {
+      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+      const updated = { ...(existing || {}), swapPanels: next };
+      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
+      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+    } catch { /* ignore */ }
+  }, [swapPanels, setSwapPanels, SETTINGS_KEY]);
 
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
@@ -281,6 +294,8 @@ const App: React.FC = () => {
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
+  const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
+  const [zohoDeletedLinkIds] = useState(() => new Set<string>());
   const [gitHubCommitDialog, setGitHubCommitDialog] = useState<{
     files: { local: string; remote: string }[];
     operation: 'upload' | 'delete';
@@ -5473,6 +5488,27 @@ const App: React.FC = () => {
         }
       });
       }
+
+      // Zoho WorkDrive: Manage Share Links (list + delete)
+      if (currentProtocol === 'zohoworkdrive') {
+        items.push({
+          label: t('contextMenu.manageShareLinks'),
+          icon: <LinkIcon size={14} />,
+          action: async () => {
+            try {
+              const allLinks = await invoke<Array<{ id: string; attributes: Record<string, unknown> }>>('zoho_get_file_share_links', { path: file.path });
+              const links = allLinks.filter(l => !zohoDeletedLinkIds.has(l.id));
+              if (links.length === 0) {
+                notify.info(t('contextMenu.noShareLinks'), t('contextMenu.noShareLinksDesc'));
+                return;
+              }
+              setZohoShareLinksDialog({ fileName: file.name, links });
+            } catch (err) {
+              notify.error(t('contextMenu.shareLinkFailed'), String(err));
+            }
+          }
+        });
+      }
     }
 
     // Add Import MEGA Link option (MEGA only)
@@ -6209,8 +6245,71 @@ const App: React.FC = () => {
       {
         label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(true),
-        divider: true,
+        divider: currentProtocol !== 'zohoworkdrive',
       },
+      ...(currentProtocol === 'zohoworkdrive' ? [
+        {
+          label: 'Zoho Writer',
+          icon: <FileText size={14} />,
+          action: () => {
+            setInputDialog({
+              title: 'Zoho Writer',
+              defaultValue: '',
+              placeholder: t('contextMenu.newDocumentName'),
+              onConfirm: async (name: string) => {
+                setInputDialog(null);
+                if (!name.trim()) return;
+                try {
+                  const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'writer', folderPath: currentRemotePath || '' });
+                  notify.success('Zoho Writer', url);
+                  loadRemoteFiles(undefined, true);
+                } catch (err) { notify.error('Create failed', String(err)); }
+              },
+            });
+          },
+        },
+        {
+          label: 'Zoho Sheet',
+          icon: <FileSpreadsheet size={14} />,
+          action: () => {
+            setInputDialog({
+              title: 'Zoho Sheet',
+              defaultValue: '',
+              placeholder: t('contextMenu.newDocumentName'),
+              onConfirm: async (name: string) => {
+                setInputDialog(null);
+                if (!name.trim()) return;
+                try {
+                  const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'sheet', folderPath: currentRemotePath || '' });
+                  notify.success('Zoho Sheet', url);
+                  loadRemoteFiles(undefined, true);
+                } catch (err) { notify.error('Create failed', String(err)); }
+              },
+            });
+          },
+        },
+        {
+          label: 'Zoho Show',
+          icon: <Presentation size={14} />,
+          divider: true,
+          action: () => {
+            setInputDialog({
+              title: 'Zoho Show',
+              defaultValue: '',
+              placeholder: t('contextMenu.newDocumentName'),
+              onConfirm: async (name: string) => {
+                setInputDialog(null);
+                if (!name.trim()) return;
+                try {
+                  const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'show', folderPath: currentRemotePath || '' });
+                  notify.success('Zoho Show', url);
+                  loadRemoteFiles(undefined, true);
+                } catch (err) { notify.error('Create failed', String(err)); }
+              },
+            });
+          },
+        },
+      ] : []),
       {
         label: t('contextMenu.refresh') || 'Refresh', icon: <RefreshCw size={14} />,
         action: () => loadRemoteFiles(),
@@ -6587,6 +6686,58 @@ const App: React.FC = () => {
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
+        {zohoShareLinksDialog && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => setZohoShareLinksDialog(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[480px] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('contextMenu.shareLinksFor')} {zohoShareLinksDialog.fileName}</h3>
+                <button onClick={() => setZohoShareLinksDialog(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><X size={16} /></button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-3 space-y-2">
+                {zohoShareLinksDialog.links.map(link => (
+                  <div key={link.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{String(link.attributes.link_name || 'Link')}</span>
+                      <span className="text-gray-500 dark:text-gray-400 text-[10px]">{String(link.attributes.link_type || '')}{link.attributes.is_password_protected ? ' 🔒' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-blue-600 dark:text-blue-400 break-all cursor-pointer hover:underline flex-1" onClick={async (e) => {
+                        const el = e.currentTarget;
+                        await invoke('copy_to_clipboard', { text: String(link.attributes.link || '') });
+                        el.classList.add('text-green-500', 'dark:text-green-400');
+                        el.textContent = `✓ ${t('contextMenu.shareLinkCopied')}`;
+                        setTimeout(() => { el.classList.remove('text-green-500', 'dark:text-green-400'); el.textContent = String(link.attributes.link || ''); }, 1500);
+                      }}>{String(link.attributes.link || '')}</div>
+                      <button onClick={async (e) => {
+                        const el = e.currentTarget;
+                        await invoke('copy_to_clipboard', { text: String(link.attributes.link || '') });
+                        el.textContent = '✓';
+                        setTimeout(() => { el.textContent = '📋'; }, 1500);
+                      }} className="shrink-0 px-1.5 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-xs" title={t('contextMenu.shareLinkCopied')}>📋</button>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-gray-400 dark:text-gray-500">{String(link.attributes.created_time || '')}</span>
+                      <button onClick={async () => {
+                        try {
+                          await invoke('zoho_delete_share_link', { linkId: link.id });
+                        } catch { /* Ghost link — already deleted on server, remove from UI */ }
+                        // Track deleted IDs so Zoho GET cache won't re-show them
+                        zohoDeletedLinkIds.add(link.id);
+                        notify.success(t('contextMenu.shareLinkDeleted'), link.id);
+                        setZohoShareLinksDialog(prev => prev ? { ...prev, links: prev.links.filter(l => l.id !== link.id) } : null);
+                      }} className="px-2 py-0.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-[11px] font-medium">
+                        <Trash2 size={12} className="inline mr-1" />{t('common.delete') || 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {zohoShareLinksDialog.links.length === 0 && (
+                <div className="p-5 text-center text-sm text-gray-400">{t('contextMenu.noShareLinks')}</div>
+              )}
+            </div>
+          </div>
+        )}
         {gitHubCommitDialog && (
           <GitHubCommitDialog
             isOpen={true}
@@ -7511,6 +7662,13 @@ const App: React.FC = () => {
                       <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
                         <HardDrive size={16} /> {t('browser.local')}
                       </button>
+                      <button
+                        onClick={toggleSwapPanels}
+                        className={`px-2.5 py-1.5 rounded-lg text-sm flex items-center transition-colors ${swapPanels ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                        title={t('settings.swapPanels')}
+                      >
+                        <ArrowLeftRight size={16} />
+                      </button>
                       <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
                     </>
                   )}
@@ -7542,7 +7700,7 @@ const App: React.FC = () => {
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
-                  className={`w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  className={`w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onDragOver={(e) => handlePanelDragOver(e, true)}
                   onDrop={(e) => handlePanelDrop(e, true)}
                   onDragLeave={handlePanelDragLeave}
@@ -8070,6 +8228,7 @@ const App: React.FC = () => {
                 <LocalFilePanel
                   isAeroFileMode={!isConnected || !showRemotePanel}
                   isConnected={isConnected}
+                  className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
                   onNavigate={changeLocalDirectory}
