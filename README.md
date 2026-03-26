@@ -543,10 +543,14 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
     <td align="center">
       <a href="https://opensource.org"><img src="icons/osi-member.png" alt="Open Source Initiative Member" height="60" /></a>
     </td>
+    <td align="center">
+      <a href="https://sigstore.dev"><img src="icons/sigstore-signed.png" alt="Sigstore Signed" height="60" /></a>
+    </td>
   </tr>
   <tr>
     <td align="center"><sub>OIN 2.0 Community Member</sub></td>
     <td align="center"><sub>OSI Individual Member</sub></td>
+    <td align="center"><sub>Sigstore Signed Releases</sub></td>
   </tr>
 </table>
 
