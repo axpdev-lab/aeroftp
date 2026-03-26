@@ -77,7 +77,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (23 protocols, sync, share)
+├── AeroCloud    - Personal cloud (21 protocols, sync, share)
 ├── AeroFile     - Professional file manager
 ├── AeroSync     - Bidirectional sync engine
 ├── AeroVault    - Military-grade encryption
@@ -93,7 +93,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Connect to all 23 protocols through a unified interface with bidirectional sync, tray background sync, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Reliable sync with 11 protocols (SFTP, S3, Azure, WebDAV, Google Drive, Dropbox, OneDrive, Jottacloud, kDrive, Koofr, OpenDrive), plus 10 additional protocols with known limitations. Bidirectional sync, tray background sync, selective sync, file versioning, .aeroignore, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -121,7 +121,7 @@ Turn **any server** into a private personal cloud. Connect to all 23 protocols t
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, expiring share links |
 | **GitHub** | PAT / Device Flow | Repository as filesystem, atomic multi-file commits (GraphQL), release assets (2 GiB), branch workflow for protected branches, auto PR creation |
 
-**Cloud features**: Background sync works with all 23 protocols via cloud provider factory (direct-auth, OAuth2, OAuth1). 4-step setup wizard with protocol selection grid. Sync index cache for faster re-scans, cross-provider remote search, storage quota display, file versions, thumbnails, share permissions, WebDAV locking, smart folder transfers with per-file conflict resolution.
+**Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) — 11 stable protocols, 8 beta, 2 alpha (see protocol maturity badges in setup wizard). 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display, share links, and Dropbox-style conflict naming.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors - directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -493,10 +493,10 @@ Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), 
 
 ```bash
 cosign verify-blob \
-  --bundle AeroFTP_3.1.2_amd64.deb.sigstore.json \
-  --certificate-identity "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/v3.1.2" \
+  --bundle AeroFTP_3.1.3_amd64.deb.sigstore.json \
+  --certificate-identity "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/v3.1.3" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  AeroFTP_3.1.2_amd64.deb
+  AeroFTP_3.1.3_amd64.deb
 ```
 
 This proves the artifact was built by our CI pipeline from the tagged commit. Replace filenames and version with your download.
