@@ -374,6 +374,8 @@ pub struct OpenDriveProvider {
     current_path: String,
     account_name: Option<String>,
     user_plan: Option<String>,
+    /// Tracks last successful API call for proactive session refresh
+    last_activity: std::time::Instant,
 }
 
 impl OpenDriveProvider {
@@ -399,7 +401,47 @@ impl OpenDriveProvider {
             current_path: "/".to_string(),
             account_name: None,
             user_plan: None,
+            last_activity: std::time::Instant::now(),
         }
+    }
+
+    /// Re-authenticate if the session has likely expired (~50 min threshold).
+    /// Called before API operations to avoid mid-transfer failures.
+    async fn ensure_session(&mut self) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        // OpenDrive sessions expire after ~60 min. Refresh proactively at 50 min.
+        if self.last_activity.elapsed() > std::time::Duration::from_secs(50 * 60) {
+            tracing::info!("[OpenDrive] Session likely expired ({}s idle), re-authenticating",
+                self.last_activity.elapsed().as_secs());
+            self.reauth().await?;
+        }
+        Ok(())
+    }
+
+    /// Re-authenticate: login again to get a fresh session_id, preserving current_path.
+    async fn reauth(&mut self) -> Result<(), ProviderError> {
+        let response: LoginResponse = self
+            .post_form(
+                "session/login.json",
+                &[
+                    ("username", self.config.username.clone()),
+                    ("passwd", self.config.password.expose_secret().to_string()),
+                    ("version", "2.9.7".to_string()),
+                    ("partner_id", String::new()),
+                ],
+            )
+            .await?;
+
+        self.session_id = response
+            .session_id
+            .ok_or_else(|| ProviderError::AuthenticationFailed("Missing SessionID on reauth".into()))?;
+        self.account_name = response.user_name.or(self.account_name.take());
+        self.user_plan = response.user_plan.or(self.user_plan.take());
+        self.last_activity = std::time::Instant::now();
+        tracing::info!("[OpenDrive] Session refreshed successfully");
+        Ok(())
     }
 
     fn endpoint(&self, path: &str) -> String {
@@ -980,6 +1022,7 @@ impl StorageProvider for OpenDriveProvider {
         self.account_name = response.user_name;
         self.user_plan = response.user_plan;
         self.connected = true;
+        self.last_activity = std::time::Instant::now();
 
         if let Some(initial_path) = &self.config.initial_path {
             let normalized = normalize_path(initial_path)?;
@@ -1010,16 +1053,27 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
 
         let resolved = self.resolve_path(path)?;
         let folder_id = self.folder_id_by_path(&resolved).await?;
-        let response: FolderListResponse = self
+        let result: Result<FolderListResponse, _> = self
             .get_json(&self.endpoint(&format!("folder/list.json/{}/{}", self.session_id, folder_id)))
-            .await?;
+            .await;
 
+        // Retry once on auth failure (session expired mid-operation)
+        let response = match result {
+            Err(ProviderError::AuthenticationFailed(_)) => {
+                tracing::warn!("[OpenDrive] Session expired during list, re-authenticating");
+                self.reauth().await?;
+                let folder_id = self.folder_id_by_path(&resolved).await?;
+                self.get_json(&self.endpoint(&format!("folder/list.json/{}/{}", self.session_id, folder_id)))
+                    .await?
+            }
+            other => other?,
+        };
+
+        self.last_activity = std::time::Instant::now();
         let mut entries = Vec::with_capacity(response.folders.len() + response.files.len());
         for folder in response.folders {
             entries.push(self.folder_to_entry(folder, &resolved));
@@ -1035,9 +1089,7 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
         let _ = self.folder_id_by_path(&resolved).await?;
         self.current_path = resolved;
@@ -1059,9 +1111,7 @@ impl StorageProvider for OpenDriveProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
 
         let resolved = self.resolve_path(remote_path)?;
         let file_id = self.resolve_file_id(&resolved).await?;
@@ -1100,10 +1150,12 @@ impl StorageProvider for OpenDriveProvider {
             }
         }
         atomic.commit().await.map_err(ProviderError::IoError)?;
+        self.last_activity = std::time::Instant::now();
         Ok(())
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        self.ensure_session().await?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1136,9 +1188,7 @@ impl StorageProvider for OpenDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
 
         let resolved = self.resolve_path(remote_path)?;
         let (parent_path, file_name) = split_parent_child(&resolved);
@@ -1245,13 +1295,12 @@ impl StorageProvider for OpenDriveProvider {
             cb(file_size, file_size);
         }
 
+        self.last_activity = std::time::Instant::now();
         Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
 
         let resolved = self.resolve_path(path)?;
         if resolved == "/" {
@@ -1278,9 +1327,7 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
         let file_id = self.resolve_file_id(&resolved).await?;
         self.post_form_unit(
@@ -1298,9 +1345,7 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
         if resolved == "/" {
             return Err(ProviderError::InvalidPath("Cannot remove root folder".into()));
@@ -1317,9 +1362,7 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
+        self.ensure_session().await?;
 
         let from_resolved = self.resolve_path(from)?;
         let to_resolved = self.resolve_path(to)?;
@@ -1425,7 +1468,13 @@ impl StorageProvider for OpenDriveProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        let _: SessionInfoResponse = self.session_info().await?;
+        // Proactively refresh session if idle too long (50 min threshold)
+        if self.last_activity.elapsed() > std::time::Duration::from_secs(50 * 60) {
+            self.reauth().await?;
+        } else {
+            let _: SessionInfoResponse = self.session_info().await?;
+            self.last_activity = std::time::Instant::now();
+        }
         Ok(())
     }
 

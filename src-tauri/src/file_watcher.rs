@@ -156,6 +156,7 @@ const EXCLUDED_HIDDEN: &[&str] = &[
     "__pycache__",
     ".pytest_cache",       // Python
     ".aerosync-tmp",       // AeroSync temp
+    ".aeroversions",       // AeroCloud file versioning
 ];
 
 /// Check if a path should be excluded from sync based on common patterns.

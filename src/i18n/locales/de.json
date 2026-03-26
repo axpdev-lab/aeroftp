@@ -64,7 +64,8 @@
       "size": "Größe",
       "retry": "Wiederholen",
       "optional": "optional",
-      "check": "Prüfen"
+      "check": "Prüfen",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Mit Server verbinden",
@@ -1138,7 +1139,8 @@
       "auth_success": "Authentifizierung erfolgreich als {username}",
       "auth_method_key": "Authentifiziert mit SSH-Schlüssel ({username})",
       "listing_complete": "Verzeichnisinhalt von \"{path}\" ({count} Elemente)",
-      "connected_to": "Verbunden mit {ip}:{port}"
+      "connected_to": "Verbunden mit {ip}:{port}",
+      "delete_scanning": "Elemente werden gelöscht..."
     },
     "protocol": {
       "selectProtocol": "Protokoll auswählen...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "Keine gelöschten Dateien",
       "restore": "Wiederherstellen",
       "trashFooter": "Wiederhergestellte Dateien erscheinen wieder in ihrem ursprünglichen Ordner",
-      "connectionNamePlaceholder": "Verbindungsname (z. B. Mein FileLu Cloud)"
+      "connectionNamePlaceholder": "Verbindungsname (z. B. Mein FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Kommentar hinzufügen",

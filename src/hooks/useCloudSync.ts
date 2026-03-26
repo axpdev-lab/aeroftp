@@ -25,6 +25,8 @@ interface UseCloudSyncOptions {
   t: (key: string, params?: Record<string, string | number>) => string;
   checkForUpdate: (manual?: boolean) => void;
   isAppLocked: boolean;
+  /** Called after sync completes — use to refresh file panels */
+  onSyncComplete?: () => void;
 }
 
 export function useCloudSync(options: UseCloudSyncOptions) {
@@ -42,8 +44,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const [cloudProtocolType, setCloudProtocolType] = useState<string>('ftp');
 
   // Refs for callbacks to avoid stale closures without re-subscribing
-  const callbacksRef = useRef({ activityLog, humanLog, t, checkForUpdate, cloudServerName });
-  callbacksRef.current = { activityLog, humanLog, t, checkForUpdate, cloudServerName };
+  const callbacksRef = useRef({ activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete });
+  callbacksRef.current = { activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete };
 
   useEffect(() => {
     const formatBytes = (bytes: number): string => {
@@ -221,6 +223,9 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           al.log('INFO', `AeroCloud: +${syncedFiles.length - MAX_FILE_RECORDS} file records omitted`, 'success');
         }
       }
+
+      // Refresh file panels after sync
+      callbacksRef.current.onSyncComplete?.();
     });
 
     return () => {

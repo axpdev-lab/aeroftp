@@ -64,7 +64,8 @@
       "size": "Mida",
       "retry": "Reintentar",
       "optional": "opcional",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Connectar al Servidor",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autenticació correcta com a {username}",
       "auth_method_key": "Autenticat amb clau SSH ({username})",
       "listing_complete": "Llistat de \"{path}\" completat ({count} elements)",
-      "connected_to": "Connectat a {ip}:{port}"
+      "connected_to": "Connectat a {ip}:{port}",
+      "delete_scanning": "Eliminant elements..."
     },
     "protocol": {
       "selectProtocol": "Seleccioneu protocol...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Cap fitxer eliminat",
       "restore": "Restaurar",
       "trashFooter": "Els fitxers restaurats reapareixeran a la seva carpeta original",
-      "connectionNamePlaceholder": "Nom de la connexió (p. ex. El meu FileLu Cloud)"
+      "connectionNamePlaceholder": "Nom de la connexió (p. ex. El meu FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Afegir comentari",

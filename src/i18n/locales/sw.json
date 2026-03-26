@@ -64,7 +64,8 @@
       "size": "Ukubwa",
       "retry": "Jaribu tena",
       "optional": "hiari",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Unganisha na Seva",
@@ -1138,7 +1139,8 @@
       "auth_success": "Uthibitishaji umefanikiwa kama {username}",
       "auth_method_key": "Imethibitishwa kwa ufunguo wa SSH ({username})",
       "listing_complete": "Orodha ya \"{path}\" imekamilika (vipengee {count})",
-      "connected_to": "Imeunganishwa na {ip}:{port}"
+      "connected_to": "Imeunganishwa na {ip}:{port}",
+      "delete_scanning": "Inafuta vitu..."
     },
     "protocol": {
       "selectProtocol": "Chagua itifaki...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Hakuna faili zilizofutwa",
       "restore": "Rejesha",
       "trashFooter": "Faili zilizorejeshwa zitaonekana tena katika folda yake ya asili",
-      "connectionNamePlaceholder": "Jina la muunganisho (mf. FileLu Cloud Yangu)"
+      "connectionNamePlaceholder": "Jina la muunganisho (mf. FileLu Cloud Yangu)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Ongeza maoni",

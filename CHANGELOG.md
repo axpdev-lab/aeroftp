@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.3] - 2026-03-26
+
+### AeroCloud Hardening — Production-Grade Sync Engine
+
+Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning, and .aeroignore support. Audited by 5 parallel Opus 4.6 agents — 10 findings identified and resolved.
+
+#### Added
+
+- **Selective sync**: Exclude remote folders from sync via tree-view checkbox UI in CloudPanel settings. Backend skips excluded folders in both scan and comparison phases. New `SelectiveSyncTree` component with collapse/expand, parent cascade, and dirty-state tracking
+- **File versioning (.aeroversions/)**: Automatic backup of overwritten/deleted files during sync. Three strategies — TrashCan (cleanup after N days), Simple (keep last N copies), Staggered (1/hour for 24h, 1/day for 30d, 1/week older). New `VersionBrowser` component with restore, cleanup, and disk usage display
+- **.aeroignore file**: Gitignore-compatible pattern exclusion in sync root. Supports `*`/`**` globs, `!` negation (re-include), `#` comments, directory-only trailing `/`. Default template created on setup. Applied to all 3 scan paths (local, FTP remote, provider remote)
+- **Protocol maturity badges**: Stable/Beta/Alpha classification for all 21 AeroCloud protocols in setup wizard, dashboard, and wizard preview. Tooltip with one-line limitation per protocol
+- **Re-authorization banner**: Token revocation detection for OAuth 1.0a providers (4shared) — red banner with "Re-authorize" button in CloudPanel, triggered via `cloud-reauth-required` Tauri event
+- **FileLu content hash**: `hash` field captured from FileLu API responses, propagated as `content_hash` metadata for hash-based sync comparison (no mtime modification of local files)
+- **Tauri commands**: `update_excluded_folders`, `list_remote_folders_tree`, `list_file_versions`, `restore_file_version`, `cleanup_versions`, `versions_disk_usage`
+
+#### Changed
+
+- **Conflict naming**: Dropbox-style format `report (AeroCloud conflict 2026-03-26 14-30-22 hostname).pdf` replaces `report_conflict_20260326143052.pdf`. Includes machine hostname for multi-device disambiguation
+- **Timestamp fallback**: Size-only comparison when file timestamps are absent (providers like FileLu). `timestamps_equal(None, None)` now returns `true`. Sync index comparison falls back to size-only when cached mtime is `None`. Prevents infinite re-sync loops
+- **OpenDrive session management**: Proactive session refresh at 50-minute threshold via `ensure_session()`. Automatic re-authentication on 401 with single retry in `list()`. `last_activity` tracking across all operations (list, cd, download, upload, mkdir, delete, rename)
+- **4shared auth hardening**: `check_auth_status()` applied to all 4 HTTP methods (GET, POST, DELETE, PUT). 401 responses produce `AuthenticationFailed("4shared_token_revoked: ...")` — sync loop aborts and emits frontend event
+- **Default exclude patterns**: `.aeroignore` and `.aeroversions` added to default `exclude_patterns` in `CloudConfig`
+- **File watcher**: `.aeroversions` added to `EXCLUDED_HIDDEN` list to prevent watcher events from versioning directory
+
+#### Fixed
+
+- **FTP download versioning**: Archive hook was missing in FTP sync path — local files were overwritten without backup. Now both FTP and provider paths archive before download (SEC audit finding #7)
+- **Version restore safety**: `restore()` now archives the current file before overwriting, preventing data loss on restore operations (audit finding #10)
+- **Restore path traversal**: `restore_file_version` command validates `archive_path` is within `.aeroversions/` and rejects `..` traversal (SEC audit finding #8)
+- **Local scan excluded_folders**: `scan_local_folder()` now skips directories listed in `excluded_folders`, preventing unwanted uploads of excluded content (audit finding #9)
+- **OpenDrive operations coverage**: `ensure_session()` added to `download_to_bytes`, `mkdir`, `delete`, `rmdir_recursive`, `rename` — previously only `list`/`cd`/`download`/`upload` were covered (audit findings #1-3)
+- **4shared PUT auth check**: `signed_put_form` now calls `check_auth_status()` — previously 401 on rename/move produced generic error instead of triggering sync abort (audit finding #4)
+
+#### Security
+
+- 10 audit findings identified by parallel Opus 4.6 agents (2 HIGH, 4 MEDIUM, 4 LOW), all resolved
+- Path traversal protection in `restore_file_version` (validates archive path prefix + rejects `..`)
+- Token revocation detection prevents continued API calls with revoked credentials
+
 ## [3.1.2] - 2026-03-25
 
 ### Zoho WorkDrive — Full MCP Parity & Native Document Support

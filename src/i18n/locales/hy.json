@@ -64,7 +64,8 @@
       "size": "Միերության",
       "retry": "Կրկնել",
       "optional": "ոչ պարտադիր",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Կապվել սերվերուհն",
@@ -1131,7 +1132,8 @@
       "auth_success": "Նույնականացումը հաջողվեց որպես {username}",
       "auth_method_key": "Նույնականացված է SSH բանալով ({username})",
       "listing_complete": "\"{path}\" պանակի ցուցակ ավարտվեց ({count} տارر)",
-      "connected_to": "Միացված է {ip}:{port}"
+      "connected_to": "Միացված է {ip}:{port}",
+      "delete_scanning": "\u054f\u0561\u0580\u0580\u0565\u0580\u056b \u0570\u0565\u057c\u0561\u0581\u0578\u0582\u0574..."
     },
     "protocol": {
       "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Ջնջված ֆայլեր չկան",
       "restore": "Վերականգնել",
       "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում",
-      "connectionNamePlaceholder": "Կապակցության անունը (օր. Իմ FileLu Cloud-ը)"
+      "connectionNamePlaceholder": "Կապակցության անունը (օր. Իմ FileLu Cloud-ը)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Ավելացնել մեկնաբանություն",

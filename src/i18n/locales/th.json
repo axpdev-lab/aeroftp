@@ -64,7 +64,8 @@
       "size": "ขนาด",
       "retry": "ลองใหม่",
       "optional": "ไม่บังคับ",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "เชื่อมต่อเซิร์ฟเวอร์",
@@ -1138,7 +1139,8 @@
       "auth_success": "การตรวจสอบสิทธิ์สำเร็จในฐานะ {username}",
       "auth_method_key": "ตรวจสอบสิทธิ์ด้วยคีย์ SSH ({username})",
       "listing_complete": "รายการไดเรกทอรี \"{path}\" เสร็จสิ้น ({count} รายการ)",
-      "connected_to": "เชื่อมต่อกับ {ip}:{port}"
+      "connected_to": "เชื่อมต่อกับ {ip}:{port}",
+      "delete_scanning": "กำลังลบรายการ..."
     },
     "protocol": {
       "selectProtocol": "เลือกโปรโตคอล...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "ไม่มีไฟล์ที่ลบแล้ว",
       "restore": "กู้คืน",
       "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม",
-      "connectionNamePlaceholder": "ชื่อการเชื่อมต่อ (เช่น FileLu Cloud ของฉัน)"
+      "connectionNamePlaceholder": "ชื่อการเชื่อมต่อ (เช่น FileLu Cloud ของฉัน)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "เพิ่มความคิดเห็น",

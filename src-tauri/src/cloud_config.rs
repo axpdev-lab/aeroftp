@@ -54,6 +54,13 @@ pub struct CloudConfig {
     /// OAuth2: {"client_id": "...", "client_secret": "...", "region": "..."}
     #[serde(default)]
     pub connection_params: serde_json::Value,
+    /// Selective sync: remote folders excluded from sync.
+    /// Paths are relative to remote_folder (e.g., ["backup/old", "media/raw"]).
+    #[serde(default)]
+    pub excluded_folders: Vec<String>,
+    /// File versioning strategy for pre-overwrite/pre-delete archiving.
+    #[serde(default)]
+    pub versioning_strategy: crate::sync_versioning::VersioningStrategy,
 }
 
 fn default_protocol_type() -> String {
@@ -105,7 +112,11 @@ impl Default for CloudConfig {
                 "*.tmp".to_string(),
                 "*.swp".to_string(),
                 "~*".to_string(),
+                ".aeroignore".to_string(),
+                ".aeroversions".to_string(),
             ],
+            excluded_folders: Vec::new(),
+            versioning_strategy: crate::sync_versioning::VersioningStrategy::default(),
             last_sync: None,
             conflict_strategy: ConflictStrategy::default(),
             public_url_base: None,

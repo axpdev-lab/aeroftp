@@ -64,7 +64,8 @@
       "size": "Méret",
       "retry": "Újra",
       "optional": "nem kotelezo",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Csatlakozás szerverhez",
@@ -1138,7 +1139,8 @@
       "auth_success": "Sikeres hitelesítés {username}ként",
       "auth_method_key": "Hitelesítve SSH kulccsal ({username})",
       "listing_complete": "\"{path}\" könyvtár listázva ({count} elem)",
-      "connected_to": "Csatlakozva: {ip}:{port}"
+      "connected_to": "Csatlakozva: {ip}:{port}",
+      "delete_scanning": "Elemek törlése..."
     },
     "protocol": {
       "selectProtocol": "Protokoll kiválasztása...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Nincsenek törölt fájlok",
       "restore": "Visszaállítás",
       "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra",
-      "connectionNamePlaceholder": "Kapcsolat neve (pl. FileLu Felhőm)"
+      "connectionNamePlaceholder": "Kapcsolat neve (pl. FileLu Felhőm)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Hozzászólás hozzáadása",

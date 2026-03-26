@@ -65,7 +65,8 @@
       "name": "Nome",
       "size": "Dimensione",
       "retry": "Riprova",
-      "check": "Verifica"
+      "check": "Verifica",
+      "selectAll": "Select All"
     },
     "lockScreen": {
       "locked": "App Bloccata",
@@ -1364,7 +1365,8 @@
       "https_established": "Connessione HTTPS stabilita",
       "auth_success": "Autenticato come {username}",
       "auth_method_key": "Autenticato con chiave SSH ({username})",
-      "listing_complete": "Elenco directory \"{path}\" completato ({count} elementi)"
+      "listing_complete": "Elenco directory \"{path}\" completato ({count} elementi)",
+      "delete_scanning": "Eliminazione elementi..."
     },
     "folderOverwrite": {
       "title": "Cartella già esistente",
@@ -3249,7 +3251,8 @@
       "trashEmpty": "Nessun file eliminato",
       "restore": "Ripristina",
       "trashFooter": "I file ripristinati riappariranno nella cartella originale",
-      "connectionNamePlaceholder": "Nome Connessione (es. Il Mio FileLu Cloud)"
+      "connectionNamePlaceholder": "Nome Connessione (es. Il Mio FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Aggiungi commento",

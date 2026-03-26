@@ -209,13 +209,15 @@ pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
     false
 }
 
-/// Compare two timestamps with tolerance
+/// Compare two timestamps with tolerance.
+/// When both timestamps are absent, returns true (cannot distinguish — treat as equal).
 pub fn timestamps_equal(local: Option<DateTime<Utc>>, remote: Option<DateTime<Utc>>) -> bool {
     match (local, remote) {
         (Some(l), Some(r)) => {
             (l.signed_duration_since(r)).num_seconds().abs() <= TIMESTAMP_TOLERANCE_SECS
         }
-        _ => false,
+        (None, None) => true, // Both absent — cannot distinguish, treat as equal
+        _ => false,           // One present, one absent — not equal
     }
 }
 
@@ -283,10 +285,16 @@ pub fn compare_file_pair(
                 }
             }
 
+            // ──── Size-only fallback when timestamps absent ────
+            // Providers like FileLu may return modified=None for folders or files.
+            // When timestamps are unavailable, fall back to size-only comparison
+            // to avoid infinite re-sync loops.
+            let both_timestamps_present = l.modified.is_some() && r.modified.is_some();
+
             // First check size if enabled
             if options.compare_size && l.size != r.size {
                 // Different sizes - determine which is newer
-                if options.compare_timestamp {
+                if options.compare_timestamp && both_timestamps_present {
                     match compare_timestamps(l.modified, r.modified) {
                         Some(status) => return status,
                         None => return SyncStatus::SizeMismatch,
@@ -298,7 +306,11 @@ pub fn compare_file_pair(
 
             // Size is same (or not comparing size), check timestamp
             if options.compare_timestamp {
-                if timestamps_equal(l.modified, r.modified) {
+                if !both_timestamps_present {
+                    // One or both timestamps absent — size already matched (or not compared),
+                    // treat as identical to avoid spurious re-syncs
+                    SyncStatus::Identical
+                } else if timestamps_equal(l.modified, r.modified) {
                     SyncStatus::Identical
                 } else {
                     match compare_timestamps(l.modified, r.modified) {
@@ -645,10 +657,14 @@ pub fn build_comparison_results_with_index(
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
             if let Some(cached) = idx.files.get(&path) {
+                // When cached timestamp is None (provider didn't return mtime),
+                // fall back to size-only comparison to avoid false conflicts.
                 let local_changed = l.size != cached.size
-                    || !timestamps_equal(l.modified, cached.modified);
+                    || (l.modified.is_some() && cached.modified.is_some()
+                        && !timestamps_equal(l.modified, cached.modified));
                 let remote_changed = r.size != cached.size
-                    || !timestamps_equal(r.modified, cached.modified);
+                    || (r.modified.is_some() && cached.modified.is_some()
+                        && !timestamps_equal(r.modified, cached.modified));
 
                 if local_changed && remote_changed {
                     // Both sides changed since last sync → true conflict

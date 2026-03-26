@@ -64,7 +64,8 @@
       "size": "Размер",
       "retry": "Повторить",
       "optional": "необязательно",
-      "check": "Проверить"
+      "check": "Проверить",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Подключение к серверу",
@@ -1138,7 +1139,8 @@
       "auth_success": "Успешная аутентификация как {username}",
       "auth_method_key": "Аутентификация с помощью SSH-ключа ({username})",
       "listing_complete": "Содержимое директории \"{path}\" ({count} элементов)",
-      "connected_to": "Подключено к {ip}:{port}"
+      "connected_to": "Подключено к {ip}:{port}",
+      "delete_scanning": "Удаление элементов..."
     },
     "protocol": {
       "selectProtocol": "Выберите протокол...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "Нет удалённых файлов",
       "restore": "Восстановить",
       "trashFooter": "Восстановленные файлы снова появятся в исходной папке",
-      "connectionNamePlaceholder": "Имя подключения (напр. Мой FileLu Cloud)"
+      "connectionNamePlaceholder": "Имя подключения (напр. Мой FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Добавить комментарий",

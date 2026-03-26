@@ -19,7 +19,7 @@ use crate::sync::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
@@ -38,6 +38,18 @@ pub enum SyncTask {
     Upload { local_path: PathBuf, remote_path: String },
     /// Stop the service
     Stop,
+}
+
+/// Generate a Dropbox-style conflict filename.
+/// Example: `report.pdf` → `report (AeroCloud conflict 2026-03-26 14-30-22 myhost).pdf`
+fn conflict_rename(local_path: &Path) -> String {
+    let stem = local_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = local_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let ts = chrono::Utc::now().format("%Y-%m-%d %H-%M-%S");
+    let host = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    format!("{} (AeroCloud conflict {} {}){}", stem, ts, host, ext)
 }
 
 /// Result of a sync operation
@@ -93,11 +105,11 @@ impl CloudService {
         }
     }
 
-    /// Initialize with config
+    /// Initialize with config and optional app handle for status events
     pub async fn init(&self, config: CloudConfig) {
         let mut cfg = self.config.write().await;
         *cfg = config;
-        
+
         if cfg.enabled {
             let mut status = self.status.write().await;
             *status = CloudSyncStatus::Idle {
@@ -105,6 +117,11 @@ impl CloudService {
                 next_sync: None,
             };
         }
+    }
+
+    /// Set app handle for emitting status change events
+    pub fn set_app_handle(&mut self, handle: AppHandle) {
+        self.app_handle = Some(handle);
     }
 
     /// Get current sync status
@@ -279,6 +296,14 @@ impl CloudService {
             files_total: 0,
         }).await;
 
+        // Ensure remote folder exists before scanning (check first — some providers
+        // like FileLu create duplicates if mkdir is called on an existing folder)
+        if provider.cd(&config.remote_folder).await.is_err() {
+            if let Err(e) = provider.mkdir(&config.remote_folder).await {
+                tracing::warn!("Failed to create remote folder {}: {}", config.remote_folder, e);
+            }
+        }
+
         // Get file listings
         let local_files = self.scan_local_folder(&config).await?;
         let remote_files = self.scan_remote_folder_with_provider(provider, &config).await?;
@@ -344,6 +369,20 @@ impl CloudService {
                 },
                 Err(e) => {
                     result.errors.push(format!("{}: {}", comparison.relative_path, e));
+
+                    // Detect token revocation (e.g. 4shared OAuth 1.0a) and notify frontend.
+                    // OAuth 1.0a tokens cannot be refreshed — abort sync and prompt user.
+                    if e.contains("token_revoked") {
+                        if let Some(app) = &self.app_handle {
+                            let _ = app.emit("cloud-reauth-required", serde_json::json!({
+                                "provider": config.protocol_type,
+                                "reason": "token_revoked",
+                                "message": e,
+                            }));
+                        }
+                        result.errors.push("Sync aborted: re-authorization required".to_string());
+                        break;
+                    }
                 }
             }
         }
@@ -431,12 +470,17 @@ impl CloudService {
             return Ok(files);
         }
 
+        // Load .aeroignore from sync root (if present)
+        let aeroignore = crate::sync_ignore::AeroIgnore::load(base_path);
+
         // Use walkdir for recursive scanning
         fn scan_recursive(
             base: &PathBuf,
             current: &PathBuf,
             files: &mut HashMap<String, FileInfo>,
             exclude: &[String],
+            excluded_folders: &[String],
+            aeroignore: Option<&crate::sync_ignore::AeroIgnore>,
         ) -> Result<(), String> {
             let entries = std::fs::read_dir(current)
                 .map_err(|e| format!("Failed to read directory: {}", e))?;
@@ -461,14 +505,28 @@ impl CloudService {
                     .to_string_lossy()
                     .to_string();
 
-                // Check exclusions
-                if crate::sync::should_exclude(&relative, exclude) {
+                let is_dir = metadata.is_dir();
+
+                // Check exclusions: .aeroignore first (with negation), then config patterns
+                let excluded = if let Some(ai) = aeroignore {
+                    ai.should_exclude(&relative, is_dir, exclude)
+                } else {
+                    crate::sync::should_exclude(&relative, exclude)
+                };
+                if excluded {
+                    continue;
+                }
+
+                // Selective sync: skip directories listed in excluded_folders
+                if is_dir && excluded_folders.iter().any(|ef| {
+                    let ef_norm = ef.trim_matches('/');
+                    relative == ef_norm || relative.starts_with(&format!("{}/", ef_norm))
+                }) {
                     continue;
                 }
 
                 let modified = metadata.modified().ok().map(DateTime::<Utc>::from);
 
-                let is_dir = metadata.is_dir();
                 let size = if is_dir {
                     0
                 } else {
@@ -494,14 +552,14 @@ impl CloudService {
                 );
 
                 if is_dir {
-                    scan_recursive(base, &path, files, exclude)?;
+                    scan_recursive(base, &path, files, exclude, excluded_folders, aeroignore)?;
                 }
             }
 
             Ok(())
         }
 
-        scan_recursive(base_path, base_path, &mut files, &config.exclude_patterns)?;
+        scan_recursive(base_path, base_path, &mut files, &config.exclude_patterns, &config.excluded_folders, aeroignore.as_ref())?;
         Ok(files)
     }
 
@@ -513,6 +571,7 @@ impl CloudService {
     ) -> Result<HashMap<String, FileInfo>, String> {
         let mut files = HashMap::new();
         let base_path = &config.remote_folder;
+        let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
 
         // Stack-based recursive scan with depth tracking
         // (base_path, relative_prefix, depth)
@@ -547,8 +606,13 @@ impl CloudService {
                     format!("{}/{}", relative_prefix, entry.name)
                 };
 
-                // Check exclusions
-                if crate::sync::should_exclude(&relative_path, &config.exclude_patterns) {
+                // Check exclusions: .aeroignore first, then config patterns
+                let excluded = if let Some(ref ai) = aeroignore {
+                    ai.should_exclude(&relative_path, entry.is_dir, &config.exclude_patterns)
+                } else {
+                    crate::sync::should_exclude(&relative_path, &config.exclude_patterns)
+                };
+                if excluded {
                     continue;
                 }
 
@@ -584,6 +648,15 @@ impl CloudService {
                 );
 
                 if entry.is_dir {
+                    // Selective sync: skip excluded folders (don't descend)
+                    let is_excluded = config.excluded_folders.iter().any(|ef| {
+                        let ef_norm = ef.trim_matches('/');
+                        relative_path == ef_norm || relative_path.starts_with(&format!("{}/", ef_norm))
+                    });
+                    if is_excluded {
+                        continue;
+                    }
+
                     let child_path = format!("{}/{}", current_path, entry.name);
                     if visited.insert(child_path.clone()) {
                         stack.push((child_path, relative_path, depth + 1));
@@ -677,6 +750,17 @@ impl CloudService {
                         tracing::warn!("Failed to create directory {}: {}", local_path.display(), e);
                     }
                 } else if let Some(remote_info) = &comparison.remote_info {
+                    // Archive existing file before overwrite (versioning)
+                    if local_path.exists() {
+                        let versioning = crate::sync_versioning::SyncVersioning::new(
+                            &config.local_folder, config.versioning_strategy.clone());
+                        if versioning.is_enabled() {
+                            if let Err(e) = versioning.archive(&local_path) {
+                                tracing::warn!("Versioning archive failed: {}", e);
+                            }
+                        }
+                    }
+
                     // Ensure parent directory exists
                     if let Some(parent) = local_path.parent() {
                         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -702,13 +786,9 @@ impl CloudService {
             SyncAction::KeepBoth => {
                 if !comparison.is_dir {
                     let local_path = config.local_folder.join(&comparison.relative_path);
-                    // Rename local file with _conflict suffix to preserve both versions
+                    // Rename local file with Dropbox-style conflict suffix to preserve both versions
                     if local_path.exists() {
-                        let stem = local_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                        let ext = local_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-                        let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
-                        let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
-                        let conflict_path = local_path.with_file_name(&conflict_name);
+                        let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
                         std::fs::rename(&local_path, &conflict_path)
                             .map_err(|e| format!("Failed to preserve local copy before download: {}", e))?;
                     }
@@ -744,6 +824,8 @@ impl CloudService {
     ) -> Result<HashMap<String, FileInfo>, String> {
         let mut files = HashMap::new();
         let base_path = &config.remote_folder;
+        // Load .aeroignore from local sync root (applies to remote paths too)
+        let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
 
         // Stack-based recursive scan with depth tracking
         // (base_path, relative_prefix, depth)
@@ -778,8 +860,13 @@ impl CloudService {
                     format!("{}/{}", relative_prefix, entry.name)
                 };
 
-                // Check exclusions
-                if crate::sync::should_exclude(&relative_path, &config.exclude_patterns) {
+                // Check exclusions: .aeroignore first, then config patterns
+                let excluded = if let Some(ref ai) = aeroignore {
+                    ai.should_exclude(&relative_path, entry.is_dir, &config.exclude_patterns)
+                } else {
+                    crate::sync::should_exclude(&relative_path, &config.exclude_patterns)
+                };
+                if excluded {
                     continue;
                 }
 
@@ -810,11 +897,22 @@ impl CloudService {
                                 })
                         }),
                         is_dir: entry.is_dir,
-                        checksum: None,
+                        // Use provider-supplied content hash if available (e.g. FileLu).
+                        // Enables hash-based comparison for providers that don't preserve mtime.
+                        checksum: entry.metadata.get("content_hash").cloned(),
                     },
                 );
 
                 if entry.is_dir {
+                    // Selective sync: skip excluded folders (don't descend)
+                    let is_excluded = config.excluded_folders.iter().any(|ef| {
+                        let ef_norm = ef.trim_matches('/');
+                        relative_path == ef_norm || relative_path.starts_with(&format!("{}/", ef_norm))
+                    });
+                    if is_excluded {
+                        continue;
+                    }
+
                     let child_path = format!("{}/{}", current_path, entry.name);
                     if visited.insert(child_path.clone()) {
                         stack.push((child_path, relative_path, depth + 1));
@@ -881,14 +979,18 @@ impl CloudService {
                         tracing::debug!("mkdir {} (may exist): {}", remote_path, e);
                     }
                 } else if let Some(local_info) = &comparison.local_info {
-                    // Ensure parent directory exists on remote
+                    // Ensure parent directory exists on remote (check first to avoid duplicates)
                     if let Some(parent) = std::path::Path::new(&comparison.relative_path).parent() {
-                        let parent_path = format!(
-                            "{}/{}",
-                            config.remote_folder.trim_end_matches('/'),
-                            parent.to_string_lossy()
-                        );
-                        let _ = provider.mkdir(&parent_path).await;
+                        if !parent.as_os_str().is_empty() {
+                            let parent_path = format!(
+                                "{}/{}",
+                                config.remote_folder.trim_end_matches('/'),
+                                parent.to_string_lossy()
+                            );
+                            if provider.cd(&parent_path).await.is_err() {
+                                let _ = provider.mkdir(&parent_path).await;
+                            }
+                        }
                     }
 
                     tracing::info!(
@@ -939,6 +1041,17 @@ impl CloudService {
                         tracing::warn!("Failed to create directory {}: {}", local_path.display(), e);
                     }
                 } else if let Some(remote_info) = &comparison.remote_info {
+                    // Archive existing file before overwrite (versioning)
+                    if local_path.exists() {
+                        let versioning = crate::sync_versioning::SyncVersioning::new(
+                            &config.local_folder, config.versioning_strategy.clone());
+                        if versioning.is_enabled() {
+                            if let Err(e) = versioning.archive(&local_path) {
+                                tracing::warn!("Versioning archive failed: {}", e);
+                            }
+                        }
+                    }
+
                     // Ensure parent directory exists
                     if let Some(parent) = local_path.parent() {
                         if let Err(e) = std::fs::create_dir_all(parent) {
@@ -960,13 +1073,9 @@ impl CloudService {
             SyncAction::KeepBoth => {
                 if !comparison.is_dir {
                     let local_path = config.local_folder.join(&comparison.relative_path);
-                    // Rename local file with _conflict suffix to preserve both versions
+                    // Rename local file with Dropbox-style conflict suffix to preserve both versions
                     if local_path.exists() {
-                        let stem = local_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                        let ext = local_path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-                        let ts = chrono::Utc::now().format("%Y%m%d%H%M%S");
-                        let conflict_name = format!("{}_conflict_{}{}", stem, ts, ext);
-                        let conflict_path = local_path.with_file_name(&conflict_name);
+                        let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
                         std::fs::rename(&local_path, &conflict_path)
                             .map_err(|e| format!("Failed to preserve local copy before download: {}", e))?;
                     }

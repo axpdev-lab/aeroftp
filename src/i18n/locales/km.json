@@ -64,7 +64,8 @@
       "size": "ទំហំ",
       "retry": "ព្យាយាមម្ដងទៀត",
       "optional": "ជាក់មិនចំបាច់",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
@@ -1138,7 +1139,8 @@
       "auth_success": "ការផ្ទៀងផ្ទាត់ជោគជ័យជា {username}",
       "auth_method_key": "បានផ្ទៀងផ្ទាត់ដោយកូនសោ SSH ({username})",
       "listing_complete": "បញ្ជីថត \"{path}\" បានបញ្ចប់ ({count} ធាតុ)",
-      "connected_to": "បានភ្ជាប់ទៅ {ip}:{port}"
+      "connected_to": "បានភ្ជាប់ទៅ {ip}:{port}",
+      "delete_scanning": "Deleting items..."
     },
     "protocol": {
       "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "គ្មានឯកសារដែលបានលុប",
       "restore": "ស្ដារ",
       "trashFooter": "ឯកសារដែលបានស្ដារនឹងបង្ហាញឡើងវិញនៅក្នុងថតដើមរបស់ពួកវា",
-      "connectionNamePlaceholder": "ឈ្មោះការតភ្ជាប់ (ឧ. FileLu Cloud របស់ខ្ញុំ)"
+      "connectionNamePlaceholder": "ឈ្មោះការតភ្ជាប់ (ឧ. FileLu Cloud របស់ខ្ញុំ)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "បន្ថែមយោបល់",

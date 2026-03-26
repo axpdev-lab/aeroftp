@@ -64,7 +64,8 @@
       "size": "ზომა",
       "retry": "ხელახლა",
       "optional": "არასავალდებულო",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "სერვერთან დაკავშირება",
@@ -1138,7 +1139,8 @@
       "auth_success": "ავთენტიფიკაცია წარმატებულია როგორც {username}",
       "auth_method_key": "ავთენტიფიცირებულია SSH გასაღებით ({username})",
       "listing_complete": "\"{path}\"-ის სია დასრულდა ({count} ელემენტი)",
-      "connected_to": "დაკავშირებულია {ip}:{port}"
+      "connected_to": "დაკავშირებულია {ip}:{port}",
+      "delete_scanning": "Deleting items..."
     },
     "protocol": {
       "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "წაშლილი ფაილები არ არის",
       "restore": "აღდგენა",
       "trashFooter": "აღდგენილი ფაილები კვლავ გამოჩნდება მათ პირვანდელ საქაღალდეში",
-      "connectionNamePlaceholder": "კავშირის სახელი (მაგ. ჩემი FileLu Cloud)"
+      "connectionNamePlaceholder": "კავშირის სახელი (მაგ. ჩემი FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "კომენტარის დამატება",

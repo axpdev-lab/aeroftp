@@ -64,7 +64,8 @@
       "size": "크기",
       "retry": "재시도",
       "optional": "선택 사항",
-      "check": "확인"
+      "check": "확인",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "서버에 연결",
@@ -1138,7 +1139,8 @@
       "auth_success": "{username}(으)로 인증 성공",
       "auth_method_key": "SSH 키로 인증됨 ({username})",
       "listing_complete": "\"{path}\" 디렉터리 목록 완료 ({count}개 항목)",
-      "connected_to": "{ip}:{port}에 연결됨"
+      "connected_to": "{ip}:{port}에 연결됨",
+      "delete_scanning": "항목 삭제 중..."
     },
     "protocol": {
       "selectProtocol": "프로토콜 선택...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "삭제된 파일 없음",
       "restore": "복원",
       "trashFooter": "복원된 파일은 원래 폴더에 다시 나타납니다",
-      "connectionNamePlaceholder": "연결 이름 (예: 내 FileLu Cloud)"
+      "connectionNamePlaceholder": "연결 이름 (예: 내 FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "댓글 추가",

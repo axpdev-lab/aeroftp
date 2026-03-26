@@ -244,9 +244,24 @@ impl FourSharedProvider {
             .header("Authorization", &auth)
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        send_with_retry(&self.client, request, &Self::retry_config())
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        self.check_auth_status(&resp)?;
+        Ok(resp)
+    }
+
+    /// Check for 401 Unauthorized responses and return a clear error message
+    /// that the frontend can use to prompt re-authorization.
+    /// OAuth 1.0a tokens cannot be refreshed — user must re-authorize manually.
+    fn check_auth_status(&self, resp: &reqwest::Response) -> Result<(), ProviderError> {
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            tracing::warn!("[4shared] OAuth token rejected (401) — user must re-authorize");
+            return Err(ProviderError::AuthenticationFailed(
+                "4shared_token_revoked: OAuth access token has been revoked or is invalid. Please re-authorize.".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Make a signed POST request (form-urlencoded body) with retry (FS-009)
@@ -270,9 +285,11 @@ impl FourSharedProvider {
             .body(body)
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        send_with_retry(&self.client, request, &Self::retry_config())
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        self.check_auth_status(&resp)?;
+        Ok(resp)
     }
 
     /// Make a signed DELETE request with retry (FS-009)
@@ -283,9 +300,11 @@ impl FourSharedProvider {
             .header("Authorization", &auth)
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        send_with_retry(&self.client, request, &Self::retry_config())
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        self.check_auth_status(&resp)?;
+        Ok(resp)
     }
 
     /// Make a signed PUT request with form body and retry (FS-009)
@@ -308,9 +327,11 @@ impl FourSharedProvider {
             .body(body)
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        send_with_retry(&self.client, request, &Self::retry_config())
+        let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        self.check_auth_status(&resp)?;
+        Ok(resp)
     }
 
     /// Normalize an absolute path (ensure starts with /, no trailing slash)

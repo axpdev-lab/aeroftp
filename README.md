@@ -376,6 +376,7 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 | **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
 | **Dependency Scanning** | 1,071 packages monitored (316 JS + 755 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled |
+| **Sigstore** | All release artifacts signed with [Sigstore Cosign](https://sigstore.dev) via GitHub OIDC keyless signing. `.sigstore.json` verification bundles included in every release |
 | **Security Audit** | [Download Official Report (Aikido)](https://app.aikido.dev/reports/audit-reports/XjkFN27VKYT2772IC79C4hmF/external/report/download?secret=TF9MK1qiVN6WFPYN5qH3iKgccbIyBwLXBY9g1wfC3rbVjzzUv3XJ61M7CFLk&group_id=68884) |
 
 ---
@@ -483,6 +484,22 @@ Download from [GitHub Releases](https://github.com/axpdev-lab/aeroftp/releases/l
 - **.dmg** - Universal disk image
 
 > **Note:** The macOS build is not notarized (no Apple Developer certificate). macOS Gatekeeper will block the app on first launch - right-click the app and select "Open" to bypass. See [#47](https://github.com/axpdev-lab/aeroftp/issues/47) for known issues on Apple Silicon.
+
+### Verifying Release Integrity
+
+All release artifacts are signed with [Sigstore](https://sigstore.dev) using keyless signing via GitHub OIDC. Each release includes `.sigstore.json` verification bundles.
+
+Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/), then verify any downloaded artifact:
+
+```bash
+cosign verify-blob \
+  --bundle AeroFTP_3.1.2_amd64.deb.sigstore.json \
+  --certificate-identity "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/v3.1.2" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  AeroFTP_3.1.2_amd64.deb
+```
+
+This proves the artifact was built by our CI pipeline from the tagged commit. Replace filenames and version with your download.
 
 ---
 

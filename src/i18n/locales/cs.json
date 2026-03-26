@@ -64,7 +64,8 @@
       "size": "Velikost",
       "retry": "Zkusit znovu",
       "optional": "volitelné",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Připojení k serveru",
@@ -1138,7 +1139,8 @@
       "auth_success": "Úspěšně přihlášen jako {username}",
       "auth_method_key": "Ověřeno pomocí SSH klíče ({username})",
       "listing_complete": "Výpis adresáře \"{path}\" dokončen ({count} položek)",
-      "connected_to": "Připojeno k {ip}:{port}"
+      "connected_to": "Připojeno k {ip}:{port}",
+      "delete_scanning": "Mazání položek..."
     },
     "protocol": {
       "selectProtocol": "Vybrat protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Žádné smazané soubory",
       "restore": "Obnovit",
       "trashFooter": "Obnovené soubory se znovu zobrazí ve své původní složce",
-      "connectionNamePlaceholder": "Název připojení (např. Můj FileLu Cloud)"
+      "connectionNamePlaceholder": "Název připojení (např. Můj FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Přidat komentář",

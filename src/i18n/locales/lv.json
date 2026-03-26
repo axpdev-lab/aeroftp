@@ -64,7 +64,8 @@
       "size": "Izmērs",
       "retry": "Mēģināt vēlreiz",
       "optional": "neobligats",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Savienoties ar serveri",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentifikācija veiksmīga kā {username}",
       "auth_method_key": "Autentificēts ar SSH atslēgu ({username})",
       "listing_complete": "Direktorija \"{path}\" saraksts pabeigts ({count} elementi)",
-      "connected_to": "Savienots ar {ip}:{port}"
+      "connected_to": "Savienots ar {ip}:{port}",
+      "delete_scanning": "Dzēš vienumus..."
     },
     "protocol": {
       "selectProtocol": "Izvēlēties protokolu...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Nav dzēstu failu",
       "restore": "Atjaunot",
       "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē",
-      "connectionNamePlaceholder": "Savienojuma nosaukums (piem., Mans FileLu Cloud)"
+      "connectionNamePlaceholder": "Savienojuma nosaukums (piem., Mans FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Pievienot komentāru",

@@ -64,7 +64,8 @@
       "size": "Grootte",
       "retry": "Opnieuw",
       "optional": "optioneel",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Verbinden met Server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Authenticatie geslaagd als {username}",
       "auth_method_key": "Geauthenticeerd met SSH-sleutel ({username})",
       "listing_complete": "Mapinhoud van \"{path}\" opgehaald ({count} items)",
-      "connected_to": "Verbonden met {ip}:{port}"
+      "connected_to": "Verbonden met {ip}:{port}",
+      "delete_scanning": "Items verwijderen..."
     },
     "protocol": {
       "selectProtocol": "Selecteer protocol...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "Geen verwijderde bestanden",
       "restore": "Herstellen",
       "trashFooter": "Herstelde bestanden verschijnen opnieuw in hun oorspronkelijke map",
-      "connectionNamePlaceholder": "Verbindingsnaam (bijv. Mijn FileLu Cloud)"
+      "connectionNamePlaceholder": "Verbindingsnaam (bijv. Mijn FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Opmerking toevoegen",

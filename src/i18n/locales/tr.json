@@ -64,7 +64,8 @@
       "size": "Boyut",
       "retry": "Tekrar dene",
       "optional": "isteğe bağlı",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Sunucuya Bağlan",
@@ -1138,7 +1139,8 @@
       "auth_success": "{username} olarak kimlik doğrulama başarılı",
       "auth_method_key": "SSH anahtarı ile doğrulandı ({username})",
       "listing_complete": "\"{path}\" dizin listesi tamamlandı ({count} öğe)",
-      "connected_to": "Bağlandı {ip}:{port}"
+      "connected_to": "Bağlandı {ip}:{port}",
+      "delete_scanning": "Öğeler siliniyor..."
     },
     "protocol": {
       "selectProtocol": "Protokol seç...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Silinmiş dosya yok",
       "restore": "Geri Yükle",
       "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir",
-      "connectionNamePlaceholder": "Bağlantı adı (ör. FileLu Cloud'um)"
+      "connectionNamePlaceholder": "Bağlantı adı (ör. FileLu Cloud'um)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Yorum ekle",

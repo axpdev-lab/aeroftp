@@ -18,6 +18,7 @@ import {
 import { useTraySync } from '../hooks/useTraySync';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
+import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback } from '../utils/secureStorage';
@@ -39,6 +40,7 @@ interface CloudConfig {
     public_url_base?: string | null;
     protocol_type: string;
     connection_params: Record<string, unknown>;
+    excluded_folders: string[];
 }
 
 // Protocol categories for the selector grid
@@ -65,6 +67,7 @@ const PROTOCOL_CATEGORIES = [
             { id: 'koofr', label: 'Koofr' },
             { id: 'opendrive', label: 'OpenDrive' },
             { id: 'yandexdisk', label: 'Yandex Disk' },
+            { id: 'filelu', label: 'FileLu' },
         ],
     },
     {
@@ -84,6 +87,33 @@ const PROTOCOL_CATEGORIES = [
 const OAUTH2_PROTOCOLS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive'];
 const OAUTH1_PROTOCOLS = ['fourshared'];
 const SERVER_PROTOCOLS = ['ftp', 'ftps', 'sftp', 'webdav'];
+
+/** AeroCloud sync maturity classification (post-hardening audit 2026-03-26) */
+const PROTOCOL_MATURITY: Record<string, 'stable' | 'beta' | 'alpha'> = {
+    sftp: 'stable', s3: 'stable', azure: 'stable', webdav: 'stable',
+    googledrive: 'stable', dropbox: 'stable', onedrive: 'stable',
+    jottacloud: 'stable', kdrive: 'stable', koofr: 'stable',
+    opendrive: 'stable',
+    ftp: 'beta', ftps: 'beta', box: 'beta', pcloud: 'beta',
+    zohoworkdrive: 'beta', yandexdisk: 'beta', mega: 'beta',
+    filen: 'beta', internxt: 'beta',
+    filelu: 'alpha', fourshared: 'alpha',
+};
+
+/** One-line sync limitation shown on hover */
+const PROTOCOL_SYNC_CAVEAT: Record<string, string> = {
+    ftp: 'Requires MFMT support for reliable timestamps',
+    ftps: 'Requires MFMT support for reliable timestamps',
+    box: 'Stricter API rate limits than other providers',
+    pcloud: 'OAuth flow may require re-authorization periodically',
+    zohoworkdrive: 'Team ID resolution adds setup complexity',
+    yandexdisk: 'Service may be blocked in some regions',
+    mega: 'Requires external MEGAcmd daemon running',
+    filen: 'E2E encryption overhead — sync is slower',
+    internxt: 'E2E encryption overhead — sync is slower',
+    filelu: 'Timestamps not preserved on upload — uses hash comparison',
+    fourshared: 'Manual re-authorization required if token revoked',
+};
 
 /** Protocols requiring email + password (no saved profiles) */
 const EMAIL_AUTH_PROTOCOLS = ['mega', 'filen', 'internxt'];
@@ -118,7 +148,7 @@ interface CloudPanelProps {
 
 // Setup Wizard Component (4 steps: Name → Protocol → Connection → Settings)
 const SetupWizard: React.FC<{
-    savedServers: { id: string; name: string; host: string; port?: number; username?: string; password?: string; initialPath?: string }[];
+    savedServers: { id: string; name: string; host: string; port?: number; username?: string; password?: string; initialPath?: string; protocol?: string }[];
     onComplete: (config: CloudConfig) => void;
     onCancel: () => void;
 }> = ({ savedServers, onComplete, onCancel }) => {
@@ -164,7 +194,12 @@ const SetupWizard: React.FC<{
         } else {
             setRemoteFolder('/');
         }
-    }, [selectedProtocol]);
+        // Auto-select saved server if there's exactly one for this protocol
+        const matching = savedServers.filter(s => s.protocol === selectedProtocol);
+        if (matching.length === 1) {
+            setServerProfile(matching[0].name);
+        }
+    }, [selectedProtocol, savedServers]);
 
     const selectLocalFolder = async () => {
         const selected = await open({ directory: true, multiple: false, title: 'Select AeroCloud Folder' });
@@ -195,7 +230,8 @@ const SetupWizard: React.FC<{
 
     // Determine the effective server profile name for credential storage
     const effectiveProfile = (): string => {
-        if (isServerProtocol && serverProfile) return serverProfile;
+        // Use saved server profile name if selected (server protocols + profile protocols like FileLu)
+        if (serverProfile) return serverProfile;
         return cloudName || selectedProtocol;
     };
 
@@ -266,8 +302,8 @@ const SetupWizard: React.FC<{
 
             // Save credentials for non-OAuth providers
             if (!isOAuth) {
-                if (isServerProtocol && serverProfile) {
-                    // Server protocol with saved profile: load & re-save credentials
+                if (serverProfile && savedServers.some(s => s.name === serverProfile)) {
+                    // Saved profile selected (server protocols + profile protocols like FileLu): load & re-save credentials
                     const selectedServer = savedServers.find(s => s.name === serverProfile);
                     if (selectedServer?.username) {
                         let password = '';
@@ -357,7 +393,7 @@ const SetupWizard: React.FC<{
                     <div className="folder-input mt-3">
                         <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                         <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                            placeholder="/cloud/" className="wizard-input-editable" />
+                            placeholder="/cloud/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                     </div>
                 </div>
             );
@@ -372,17 +408,17 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Email</label>
                             <input type="email" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
-                                placeholder="user@example.com" className="wizard-input-editable" />
+                                placeholder="user@example.com" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Password</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -398,34 +434,34 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Endpoint</label>
                             <input type="text" value={connHost} onChange={(e) => setConnHost(e.target.value)}
-                                placeholder="s3.amazonaws.com" className="wizard-input-editable" />
+                                placeholder="s3.amazonaws.com" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div className="folder-input">
                                 <label className="block text-sm font-medium mb-1">Bucket</label>
                                 <input type="text" value={connExtra.bucket || ''} onChange={(e) => setConnExtra(p => ({ ...p, bucket: e.target.value }))}
-                                    className="wizard-input-editable" />
+                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                             </div>
                             <div className="folder-input">
                                 <label className="block text-sm font-medium mb-1">Region</label>
                                 <input type="text" value={connExtra.region || ''} onChange={(e) => setConnExtra(p => ({ ...p, region: e.target.value }))}
-                                    placeholder="us-east-1" className="wizard-input-editable" />
+                                    placeholder="us-east-1" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                             </div>
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Access Key</label>
                             <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Secret Key</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Prefix</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -441,17 +477,17 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Account Name</label>
                             <input type="text" value={connHost} onChange={(e) => setConnHost(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Access Key</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Container</label>
                             <input type="text" value={connExtra.container || ''} onChange={(e) => setConnExtra(p => ({ ...p, container: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -467,17 +503,17 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">API Token</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Drive ID</label>
                             <input type="text" value={connExtra.drive_id || ''} onChange={(e) => setConnExtra(p => ({ ...p, drive_id: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -493,12 +529,12 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Personal Login Token</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -514,17 +550,17 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Email</label>
                             <input type="email" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
-                                placeholder="user@example.com" className="wizard-input-editable" />
+                                placeholder="user@example.com" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">App Password</label>
                             <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <p className="text-xs opacity-50">{t('connection.koofrHelp')}</p>
                     </div>
@@ -544,7 +580,7 @@ const SetupWizard: React.FC<{
                                 setConnUsername(e.target.value);
                                 setConnHost('dev.opendrive.com');
                             }}
-                                placeholder={t('protocol.opendriveUsernamePlaceholder')} className="wizard-input-editable" />
+                                placeholder={t('protocol.opendriveUsernamePlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('settings.password')}</label>
@@ -552,12 +588,12 @@ const SetupWizard: React.FC<{
                                 setConnPassword(e.target.value);
                                 setConnHost('dev.opendrive.com');
                             }}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <p className="text-xs opacity-50">{t('protocol.opendriveAuthHelp')}</p>
                     </div>
@@ -574,14 +610,45 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('connection.yandexdiskToken')}</label>
                             <input type="password" value={connPassword} onChange={(e) => { setConnPassword(e.target.value); setConnUsername('oauth-token'); }}
-                                placeholder={t('connection.yandexdiskTokenPlaceholder')} className="wizard-input-editable" />
+                                placeholder={t('connection.yandexdiskTokenPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <p className="text-xs opacity-50">{t('connection.yandexdiskHelp')}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Protocols with saved server profiles: use dropdown if available, fall through to manual form otherwise
+        const PROFILE_PROTOCOLS = ['filelu', 'opendrive', 'kdrive', 'jottacloud', 'koofr', 'yandexdisk'];
+        const protocolServers = savedServers.filter(s => s.protocol === selectedProtocol);
+        if (PROFILE_PROTOCOLS.includes(selectedProtocol) && protocolServers.length > 0) {
+            const protoLabel = PROTOCOL_CATEGORIES.flatMap(c => [...c.protocols]).find(p => p.id === selectedProtocol)?.label || selectedProtocol;
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> {protoLabel} {t('cloud.connectionSettings')}</h3>
+                    <div className="server-select">
+                        <label>{t('cloud.serverProfile')}:</label>
+                        <select
+                            value={serverProfile}
+                            onChange={(e) => setServerProfile(e.target.value)}
+                        >
+                            <option value="">{t('cloud.selectServer')}</option>
+                            {protocolServers.map((server) => (
+                                <option key={server.name} value={server.name}>
+                                    {server.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="folder-input mt-3">
+                        <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                        <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                            placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                     </div>
                 </div>
             );
@@ -597,18 +664,18 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Client ID</label>
                             <input type="text" value={connExtra.client_id || ''} onChange={(e) => setConnExtra(p => ({ ...p, client_id: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Client Secret</label>
                             <input type="password" value={connExtra.client_secret || ''} onChange={(e) => setConnExtra(p => ({ ...p, client_secret: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         {needsRegion && (
                             <div className="folder-input">
                                 <label className="block text-sm font-medium mb-1">Region</label>
                                 <select value={connExtra.region || 'us'} onChange={(e) => setConnExtra(p => ({ ...p, region: e.target.value }))}
-                                    className="wizard-input-editable">
+                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none">
                                     <option value="us">US</option>
                                     <option value="eu">EU</option>
                                     {selectedProtocol === 'zohoworkdrive' && <>
@@ -625,7 +692,7 @@ const SetupWizard: React.FC<{
                         <div className="flex items-center gap-3 pt-2">
                             <button onClick={handleOAuthAuthorize}
                                 disabled={oauthAuthorizing || !connExtra.client_id || !connExtra.client_secret}
-                                className="btn-primary">
+                                className="px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                                 {oauthAuthorizing ? <Loader2 className="spin" size={16} /> : <Shield size={16} />}
                                 {oauthAuthorized ? t('cloud.reauthorize') : t('cloud.authorize')}
                             </button>
@@ -638,7 +705,7 @@ const SetupWizard: React.FC<{
                         <div className="folder-input mt-2">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -654,17 +721,17 @@ const SetupWizard: React.FC<{
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Consumer Key</label>
                             <input type="text" value={connExtra.consumer_key || ''} onChange={(e) => setConnExtra(p => ({ ...p, consumer_key: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="folder-input">
                             <label className="block text-sm font-medium mb-1">Consumer Secret</label>
                             <input type="password" value={connExtra.consumer_secret || ''} onChange={(e) => setConnExtra(p => ({ ...p, consumer_secret: e.target.value }))}
-                                className="wizard-input-editable" />
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <div className="flex items-center gap-3 pt-2">
                             <button onClick={handleOAuthAuthorize}
                                 disabled={oauthAuthorizing || !connExtra.consumer_key || !connExtra.consumer_secret}
-                                className="btn-primary">
+                                className="px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                                 {oauthAuthorizing ? <Loader2 className="spin" size={16} /> : <Shield size={16} />}
                                 {oauthAuthorized ? t('cloud.reauthorize') : t('cloud.authorize')}
                             </button>
@@ -677,7 +744,7 @@ const SetupWizard: React.FC<{
                         <div className="folder-input mt-2">
                             <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
                             <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
-                                placeholder="/" className="wizard-input-editable" />
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                     </div>
                 </div>
@@ -690,9 +757,7 @@ const SetupWizard: React.FC<{
     return (
         <div className="cloud-wizard">
             <div className="wizard-header">
-                <Cloud size={48} className="wizard-icon" />
-                <h2>{t('cloud.title')}</h2>
-                <p>{t('cloud.setup')}</p>
+                <p className="text-sm opacity-70">{t('cloud.setup')}</p>
             </div>
 
             <div className="wizard-progress">
@@ -709,21 +774,17 @@ const SetupWizard: React.FC<{
                     <div className="wizard-step">
                         <h3><Cloud size={20} /> {t('cloud.cloudName')}</h3>
                         <p>{t('cloud.cloudNameDesc')}</p>
-                        <div className="folder-input">
+                        <div className="mb-8">
                             <input type="text" value={cloudName} onChange={(e) => setCloudName(e.target.value)}
-                                placeholder={t('cloud.cloudNamePlaceholder')} className="wizard-input-editable" />
+                                placeholder={t('cloud.cloudNamePlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
 
-                        <h3 className="mt-4"><FolderOpen size={20} /> {t('cloud.localFolder')}</h3>
+                        <h3><FolderOpen size={20} /> {t('cloud.localFolder')}</h3>
                         <p>{t('cloud.stepFolder')}</p>
-                        <div className="flex items-center gap-2">
-                            {localFolder ? (
-                                <span className="flex-1 text-sm font-mono text-gray-300 dark:text-gray-300 truncate" title={localFolder}>
-                                    {localFolder}
-                                </span>
-                            ) : (
-                                <span className="flex-1 text-sm text-gray-500 italic">{t('cloud.noFolderSelected')}</span>
-                            )}
+                        <div className="flex items-center gap-2 mt-1">
+                            <div className="flex-1 px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 truncate" title={localFolder || ''}>
+                                {localFolder || <span className="text-gray-400 italic">{t('cloud.noFolderSelected')}</span>}
+                            </div>
                             <button onClick={selectLocalFolder} className="browse-btn">
                                 <Folder size={16} /> {t('common.browse')}
                             </button>
@@ -741,17 +802,28 @@ const SetupWizard: React.FC<{
                                 <div key={cat.label}>
                                     <label className="block text-xs font-semibold uppercase opacity-50 mb-1.5">{t(cat.label)}</label>
                                     <div className="grid grid-cols-4 gap-1.5">
-                                        {cat.protocols.map((proto) => (
+                                        {cat.protocols.map((proto) => {
+                                            const maturity = PROTOCOL_MATURITY[proto.id];
+                                            const caveat = PROTOCOL_SYNC_CAVEAT[proto.id];
+                                            return (
                                             <button key={proto.id}
                                                 onClick={() => setSelectedProtocol(proto.id)}
-                                                className={`px-2 py-2 rounded-lg text-xs font-medium text-center transition-colors border ${
+                                                title={caveat}
+                                                className={`px-2 py-2 rounded-lg text-xs font-medium text-center transition-colors border relative ${
                                                     selectedProtocol === proto.id
                                                         ? 'border-cyan-500 bg-cyan-500/20 text-cyan-400'
                                                         : 'border-gray-600 hover:border-gray-400 hover:bg-white/5'
                                                 }`}>
                                                 {proto.label}
+                                                {maturity === 'beta' && (
+                                                    <span className="ml-1 px-1 py-0.5 text-[9px] rounded bg-yellow-500/20 text-yellow-400 font-semibold">Beta</span>
+                                                )}
+                                                {maturity === 'alpha' && (
+                                                    <span className="ml-1 px-1 py-0.5 text-[9px] rounded bg-red-500/20 text-red-400 font-semibold">Alpha</span>
+                                                )}
                                             </button>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -793,7 +865,10 @@ const SetupWizard: React.FC<{
                         <div className="summary-box">
                             <h4>{t('cloud.summary')}</h4>
                             <p><Folder size={14} /> {t('cloud.localFolder')}: <code>{localFolder}</code></p>
-                            <p><HardDrive size={14} /> {t('cloud.protocolType')}: <code>{selectedProtocol.toUpperCase()}</code></p>
+                            <p><HardDrive size={14} /> {t('cloud.protocolType')}: <code>{selectedProtocol.toUpperCase()}</code>
+                                {PROTOCOL_MATURITY[selectedProtocol] === 'beta' && <span className="ml-1 px-1 py-0.5 text-[9px] rounded bg-yellow-500/20 text-yellow-400 font-semibold">Beta</span>}
+                                {PROTOCOL_MATURITY[selectedProtocol] === 'alpha' && <span className="ml-1 px-1 py-0.5 text-[9px] rounded bg-red-500/20 text-red-400 font-semibold">Alpha</span>}
+                            </p>
                             <p><Server size={14} /> {t('cloud.remoteFolder')}: <code>{remoteFolder}</code></p>
                         </div>
                     </div>
@@ -801,18 +876,20 @@ const SetupWizard: React.FC<{
             </div>
 
             <div className="wizard-footer">
-                <button onClick={onCancel} className="btn-secondary">{t('common.cancel')}</button>
+                <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{t('common.cancel')}</button>
                 <div className="wizard-nav">
                     {step > 1 && (
-                        <button onClick={() => setStep(step - 1)} className="btn-secondary">{t('common.back')}</button>
+                        <button onClick={() => setStep(step - 1)} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{t('common.back')}</button>
                     )}
                     {step < 4 ? (
-                        <button onClick={() => setStep(step + 1)} className="btn-primary" disabled={!canAdvance()}>
+                        <button onClick={() => setStep(step + 1)} disabled={!canAdvance()}
+                            className="px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} className="btn-primary btn-cloud"
-                            disabled={isLoading || !localFolder}>
+                        <button onClick={handleComplete}
+                            disabled={isLoading || !localFolder}
+                            className="px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                             {isLoading ? <Loader2 className="spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>
@@ -854,9 +931,15 @@ const CloudDashboard: React.FC<{
             if (remainingMs <= 0) {
                 setCountdown('Soon...');
             } else {
-                const mins = Math.floor(remainingMs / 60000);
-                const secs = Math.floor((remainingMs % 60000) / 1000);
-                setCountdown(`${mins}:${secs.toString().padStart(2, '0')}`);
+                const totalSecs = Math.floor(remainingMs / 1000);
+                const hours = Math.floor(totalSecs / 3600);
+                const mins = Math.floor((totalSecs % 3600) / 60);
+                const secs = totalSecs % 60;
+                if (hours > 0) {
+                    setCountdown(`${hours}h ${mins.toString().padStart(2, '0')}m`);
+                } else {
+                    setCountdown(`${mins}:${secs.toString().padStart(2, '0')}`);
+                }
             }
         };
 
@@ -946,11 +1029,19 @@ const CloudDashboard: React.FC<{
                     </div>
                 </div>
 
-                <div className="info-card">
+                <div className="info-card" title={PROTOCOL_SYNC_CAVEAT[config.protocol_type] || ''}>
                     <Shield size={20} />
                     <div>
                         <span className="label">{t('cloud.protocolType')}</span>
-                        <span className="value">{(config.protocol_type || 'ftp').toUpperCase()} {config.server_profile && `\u2014 ${config.server_profile}`}</span>
+                        <span className="value">
+                            {(config.protocol_type || 'ftp').toUpperCase()} {config.server_profile && `\u2014 ${config.server_profile}`}
+                            {PROTOCOL_MATURITY[config.protocol_type] === 'beta' && (
+                                <span className="ml-1.5 px-1 py-0.5 text-[9px] rounded bg-yellow-500/20 text-yellow-400 font-semibold">Beta</span>
+                            )}
+                            {PROTOCOL_MATURITY[config.protocol_type] === 'alpha' && (
+                                <span className="ml-1.5 px-1 py-0.5 text-[9px] rounded bg-red-500/20 text-red-400 font-semibold">Alpha</span>
+                            )}
+                        </span>
                     </div>
                 </div>
 
@@ -979,27 +1070,27 @@ const CloudDashboard: React.FC<{
             <div className="dashboard-actions">
                 <button
                     onClick={onSyncNow}
-                    className="btn-primary"
+                    className="px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={status.type === 'syncing'}
                 >
                     <RefreshCw size={16} /> {t('cloud.syncNow')}
                 </button>
 
                 {status.type === 'paused' ? (
-                    <button onClick={onResume} className="btn-secondary">
+                    <button onClick={onResume} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 border border-gray-300 dark:border-gray-600">
                         <Play size={16} /> {t('cloud.resume')}
                     </button>
                 ) : (
                     <button
                         onClick={onPause}
-                        className="btn-secondary"
+                        className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={status.type === 'not_configured' || status.type === 'error'}
                     >
                         <Pause size={16} /> {t('cloud.pause')}
                     </button>
                 )}
 
-                <button onClick={onDisable} className="btn-danger">
+                <button onClick={onDisable} className="px-4 py-2 text-sm rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-1.5 border border-red-200 dark:border-red-500/30">
                     <CloudOff size={16} /> {t('cloud.disable')}
                 </button>
             </div>
@@ -1014,6 +1105,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     const [status, setStatus] = useState<CloudSyncStatus>({ type: 'not_configured' });
     const [isLoading, setIsLoading] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
+    const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
 
     // Use modular tray sync hook
     const {
@@ -1025,7 +1117,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     } = useTraySync();
 
     // Load saved servers from vault (with localStorage fallback for pre-migration installs)
-    const [savedServers, setSavedServers] = useState<{ id: string; name: string; host: string; port: number; username: string; password: string; initialPath: string }[]>([]);
+    const [savedServers, setSavedServers] = useState<{ id: string; name: string; host: string; port: number; username: string; password: string; initialPath: string; protocol?: string }[]>([]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -1039,6 +1131,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     username?: string;
                     password?: string;
                     initialPath?: string;
+                    protocol?: string;
                 }[]>('server_profiles', 'aeroftp-saved-servers');
                 if (servers && servers.length > 0) {
                     setSavedServers(servers.map(s => ({
@@ -1048,7 +1141,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                         port: s.port || 21,
                         username: s.username || '',
                         password: s.password || '',
-                        initialPath: s.initialPath || ''
+                        initialPath: s.initialPath || '',
+                        protocol: s.protocol,
                     })));
                 }
             } catch (e) {
@@ -1079,9 +1173,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
             }
         });
 
+        const unlistenReauth = listen<{ provider: string; reason: string; message: string }>('cloud-reauth-required', (event) => {
+            setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
+        });
+
         return () => {
             unlisten.then((f) => f());
             unlistenComplete.then((f) => f());
+            unlistenReauth.then((f) => f());
         };
     }, []);
 
@@ -1329,6 +1428,22 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                             </p>
                         </div>
 
+                        {/* Selective Sync */}
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <label className="block text-sm font-medium mb-2">{t('cloud.selectiveSync') || 'Selective Sync'}</label>
+                            <SelectiveSyncTree
+                                excludedFolders={config?.excluded_folders || []}
+                                onSave={async (folders) => {
+                                    try {
+                                        await invoke('update_excluded_folders', { excludedFolders: folders });
+                                        setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
+                                    } catch (e) {
+                                        console.error('Failed to update excluded folders:', e);
+                                    }
+                                }}
+                            />
+                        </div>
+
                         {/* Sync Scheduler (Phase 3A+) */}
                         <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                             <SyncScheduler />
@@ -1386,6 +1501,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     <h2 className="text-xl font-semibold flex items-center gap-2"><Cloud className="text-cyan-500" /> {t('cloud.title')}</h2>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" title={t('common.close')}><X size={20} /></button>
                 </div>
+                {reauthRequired && (
+                    <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-red-800 dark:text-red-300">
+                            <Shield size={16} />
+                            <span>{reauthRequired.provider.toUpperCase()}: {t('cloud.reauthRequired') || 'Authorization expired. Please re-authorize to resume sync.'}</span>
+                        </div>
+                        <button
+                            onClick={() => { setReauthRequired(null); setShowSettings(true); }}
+                            className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700"
+                        >
+                            {t('cloud.reauthorize') || 'Re-authorize'}
+                        </button>
+                    </div>
+                )}
                 <CloudDashboard
                     config={config}
                     status={status}

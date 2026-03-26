@@ -64,7 +64,8 @@
       "size": "大小",
       "retry": "重试",
       "optional": "可选",
-      "check": "检查"
+      "check": "检查",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "连接到服务器",
@@ -1138,7 +1139,8 @@
       "auth_success": "以 {username} 身份验证成功",
       "auth_method_key": "已通过 SSH 密钥验证 ({username})",
       "listing_complete": "目录 \"{path}\" 列表完成（{count} 个项目）",
-      "connected_to": "已连接到 {ip}:{port}"
+      "connected_to": "已连接到 {ip}:{port}",
+      "delete_scanning": "正在删除项目..."
     },
     "protocol": {
       "selectProtocol": "选择协议...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "没有已删除的文件",
       "restore": "恢复",
       "trashFooter": "恢复的文件将重新出现在其原始文件夹中",
-      "connectionNamePlaceholder": "连接名称（例如：我的 FileLu Cloud）"
+      "connectionNamePlaceholder": "连接名称（例如：我的 FileLu Cloud）",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "添加评论",

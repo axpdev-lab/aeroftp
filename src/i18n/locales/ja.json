@@ -64,7 +64,8 @@
       "size": "サイズ",
       "retry": "再試行",
       "optional": "任意",
-      "check": "確認"
+      "check": "確認",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "サーバーに接続",
@@ -1138,7 +1139,8 @@
       "auth_success": "{username}として認証成功",
       "auth_method_key": "SSHキーで認証済み ({username})",
       "listing_complete": "\"{path}\" のディレクトリ一覧完了 ({count} 項目)",
-      "connected_to": "{ip}:{port} に接続しました"
+      "connected_to": "{ip}:{port} に接続しました",
+      "delete_scanning": "アイテムを削除中..."
     },
     "protocol": {
       "selectProtocol": "プロトコルを選択...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "削除済みファイルはありません",
       "restore": "復元",
       "trashFooter": "復元されたファイルは元のフォルダーに再表示されます",
-      "connectionNamePlaceholder": "接続名（例: マイ FileLu Cloud）"
+      "connectionNamePlaceholder": "接続名（例: マイ FileLu Cloud）",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "コメントを追加",

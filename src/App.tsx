@@ -785,7 +785,14 @@ const App: React.FC = () => {
     cloudLocalFolder, setCloudLocalFolder,
     cloudRemoteFolder, setCloudRemoteFolder,
     cloudPublicUrlBase, setCloudPublicUrlBase,
-  } = useCloudSync({ activityLog, humanLog, t, checkForUpdate, isAppLocked });
+  } = useCloudSync({
+    activityLog, humanLog, t, checkForUpdate, isAppLocked,
+    onSyncComplete: () => {
+      // Refresh both panels after AeroCloud sync completes
+      loadRemoteFiles(undefined, true);
+      loadLocalFiles(currentLocalPath);
+    },
+  });
 
   // showToastNotifications provided by useSettings
 
@@ -3148,8 +3155,9 @@ const App: React.FC = () => {
         setShowRemotePanel(true);
         setShowLocalPreview(false);
         setShowConnectionScreen(false);
-        setIsSyncNavigation(false);
-        setSyncBasePaths(null);
+        // Lock navigation to cloud folders (prevent navigating above remote_folder)
+        setIsSyncNavigation(true);
+        setSyncBasePaths({ remote: cloudConfig.remote_folder, local: cloudConfig.local_folder });
 
         // Navigate to cloud folders
         try {
@@ -4632,6 +4640,10 @@ const App: React.FC = () => {
           }
         }
       } else {
+        // Show scanning toast for batch delete (provider path — FTP/SFTP uses backend events)
+        if (isProvider && names.length > 1) {
+          setScanningState({ active: true, folderName: `${names.length} items`, message: t('activity.delete_scanning') || `Deleting ${names.length} items...`, operation: 'delete' });
+        }
         // Non-GitHub: sequential delete
         for (const name of names) {
           if (batchCancelledRef.current) break;
@@ -4661,6 +4673,9 @@ const App: React.FC = () => {
           }
         }
       }
+      // Dismiss scanning toast
+      setScanningState(INITIAL_SCANNING_STATE);
+
       await loadRemoteFiles(undefined, true);
       setSelectedRemoteFiles(new Set());
       // Summary log for provider deletes only (FTP/SFTP is handled by useTransferEvents)
@@ -4712,6 +4727,11 @@ const App: React.FC = () => {
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
 
+      // Show scanning toast for batch local delete
+      if (names.length > 1) {
+        setScanningState({ active: true, folderName: `${names.length} items`, message: t('activity.delete_scanning') || `Deleting ${names.length} items...`, operation: 'delete' });
+      }
+
       for (const name of names) {
         if (batchCancelledRef.current) break;
 
@@ -4730,6 +4750,7 @@ const App: React.FC = () => {
           }
         }
       }
+      setScanningState(INITIAL_SCANNING_STATE);
       await loadLocalFiles(currentLocalPath);
       setSelectedLocalFiles(new Set());
       // Summary: same logic as remote (see deleteMultipleRemoteFiles)

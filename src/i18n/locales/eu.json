@@ -64,7 +64,8 @@
       "size": "Tamaina",
       "retry": "Saiatu berriro",
       "optional": "aukerakoa",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Zerbitzarira Konektatu",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentifikazio arrakastatsua {username} gisa",
       "auth_method_key": "SSH gakoarekin autentifikatuta ({username})",
       "listing_complete": "\"{path}\" direktorioa zerrendatuta ({count} elementu)",
-      "connected_to": "Konektatuta {ip}:{port}"
+      "connected_to": "Konektatuta {ip}:{port}",
+      "delete_scanning": "Elementuak ezabatzen..."
     },
     "protocol": {
       "selectProtocol": "Aukeratu protokoloa...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Ez dago ezabatutako fitxategirik",
       "restore": "Leheneratu",
       "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira",
-      "connectionNamePlaceholder": "Konexioaren izena (adib. Nire FileLu Cloud)"
+      "connectionNamePlaceholder": "Konexioaren izena (adib. Nire FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Gehitu iruzkina",

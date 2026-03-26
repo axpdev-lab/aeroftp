@@ -64,7 +64,8 @@
       "size": "Tamaño",
       "retry": "Reintentar",
       "optional": "opcional",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Conectar ao Servidor",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autenticación exitosa como {username}",
       "auth_method_key": "Autenticado con clave SSH ({username})",
       "listing_complete": "Listado de \"{path}\" completado ({count} elementos)",
-      "connected_to": "Conectado a {ip}:{port}"
+      "connected_to": "Conectado a {ip}:{port}",
+      "delete_scanning": "Eliminando elementos..."
     },
     "protocol": {
       "selectProtocol": "Seleccionar protocolo...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Non hai ficheiros eliminados",
       "restore": "Restaurar",
       "trashFooter": "Os ficheiros restaurados reaparecerán no seu cartafol orixinal",
-      "connectionNamePlaceholder": "Nome da conexión (p. ex. O meu FileLu Cloud)"
+      "connectionNamePlaceholder": "Nome da conexión (p. ex. O meu FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Engadir comentario",

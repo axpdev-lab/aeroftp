@@ -64,7 +64,8 @@
       "size": "Suurus",
       "retry": "Proovi uuesti",
       "optional": "valikuline",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Ühenda serveriga",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentimine õnnestus kasutajana {username}",
       "auth_method_key": "Autenditud SSH-võtmega ({username})",
       "listing_complete": "Kataloogi \"{path}\" loend lõpetatud ({count} üksust)",
-      "connected_to": "Ühendatud {ip}:{port}"
+      "connected_to": "Ühendatud {ip}:{port}",
+      "delete_scanning": "Üksuste kustutamine..."
     },
     "protocol": {
       "selectProtocol": "Vali protokoll...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Kustutatud faile pole",
       "restore": "Taasta",
       "trashFooter": "Taastatud failid ilmuvad uuesti oma algses kaustas",
-      "connectionNamePlaceholder": "Ühenduse nimi (nt Minu FileLu Cloud)"
+      "connectionNamePlaceholder": "Ühenduse nimi (nt Minu FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Lisa kommentaar",

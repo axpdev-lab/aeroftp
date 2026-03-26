@@ -64,7 +64,8 @@
       "size": "Ukuran",
       "retry": "Coba lagi",
       "optional": "opsional",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Hubungkan ke Server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentikasi berhasil sebagai {username}",
       "auth_method_key": "Terautentikasi dengan kunci SSH ({username})",
       "listing_complete": "Daftar direktori \"{path}\" selesai ({count} item)",
-      "connected_to": "Terhubung ke {ip}:{port}"
+      "connected_to": "Terhubung ke {ip}:{port}",
+      "delete_scanning": "Menghapus item..."
     },
     "protocol": {
       "selectProtocol": "Pilih protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Tidak ada file yang dihapus",
       "restore": "Pulihkan",
       "trashFooter": "File yang dipulihkan akan muncul kembali di folder aslinya",
-      "connectionNamePlaceholder": "Nama Koneksi (mis. FileLu Cloud Saya)"
+      "connectionNamePlaceholder": "Nama Koneksi (mis. FileLu Cloud Saya)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Tambah Komentar",

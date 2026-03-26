@@ -64,7 +64,8 @@
       "size": "Μέγεθος",
       "retry": "Επανάληψη",
       "optional": "προαιρετικό",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Σύνδεση σε διακομιστή",
@@ -1138,7 +1139,8 @@
       "auth_success": "Επιτυχής αυθεντικοποίηση ως {username}",
       "auth_method_key": "Αυθεντικοποίηση με κλειδί SSH ({username})",
       "listing_complete": "Καταχώριση καταλόγου \"{path}\" ολοκληρώθηκε ({count} στοιχεία)",
-      "connected_to": "Συνδέθηκε στο {ip}:{port}"
+      "connected_to": "Συνδέθηκε στο {ip}:{port}",
+      "delete_scanning": "Διαγραφή στοιχείων..."
     },
     "protocol": {
       "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Δεν υπάρχουν διαγραμμένα αρχεία",
       "restore": "Επαναφορά",
       "trashFooter": "Τα επαναφερθέντα αρχεία θα επανεμφανιστούν στον αρχικό τους φάκελο",
-      "connectionNamePlaceholder": "Όνομα σύνδεσης (π.χ. Το FileLu Cloud μου)"
+      "connectionNamePlaceholder": "Όνομα σύνδεσης (π.χ. Το FileLu Cloud μου)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Προσθήκη σχολίου",

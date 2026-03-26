@@ -64,7 +64,8 @@
       "size": "Stærð",
       "retry": "Reyna aftur",
       "optional": "valfrjalst",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Tengjast þjóni",
@@ -1138,7 +1139,8 @@
       "auth_success": "Auðkenning tókst sem {username}",
       "auth_method_key": "Auðkennt með SSH lykli ({username})",
       "listing_complete": "Mappa \"{path}\" skráð ({count} atriði)",
-      "connected_to": "Tengt við {ip}:{port}"
+      "connected_to": "Tengt við {ip}:{port}",
+      "delete_scanning": "Deleting items..."
     },
     "protocol": {
       "selectProtocol": "Select protocol...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Engar eyddar skrár",
       "restore": "Endurheimta",
       "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni",
-      "connectionNamePlaceholder": "Heiti tengingar (t.d. FileLu skýið mitt)"
+      "connectionNamePlaceholder": "Heiti tengingar (t.d. FileLu skýið mitt)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Bæta við athugasemd",

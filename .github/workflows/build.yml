@@ -12,6 +12,7 @@ on:
 # Required permissions for creating releases
 permissions:
   contents: write
+  id-token: write    # Required for Sigstore keyless signing via GitHub OIDC
 
 jobs:
   build-and-release:
@@ -137,6 +138,47 @@ jobs:
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: snap-build
 
+      # Sigstore keyless signing — supply chain transparency for all release artifacts
+      # Uses GitHub OIDC identity (zero secrets). Produces .sigstore.json verification bundles.
+      - name: Install Cosign
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign release artifacts with Sigstore
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          shopt -s nullglob
+          ARTIFACTS=()
+
+          case "${{ matrix.target }}" in
+            linux)
+              ARTIFACTS+=(src-tauri/target/release/bundle/deb/*.deb)
+              ARTIFACTS+=(src-tauri/target/release/bundle/rpm/*.rpm)
+              ARTIFACTS+=(src-tauri/target/release/bundle/appimage/*.AppImage)
+              SNAP="${{ steps.snap-build.outputs.snap }}"
+              [ -n "$SNAP" ] && [ -f "$SNAP" ] && ARTIFACTS+=("$SNAP")
+              ;;
+            windows)
+              ARTIFACTS+=(src-tauri/target/release/bundle/msi/*.msi)
+              ARTIFACTS+=(src-tauri/target/release/bundle/nsis/*.exe)
+              ;;
+            macos)
+              ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*.dmg)
+              ;;
+          esac
+
+          echo "Found ${#ARTIFACTS[@]} artifacts to sign"
+
+          for artifact in "${ARTIFACTS[@]}"; do
+            echo "Signing: $(basename "$artifact")"
+            cosign sign-blob \
+              --bundle "${artifact}.sigstore.json" \
+              --yes \
+              "$artifact"
+            echo "Signed: $(basename "$artifact").sigstore.json"
+          done
+
       # Upload directly to GitHub Release (only on tags)
       # Each platform uploads its own binaries - no intermediate artifacts needed
       - name: Extract changelog for release
@@ -167,9 +209,13 @@ jobs:
           prerelease: false
           files: |
             src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/deb/*.deb.sigstore.json
             src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/rpm/*.rpm.sigstore.json
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.sigstore.json
             ${{ steps.snap-build.outputs.snap }}
+            ${{ steps.snap-build.outputs.snap }}.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -194,7 +240,9 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.sigstore.json
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.exe.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -204,6 +252,7 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/*.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

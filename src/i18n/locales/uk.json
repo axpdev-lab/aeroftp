@@ -64,7 +64,8 @@
       "size": "Розмір",
       "retry": "Повторити",
       "optional": "необов'язково",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Підключення до сервера",
@@ -1138,7 +1139,8 @@
       "auth_success": "Автентифікація успішна як {username}",
       "auth_method_key": "Автентифіковано за допомогою SSH-ключа ({username})",
       "listing_complete": "Вміст директорії \"{path}\" ({count} елементів)",
-      "connected_to": "Підключено до {ip}:{port}"
+      "connected_to": "Підключено до {ip}:{port}",
+      "delete_scanning": "Видалення елементів..."
     },
     "protocol": {
       "selectProtocol": "Виберіть протокол...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "Немає видалених файлів",
       "restore": "Відновити",
       "trashFooter": "Відновлені файли знову з'являться у своїй оригінальній папці",
-      "connectionNamePlaceholder": "Назва з'єднання (напр. Мій FileLu Cloud)"
+      "connectionNamePlaceholder": "Назва з'єднання (напр. Мій FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Додати коментар",

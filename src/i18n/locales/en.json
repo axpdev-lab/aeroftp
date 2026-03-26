@@ -50,6 +50,7 @@
     },
     "activity": {
       "connect_error": "Connection to {server} failed. Check credentials.",
+      "delete_scanning": "Deleting items...",
       "connect_start": "Connecting to {server} ({protocol})...",
       "connect_success": "Connected to {server} via {protocol}",
       "delete_dir_success": "[{location}] Folder removed: {filename}",
@@ -956,6 +957,7 @@
       "save": "Save",
       "search": "Search",
       "select": "Select",
+      "selectAll": "Select All",
       "settings": "Settings",
       "size": "Size",
       "success": "Success",
@@ -3401,6 +3403,7 @@
       "trashEmpty": "No deleted files",
       "restore": "Restore",
       "trashFooter": "Restored files will reappear in their original folder",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
       "connectionNamePlaceholder": "Connection Name (e.g. My FileLu Cloud)"
     },
     "box": {

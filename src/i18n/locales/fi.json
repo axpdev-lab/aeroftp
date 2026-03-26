@@ -64,7 +64,8 @@
       "size": "Koko",
       "retry": "Yritä uudelleen",
       "optional": "valinnainen",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Yhdistä palvelimeen",
@@ -1138,7 +1139,8 @@
       "auth_success": "Tunnistautuminen onnistui käyttäjänä {username}",
       "auth_method_key": "Tunnistettu SSH-avaimella ({username})",
       "listing_complete": "Kansion \"{path}\" listaus valmis ({count} kohdetta)",
-      "connected_to": "Yhdistetty {ip}:{port}"
+      "connected_to": "Yhdistetty {ip}:{port}",
+      "delete_scanning": "Poistetaan kohteita..."
     },
     "protocol": {
       "selectProtocol": "Valitse protokolla...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Ei poistettuja tiedostoja",
       "restore": "Palauta",
       "trashFooter": "Palautetut tiedostot näkyvät uudelleen alkuperäisessä kansiossaan",
-      "connectionNamePlaceholder": "Yhteyden nimi (esim. Oma FileLu Cloud)"
+      "connectionNamePlaceholder": "Yhteyden nimi (esim. Oma FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Lisää kommentti",

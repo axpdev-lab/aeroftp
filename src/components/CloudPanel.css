@@ -80,12 +80,12 @@
 
 .wizard-header {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
 
 .wizard-header .wizard-icon {
   color: var(--accent-primary);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .wizard-header h2 {
@@ -193,34 +193,28 @@
   border-color: var(--accent-primary);
 }
 
-/* Editable input with visible border — distinguishes from background */
-.wizard-input-editable {
-  background: var(--bg-primary) !important;
-  border: 1.5px solid var(--accent-primary) !important;
-  border-radius: 8px;
-}
-
-.wizard-input-editable:focus {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
+/* Editable input — now styled via Tailwind classes in JSX */
 
 .browse-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;  /* match input py-2 (0.5rem) */
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border: 1px solid #4b5563;
+  border-radius: 8px;     /* match input rounded-lg */
   color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .browse-btn:hover {
-  background: var(--accent-primary);
+  background: var(--bg-hover);
   border-color: var(--accent-primary);
-  color: white;
+  color: var(--accent-primary);
 }
 
 /* Server Select */
@@ -364,11 +358,14 @@
 .btn-primary {
   background: var(--accent-primary);
   color: white;
+  border: 1px solid var(--accent-primary);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
+  border-color: var(--accent-hover);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
 }
 
 .btn-primary:disabled {

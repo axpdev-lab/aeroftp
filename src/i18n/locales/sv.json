@@ -64,7 +64,8 @@
       "size": "Storlek",
       "retry": "Försök igen",
       "optional": "valfritt",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Anslut till server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentisering lyckades som {username}",
       "auth_method_key": "Autentiserad med SSH-nyckel ({username})",
       "listing_complete": "Mapplista för \"{path}\" klar ({count} objekt)",
-      "connected_to": "Ansluten till {ip}:{port}"
+      "connected_to": "Ansluten till {ip}:{port}",
+      "delete_scanning": "Raderar objekt..."
     },
     "protocol": {
       "selectProtocol": "Välj protokoll...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Inga borttagna filer",
       "restore": "Återställ",
       "trashFooter": "Återställda filer kommer att återvisas i sin ursprungliga mapp",
-      "connectionNamePlaceholder": "Anslutningsnamn (t.ex. Mitt FileLu Cloud)"
+      "connectionNamePlaceholder": "Anslutningsnamn (t.ex. Mitt FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Lägg till kommentar",

@@ -64,7 +64,8 @@
       "size": "Saiz",
       "retry": "Cuba lagi",
       "optional": "pilihan",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Sambung ke Pelayan",
@@ -1138,7 +1139,8 @@
       "auth_success": "Pengesahan berjaya sebagai {username}",
       "auth_method_key": "Disahkan dengan kunci SSH ({username})",
       "listing_complete": "Senarai direktori \"{path}\" selesai ({count} item)",
-      "connected_to": "Disambungkan ke {ip}:{port}"
+      "connected_to": "Disambungkan ke {ip}:{port}",
+      "delete_scanning": "Memadam item..."
     },
     "protocol": {
       "selectProtocol": "Pilih protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Tiada fail yang dipadam",
       "restore": "Pulihkan",
       "trashFooter": "Fail yang dipulihkan akan muncul semula dalam folder asalnya",
-      "connectionNamePlaceholder": "Nama Sambungan (cth. FileLu Cloud Saya)"
+      "connectionNamePlaceholder": "Nama Sambungan (cth. FileLu Cloud Saya)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Tambah Komen",

@@ -64,7 +64,8 @@
       "size": "Laki",
       "retry": "Subukan muli",
       "optional": "opsyonal",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Kumonekta sa Server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Matagumpay na pagpapatunay bilang {username}",
       "auth_method_key": "Napatunayan gamit ang SSH key ({username})",
       "listing_complete": "Natapos ang listahan ng \"{path}\" ({count} na item)",
-      "connected_to": "Nakakonekta sa {ip}:{port}"
+      "connected_to": "Nakakonekta sa {ip}:{port}",
+      "delete_scanning": "Binubura ang mga item..."
     },
     "protocol": {
       "selectProtocol": "Pumili ng protocol...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Walang tinanggal na mga file",
       "restore": "I-restore",
       "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder",
-      "connectionNamePlaceholder": "Pangalan ng koneksyon (hal. Aking FileLu Cloud)"
+      "connectionNamePlaceholder": "Pangalan ng koneksyon (hal. Aking FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Magdagdag ng komento",

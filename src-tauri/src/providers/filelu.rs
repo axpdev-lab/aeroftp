@@ -85,13 +85,27 @@ struct FileEntry {
     #[serde(default, deserialize_with = "deserialize_size")]
     size: u64,
     uploaded: Option<String>,
+    /// Content hash returned by FileLu API — used for sync comparison
+    /// since FileLu does not preserve original file mtime on upload.
+    hash: Option<String>,
+    /// Folder ID this file belongs to (used to filter file/list which may return cross-folder results)
+    /// FileLu API returns this as string "0" or number 0 — use flexible deserializer
+    #[serde(default, deserialize_with = "deserialize_opt_u64")]
+    fld_id: Option<u64>,
     #[serde(default, deserialize_with = "deserialize_opt_boolish")]
     only_me: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_opt_boolish", alias = "has_password", alias = "is_password", alias = "password_protected", alias = "file_password_protected")]
     password_protected: Option<bool>,
 }
 
-/// Folder listing response (contains both files and subfolders)
+/// File listing response from file/list endpoint (includes size, hash)
+#[derive(Debug, Deserialize)]
+struct FileListResult {
+    #[serde(default)]
+    files: Vec<FileEntry>,
+}
+
+/// Folder listing response from folder/list (subfolders only)
 #[derive(Debug, Deserialize)]
 struct FolderListResult {
     #[serde(default)]
@@ -422,6 +436,25 @@ impl FileLuProvider {
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
 
+        // Use file/list for files (returns size, hash, uploaded)
+        // folder/list does NOT return file sizes — only name, file_code, uploaded
+        for page in 1..=MAX_LIST_PAGES {
+            let page_str = page.to_string();
+            let url = self.api_url_with(
+                "file/list",
+                &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+            );
+            let resp = self.get_with_retry(&url).await?;
+            let result = Self::parse_api::<FileListResult>(resp).await?;
+            let count = result.files.len();
+            // Filter: file/list may return files from other folders — keep only matching fld_id
+            all_files.extend(result.files.into_iter().filter(|f| {
+                f.fld_id.map_or(true, |id| id == fld_id)
+            }));
+            if count < 100 { break; }
+        }
+
+        // Use folder/list for subfolders only
         for page in 1..=MAX_LIST_PAGES {
             let page_str = page.to_string();
             let url = self.api_url_with(
@@ -430,14 +463,9 @@ impl FileLuProvider {
             );
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FolderListResult>(resp).await?;
-
-            let has_more = result.files.len() == 100 || result.folders.len() == 100;
-            all_files.extend(result.files);
+            let count = result.folders.len();
             all_folders.extend(result.folders);
-
-            if !has_more {
-                break;
-            }
+            if count < 100 { break; }
         }
 
         Ok(FolderListResult { files: all_files, folders: all_folders })
@@ -510,6 +538,11 @@ impl FileLuProvider {
             let mut metadata = HashMap::new();
             if let Some(is_password_protected) = file.password_protected {
                 metadata.insert("filelu_password_protected".to_string(), is_password_protected.to_string());
+            }
+            // Expose content hash for sync comparison — FileLu doesn't preserve
+            // original mtime, so hash-based comparison is more reliable.
+            if let Some(ref h) = file.hash {
+                metadata.insert("content_hash".to_string(), h.clone());
             }
 
             entries.push(RemoteEntry {
@@ -849,15 +882,16 @@ impl FileLuProvider {
         Ok(code)
     }
 
-    /// Permanently delete a file (remove from trash).
+    /// Permanently delete a file from trash.
+    /// API: file/remove?file_code=xxx&remove=1
     pub async fn permanent_delete_file(&mut self, file_code: &str) -> Result<(), ProviderError> {
         if !self.connected { return Err(ProviderError::NotConnected); }
         let url = self.api_url_with("file/remove", &[
             ("file_code", file_code),
             ("remove", "1"),
         ]);
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 }
 
@@ -1029,6 +1063,19 @@ impl StorageProvider for FileLuProvider {
 
         let fld_id = self.resolve_fld_id(&dest_dir).await?;
 
+        // Delete existing file with same name to prevent duplicates
+        // (FileLu creates a new file_code on every upload, never overwrites)
+        if let Ok(existing) = self.resolve_path_entry(&norm).await {
+            if !existing.is_dir && !existing.file_code.is_empty() {
+                let del_url = self.api_url_with("file/remove", &[
+                    ("file_code", &existing.file_code),
+                    ("remove", "1"),
+                ]);
+                let _ = self.get_with_retry(&del_url).await;
+                self.invalidate_cache_under(&dest_dir);
+            }
+        }
+
         // Step 1: Get upload server
         // FileLu response: { status, sess_id, result: "<upload_url>", msg }
         // sess_id is at root (NOT inside result), result is a plain URL string.
@@ -1132,6 +1179,12 @@ impl StorageProvider for FileLuProvider {
             return Err(ProviderError::NotConnected);
         }
         let norm = self.resolve_path(path);
+
+        // Check if folder already exists — FileLu creates duplicates on every mkdir call
+        if self.resolve_fld_id(&norm).await.is_ok() {
+            return Ok(()); // Already exists, skip creation
+        }
+
         let (parent_path, folder_name) = match norm.rfind('/') {
             Some(0) => ("/".to_string(), norm[1..].to_string()),
             Some(idx) => (norm[..idx].to_string(), norm[idx + 1..].to_string()),

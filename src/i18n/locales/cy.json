@@ -64,7 +64,8 @@
       "size": "Maint",
       "retry": "Ailgeisio",
       "optional": "dewisol",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Cysylltu a'r Gweinydd",
@@ -1138,7 +1139,8 @@
       "auth_success": "Dilysu'n llwyddiannus fel {username}",
       "auth_method_key": "Wedi'i ddilysu gyda allwedd SSH ({username})",
       "listing_complete": "Rhestr \"{path}\" wedi'i chwblhau ({count} eitem)",
-      "connected_to": "Wedi cysylltu i {ip}:{port}"
+      "connected_to": "Wedi cysylltu i {ip}:{port}",
+      "delete_scanning": "Deleting items..."
     },
     "protocol": {
       "selectProtocol": "Dewis protocol...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Dim ffeiliau wedi'u dileu",
       "restore": "Adfer",
       "trashFooter": "Bydd ffeiliau a adferirwyd yn ailymddangos yn eu ffolder wreiddiol",
-      "connectionNamePlaceholder": "Enw'r Cysylltiad (e.e. Fy FileLu Cloud)"
+      "connectionNamePlaceholder": "Enw'r Cysylltiad (e.e. Fy FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Ychwanegu Sylw",

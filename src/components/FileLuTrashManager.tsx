@@ -7,6 +7,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
+// FileLu API does not support permanent delete from trash (file/remove is idempotent on trashed files).
+// Set to true when/if FileLu activates the API endpoint.
+const PERMANENT_DELETE_ENABLED = false;
+
 interface DeletedFileEntry {
   file_code: string | null;
   name: string | null;
@@ -148,14 +152,16 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
                   {actionLoading === 'restore' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
                   {t('filelu.restoreSelected')} ({selected.size})
                 </button>
-                <button
-                  onClick={deleteSelected}
-                  disabled={actionLoading !== null}
-                  className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
-                >
-                  {actionLoading === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                  {t('filelu.permanentDelete')} ({selected.size})
-                </button>
+                {PERMANENT_DELETE_ENABLED && (
+                  <button
+                    onClick={deleteSelected}
+                    disabled={actionLoading !== null}
+                    className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
+                  >
+                    {actionLoading === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    {t('filelu.permanentDelete')} ({selected.size})
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -210,13 +216,15 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
                       >
                         <RotateCcw size={13} />
                       </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); invoke('filelu_permanent_delete', { fileCode: code }).then(loadTrash); }}
-                        className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors"
-                        title={t('filelu.permanentDeleteOne')}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {PERMANENT_DELETE_ENABLED && (
+                        <button
+                          onClick={e => { e.stopPropagation(); invoke('filelu_permanent_delete', { fileCode: code }).then(loadTrash).catch(err => setError(String(err))); }}
+                          className="p-1 rounded text-red-500 hover:bg-red-500/10 transition-colors"
+                          title={t('filelu.permanentDeleteOne')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </li>
                 );
@@ -227,7 +235,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-          {t('filelu.trashFooter')}
+          {t('filelu.trashAutoExpiry') || 'Trashed files are automatically deleted by FileLu after 7 days'}
         </div>
       </div>
     </div>

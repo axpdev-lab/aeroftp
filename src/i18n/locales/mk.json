@@ -64,7 +64,8 @@
       "size": "Величина",
       "retry": "Обиди се повторно",
       "optional": "незадолжително",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Поврзи се на сервер",
@@ -1138,7 +1139,8 @@
       "auth_success": "Автентикација успешна како {username}",
       "auth_method_key": "Автентицирано со SSH клуч ({username})",
       "listing_complete": "Листа на директориум \"{path}\" завршена ({count} елементи)",
-      "connected_to": "Поврзано со {ip}:{port}"
+      "connected_to": "Поврзано со {ip}:{port}",
+      "delete_scanning": "Deleting items..."
     },
     "protocol": {
       "selectProtocol": "Избери протокол...",
@@ -3271,7 +3273,8 @@
       "trashEmpty": "Нема избришани датотеки",
       "restore": "Врати",
       "trashFooter": "Вратените датотеки ќе се повторно прикажат во нивната оригинална папка",
-      "connectionNamePlaceholder": "Име на конекција (пр. Мој FileLu Cloud)"
+      "connectionNamePlaceholder": "Име на конекција (пр. Мој FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Додај коментар",

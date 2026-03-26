@@ -64,7 +64,8 @@
       "size": "Veľkosť",
       "retry": "Skúsiť znova",
       "optional": "voliteľné",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Pripojenie k serveru",
@@ -1138,7 +1139,8 @@
       "auth_success": "Úspešné prihlásenie ako {username}",
       "auth_method_key": "Overené pomocou SSH kľúča ({username})",
       "listing_complete": "Výpis priečinka \"{path}\" dokončený ({count} položiek)",
-      "connected_to": "Pripojené k {ip}:{port}"
+      "connected_to": "Pripojené k {ip}:{port}",
+      "delete_scanning": "Mazanie položiek..."
     },
     "protocol": {
       "selectProtocol": "Vybrať protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Žiadne zmazané súbory",
       "restore": "Obnoviť",
       "trashFooter": "Obnovené súbory sa znova objavia v pôvodnom priečinku",
-      "connectionNamePlaceholder": "Názov pripojenia (napr. Môj FileLu Cloud)"
+      "connectionNamePlaceholder": "Názov pripojenia (napr. Môj FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Pridať komentár",

@@ -21,7 +21,9 @@ pub mod sync;
 pub mod ai;
 mod cloud_config;
 mod file_watcher;
+mod sync_ignore;
 mod sync_scheduler;
+mod sync_versioning;
 mod transfer_pool;
 mod delta_sync;
 mod cloud_service;
@@ -6216,6 +6218,102 @@ fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
     cloud_config::save_cloud_config(&config)
 }
 
+/// Update excluded folders for selective sync
+#[tauri::command]
+fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), String> {
+    let mut config = cloud_config::load_cloud_config();
+    config.excluded_folders = excluded_folders;
+    cloud_config::save_cloud_config(&config)
+}
+
+#[tauri::command]
+fn list_file_versions(relative_path: String) -> Result<Vec<sync_versioning::VersionEntry>, String> {
+    let config = cloud_config::load_cloud_config();
+    let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
+    v.list_versions(&relative_path)
+}
+
+#[tauri::command]
+fn restore_file_version(archive_path: String, original_relative: String) -> Result<(), String> {
+    let config = cloud_config::load_cloud_config();
+    // Security: validate archive_path is within .aeroversions/ (prevent path traversal)
+    let versions_dir = config.local_folder.join(".aeroversions");
+    let canonical_archive = std::path::PathBuf::from(&archive_path);
+    if !canonical_archive.starts_with(&versions_dir) || archive_path.contains("..") {
+        return Err("Invalid archive path: must be within .aeroversions/".to_string());
+    }
+    let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
+    let entry = sync_versioning::VersionEntry {
+        archive_path: canonical_archive,
+        original_relative,
+        archived_at: String::new(),
+        size: 0,
+    };
+    v.restore(&entry)
+}
+
+#[tauri::command]
+fn cleanup_versions() -> Result<sync_versioning::CleanupStats, String> {
+    let config = cloud_config::load_cloud_config();
+    let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
+    v.cleanup()
+}
+
+#[tauri::command]
+fn versions_disk_usage() -> u64 {
+    let config = cloud_config::load_cloud_config();
+    let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
+    v.disk_usage()
+}
+
+/// List remote folder tree for the selective sync UI.
+/// Returns a flat list of folder paths with metadata.
+#[tauri::command]
+async fn list_remote_folders_tree(max_depth: Option<u32>) -> Result<Vec<serde_json::Value>, String> {
+    let config = cloud_config::load_cloud_config();
+    if !config.enabled {
+        return Err("AeroCloud not configured".to_string());
+    }
+
+    let max_d = max_depth.unwrap_or(3).min(5);
+    let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    provider.connect().await.map_err(|e| format!("Connect failed: {}", e))?;
+
+    let base = &config.remote_folder;
+    let mut folders = Vec::new();
+    let mut stack: Vec<(String, String, u32)> = vec![(base.clone(), String::new(), 0)];
+
+    while let Some((path, rel, depth)) = stack.pop() {
+        if depth > max_d {
+            continue;
+        }
+        if provider.cd(&path).await.is_err() {
+            continue;
+        }
+        let entries = provider.list(".").await.map_err(|e| format!("List failed: {}", e))?;
+        for entry in entries {
+            if !entry.is_dir {
+                continue;
+            }
+            let rel_path = if rel.is_empty() { entry.name.clone() } else { format!("{}/{}", rel, entry.name) };
+            let excluded = config.excluded_folders.iter().any(|ef| ef.trim_matches('/') == rel_path);
+            folders.push(serde_json::json!({
+                "path": rel_path,
+                "name": entry.name,
+                "depth": depth,
+                "excluded": excluded,
+            }));
+            if !excluded {
+                let child = format!("{}/{}", path.trim_end_matches('/'), entry.name);
+                stack.push((child, rel_path, depth + 1));
+            }
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    Ok(folders)
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn setup_aerocloud(
@@ -6246,6 +6344,12 @@ async fn setup_aerocloud(
 
     // Ensure local cloud folder exists
     cloud_config::ensure_cloud_folder(&config)?;
+
+    // Create default .aeroignore if it doesn't exist
+    let aeroignore_path = config.local_folder.join(".aeroignore");
+    if !aeroignore_path.exists() {
+        let _ = std::fs::write(&aeroignore_path, sync_ignore::DEFAULT_AEROIGNORE_TEMPLATE);
+    }
 
     // Save configuration
     cloud_config::save_cloud_config(&config)?;
@@ -6419,7 +6523,7 @@ fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn trigger_cloud_sync(_state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn trigger_cloud_sync(app: AppHandle, _state: tauri::State<'_, AppState>) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     info!("AeroCloud: manual sync started");
@@ -6431,10 +6535,15 @@ async fn trigger_cloud_sync(_state: tauri::State<'_, AppState>) -> Result<String
     }
 
     // Use multi-protocol factory (same as background sync) — supports FTP, SFTP, S3, etc.
-    let result = perform_background_sync(&config).await;
+    let result = perform_background_sync_with_app(&config, Some(&app)).await;
 
     match result {
         Ok(result) => {
+            // Update global last sync timestamp so watcher cooldown applies
+            LAST_SYNC_EPOCH.store(
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                Ordering::SeqCst,
+            );
             let summary = format!(
                 "Sync complete: {} uploaded, {} downloaded, {} conflicts, {} skipped, {} errors",
                 result.uploaded, result.downloaded, result.conflicts, result.skipped, result.errors.len()
@@ -6457,8 +6566,13 @@ async fn trigger_cloud_sync(_state: tauri::State<'_, AppState>) -> Result<String
 
 use std::time::Duration;
 
+/// Prevents concurrent syncs (manual + watcher firing at the same time)
+static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
 // Global flag to control background sync
 pub(crate) static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+/// Epoch seconds of last completed sync (shared between manual + background)
+static LAST_SYNC_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Background sync worker — `tokio::select!` event loop
 ///
@@ -6576,10 +6690,24 @@ async fn background_sync_worker(app: AppHandle) {
                     }
                     // Cooldown: skip watcher triggers too close to last sync
                     // (prevents loop: sync writes files → watcher detects → re-sync)
+                    // Check both local elapsed AND global epoch (covers manual sync)
                     let elapsed = last_sync_completed.elapsed().as_secs();
-                    if elapsed < WATCHER_COOLDOWN_SECS {
+                    let global_elapsed = {
+                        let last_epoch = LAST_SYNC_EPOCH.load(Ordering::SeqCst);
+                        if last_epoch > 0 {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs()
+                                .saturating_sub(last_epoch)
+                        } else {
+                            u64::MAX // no sync yet
+                        }
+                    };
+                    let effective_elapsed = elapsed.min(global_elapsed);
+                    if effective_elapsed < WATCHER_COOLDOWN_SECS {
                         info!("Watcher trigger suppressed: {}s since last sync (cooldown {}s)",
-                            elapsed, WATCHER_COOLDOWN_SECS);
+                            effective_elapsed, WATCHER_COOLDOWN_SECS);
                         // Drain any queued watcher events
                         while watcher_rx.try_recv().is_ok() {}
                         continue;
@@ -6628,6 +6756,10 @@ async fn background_sync_worker(app: AppHandle) {
 
                 // Mark sync completed and drain watcher events generated by the sync itself
                 last_sync_completed = tokio::time::Instant::now();
+                LAST_SYNC_EPOCH.store(
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                    Ordering::SeqCst,
+                );
                 let drained = {
                     let mut count = 0u32;
                     while watcher_rx.try_recv().is_ok() { count += 1; }
@@ -6696,6 +6828,25 @@ async fn background_sync_worker(app: AppHandle) {
 /// Creates the appropriate provider based on config.protocol_type (FTP, SFTP, S3, Google Drive, etc.)
 /// and uses the generic perform_full_sync_with_provider method.
 async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<cloud_service::SyncOperationResult, String> {
+    perform_background_sync_with_app(config, None).await
+}
+
+async fn perform_background_sync_with_app(config: &cloud_config::CloudConfig, app: Option<&AppHandle>) -> Result<cloud_service::SyncOperationResult, String> {
+    // Prevent concurrent syncs — if one is already running, skip
+    if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+        info!("Sync skipped: another sync is already in progress");
+        return Ok(cloud_service::SyncOperationResult {
+            uploaded: 0, downloaded: 0, deleted: 0, skipped: 0,
+            conflicts: 0, errors: Vec::new(), duration_secs: 0, file_details: Vec::new(),
+        });
+    }
+
+    let result = perform_background_sync_inner(config, app).await;
+    SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn perform_background_sync_inner(config: &cloud_config::CloudConfig, app: Option<&AppHandle>) -> Result<cloud_service::SyncOperationResult, String> {
     info!("Background sync: creating {} provider for profile '{}'",
         config.protocol_type, config.server_profile);
 
@@ -6713,7 +6864,10 @@ async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<c
     }
 
     // Create cloud service and perform sync using the generic provider method
-    let cloud_service = cloud_service::CloudService::new();
+    let mut cloud_service = cloud_service::CloudService::new();
+    if let Some(handle) = app {
+        cloud_service.set_app_handle(handle.clone());
+    }
     cloud_service.init(config.clone()).await;
 
     let result = cloud_service.perform_full_sync_with_provider(provider.as_mut()).await?;
@@ -7776,6 +7930,12 @@ pub fn run() {
             setup_aerocloud,
             get_cloud_status,
             enable_aerocloud,
+            update_excluded_folders,
+            list_remote_folders_tree,
+            list_file_versions,
+            restore_file_version,
+            cleanup_versions,
+            versions_disk_usage,
             generate_share_link,
             generate_share_link_remote,
             generate_server_share_link,

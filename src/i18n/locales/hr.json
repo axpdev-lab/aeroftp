@@ -64,7 +64,8 @@
       "size": "Veličina",
       "retry": "Pokušaj ponovo",
       "optional": "neobavezno",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Poveži se na poslužitelj",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentifikacija uspješna kao {username}",
       "auth_method_key": "Autentificirano s SSH ključem ({username})",
       "listing_complete": "Listanje mape \"{path}\" završeno ({count} stavki)",
-      "connected_to": "Povezano s {ip}:{port}"
+      "connected_to": "Povezano s {ip}:{port}",
+      "delete_scanning": "Brisanje stavki..."
     },
     "protocol": {
       "selectProtocol": "Odaberi protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Nema izbrisanih datoteka",
       "restore": "Vrati",
       "trashFooter": "Vraćene datoteke pojavit će se u izvornoj mapi",
-      "connectionNamePlaceholder": "Naziv veze (npr. Moj FileLu Cloud)"
+      "connectionNamePlaceholder": "Naziv veze (npr. Moj FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Dodaj komentar",

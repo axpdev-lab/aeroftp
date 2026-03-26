@@ -64,7 +64,8 @@
       "size": "আকার",
       "retry": "পুনরায় চেষ্টা করুন",
       "optional": "ঐচ্ছিক",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "সার্ভারে সংযোগ করুন",
@@ -1138,7 +1139,8 @@
       "auth_success": "{username} হিসাবে প্রমাণীকরণ সফল",
       "auth_method_key": "SSH কী দিয়ে প্রমাণীকৃত ({username})",
       "listing_complete": "\"{path}\" ডিরেক্টরি তালিকা সম্পন্ন ({count}টি আইটেম)",
-      "connected_to": "সংযুক্ত হয়েছে {ip}:{port}"
+      "connected_to": "সংযুক্ত হয়েছে {ip}:{port}",
+      "delete_scanning": "আইটেম মুছে ফেলা হচ্ছে..."
     },
     "protocol": {
       "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "কোনো মুছে ফেলা ফাইল নেই",
       "restore": "পুনরুদ্ধার করুন",
       "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে",
-      "connectionNamePlaceholder": "সংযোগের নাম (যেমন আমার FileLu Cloud)"
+      "connectionNamePlaceholder": "সংযোগের নাম (যেমন আমার FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "মন্তব্য যোগ করুন",

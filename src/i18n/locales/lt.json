@@ -64,7 +64,8 @@
       "size": "Dydis",
       "retry": "Bandyti dar kartą",
       "optional": "neprivaloma",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Prisijungti prie serverio",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentifikacija sėkminga kaip {username}",
       "auth_method_key": "Autentifikuota su SSH raktu ({username})",
       "listing_complete": "Katalogo \"{path}\" sąrašas baigtas ({count} elementų)",
-      "connected_to": "Prisijungta prie {ip}:{port}"
+      "connected_to": "Prisijungta prie {ip}:{port}",
+      "delete_scanning": "Šalinami elementai..."
     },
     "protocol": {
       "selectProtocol": "Pasirinkti protokolą...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Nėra ištrintų failų",
       "restore": "Atkurti",
       "trashFooter": "Atkurti failai vėl pasirodys pradiniame aplanke",
-      "connectionNamePlaceholder": "Ryšio pavadinimas (pvz., Mano FileLu Cloud)"
+      "connectionNamePlaceholder": "Ryšio pavadinimas (pvz., Mano FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Pridėti komentarą",

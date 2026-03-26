@@ -64,7 +64,8 @@
       "size": "Størrelse",
       "retry": "Prøv igen",
       "optional": "valgfri",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Forbind til server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Godkendelse lykkedes som {username}",
       "auth_method_key": "Godkendt med SSH-nøgle ({username})",
       "listing_complete": "Mappeliste for \"{path}\" fuldført ({count} elementer)",
-      "connected_to": "Forbundet til {ip}:{port}"
+      "connected_to": "Forbundet til {ip}:{port}",
+      "delete_scanning": "Sletter elementer..."
     },
     "protocol": {
       "selectProtocol": "Vælg protokol...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Ingen slettede filer",
       "restore": "Gendan",
       "trashFooter": "Gendannede filer vises igen i deres originale mappe",
-      "connectionNamePlaceholder": "Forbindelsesnavn (f.eks. Min FileLu Cloud)"
+      "connectionNamePlaceholder": "Forbindelsesnavn (f.eks. Min FileLu Cloud)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Tilføj kommentar",

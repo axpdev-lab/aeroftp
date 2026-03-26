@@ -64,7 +64,8 @@
       "size": "Kích thước",
       "retry": "Thử lại",
       "optional": "tùy chọn",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Kết nối đến máy chủ",
@@ -1138,7 +1139,8 @@
       "auth_success": "Xác thực thành công với tư cách {username}",
       "auth_method_key": "Đã xác thực bằng khóa SSH ({username})",
       "listing_complete": "Liệt kê \"{path}\" hoàn tất ({count} mục)",
-      "connected_to": "Đã kết nối tới {ip}:{port}"
+      "connected_to": "Đã kết nối tới {ip}:{port}",
+      "delete_scanning": "Đang xóa mục..."
     },
     "protocol": {
       "selectProtocol": "Chọn giao thức...",
@@ -3252,7 +3254,8 @@
       "trashEmpty": "Không có tệp đã xóa",
       "restore": "Khôi phục",
       "trashFooter": "Các tệp đã khôi phục sẽ xuất hiện lại trong thư mục gốc của chúng",
-      "connectionNamePlaceholder": "Tên kết nối (VD: FileLu Cloud của tôi)"
+      "connectionNamePlaceholder": "Tên kết nối (VD: FileLu Cloud của tôi)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Thêm bình luận",

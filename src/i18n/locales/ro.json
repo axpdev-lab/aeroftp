@@ -64,7 +64,8 @@
       "size": "Dimensiune",
       "retry": "Reîncercare",
       "optional": "optional",
-      "check": "Check"
+      "check": "Check",
+      "selectAll": "Select All"
     },
     "connection": {
       "title": "Conectare la server",
@@ -1138,7 +1139,8 @@
       "auth_success": "Autentificare reușită ca {username}",
       "auth_method_key": "Autentificat cu cheie SSH ({username})",
       "listing_complete": "Lista directoarei \"{path}\" finalizată ({count} elemente)",
-      "connected_to": "Conectat la {ip}:{port}"
+      "connected_to": "Conectat la {ip}:{port}",
+      "delete_scanning": "Ștergerea elementelor..."
     },
     "protocol": {
       "selectProtocol": "Selectare protocol...",
@@ -3242,7 +3244,8 @@
       "trashEmpty": "Nu există fișiere șterse",
       "restore": "Restaurați",
       "trashFooter": "Fișierele restaurate vor reapărea în folderul lor original",
-      "connectionNamePlaceholder": "Numele conexiunii (ex.: FileLu Cloud-ul meu)"
+      "connectionNamePlaceholder": "Numele conexiunii (ex.: FileLu Cloud-ul meu)",
+      "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
     },
     "box": {
       "addComment": "Adaugă comentariu",
