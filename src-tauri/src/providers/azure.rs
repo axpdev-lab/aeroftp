@@ -1137,4 +1137,138 @@ impl AzureProvider {
         debug!("Block upload complete: {} blocks, {} bytes", block_ids.len(), file_len);
         Ok(())
     }
+
+    // =========================================================================
+    // Azure Enterprise Features (Blob Tier, Soft Delete)
+    // =========================================================================
+
+    /// Set the access tier of a blob (Hot, Cool, Cold, Archive).
+    /// For rehydration from Archive, set tier to Hot or Cool.
+    pub async fn set_blob_tier(&self, blob_path: &str, tier: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_blob_path(blob_path);
+        let url = format!("{}?comp=tier", self.blob_url(&resolved));
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-access-tier", tier.parse().map_err(|_|
+            ProviderError::InvalidConfig(format!("Invalid tier: {}", tier)))?);
+
+        let response = self.send_with_auth_and_retry(
+            reqwest::Method::PUT, &url, headers, 0, None,
+        ).await?;
+
+        match response.status() {
+            reqwest::StatusCode::OK | reqwest::StatusCode::ACCEPTED => {
+                tracing::info!("Set blob tier '{}' -> {}", resolved, tier);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("Set blob tier failed ({}): {}", status, super::sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+
+    /// List soft-deleted blobs in the container.
+    pub async fn list_deleted_blobs(&self) -> Result<Vec<super::RemoteEntry>, ProviderError> {
+        let url = format!(
+            "{}?restype=container&comp=list&include=deleted",
+            self.blob_url("")
+        );
+
+        let response = self.send_with_auth_and_retry(
+            reqwest::Method::GET, &url, HeaderMap::new(), 0, None,
+        ).await?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(
+                format!("List deleted blobs failed ({}): {}", status, super::sanitize_api_error(&body)),
+            ));
+        }
+
+        // Parse XML to find <Blob> entries with <Deleted>true</Deleted>
+        let mut entries = Vec::new();
+        let mut reader = quick_xml::Reader::from_str(&body);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut in_blob = false;
+        let mut blob_name = String::new();
+        let mut is_deleted = false;
+        let mut tag_name = String::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(quick_xml::events::Event::Start(ref e)) => {
+                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if name == "Blob" { in_blob = true; blob_name.clear(); is_deleted = false; }
+                    tag_name = name;
+                }
+                Ok(quick_xml::events::Event::Text(ref e)) => {
+                    if in_blob {
+                        let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        match tag_name.as_str() {
+                            "Name" => blob_name = text,
+                            "Deleted" => is_deleted = text == "true",
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(quick_xml::events::Event::End(ref e)) => {
+                    if String::from_utf8_lossy(e.name().as_ref()) == "Blob" {
+                        if in_blob && is_deleted && !blob_name.is_empty() {
+                            let mut meta = std::collections::HashMap::new();
+                            meta.insert("deleted".to_string(), "true".to_string());
+                            entries.push(super::RemoteEntry {
+                                name: blob_name.rsplit('/').next().unwrap_or(&blob_name).to_string(),
+                                path: blob_name.clone(),
+                                is_dir: false,
+                                size: 0,
+                                modified: None,
+                                permissions: None,
+                                owner: None,
+                                group: None,
+                                is_symlink: false,
+                                link_target: None,
+                                mime_type: None,
+                                metadata: meta,
+                            });
+                        }
+                        in_blob = false;
+                    }
+                }
+                Ok(quick_xml::events::Event::Eof) => break,
+                Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(entries)
+    }
+
+    /// Undelete a soft-deleted blob.
+    pub async fn undelete_blob(&self, blob_path: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_blob_path(blob_path);
+        let url = format!("{}?comp=undelete", self.blob_url(&resolved));
+
+        let response = self.send_with_auth_and_retry(
+            reqwest::Method::PUT, &url, HeaderMap::new(), 0, None,
+        ).await?;
+
+        match response.status() {
+            reqwest::StatusCode::OK => {
+                tracing::info!("Undeleted blob '{}'", resolved);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("Undelete blob failed ({}): {}", status, super::sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
 }

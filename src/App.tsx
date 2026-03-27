@@ -69,6 +69,8 @@ import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
+import { PCloudTrashManager } from './components/PCloudTrashManager';
+import { KDriveTrashManager } from './components/KDriveTrashManager';
 import { FilenNotesPanel } from './components/FilenNotesPanel';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
@@ -95,8 +97,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon,
-  ArrowLeftRight
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon
 } from 'lucide-react';
 
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
@@ -104,6 +105,7 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
     <path fillRule="evenodd" clipRule="evenodd" d="M12.026 2c-5.509 0-9.974 4.465-9.974 9.974 0 4.406 2.857 8.145 6.821 9.465.499.09.679-.217.679-.481 0-.237-.008-.865-.011-1.696-2.775.602-3.361-1.338-3.361-1.338-.452-1.152-1.107-1.459-1.107-1.459-.905-.619.069-.605.069-.605 1.002.07 1.527 1.028 1.527 1.028.89 1.524 2.336 1.084 2.902.829.091-.645.351-1.085.635-1.334-2.214-.251-4.542-1.107-4.542-4.93 0-1.087.389-1.979 1.024-2.675-.101-.253-.446-1.268.099-2.64 0 0 .837-.269 2.742 1.021a9.582 9.582 0 0 1 2.496-.336 9.554 9.554 0 0 1 2.496.336c1.906-1.291 2.742-1.021 2.742-1.021.545 1.372.203 2.387.099 2.64.64.696 1.024 1.587 1.024 2.675 0 3.833-2.33 4.675-4.552 4.922.355.308.675.916.675 1.846 0 1.334-.012 2.41-.012 2.737 0 .267.178.577.687.479C19.146 20.115 22 16.379 22 11.974 22 6.465 17.535 2 12.026 2z"/>
   </svg>
 );
+import PanelSwitcher from './components/PanelSwitcher';
 import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
@@ -355,6 +357,8 @@ const App: React.FC = () => {
   const [showKoofrTrash, setShowKoofrTrash] = useState(false);
   const [showOpenDriveTrash, setShowOpenDriveTrash] = useState(false);
   const [showYandexTrash, setShowYandexTrash] = useState(false);
+  const [showPCloudTrash, setShowPCloudTrash] = useState(false);
+  const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -2039,6 +2043,9 @@ const App: React.FC = () => {
       region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
       endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
       path_style: effectiveParams.options?.pathStyle || false,
+      storage_class: effectiveParams.options?.storage_class || null,
+      sse_mode: effectiveParams.options?.sse_mode || null,
+      sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
       save_session: effectiveParams.options?.save_session,
       session_expires_at: effectiveParams.options?.session_expires_at,
       private_key_path: effectiveParams.options?.private_key_path || null,
@@ -7126,6 +7133,18 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showPCloudTrash && (
+          <PCloudTrashManager
+            onClose={() => setShowPCloudTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showKDriveTrash && (
+          <KDriveTrashManager
+            onClose={() => setShowKDriveTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
         {/* FileLu: Folder Settings Dialog */}
         {fileLuFolderSettingsDialog && (
           <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
@@ -7677,19 +7696,15 @@ const App: React.FC = () => {
                 <div className="flex gap-2">
                   {isConnected && showRemotePanel && (
                     <>
-                      <button onClick={() => setActivePanel('remote')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'remote' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                        <Globe size={16} /> {t('browser.remote')}
-                      </button>
-                      <button onClick={() => setActivePanel('local')} className={`px-4 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${activePanel === 'local' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                        <HardDrive size={16} /> {t('browser.local')}
-                      </button>
-                      <button
-                        onClick={toggleSwapPanels}
-                        className={`px-2.5 py-1.5 rounded-lg text-sm flex items-center transition-colors ${swapPanels ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                        title={t('settings.swapPanels')}
-                      >
-                        <ArrowLeftRight size={16} />
-                      </button>
+                      <PanelSwitcher
+                        activePanel={activePanel}
+                        swapPanels={swapPanels}
+                        onPanelSelect={setActivePanel}
+                        onSwap={toggleSwapPanels}
+                        remoteLabel={t('browser.remote')}
+                        localLabel={t('browser.local')}
+                        swapTitle={t('settings.swapPanels')}
+                      />
                       <div className="w-px h-6 bg-gray-300 dark:bg-gray-500 mx-1 hidden lg:block" />
                     </>
                   )}
@@ -7853,6 +7868,7 @@ const App: React.FC = () => {
                         koofr: () => setShowKoofrTrash(true),
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
+                        kdrive: () => setShowKDriveTrash(true),
                       };
                       const handler = trashMap[proto || ''];
                       return handler ? (
@@ -8063,6 +8079,24 @@ const App: React.FC = () => {
                                 ))}
                                 {file.metadata?.box_tags && file.metadata.box_tags.split(',').length > 3 && (
                                   <span className="text-[9px] text-gray-400">+{file.metadata.box_tags.split(',').length - 3}</span>
+                                )}
+                                {file.metadata?.storage_class && file.metadata.storage_class !== 'STANDARD' && (
+                                  <span className={`inline-block px-1.5 py-0 text-[9px] rounded-full leading-tight ${
+                                    file.metadata.storage_class.includes('GLACIER') || file.metadata.storage_class === 'DEEP_ARCHIVE'
+                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                      : file.metadata.storage_class.includes('IA') || file.metadata.storage_class === 'REDUCED_REDUNDANCY'
+                                        ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                        : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                  }`} title={file.metadata.storage_class.replace(/_/g, ' ')}>
+                                    {file.metadata.storage_class === 'STANDARD_IA' ? 'IA' :
+                                     file.metadata.storage_class === 'ONEZONE_IA' ? '1Z-IA' :
+                                     file.metadata.storage_class === 'GLACIER' ? 'Glacier' :
+                                     file.metadata.storage_class === 'GLACIER_IR' ? 'Glacier IR' :
+                                     file.metadata.storage_class === 'DEEP_ARCHIVE' ? 'Deep' :
+                                     file.metadata.storage_class === 'INTELLIGENT_TIERING' ? 'IT' :
+                                     file.metadata.storage_class === 'REDUCED_REDUNDANCY' ? 'RR' :
+                                     file.metadata.storage_class.replace(/_/g, ' ')}
+                                  </span>
                                 )}
                                 {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
                                 {getSyncBadge(file.path, file.modified || undefined, false)}

@@ -308,11 +308,15 @@ impl CloudService {
         let local_files = self.scan_local_folder(&config).await?;
         let remote_files = self.scan_remote_folder_with_provider(provider, &config).await?;
 
+        // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
+        let has_checksums = remote_files.values()
+            .any(|f| f.checksum.is_some());
+
         // Build comparison
         let options = CompareOptions {
             compare_timestamp: true,
             compare_size: true,
-            compare_checksum: false,
+            compare_checksum: has_checksums,
             exclude_patterns: config.exclude_patterns.clone(),
             direction: SyncDirection::Bidirectional,
         };

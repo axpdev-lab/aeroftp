@@ -7,9 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
-// FileLu API does not support permanent delete from trash (file/remove is idempotent on trashed files).
-// Set to true when/if FileLu activates the API endpoint.
-const PERMANENT_DELETE_ENABLED = false;
+// FileLu confirmed permanent delete endpoint: api/file/permanent_delete?key=X&file_code=Y
+const PERMANENT_DELETE_ENABLED = true;
 
 interface DeletedFileEntry {
   file_code: string | null;

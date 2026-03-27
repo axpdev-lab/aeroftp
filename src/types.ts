@@ -66,6 +66,9 @@ export interface ProviderOptions {
   endpoint?: string;  // For S3-compatible (MinIO, etc.)
   accountId?: string; // Cloudflare R2 account ID (used to compute endpoint)
   pathStyle?: boolean;
+  storage_class?: string;   // S3 default storage class for uploads
+  sse_mode?: string;        // S3 server-side encryption (AES256, aws:kms)
+  sse_kms_key_id?: string;  // S3 KMS key ARN for SSE-KMS
 
   // WebDAV-specific
   // (no extra options needed, uses standard auth)

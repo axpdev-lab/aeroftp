@@ -212,6 +212,24 @@ impl PCloudProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
+    /// Send GET with access_token as query param (no Authorization header).
+    /// Some pCloud endpoints (trash, revisions) reject Bearer header auth.
+    async fn get_with_token_param(&self, base_url: &str) -> Result<reqwest::Response, ProviderError> {
+        use secrecy::ExposeSecret;
+        let config = OAuthConfig::pcloud(&self.config.client_id, &self.config.client_secret, &self.config.region);
+        let token = self.oauth_manager.get_valid_token(&config).await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e)))?;
+        let sep = if base_url.contains('?') { "&" } else { "?" };
+        let url = format!("{}{}access_token={}", base_url, sep, token.expose_secret());
+        let request = self.client.get(&url)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+    }
+
     /// Recursively collect entries matching a pattern
     fn collect_matching(&self, meta: &PCloudMetadata, base_path: &str, pattern: &str, results: &mut Vec<RemoteEntry>) {
         if let Some(contents) = &meta.contents {
@@ -882,8 +900,8 @@ impl StorageProvider for PCloudProvider {
             self.config.api_base(),
             urlencoding::encode(&resolved));
 
-        let auth = self.auth_header().await?;
-        let resp: PCloudRevisions = self.get_with_retry(&url, &auth).await?
+        // pCloud listrevisions rejects Bearer header — use query param auth
+        let resp: PCloudRevisions = self.get_with_token_param(&url).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
@@ -908,14 +926,13 @@ impl StorageProvider for PCloudProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        let auth = self.auth_header().await?;
 
-        // Get download link for specific revision
+        // Get download link for specific revision (query param auth)
         let url = format!("{}/getfilelink?path={}&revisionid={}",
             self.config.api_base(),
             urlencoding::encode(&resolved), version_id);
 
-        let link_resp: PCloudFileLink = self.get_with_retry(&url, &auth).await?
+        let link_resp: PCloudFileLink = self.get_with_token_param(&url).await?
             .json().await
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
@@ -1025,5 +1042,120 @@ impl StorageProvider for PCloudProvider {
         let mut results = Vec::new();
         self.collect_matching(&metadata, &resolved, &pattern_lower, &mut results);
         Ok(results)
+    }
+}
+
+// =============================================================================
+// pCloud Trash Management
+// =============================================================================
+
+// pCloud trash: uses same PCloudResponse structure (metadata.contents)
+// See docs/dev/guides/pCloud/15-trash.md
+
+/// pCloud simple response (result + error)
+#[derive(Debug, Deserialize)]
+struct PCloudSimpleResponse {
+    result: u32,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+impl PCloudProvider {
+    /// List items in the pCloud trash/recycle bin.
+    /// API: GET trash_list?access_token=TOKEN — returns metadata.contents[]
+    /// Note: pCloud trash/revisions endpoints reject Bearer header — must use query param auth.
+    pub async fn list_trash(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let url = format!("{}/trash_list?recursive=1", self.config.api_base());
+        let resp: PCloudResponse = self.get_with_token_param(&url).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        Self::check_response(&resp)?;
+
+        let metadata = resp.metadata
+            .ok_or_else(|| ProviderError::ParseError("No metadata in trash response".to_string()))?;
+
+        let contents = metadata.contents.unwrap_or_default();
+        let entries = contents.iter().filter(|m| !m.isfolder || m.fileid.is_some() || m.folderid.is_some()).map(|m| {
+            let name = m.name.clone();
+            let path = m.path.clone().unwrap_or_else(|| format!("/{}", name));
+            RemoteEntry {
+                name,
+                path,
+                is_dir: m.isfolder,
+                size: m.size,
+                modified: m.modified.clone(),
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: m.contenttype.clone(),
+                metadata: {
+                    let mut meta = HashMap::new();
+                    if let Some(fid) = m.fileid {
+                        meta.insert("fileid".to_string(), fid.to_string());
+                    }
+                    if let Some(fid) = m.folderid {
+                        meta.insert("folderid".to_string(), fid.to_string());
+                    }
+                    meta
+                },
+            }
+        }).collect();
+
+        Ok(entries)
+    }
+
+    /// Restore a file or folder from the pCloud trash.
+    /// `id` is the fileid or folderid from the trash listing metadata.
+    pub async fn restore_from_trash(&self, id: &str, is_folder: bool) -> Result<(), ProviderError> {
+        let param = if is_folder { "folderid" } else { "fileid" };
+        let url = format!("{}/trash_restore?{}={}", self.config.api_base(), param, id);
+        let resp: PCloudSimpleResponse = self.get_with_token_param(&url).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if resp.result != 0 {
+            return Err(ProviderError::Other(
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Failed to restore from trash".to_string()))
+            ));
+        }
+        info!("pCloud: restored item {} from trash", id);
+        Ok(())
+    }
+
+    /// Empty the entire pCloud trash/recycle bin.
+    pub async fn empty_trash(&self) -> Result<(), ProviderError> {
+        let url = format!("{}/trash_clear", self.config.api_base());
+        let resp: PCloudSimpleResponse = self.get_with_token_param(&url).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if resp.result != 0 {
+            return Err(ProviderError::Other(
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Failed to empty trash".to_string()))
+            ));
+        }
+        info!("pCloud: trash emptied");
+        Ok(())
+    }
+
+    /// Permanently delete a single item from trash.
+    /// API: trash_clear?fileid=X or folderid=X
+    pub async fn permanent_delete_from_trash(&self, id: &str, is_folder: bool) -> Result<(), ProviderError> {
+        let param = if is_folder { "folderid" } else { "fileid" };
+        let url = format!("{}/trash_clear?{}={}", self.config.api_base(), param, id);
+        let resp: PCloudSimpleResponse = self.get_with_token_param(&url).await?
+            .json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if resp.result != 0 {
+            return Err(ProviderError::Other(
+                sanitize_api_error(&resp.error.unwrap_or_else(|| "Failed to permanently delete".to_string()))
+            ));
+        }
+        info!("pCloud: permanently deleted item {} from trash", id);
+        Ok(())
     }
 }

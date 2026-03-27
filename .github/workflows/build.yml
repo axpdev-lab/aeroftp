@@ -138,6 +138,22 @@ jobs:
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: snap-build
 
+      # Create portable ZIP for Windows (no installer needed)
+      - name: Create Windows portable ZIP
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/AeroFTP.exe"
+          if (Test-Path $exe) {
+            $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+            $zipName = "AeroFTP-${version}-portable-windows-x64.zip"
+            Compress-Archive -Path $exe -DestinationPath "src-tauri/target/release/bundle/$zipName"
+            Write-Host "Created portable ZIP: $zipName"
+          } else {
+            Write-Host "::error::AeroFTP.exe not found at $exe"
+            exit 1
+          }
+
       # Sigstore keyless signing — supply chain transparency for all release artifacts
       # Uses GitHub OIDC identity (zero secrets). Produces .sigstore.json verification bundles.
       - name: Install Cosign
@@ -162,6 +178,7 @@ jobs:
             windows)
               ARTIFACTS+=(src-tauri/target/release/bundle/msi/*.msi)
               ARTIFACTS+=(src-tauri/target/release/bundle/nsis/*.exe)
+              ARTIFACTS+=(src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip)
               ;;
             macos)
               ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*.dmg)
@@ -192,7 +209,7 @@ jobs:
           NOTES="${NOTES}
 
           **Downloads:**
-          - **Windows**: \`.msi\` installer or \`.exe\`
+          - **Windows**: \`.msi\` installer, \`.exe\`, or \`.zip\` portable (no installation required)
           - **macOS**: \`.dmg\` disk image
           - **Linux**: \`.deb\`, \`.rpm\`, \`.snap\`, or \`.AppImage\`"
           echo "notes<<EOF" >> $GITHUB_OUTPUT
@@ -243,6 +260,8 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi.sigstore.json
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.exe.sigstore.json
+            src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip
+            src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

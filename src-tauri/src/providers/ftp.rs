@@ -25,6 +25,8 @@ pub struct FtpProvider {
     mlsd_supported: bool,
     /// Whether server supports MFMT (RFC 3659) for setting remote file mtime
     mfmt_supported: bool,
+    /// Whether server supports HASH, XMD5, XCRC, or XSHA1 for remote checksums
+    hash_supported: Option<String>,
     /// Set to true if ExplicitIfAvailable mode fell back to plaintext
     pub tls_downgraded: bool,
 }
@@ -38,6 +40,7 @@ impl FtpProvider {
             current_path: "/".to_string(),
             mlsd_supported: false,
             mfmt_supported: false,
+            hash_supported: None,
             tls_downgraded: false,
         }
     }
@@ -384,11 +387,25 @@ impl StorageProvider for FtpProvider {
             Ok(features) => {
                 self.mlsd_supported = features.contains_key("MLST") || features.contains_key("MLSD");
                 self.mfmt_supported = features.contains_key("MFMT");
-                tracing::debug!("FTP FEAT: MLSD={}, MFMT={}", self.mlsd_supported, self.mfmt_supported);
+                // B3: Detect hash/checksum commands (prefer HASH > XMD5 > XCRC > XSHA1)
+                self.hash_supported = if features.contains_key("HASH") {
+                    Some("HASH".to_string())
+                } else if features.contains_key("XMD5") {
+                    Some("XMD5".to_string())
+                } else if features.contains_key("XCRC") {
+                    Some("XCRC".to_string())
+                } else if features.contains_key("XSHA1") {
+                    Some("XSHA1".to_string())
+                } else {
+                    None
+                };
+                tracing::debug!("FTP FEAT: MLSD={}, MFMT={}, HASH={:?}",
+                    self.mlsd_supported, self.mfmt_supported, self.hash_supported);
             }
             Err(_) => {
                 self.mlsd_supported = false;
                 self.mfmt_supported = false;
+                self.hash_supported = None;
             }
         };
 
@@ -1020,12 +1037,69 @@ impl StorageProvider for FtpProvider {
         Ok(())
     }
 
+    fn supports_checksum(&self) -> bool {
+        self.hash_supported.is_some()
+    }
+
+    async fn checksum(&mut self, path: &str) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        self.remote_checksum(path).await
+    }
+
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
             ..Default::default()
         }
+    }
+}
+
+// =============================================================================
+// FTP Hash/Checksum Commands (B3)
+// =============================================================================
+
+impl FtpProvider {
+    /// Compute a remote file checksum using the best available command.
+    /// Returns a map like {"MD5": "abc123..."} or {"CRC32": "..."} etc.
+    pub async fn remote_checksum(&mut self, path: &str) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let hash_cmd = self.hash_supported.clone()
+            .ok_or_else(|| ProviderError::Other("Server does not support hash commands".to_string()))?;
+
+        let stream = self.stream_mut()?;
+
+        let (cmd_str, default_algo) = match hash_cmd.as_str() {
+            "HASH" => (format!("HASH {}", path), "SHA-256"),
+            "XMD5" => (format!("XMD5 {}", path), "MD5"),
+            "XCRC" => (format!("XCRC {}", path), "CRC32"),
+            "XSHA1" => (format!("XSHA1 {}", path), "SHA-1"),
+            _ => return Err(ProviderError::Other(format!("Unknown hash command: {}", hash_cmd))),
+        };
+
+        let response = stream
+            .custom_command(&cmd_str, &[suppaftp::Status::File, suppaftp::Status::CommandOk])
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Hash command failed: {}", e)))?;
+
+        let body = String::from_utf8_lossy(&response.body).into_owned();
+        let mut result = std::collections::HashMap::new();
+
+        if hash_cmd == "HASH" {
+            // RFC draft HASH response: "<algo> <range> <hash> <path>"
+            // e.g. "SHA-256 0-EOF abc123def456 /path/to/file.txt"
+            let parts: Vec<&str> = body.splitn(4, ' ').collect();
+            if parts.len() >= 3 {
+                let algo = parts[0]; // actual algorithm from server
+                let hash = parts[2];
+                result.insert(algo.to_string(), hash.to_string());
+            } else {
+                result.insert(default_algo.to_string(), body.trim().to_string());
+            }
+        } else {
+            // XMD5/XCRC/XSHA1: response is just the hex hash
+            result.insert(default_algo.to_string(), body.trim().to_string());
+        }
+
+        Ok(result)
     }
 }
 

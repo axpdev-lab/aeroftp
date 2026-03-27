@@ -638,6 +638,25 @@ impl S3Provider {
         None
     }
 
+    /// Append S3 enterprise headers (storage class, SSE) to a headers map.
+    fn append_upload_headers(&self, headers: &mut HashMap<String, String>) {
+        if let Some(ref sc) = self.config.storage_class {
+            headers.insert("x-amz-storage-class".to_string(), sc.clone());
+        }
+        match self.config.sse_mode.as_deref() {
+            Some("AES256") => {
+                headers.insert("x-amz-server-side-encryption".to_string(), "AES256".to_string());
+            }
+            Some("aws:kms") => {
+                headers.insert("x-amz-server-side-encryption".to_string(), "aws:kms".to_string());
+                if let Some(ref key_id) = self.config.sse_kms_key_id {
+                    headers.insert("x-amz-server-side-encryption-aws-kms-key-id".to_string(), key_id.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Minimum part size for multipart upload (5 MB)
     const MULTIPART_THRESHOLD: usize = 5 * 1024 * 1024;
     /// Part size for multipart upload chunks (5 MB)
@@ -664,6 +683,8 @@ impl S3Provider {
         if let Some(ct) = content_type {
             headers.insert("content-type".to_string(), ct.to_string());
         }
+        // B2: Add storage class + SSE headers on multipart initiation
+        self.append_upload_headers(&mut headers);
         let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
 
         let mut request = self.client.post(&url);
@@ -1252,6 +1273,8 @@ impl StorageProvider for S3Provider {
         // For streaming, we use UNSIGNED-PAYLOAD since we cannot hash the stream upfront
         let payload_hash = "UNSIGNED-PAYLOAD";
         let mut headers = HashMap::new();
+        // B2: Add storage class + SSE headers before signing
+        self.append_upload_headers(&mut headers);
         let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
 
         // UPLOAD-01: Detect MIME type from filename extension
@@ -2180,6 +2203,252 @@ impl StorageProvider for S3Provider {
     }
 }
 
+// =============================================================================
+// S3 Enterprise Features (Storage Class, Tagging, SSE, Glacier, Checksum)
+// =============================================================================
+
+impl S3Provider {
+    /// Change the storage class of an existing object via server-side copy.
+    /// Uses CopyObject with x-amz-storage-class to change class in-place.
+    pub async fn change_storage_class(&self, path: &str, storage_class: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        let copy_source = format!("/{}/{}", self.config.bucket, urlencoding::encode(key));
+        let url = self.build_url(key);
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(b"");
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("x-amz-copy-source".to_string(), copy_source);
+        headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
+        headers.insert("x-amz-storage-class".to_string(), storage_class.to_string());
+        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", "0");
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                info!("Changed storage class of '{}' to '{}'", key, storage_class);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("Change storage class failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+
+    /// Initiate a Glacier or Deep Archive restore.
+    /// `days` = number of days the restored copy remains accessible.
+    /// `tier` = "Expedited" | "Standard" | "Bulk"
+    pub async fn glacier_restore(&self, path: &str, days: u32, tier: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        let body = format!(
+            "<RestoreRequest><Days>{}</Days><GlacierJobParameters><Tier>{}</Tier></GlacierJobParameters></RestoreRequest>",
+            days, tier
+        );
+
+        let url = {
+            let base = self.build_url(key);
+            format!("{}?restore=", base)
+        };
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(body.as_bytes());
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("content-type".to_string(), "application/xml".to_string());
+        let authorization = self.sign_request("POST", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.post(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", body.len().to_string());
+        request = request.body(body);
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::ACCEPTED => {
+                info!("Glacier restore initiated for '{}' ({} days, tier={})", key, days, tier);
+                Ok(())
+            }
+            StatusCode::CONFLICT => {
+                // 409 = restore already in progress
+                Err(ProviderError::Other("Restore already in progress for this object".to_string()))
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("Glacier restore failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+
+    /// Get all tags for an S3 object. Returns key-value pairs (max 10 per AWS).
+    pub async fn get_object_tags(&self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        let response = self.s3_request(Method::GET, key, Some(&[("tagging", "")]), None).await?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(
+                format!("GetObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        // Parse <Tagging><TagSet><Tag><Key>k</Key><Value>v</Value></Tag>...</TagSet></Tagging>
+        let mut tags = HashMap::new();
+        let mut reader = Reader::from_str(&body);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let mut current_key: Option<String> = None;
+        let mut current_value: Option<String> = None;
+        let mut in_key = false;
+        let mut in_value = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    match e.name().as_ref() {
+                        b"Key" => in_key = true,
+                        b"Value" => in_value = true,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Text(ref e)) => {
+                    let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                    if in_key { current_key = Some(text.clone()); }
+                    if in_value { current_value = Some(text); }
+                }
+                Ok(Event::End(ref e)) => {
+                    match e.name().as_ref() {
+                        b"Key" => in_key = false,
+                        b"Value" => in_value = false,
+                        b"Tag" => {
+                            if let (Some(k), Some(v)) = (current_key.take(), current_value.take()) {
+                                tags.insert(k, v);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(ProviderError::ParseError(format!("XML parse error: {}", e))),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(tags)
+    }
+
+    /// Set tags on an S3 object. Max 10 tags per AWS limits.
+    pub async fn set_object_tags(&self, path: &str, tags: &HashMap<String, String>) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+
+        let tag_elements: String = tags.iter()
+            .map(|(k, v)| format!("<Tag><Key>{}</Key><Value>{}</Value></Tag>",
+                quick_xml::escape::escape(k), quick_xml::escape::escape(v)))
+            .collect();
+        let body = format!("<Tagging><TagSet>{}</TagSet></Tagging>", tag_elements);
+
+        let url = {
+            let base = self.build_url(key);
+            format!("{}?tagging=", base)
+        };
+
+        use sha2::{Sha256, Digest};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(body.as_bytes());
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("content-type".to_string(), "application/xml".to_string());
+        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (k, v) in headers.iter() {
+            request = request.header(k, v);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", body.len().to_string());
+        request = request.body(body);
+
+        let response = request.send().await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::NO_CONTENT => {
+                info!("Set {} tags on '{}'", tags.len(), key);
+                Ok(())
+            }
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("PutObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+
+    /// Delete all tags from an S3 object.
+    pub async fn delete_object_tags(&self, path: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        let response = self.s3_request(Method::DELETE, key, Some(&[("tagging", "")]), None).await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(ProviderError::ServerError(
+                    format!("DeleteObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
+                ))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2194,6 +2463,9 @@ mod tests {
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
         }).expect("Failed to create S3Provider");
 
         assert_eq!(
@@ -2212,6 +2484,9 @@ mod tests {
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
         }).expect("Failed to create S3Provider");
 
         assert_eq!(

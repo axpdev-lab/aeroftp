@@ -76,6 +76,12 @@ pub struct ProviderConnectionParams {
     pub endpoint: Option<String>,
     /// Use path-style URLs for S3
     pub path_style: Option<bool>,
+    /// S3: Default storage class for uploads (STANDARD, STANDARD_IA, GLACIER, etc.)
+    pub storage_class: Option<String>,
+    /// S3: Server-side encryption mode (AES256 or aws:kms)
+    pub sse_mode: Option<String>,
+    /// S3: KMS key ID for SSE-KMS encryption
+    pub sse_kms_key_id: Option<String>,
     /// Save session keys (MEGA)
     pub save_session: Option<bool>,
     /// Session expiry timestamp (MEGA)
@@ -151,6 +157,22 @@ impl ProviderConnectionParams {
             }
             // Always insert path_style so S3Config doesn't default to true for custom endpoints
             extra.insert("path_style".to_string(), self.path_style.unwrap_or(false).to_string());
+            // S3 enterprise: storage class, SSE mode, KMS key
+            if let Some(ref sc) = self.storage_class {
+                if !sc.is_empty() {
+                    extra.insert("storage_class".to_string(), sc.clone());
+                }
+            }
+            if let Some(ref sse) = self.sse_mode {
+                if !sse.is_empty() {
+                    extra.insert("sse_mode".to_string(), sse.clone());
+                }
+            }
+            if let Some(ref kms) = self.sse_kms_key_id {
+                if !kms.is_empty() {
+                    extra.insert("sse_kms_key_id".to_string(), kms.clone());
+                }
+            }
         }
 
         // Add FTP/FTPS-specific options
@@ -5736,6 +5758,288 @@ pub async fn filen_notes_untag_note(
 /// Parse note type string to enum (delegates to notes module).
 fn parse_note_type_str(s: &str) -> crate::providers::filen::notes::NoteType {
     crate::providers::filen::notes::parse_note_type(s)
+}
+
+// ============ S3 Enterprise Commands ============
+
+/// Change storage class of an S3 object (via server-side copy)
+#[tauri::command]
+pub async fn s3_change_storage_class(
+    state: State<'_, ProviderState>,
+    path: String,
+    storage_class: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Only available for S3".into());
+    }
+    let s3 = provider.as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+        .ok_or("Failed to access S3 provider")?;
+    s3.change_storage_class(&path, &storage_class).await.map_err(|e| e.to_string())
+}
+
+/// Initiate Glacier/Deep Archive restore for an S3 object
+#[tauri::command]
+pub async fn s3_glacier_restore(
+    state: State<'_, ProviderState>,
+    path: String,
+    days: u32,
+    tier: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Only available for S3".into());
+    }
+    let s3 = provider.as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+        .ok_or("Failed to access S3 provider")?;
+    s3.glacier_restore(&path, days, &tier).await.map_err(|e| e.to_string())
+}
+
+/// Get object tags for an S3 object
+#[tauri::command]
+pub async fn s3_get_object_tags(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Only available for S3".into());
+    }
+    let s3 = provider.as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+        .ok_or("Failed to access S3 provider")?;
+    s3.get_object_tags(&path).await.map_err(|e| e.to_string())
+}
+
+/// Set object tags on an S3 object (max 10 tags per AWS)
+#[tauri::command]
+pub async fn s3_set_object_tags(
+    state: State<'_, ProviderState>,
+    path: String,
+    tags: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Only available for S3".into());
+    }
+    let s3 = provider.as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+        .ok_or("Failed to access S3 provider")?;
+    s3.set_object_tags(&path, &tags).await.map_err(|e| e.to_string())
+}
+
+/// Delete all tags from an S3 object
+#[tauri::command]
+pub async fn s3_delete_object_tags(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::S3 {
+        return Err("Only available for S3".into());
+    }
+    let s3 = provider.as_any_mut()
+        .downcast_mut::<crate::providers::s3::S3Provider>()
+        .ok_or("Failed to access S3 provider")?;
+    s3.delete_object_tags(&path).await.map_err(|e| e.to_string())
+}
+
+// ============ Azure Enterprise Commands ============
+
+/// Set the access tier of an Azure blob (Hot, Cool, Cold, Archive)
+#[tauri::command]
+pub async fn azure_set_blob_tier(
+    state: State<'_, ProviderState>,
+    path: String,
+    tier: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Azure {
+        return Err("Only available for Azure".into());
+    }
+    let azure = provider.as_any_mut()
+        .downcast_mut::<crate::providers::azure::AzureProvider>()
+        .ok_or("Failed to access Azure provider")?;
+    azure.set_blob_tier(&path, &tier).await.map_err(|e| e.to_string())
+}
+
+/// List soft-deleted blobs in the Azure container
+#[tauri::command]
+pub async fn azure_list_deleted_blobs(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Azure {
+        return Err("Only available for Azure".into());
+    }
+    let azure = provider.as_any_mut()
+        .downcast_mut::<crate::providers::azure::AzureProvider>()
+        .ok_or("Failed to access Azure provider")?;
+    azure.list_deleted_blobs().await.map_err(|e| e.to_string())
+}
+
+/// Undelete a soft-deleted Azure blob
+#[tauri::command]
+pub async fn azure_undelete_blob(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Azure {
+        return Err("Only available for Azure".into());
+    }
+    let azure = provider.as_any_mut()
+        .downcast_mut::<crate::providers::azure::AzureProvider>()
+        .ok_or("Failed to access Azure provider")?;
+    azure.undelete_blob(&path).await.map_err(|e| e.to_string())
+}
+
+// ============ pCloud Trash Commands ============
+
+/// List items in the pCloud trash
+#[tauri::command]
+pub async fn pcloud_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::PCloud {
+        return Err("Only available for pCloud".into());
+    }
+    let pcloud = provider.as_any_mut()
+        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
+        .ok_or("Failed to access pCloud provider")?;
+    pcloud.list_trash().await.map_err(|e| e.to_string())
+}
+
+/// Restore item from pCloud trash
+#[tauri::command]
+pub async fn pcloud_restore_from_trash(
+    state: State<'_, ProviderState>,
+    id: String,
+    is_folder: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::PCloud {
+        return Err("Only available for pCloud".into());
+    }
+    let pcloud = provider.as_any_mut()
+        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
+        .ok_or("Failed to access pCloud provider")?;
+    pcloud.restore_from_trash(&id, is_folder).await.map_err(|e| e.to_string())
+}
+
+/// Empty pCloud trash
+#[tauri::command]
+pub async fn pcloud_empty_trash(
+    state: State<'_, ProviderState>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::PCloud {
+        return Err("Only available for pCloud".into());
+    }
+    let pcloud = provider.as_any_mut()
+        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
+        .ok_or("Failed to access pCloud provider")?;
+    pcloud.empty_trash().await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete a single item from pCloud trash
+#[tauri::command]
+pub async fn pcloud_permanently_delete_trash(
+    state: State<'_, ProviderState>,
+    id: String,
+    is_folder: bool,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::PCloud {
+        return Err("Only available for pCloud".into());
+    }
+    let pcloud = provider.as_any_mut()
+        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
+        .ok_or("Failed to access pCloud provider")?;
+    pcloud.permanent_delete_from_trash(&id, is_folder).await.map_err(|e| e.to_string())
+}
+
+// ============ kDrive Trash Commands ============
+
+/// List items in the kDrive trash
+#[tauri::command]
+pub async fn kdrive_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::KDrive {
+        return Err("Only available for kDrive".into());
+    }
+    let kdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
+        .ok_or("Failed to access kDrive provider")?;
+    kdrive.list_trash().await.map_err(|e| e.to_string())
+}
+
+/// Restore item from kDrive trash
+#[tauri::command]
+pub async fn kdrive_restore_from_trash(
+    state: State<'_, ProviderState>,
+    file_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::KDrive {
+        return Err("Only available for kDrive".into());
+    }
+    let kdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
+        .ok_or("Failed to access kDrive provider")?;
+    kdrive.restore_from_trash(&file_id).await.map_err(|e| e.to_string())
+}
+
+/// Permanently delete item from kDrive trash
+#[tauri::command]
+pub async fn kdrive_permanently_delete_trash(
+    state: State<'_, ProviderState>,
+    file_id: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::KDrive {
+        return Err("Only available for kDrive".into());
+    }
+    let kdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
+        .ok_or("Failed to access kDrive provider")?;
+    kdrive.permanently_delete_trash(&file_id).await.map_err(|e| e.to_string())
+}
+
+/// Empty the entire kDrive trash
+#[tauri::command]
+pub async fn kdrive_empty_trash(
+    state: State<'_, ProviderState>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::KDrive {
+        return Err("Only available for kDrive".into());
+    }
+    let kdrive = provider.as_any_mut()
+        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
+        .ok_or("Failed to access kDrive provider")?;
+    kdrive.empty_trash().await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ import { useTraySync } from '../hooks/useTraySync';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
+import { VersionBrowser } from './Sync/VersionBrowser';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback } from '../utils/secureStorage';
@@ -41,6 +42,7 @@ interface CloudConfig {
     protocol_type: string;
     connection_params: Record<string, unknown>;
     excluded_folders: string[];
+    versioning_strategy: string;
 }
 
 // Protocol categories for the selector grid
@@ -97,7 +99,7 @@ const PROTOCOL_MATURITY: Record<string, 'stable' | 'beta' | 'alpha'> = {
     ftp: 'beta', ftps: 'beta', box: 'beta', pcloud: 'beta',
     zohoworkdrive: 'beta', yandexdisk: 'beta', mega: 'beta',
     filen: 'beta', internxt: 'beta',
-    filelu: 'alpha', fourshared: 'alpha',
+    filelu: 'stable', fourshared: 'alpha',
 };
 
 /** One-line sync limitation shown on hover */
@@ -111,7 +113,7 @@ const PROTOCOL_SYNC_CAVEAT: Record<string, string> = {
     mega: 'Requires external MEGAcmd daemon running',
     filen: 'E2E encryption overhead — sync is slower',
     internxt: 'E2E encryption overhead — sync is slower',
-    filelu: 'Timestamps not preserved on upload — uses hash comparison',
+    filelu: 'US-based servers — latency may vary by region. Uses hash comparison for sync',
     fourshared: 'Manual re-authorization required if token revoked',
 };
 
@@ -1105,6 +1107,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     const [status, setStatus] = useState<CloudSyncStatus>({ type: 'not_configured' });
     const [isLoading, setIsLoading] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
+    const [showVersionBrowser, setShowVersionBrowser] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
 
     // Use modular tray sync hook
@@ -1444,6 +1447,32 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                             />
                         </div>
 
+                        {/* Versioning Strategy */}
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <label className="block text-sm font-medium mb-2">{t('cloud.versioningStrategy') || 'File Versioning'}</label>
+                            <select
+                                className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                                value={config?.versioning_strategy || 'trash_can_30'}
+                                onChange={(e) => setConfig(prev => prev ? { ...prev, versioning_strategy: e.target.value } : null)}
+                            >
+                                <option value="disabled">{t('cloud.versioningDisabled') || 'Disabled'}</option>
+                                <option value="trash_can_30">{t('cloud.versioningTrashCan') || 'Trash Can (30 days)'}</option>
+                                <option value="trash_can_7">{t('cloud.versioningTrashCan7') || 'Trash Can (7 days)'}</option>
+                                <option value="trash_can_90">{t('cloud.versioningTrashCan90') || 'Trash Can (90 days)'}</option>
+                                <option value="simple_5">{t('cloud.versioningSimple') || 'Simple (keep 5 versions)'}</option>
+                                <option value="staggered">{t('cloud.versioningStaggered') || 'Staggered (1/hour, 1/day, 1/week)'}</option>
+                            </select>
+                            <p className="text-xs text-gray-400 mt-1">
+                                {t('cloud.versioningDesc') || 'Keeps previous versions of files in .aeroversions/ before overwrite'}
+                            </p>
+                            <button
+                                className="mt-2 text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1"
+                                onClick={() => setShowVersionBrowser(true)}
+                            >
+                                <History size={12} /> {t('cloud.browseVersions') || 'Browse archived versions'}
+                            </button>
+                        </div>
+
                         {/* Sync Scheduler (Phase 3A+) */}
                         <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                             <SyncScheduler />
@@ -1526,6 +1555,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     onSettings={() => setShowSettings(true)}
                 />
             </div>
+            {showVersionBrowser && (
+                <VersionBrowser onClose={() => setShowVersionBrowser(false)} />
+            )}
         </div>
     );
 };

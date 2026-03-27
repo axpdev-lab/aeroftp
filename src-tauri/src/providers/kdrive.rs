@@ -1287,13 +1287,136 @@ impl StorageProvider for KDriveProvider {
     }
 
     // ─── KD-010: Trash management via kDrive trash API ────────────────
+}
 
-    // Note: StorageProvider trait does not define list_trash/restore_from_trash/permanent_delete
-    // as trait methods. The trash API is documented in docs/dev/guides/kDrive/14-trash.md
-    // and can be integrated when the trait is extended.
-    // TODO: Implement trash management when StorageProvider trait adds trash methods.
-    //   - List trash:      GET /3/drive/{drive_id}/trash (cursor-paginated)
-    //   - Restore:         POST /2/drive/{drive_id}/trash/{file_id}/restore
-    //   - Permanent delete: DELETE /2/drive/{drive_id}/trash/{file_id}
-    //   - Empty trash:     DELETE /2/drive/{drive_id}/trash
+// =============================================================================
+// kDrive Trash Management (KD-010)
+// =============================================================================
+
+impl KDriveProvider {
+    /// List items in the kDrive trash.
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let url = self.api_url_v3("/trash");
+        let resp = self.get_with_retry(&url).await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(
+                format!("List trash failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        let api_resp: ApiResponse<TrashPayload> = resp.json().await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        let payload = api_resp.data
+            .ok_or_else(|| ProviderError::ParseError("No trash data in response".to_string()))?;
+
+        let files = match payload {
+            TrashPayload::Paginated { data, .. } => data,
+            TrashPayload::Flat(data) => data,
+        };
+
+        let entries = files.iter().map(|f| {
+            let name = f.name.clone().unwrap_or_else(|| f.id.to_string());
+            let is_dir = f.file_type.as_deref() == Some("dir");
+            let size = f.size.unwrap_or(0) as u64;
+            let modified = f.last_modified.map(|ts| {
+                chrono::DateTime::from_timestamp(ts, 0)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_default()
+            });
+
+            let mut metadata = std::collections::HashMap::new();
+            metadata.insert("file_id".to_string(), f.id.to_string());
+
+            RemoteEntry {
+                name,
+                path: f.path.clone().unwrap_or_else(|| format!("/{}", f.id)),
+                is_dir,
+                size,
+                modified,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata,
+            }
+        }).collect();
+
+        Ok(entries)
+    }
+
+    /// Restore a file or folder from the kDrive trash.
+    pub async fn restore_from_trash(&mut self, file_id: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let url = format!("{}/2/drive/{}/trash/{}/restore",
+            API_BASE, self.config.drive_id, file_id);
+        let resp = self.post_with_retry(&url, "application/json", Vec::new()).await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(
+                format!("Restore from trash failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        tracing::info!("kDrive: restored item {} from trash", file_id);
+        Ok(())
+    }
+
+    /// Permanently delete an item from the kDrive trash.
+    pub async fn permanently_delete_trash(&mut self, file_id: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let url = format!("{}/2/drive/{}/trash/{}",
+            API_BASE, self.config.drive_id, file_id);
+        let resp = self.delete_with_retry(&url).await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(
+                format!("Permanent delete failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        tracing::info!("kDrive: permanently deleted item {} from trash", file_id);
+        Ok(())
+    }
+
+    /// Empty the entire kDrive trash.
+    pub async fn empty_trash(&mut self) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let url = format!("{}/2/drive/{}/trash",
+            API_BASE, self.config.drive_id);
+        let resp = self.delete_with_retry(&url).await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(
+                format!("Empty trash failed ({}): {}", status, sanitize_api_error(&body)),
+            ));
+        }
+
+        tracing::info!("kDrive: trash emptied");
+        Ok(())
+    }
 }

@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { History, RotateCcw, Trash2, HardDrive, Loader2 } from 'lucide-react';
+import { History, RotateCcw, Trash2, HardDrive, Loader2, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 interface VersionEntry {
@@ -21,6 +21,8 @@ interface CleanupStats {
 interface VersionBrowserProps {
     /** File to show versions for (relative path), or null for overview */
     filePath?: string;
+    /** Close handler for modal mode */
+    onClose?: () => void;
 }
 
 function formatSize(bytes: number): string {
@@ -30,7 +32,7 @@ function formatSize(bytes: number): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath }) => {
+export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClose }) => {
     const t = useTranslation();
     const [versions, setVersions] = useState<VersionEntry[]>([]);
     const [loading, setLoading] = useState(false);
@@ -38,12 +40,17 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath }) => {
     const [cleanupResult, setCleanupResult] = useState<CleanupStats | null>(null);
 
     const loadVersions = useCallback(async () => {
-        if (!filePath) return;
         setLoading(true);
         try {
-            const result = await invoke<VersionEntry[]>('list_file_versions', {
-                relativePath: filePath,
-            });
+            let result: VersionEntry[];
+            if (filePath) {
+                result = await invoke<VersionEntry[]>('list_file_versions', {
+                    relativePath: filePath,
+                });
+            } else {
+                // Browse all versions across all files
+                result = await invoke<VersionEntry[]>('list_all_file_versions');
+            }
             setVersions(result);
         } catch (e) {
             console.error('Failed to load versions:', e);
@@ -89,6 +96,28 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath }) => {
         }
     };
 
+    if (onClose) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+                <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-4">
+                    <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><X size={16} /></button>
+                    <VersionBrowserContent filePath={filePath} diskUsage={diskUsage} versions={versions} loading={loading} cleanupResult={cleanupResult} onRestore={handleRestore} onCleanup={handleCleanup} loadVersions={loadVersions} />
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <VersionBrowserContent filePath={filePath} diskUsage={diskUsage} versions={versions} loading={loading} cleanupResult={cleanupResult} onRestore={handleRestore} onCleanup={handleCleanup} loadVersions={loadVersions} />
+    );
+};
+
+function VersionBrowserContent({ filePath, diskUsage, versions, loading, cleanupResult, onRestore, onCleanup, loadVersions }: {
+    filePath?: string; diskUsage: number; versions: VersionEntry[]; loading: boolean;
+    cleanupResult: CleanupStats | null; onRestore: (v: VersionEntry) => void; onCleanup: () => void; loadVersions: () => void;
+}) {
+    const t = useTranslation();
     return (
         <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -121,12 +150,13 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath }) => {
                 <div className="max-h-[200px] overflow-y-auto space-y-1">
                     {versions.map((v, i) => (
                         <div key={i} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/5 text-xs">
-                            <div className="flex-1 min-w-0">
-                                <span className="text-gray-300">{v.archived_at}</span>
+                            <div className="flex-1 min-w-0 truncate">
+                                {!filePath && <span className="text-gray-200 mr-2" title={v.original_relative}>{v.original_relative.split('/').pop()}</span>}
+                                <span className="text-gray-400">{v.archived_at}</span>
                                 <span className="text-gray-500 ml-2">{formatSize(v.size)}</span>
                             </div>
                             <button
-                                onClick={() => handleRestore(v)}
+                                onClick={() => onRestore(v)}
                                 className="ml-2 p-1 hover:bg-cyan-500/20 rounded text-cyan-400"
                                 title={t('cloud.restoreVersion') || 'Restore this version'}
                             >
@@ -139,7 +169,7 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath }) => {
 
             <div className="flex justify-end pt-1 border-t border-gray-700">
                 <button
-                    onClick={handleCleanup}
+                    onClick={onCleanup}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                 >
                     <Trash2 size={12} />

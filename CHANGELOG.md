@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [3.1.4] - 2026-03-27
+
+### Provider & Protocol Sprint (APPENDIX-B)
+
+Comprehensive provider gap closure: S3/Azure enterprise features, new provider presets, trash management for 2 additional providers, FTP checksum commands, and feature matrix overhaul. Audited with 2 external reviews — 6 findings identified and resolved.
+
+#### Added
+
+- **S3 Storage Class management**: Set default storage class on upload (Standard, Standard-IA, One Zone-IA, Glacier IR, Glacier, Deep Archive, Intelligent-Tiering). Change storage class in-place via server-side copy. Glacier/Deep Archive restore with configurable tier (Expedited/Standard/Bulk) and retention days. Storage class badge in remote file listing with color-coded labels
+- **S3 Object Tagging**: Read, write, and delete object tags (max 10 per AWS). New `S3TagsDialog` key-value editor accessible from context menu
+- **S3 Server-Side Encryption**: SSE-S3 (AES-256) and SSE-KMS selection in connection settings. Optional KMS key ARN. Headers applied to both single-file and multipart uploads
+- **S3 Checksum Verification**: CRC32C checksum computed and sent with uploads for server-side integrity verification
+- **Azure Blob Tier management**: Set/change blob access tier (Hot, Cool, Cold, Archive). Archive rehydration via same API. New `azure_set_blob_tier` Tauri command
+- **Azure Soft Delete recovery**: List soft-deleted blobs and restore (undelete). New `AzureTrashManager` pattern with `azure_list_deleted_blobs` and `azure_undelete_blob` commands
+- **Hetzner Storage Box preset**: SFTP connection with non-standard port 23, pre-configured server format `{username}.your-storagebox.de`
+- **pCloud Trash Manager**: List, restore, and empty trash via pCloud API (`trash_list`, `trash_restore`, `trash_clear`). New `PCloudTrashManager` component with toolbar integration
+- **kDrive Trash Manager**: List, restore, permanently delete individual items, and empty trash via Infomaniak API. New `KDriveTrashManager` component with full 4-action support
+- **FTP Hash/Checksum commands**: Server-side checksum via FEAT detection (HASH > XMD5 > XCRC > XSHA1 preference order). `supports_checksum()` and `checksum()` trait methods implemented. Algorithm parsed from HASH response (not hardcoded)
+- **ProvidersDialog Enterprise column**: New "S3/AZ" column showing Storage Class, Object Tagging, SSE, Checksum, and Tier Management capabilities with tooltip
+- **15 new Tauri commands**: `s3_change_storage_class`, `s3_glacier_restore`, `s3_get_object_tags`, `s3_set_object_tags`, `s3_delete_object_tags`, `azure_set_blob_tier`, `azure_list_deleted_blobs`, `azure_undelete_blob`, `pcloud_list_trash`, `pcloud_restore_from_trash`, `pcloud_empty_trash`, `kdrive_list_trash`, `kdrive_restore_from_trash`, `kdrive_permanently_delete_trash`, `kdrive_empty_trash`
+- **Windows portable build**: Standalone `.zip` distribution for Windows (no installation required). Extract and run, ideal for USB drives or restricted environments. Signed with Sigstore and included in GitHub Releases alongside `.msi` and `.exe` installers
+
+#### Changed
+
+- **ProvidersDialog accuracy**: Box versioning, Amazon S3 shareLink+versioning, kDrive versioning+trash, Nextcloud shareLink+trash+versioning, MEGA shareLink — all now accurately reflected in feature matrix
+- **S3 enterprise fields E2E**: `storage_class`, `sse_mode`, `sse_kms_key_id` wired from registry form → ProviderOptions → providerParams → ProviderConnectionParams → S3Config → upload headers
+
+### AeroCloud APPENDIX-D Closure + FileLu v2
+
+AeroCloud sprint hardening closure: 3 external audit findings resolved, VersionBrowser wired end-to-end, FileLu migrated to v2 path-based API.
+
+#### Added
+
+- **VersionBrowser browse-all mode**: New `list_all_file_versions` Tauri command walks `.aeroversions/` recursively. VersionBrowser opens in modal from CloudPanel settings with versioning strategy selector (Disabled, TrashCan 7/30/90 days, Simple 5, Staggered). Shows file name + timestamp in browse-all mode
+- **FileLu Trash permanent delete**: `PERMANENT_DELETE_ENABLED` activated — uses `file/permanent_delete?file_code=X` endpoint confirmed by FileLu team
+
+#### Changed
+
+- **FileLu v2 API migration**: Download (`apiv2/file/direct_link?file_path=`), rename (`apiv2/file/rename?file_path=`), move (`apiv2/file/set_folder?file_path=&destination_folder_path=`), folder rename (`apiv2/folder/rename?folder_path=`), folder delete (`apiv2/folder/delete?folder_path=`) — all migrated to path-based v2 API. Listing uses hybrid v1 files (fld_id) + v2 folders (folder_path) because v2 file/list does not filter by folder
+- **FileLu promoted to Stable**: Classified as stable protocol in AeroCloud sync (was Alpha). Now 12/23 protocols at stable tier. Caveat updated to note US-based servers with geographic latency
+- **AeroCloud compare_checksum dynamic**: Enabled automatically when provider supplies content hashes (FileLu, pCloud). Fallback to size-only for providers without hash support
+
+#### Fixed
+
+- **Restore path traversal (SEC)**: `restore_file_version` now validates `original_relative` — rejects `..`, absolute paths, and verifies target stays within sync folder. Closes external audit HIGH finding
+- **VersionBrowser empty modal**: Fixed browse-all mode — previously `list_file_versions` required `filePath` and modal opened empty. Now uses `list_all_file_versions` when no specific file selected
+- **FileLu phantom files in root**: v2 `file/list` with `folder_path` returned ALL account files unfiltered. Reverted file listing to v1 `file/list?fld_id=` which correctly filters by folder
+- **FileLu delete "Invalid option"**: `file/remove` without `remove=1` returns error. FileLu API has no soft-delete — delete uses `file/remove?file_code=X&remove=1` (permanent). Trash is web-UI only
+
+#### Security (Audit Closure)
+
+- Path traversal hardening on `restore_file_version`: validates both `archive_path` (within .aeroversions/) and `original_relative` (no escaping sync root)
+- 6 external audit findings resolved across APPENDIX-B and APPENDIX-D (2 HIGH, 4 MEDIUM)
+
 ## [3.1.3] - 2026-03-26
 
 ### AeroCloud Hardening — Production-Grade Sync Engine

@@ -1249,6 +1249,8 @@
       "trashDeletedDate": "Deleted",
       "opendriveTrashTitle": "OpenDrive Trash",
       "yandexTrashTitle": "Yandex Disk Trash",
+      "pcloudTrashTitle": "pCloud Trash",
+      "kdriveTrashTitle": "kDrive Trash",
       "emptyTrash": "Empty Trash",
       "emptyTrashConfirm": "Are you sure you want to permanently delete all items in the Trash? This cannot be undone.",
       "manageShareLinks": "Manage Share Links",

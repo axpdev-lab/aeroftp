@@ -137,6 +137,16 @@
   </languages>
 
   <releases>
+    <release version="3.1.4" date="2026-03-27">
+      <description>
+        <p>Provider sprint: S3 enterprise features (storage class, SSE, object tagging, Glacier restore), Azure blob tier management and soft-delete recovery, FileLu v2 API migration (path-based), kDrive trash manager, Hetzner Storage Box preset, FTP hash/checksum commands, ProvidersDialog enterprise column. AeroCloud closure: VersionBrowser browse-all mode, path traversal hardening, dynamic checksum comparison. FileLu promoted to stable (12/23 protocols). 6 external audit findings resolved.</p>
+      </description>
+    </release>
+    <release version="3.1.3" date="2026-03-26">
+      <description>
+        <p>AeroCloud hardening: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning (.aeroversions/), .aeroignore support, protocol maturity badges. 10 audit findings resolved.</p>
+      </description>
+    </release>
     <release version="3.1.2" date="2026-03-25">
       <description>
         <p>Zoho WorkDrive full MCP parity: all 22 tools covered, native Zoho document creation with auto-conversion to Office formats, share link management UI, getUserInfo, enhanced OAuth scopes. New Swap Panels setting to place local panel on the left and remote on the right, matching classic FTP client layout.</p>

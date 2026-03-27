@@ -27,6 +27,7 @@ use super::{
 };
 
 const API_BASE: &str = "https://filelu.com/api";
+const API_V2_BASE: &str = "https://filelu.com/apiv2";
 /// Maximum number of cached path entries to prevent unbounded memory growth.
 const PATH_CACHE_MAX: usize = 10_000;
 /// Maximum pages to retrieve per listing (100 items/page → 10 000 items max)
@@ -281,6 +282,28 @@ impl FileLuProvider {
         format!("{}/{}?key={}", API_BASE, endpoint, self.api_key())
     }
 
+    /// Build URL for v2 path-based API endpoints
+    fn api_v2_url(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
+        let mut url = format!("{}/{}?key={}", API_V2_BASE, endpoint, self.api_key());
+        for (k, v) in params {
+            url.push('&');
+            url.push_str(k);
+            url.push('=');
+            for ch in v.chars() {
+                match ch {
+                    'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' => url.push(ch),
+                    ' ' => url.push('+'),
+                    _ => {
+                        for byte in ch.to_string().as_bytes() {
+                            url.push_str(&format!("%{:02X}", byte));
+                        }
+                    }
+                }
+            }
+        }
+        url
+    }
+
     fn api_url_with(&self, endpoint: &str, params: &[(&str, &str)]) -> String {
         let mut url = format!("{}/{}?key={}", API_BASE, endpoint, self.api_key());
         for (k, v) in params {
@@ -354,6 +377,7 @@ impl FileLuProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("GET failed: {}", e)))
     }
 
+    #[allow(dead_code)]
     async fn post_form_with_retry(&self, url: &str, body: String) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.post(url)
             .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -430,14 +454,17 @@ impl FileLuProvider {
         }
     }
 
-    async fn list_folder_by_id(&self, fld_id: u64) -> Result<FolderListResult, ProviderError> {
+    /// Hybrid listing: v1 file/list (fld_id) for files + v2 folder/list (folder_path) for subfolders.
+    /// FileLu v2 does NOT have a file/list endpoint that filters by folder_path —
+    /// it returns ALL files in the account. So we use v1 for files and v2 for folders.
+    async fn list_folder_hybrid(&self, folder_path: &str, fld_id: u64) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
+        let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
         let per_page = "100";
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
 
-        // Use file/list for files (returns size, hash, uploaded)
-        // folder/list does NOT return file sizes — only name, file_code, uploaded
+        // v1: file/list by fld_id (correctly filters files to this folder only)
         for page in 1..=MAX_LIST_PAGES {
             let page_str = page.to_string();
             let url = self.api_url_with(
@@ -447,14 +474,52 @@ impl FileLuProvider {
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FileListResult>(resp).await?;
             let count = result.files.len();
-            // Filter: file/list may return files from other folders — keep only matching fld_id
             all_files.extend(result.files.into_iter().filter(|f| {
                 f.fld_id.map_or(true, |id| id == fld_id)
             }));
             if count < 100 { break; }
         }
 
-        // Use folder/list for subfolders only
+        // v2: folder/list by path (no fld_id needed for subfolders)
+        for page in 1..=MAX_LIST_PAGES {
+            let page_str = page.to_string();
+            let url = self.api_v2_url(
+                "folder/list",
+                &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
+            );
+            let resp = self.get_with_retry(&url).await?;
+            let result = Self::parse_api::<FolderListResult>(resp).await?;
+            let count = result.folders.len();
+            all_folders.extend(result.folders);
+            if count < 100 { break; }
+        }
+
+        Ok(FolderListResult { files: all_files, folders: all_folders })
+    }
+
+    /// Legacy v1 list — kept for operations that still need fld_id (upload, mkdir)
+    #[allow(dead_code)]
+    async fn list_folder_by_id(&self, fld_id: u64) -> Result<FolderListResult, ProviderError> {
+        let fld_id_str = fld_id.to_string();
+        let per_page = "100";
+        let mut all_files: Vec<FileEntry> = Vec::new();
+        let mut all_folders: Vec<FolderEntry> = Vec::new();
+
+        for page in 1..=MAX_LIST_PAGES {
+            let page_str = page.to_string();
+            let url = self.api_url_with(
+                "file/list",
+                &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+            );
+            let resp = self.get_with_retry(&url).await?;
+            let result = Self::parse_api::<FileListResult>(resp).await?;
+            let count = result.files.len();
+            all_files.extend(result.files.into_iter().filter(|f| {
+                f.fld_id.map_or(true, |id| id == fld_id)
+            }));
+            if count < 100 { break; }
+        }
+
         for page in 1..=MAX_LIST_PAGES {
             let page_str = page.to_string();
             let url = self.api_url_with(
@@ -476,7 +541,9 @@ impl FileLuProvider {
         parent_path: &str,
         parent_fld_id: u64,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let result = self.list_folder_by_id(parent_fld_id).await?;
+        // v1 file/list (fld_id) for files + v2 folder/list (folder_path) for subfolders.
+        // FileLu v2 does NOT have file/list with folder_path filtering — it returns ALL files.
+        let result = self.list_folder_hybrid(parent_path, parent_fld_id).await?;
         let mut entries: Vec<RemoteEntry> = Vec::new();
 
         let parent_norm = Self::normalize_path(parent_path);
@@ -649,7 +716,18 @@ impl FileLuProvider {
         });
     }
 
-    /// Get direct download URL for a file_code
+    /// Get direct download URL — v2 path-based (file_path), fallback to v1 (file_code)
+    async fn get_direct_url_v2(&self, file_path: &str) -> Result<String, ProviderError> {
+        let url = self.api_v2_url("file/direct_link", &[("file_path", file_path)]);
+        let resp = self.get_with_retry(&url).await?;
+        let result = Self::parse_api::<DirectLinkResult>(resp).await?;
+        result.url.ok_or_else(|| {
+            ProviderError::TransferFailed("No download URL returned".to_string())
+        })
+    }
+
+    /// Legacy v1 get direct URL by file_code — kept for trash operations
+    #[allow(dead_code)]
     async fn get_direct_url(&mut self, file_code: &str) -> Result<String, ProviderError> {
         let body = format!("file_code={}&key={}", file_code, self.api_key());
         let url = format!("{}/file/direct_link", API_BASE);
@@ -883,12 +961,11 @@ impl FileLuProvider {
     }
 
     /// Permanently delete a file from trash.
-    /// API: file/remove?file_code=xxx&remove=1
+    /// API: file/permanent_delete?key=xxx&file_code=xxx
     pub async fn permanent_delete_file(&mut self, file_code: &str) -> Result<(), ProviderError> {
         if !self.connected { return Err(ProviderError::NotConnected); }
-        let url = self.api_url_with("file/remove", &[
+        let url = self.api_url_with("file/permanent_delete", &[
             ("file_code", file_code),
-            ("remove", "1"),
         ]);
         let resp = self.get_with_retry(&url).await?;
         Self::ensure_api_ok(resp).await
@@ -991,9 +1068,9 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // v2: download by path — no file_code resolution needed
         let norm = self.resolve_path(remote_path);
-        let file_code = self.resolve_file_code(&norm).await?;
-        let direct_url = self.get_direct_url(&file_code).await?;
+        let direct_url = self.get_direct_url_v2(&norm).await?;
 
         let resp = self.get_with_retry(&direct_url).await?;
         let total_size = resp.content_length().unwrap_or(0);
@@ -1021,9 +1098,9 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // v2: download by path — no file_code resolution needed
         let norm = self.resolve_path(remote_path);
-        let file_code = self.resolve_file_code(&norm).await?;
-        let direct_url = self.get_direct_url(&file_code).await?;
+        let direct_url = self.get_direct_url_v2(&norm).await?;
 
         let resp = self.get_with_retry(&direct_url).await?;
 
@@ -1224,12 +1301,18 @@ impl StorageProvider for FileLuProvider {
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
 
+        // Delete: move to trash (soft-delete). Permanent delete only from TrashManager.
         if entry.is_dir {
             let url = self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())]);
-            self.get_with_retry(&url).await?;
+            let resp = self.get_with_retry(&url).await?;
+            Self::ensure_api_ok(resp).await?;
         } else {
+            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint —
+            // file/remove without remove=1 returns "Invalid option". Permanent delete is
+            // the only API-supported delete. Trash is web-UI only on FileLu.
             let url = self.api_url_with("file/remove", &[("file_code", &entry.file_code), ("remove", "1")]);
-            self.get_with_retry(&url).await?;
+            let resp = self.get_with_retry(&url).await?;
+            Self::ensure_api_ok(resp).await?;
         }
 
         let parent = norm.rfind('/').map(|i| {
@@ -1270,31 +1353,44 @@ impl StorageProvider for FileLuProvider {
         let entry = self.resolve_path_entry(&norm_from).await?;
         let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
 
+        // v2: path-based rename and move
         if from_parent == to_parent {
-            // Pure rename
+            // Pure rename — same directory
             if entry.is_dir {
-                let url = self.api_url_with("folder/rename", &[("fld_id", &entry.fld_id.to_string()), ("name", &new_name)]);
-                self.get_with_retry(&url).await?;
+                let url = self.api_v2_url("folder/rename", &[("folder_path", &norm_from), ("name", &new_name)]);
+                let resp = self.get_with_retry(&url).await?;
+                Self::ensure_api_ok(resp).await?;
             } else {
-                let url = self.api_url_with("file/rename", &[("file_code", &entry.file_code), ("name", &new_name)]);
-                self.get_with_retry(&url).await?;
+                let url = self.api_v2_url("file/rename", &[("file_path", &norm_from), ("name", &new_name)]);
+                let resp = self.get_with_retry(&url).await?;
+                Self::ensure_api_ok(resp).await?;
             }
         } else {
-            // Cross-directory move
-            let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
+            // Cross-directory move — v2 path-based
             if entry.is_dir {
+                // Folder move: not yet available in v2 — fallback to v1
+                let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
                 let url = self.api_url_with("folder/move", &[("fld_id", &entry.fld_id.to_string()), ("dest_fld_id", &dest_fld_id.to_string())]);
                 self.get_with_retry(&url).await?;
                 if new_name != old_name {
-                    let url = self.api_url_with("folder/rename", &[("fld_id", &entry.fld_id.to_string()), ("name", &new_name)]);
-                    self.get_with_retry(&url).await?;
+                    // After move, rename at new location via v2
+                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
+                    let url = self.api_v2_url("folder/rename", &[("folder_path", &moved_path), ("name", &new_name)]);
+                    let resp = self.get_with_retry(&url).await?;
+                    Self::ensure_api_ok(resp).await?;
                 }
             } else {
-                let url = self.api_url_with("file/set_folder", &[("file_code", &entry.file_code), ("fld_id", &dest_fld_id.to_string())]);
-                self.get_with_retry(&url).await?;
+                // File move: v2 set_folder by path
+                let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
+                let url = self.api_v2_url("file/set_folder", &[("file_path", &norm_from), ("destination_folder_path", &dest_folder)]);
+                let resp = self.get_with_retry(&url).await?;
+                Self::ensure_api_ok(resp).await?;
                 if new_name != old_name {
-                    let url = self.api_url_with("file/rename", &[("file_code", &entry.file_code), ("name", &new_name)]);
-                    self.get_with_retry(&url).await?;
+                    // After move, rename at new location via v2
+                    let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
+                    let url = self.api_v2_url("file/rename", &[("file_path", &moved_path), ("name", &new_name)]);
+                    let resp = self.get_with_retry(&url).await?;
+                    Self::ensure_api_ok(resp).await?;
                 }
             }
         }

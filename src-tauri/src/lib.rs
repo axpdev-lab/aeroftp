@@ -6234,6 +6234,13 @@ fn list_file_versions(relative_path: String) -> Result<Vec<sync_versioning::Vers
 }
 
 #[tauri::command]
+fn list_all_file_versions() -> Result<Vec<sync_versioning::VersionEntry>, String> {
+    let config = cloud_config::load_cloud_config();
+    let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
+    v.list_all_versions()
+}
+
+#[tauri::command]
 fn restore_file_version(archive_path: String, original_relative: String) -> Result<(), String> {
     let config = cloud_config::load_cloud_config();
     // Security: validate archive_path is within .aeroversions/ (prevent path traversal)
@@ -6241,6 +6248,14 @@ fn restore_file_version(archive_path: String, original_relative: String) -> Resu
     let canonical_archive = std::path::PathBuf::from(&archive_path);
     if !canonical_archive.starts_with(&versions_dir) || archive_path.contains("..") {
         return Err("Invalid archive path: must be within .aeroversions/".to_string());
+    }
+    // Security: validate original_relative does not escape local_folder (path traversal)
+    if original_relative.contains("..") || original_relative.starts_with('/') || original_relative.starts_with('\\') {
+        return Err("Invalid restore target: path traversal detected".to_string());
+    }
+    let target = config.local_folder.join(&original_relative);
+    if !target.starts_with(&config.local_folder) {
+        return Err("Invalid restore target: would write outside sync folder".to_string());
     }
     let v = sync_versioning::SyncVersioning::new(&config.local_folder, config.versioning_strategy);
     let entry = sync_versioning::VersionEntry {
@@ -7933,6 +7948,7 @@ pub fn run() {
             update_excluded_folders,
             list_remote_folders_tree,
             list_file_versions,
+            list_all_file_versions,
             restore_file_version,
             cleanup_versions,
             versions_disk_usage,
@@ -8250,6 +8266,26 @@ pub fn run() {
             // Thumbnails
             provider_commands::provider_supports_thumbnails,
             provider_commands::provider_get_thumbnail,
+            // S3 Enterprise features
+            provider_commands::s3_change_storage_class,
+            provider_commands::s3_glacier_restore,
+            provider_commands::s3_get_object_tags,
+            provider_commands::s3_set_object_tags,
+            provider_commands::s3_delete_object_tags,
+            // Azure Enterprise features
+            provider_commands::azure_set_blob_tier,
+            provider_commands::azure_list_deleted_blobs,
+            provider_commands::azure_undelete_blob,
+            // pCloud Trash
+            provider_commands::pcloud_list_trash,
+            provider_commands::pcloud_restore_from_trash,
+            provider_commands::pcloud_empty_trash,
+            provider_commands::pcloud_permanently_delete_trash,
+            // kDrive Trash
+            provider_commands::kdrive_list_trash,
+            provider_commands::kdrive_restore_from_trash,
+            provider_commands::kdrive_permanently_delete_trash,
+            provider_commands::kdrive_empty_trash,
             // Permissions / Advanced sharing
             provider_commands::provider_supports_permissions,
             provider_commands::provider_list_permissions,

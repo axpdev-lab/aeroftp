@@ -187,6 +187,56 @@ impl SyncVersioning {
         Ok(versions)
     }
 
+    /// List ALL archived versions across all files (for browse-all UI mode).
+    pub fn list_all_versions(&self) -> Result<Vec<VersionEntry>, String> {
+        let mut all = Vec::new();
+        if !self.versions_dir.exists() {
+            return Ok(all);
+        }
+        self.walk_versions(|path, meta| {
+            if meta.is_file() {
+                let rel = path.strip_prefix(&self.versions_dir)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                // Parse "stem~timestamp.ext" → extract original_relative and archived_at
+                let filename = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                if let Some(tilde_pos) = filename.find('~') {
+                    let parent_dir = path.parent()
+                        .and_then(|p| p.strip_prefix(&self.versions_dir).ok())
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    let stem = &filename[..tilde_pos];
+                    let after_tilde = &filename[tilde_pos + 1..];
+                    // after_tilde = "20260327-143022.ext" or "20260327-143022"
+                    let (ts, ext) = match after_tilde.rfind('.') {
+                        Some(dot) => (&after_tilde[..dot], &after_tilde[dot..]),
+                        None => (after_tilde, ""),
+                    };
+                    let original = if parent_dir.is_empty() {
+                        format!("{}{}", stem, ext)
+                    } else {
+                        format!("{}/{}{}", parent_dir, stem, ext)
+                    };
+                    all.push(VersionEntry {
+                        archive_path: path.to_path_buf(),
+                        original_relative: original,
+                        archived_at: ts.to_string(),
+                        size: meta.len(),
+                    });
+                } else {
+                    all.push(VersionEntry {
+                        archive_path: path.to_path_buf(),
+                        original_relative: rel,
+                        archived_at: String::new(),
+                        size: meta.len(),
+                    });
+                }
+            }
+        })?;
+        all.sort_by(|a, b| b.archived_at.cmp(&a.archived_at));
+        Ok(all)
+    }
+
     /// Restore an archived version to its original location.
     /// Archives the current file first (if it exists) to prevent data loss.
     pub fn restore(&self, version: &VersionEntry) -> Result<(), String> {

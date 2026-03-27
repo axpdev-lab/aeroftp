@@ -350,6 +350,12 @@ pub struct S3Config {
     pub prefix: Option<String>,
     /// Use path-style addressing (for MinIO, etc.)
     pub path_style: bool,
+    /// Default storage class for uploads (e.g., STANDARD, STANDARD_IA, GLACIER_IR)
+    pub storage_class: Option<String>,
+    /// Server-side encryption mode (AES256 = SSE-S3, aws:kms = SSE-KMS)
+    pub sse_mode: Option<String>,
+    /// KMS key ID for SSE-KMS (optional, uses default AWS-managed key if absent)
+    pub sse_kms_key_id: Option<String>,
 }
 
 impl S3Config {
@@ -384,6 +390,16 @@ impl S3Config {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
 
+        let storage_class = config.extra.get("storage_class")
+            .cloned()
+            .filter(|s| !s.is_empty());
+        let sse_mode = config.extra.get("sse_mode")
+            .cloned()
+            .filter(|s| !s.is_empty());
+        let sse_kms_key_id = config.extra.get("sse_kms_key_id")
+            .cloned()
+            .filter(|s| !s.is_empty());
+
         Ok(Self {
             endpoint,
             region,
@@ -392,6 +408,9 @@ impl S3Config {
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
+            storage_class,
+            sse_mode,
+            sse_kms_key_id,
         })
     }
 }

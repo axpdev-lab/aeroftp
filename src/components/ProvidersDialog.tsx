@@ -34,11 +34,16 @@ const EXTRA_FEATURES = ['star', 'comments', 'tags', 'collaborations', 'devTools'
 // Premium features (accorpated in single "Premium" column with tooltip)
 const PREMIUM_FEATURES = ['watermark', 'folderLock', 'filePassword'] as const;
 
+// Enterprise features (accorpated in single "Enterprise" column with tooltip)
+const ENTERPRISE_FEATURES = ['storageClass', 'objectTagging', 'sse', 'checksum', 'tierManagement'] as const;
+
 // Labels for tooltip display
 const FEATURE_LABELS: Record<string, string> = {
   star: 'Star', comments: 'Comments', tags: 'Tags',
   collaborations: 'Collaborations', devTools: 'Dev Tools',
   watermark: 'Watermark', folderLock: 'Folder Lock', filePassword: 'Password',
+  storageClass: 'Storage Class', objectTagging: 'Object Tagging',
+  sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
 };
 
 // All providers in a single flat list with section markers
@@ -54,28 +59,28 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'Box', logoId: 'box',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['comments', 'tags', 'collaborations', 'watermark', 'folderLock'] },
+  { name: 'Zoho WorkDrive', logoId: 'zohoworkdrive',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [] },
   { name: 'pCloud', logoId: 'pcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
-    advanced: [] },
+    advanced: ['checksum'] },
   { name: 'MEGA', logoId: 'mega',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'Filen', logoId: 'filen',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
   { name: 'Internxt', logoId: 'internxt',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
     advanced: [] },
   { name: 'kDrive', logoId: 'kdrive',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'Jottacloud', logoId: 'jottacloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
-    advanced: [] },
-  { name: 'Zoho WorkDrive', logoId: 'zohoworkdrive',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'FileLu', logoId: 'filelu',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
@@ -98,8 +103,8 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
 
   // ── S3 Compatible ──
   { name: 'Amazon S3', logoId: 'amazon-s3', section: 'S3 Compatible',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
-    advanced: [] },
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
+    advanced: ['storageClass', 'objectTagging', 'sse', 'checksum'] },
   { name: 'Backblaze B2', logoId: 'backblaze',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
@@ -132,10 +137,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
 
   // ── WebDAV ──
-  { name: 'Nextcloud', logoId: 'nextcloud', section: 'WebDAV',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
-    advanced: [] },
-  { name: 'CloudMe', logoId: 'cloudme',
+  { name: 'CloudMe', logoId: 'cloudme', section: 'WebDAV',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
   { name: 'DriveHQ', logoId: 'drivehq',
@@ -153,6 +155,15 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Seafile', logoId: 'seafile',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
+  { name: 'FileLu WebDAV', logoId: 'filelu',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+  { name: 'Nextcloud', logoId: 'nextcloud',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [] },
+  { name: 'Hetzner Storage Box', logoId: 'hetzner',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
 ];
 
 // Helper: get extra/premium features a provider has
@@ -161,6 +172,9 @@ function getExtraFeatures(p: ProviderFeatures): string[] {
 }
 function getPremiumFeatures(p: ProviderFeatures): string[] {
   return PREMIUM_FEATURES.filter(f => p.advanced.includes(f)).map(f => FEATURE_LABELS[f] || f);
+}
+function getEnterpriseFeatures(p: ProviderFeatures): string[] {
+  return ENTERPRISE_FEATURES.filter(f => p.advanced.includes(f)).map(f => FEATURE_LABELS[f] || f);
 }
 
 export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
@@ -245,6 +259,9 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                 <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   <span className="text-[9px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1.5 py-0.5 rounded">PRO</span>
                 </th>
+                <th className="text-center py-2 px-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  <span className="text-[9px] font-bold bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-1.5 py-0.5 rounded">S3/AZ</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -256,7 +273,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                     {provider.section && (
                       <tr>
                         <td
-                          colSpan={2 + OPTIONAL_FEATURES.length + 2}
+                          colSpan={2 + OPTIONAL_FEATURES.length + 3}
                           className="py-2 px-3 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 border-t border-b border-gray-200 dark:border-gray-700"
                         >
                           {provider.section}
@@ -308,6 +325,19 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                           return prems.length > 0 ? (
                             <span title={prems.join(', ')} className="cursor-help">
                               <Check size={13} className="inline-block text-amber-500" />
+                            </span>
+                          ) : (
+                            <Minus size={11} className="inline-block text-gray-400 dark:text-gray-600" />
+                          );
+                        })()}
+                      </td>
+                      {/* Enterprise S3/Azure column */}
+                      <td className="text-center py-1.5 px-2">
+                        {(() => {
+                          const ent = getEnterpriseFeatures(provider);
+                          return ent.length > 0 ? (
+                            <span title={ent.join(', ')} className="cursor-help">
+                              <Check size={13} className="inline-block text-cyan-500" />
                             </span>
                           ) : (
                             <Minus size={11} className="inline-block text-gray-400 dark:text-gray-600" />
