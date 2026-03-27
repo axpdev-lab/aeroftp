@@ -8,9 +8,12 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use tauri::{Emitter, State};
 use tokio::process::Command as TokioCommand;
 use std::process::Stdio;
+use std::sync::LazyLock;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::provider_commands::ProviderState;
 use crate::AppState;
 
@@ -24,7 +27,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     "local_file_info", "local_disk_usage", "local_find_duplicates",
     "remote_edit",
     // Batch transfer tools
-    "upload_files", "download_files",
+    "upload_files", "download_files", "generate_transfer_plan",
     // Advanced tools
     "sync_preview", "archive_compress", "archive_decompress",
     // RAG tools
@@ -146,6 +149,178 @@ fn emit_tool_progress(app: &tauri::AppHandle, tool: &str, current: u32, total: u
 }
 
 const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024; // 50MB
+const MAX_CACHE_SESSIONS: usize = 128;
+
+#[derive(Clone)]
+struct CachedToolResult {
+    tool_name: String,
+    value: Value,
+    cached_at_ms: u64,
+}
+
+static AI_TOOL_RESULT_CACHE: LazyLock<tokio::sync::Mutex<HashMap<String, HashMap<String, CachedToolResult>>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+fn cache_session_key(session_id: Option<&str>) -> String {
+    session_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("__default__")
+        .to_string()
+}
+
+fn current_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_millis() as u64
+}
+
+fn tool_cache_ttl(tool_name: &str) -> Option<Duration> {
+    match tool_name {
+        "app_info" => Some(Duration::from_secs(3)),
+        "remote_list" | "remote_search" | "local_list" | "local_search" | "sync_preview" => Some(Duration::from_secs(10)),
+        "remote_read" | "remote_info" | "local_read" | "preview_edit" | "local_grep" | "local_head" | "local_tail"
+        | "local_stat_batch" | "local_diff" | "local_tree" | "local_file_info" | "local_disk_usage"
+        | "local_find_duplicates" | "hash_file" | "vault_peek" | "server_list_saved" => {
+            Some(Duration::from_secs(20))
+        }
+        _ => None,
+    }
+}
+
+fn build_tool_cache_key(
+    tool_name: &str,
+    args: &Value,
+    context_local_path: Option<&str>,
+    remote_context: Option<&str>,
+) -> Result<String, String> {
+    serde_json::to_string(&json!({
+        "tool": tool_name,
+        "args": args,
+        "context_local_path": context_local_path,
+        "remote_context": remote_context,
+    }))
+    .map_err(|e| format!("Failed to build tool cache key: {}", e))
+}
+
+fn gc_tool_cache(cache: &mut HashMap<String, HashMap<String, CachedToolResult>>) {
+    let now = current_time_ms();
+
+    cache.retain(|_, session_cache| {
+        session_cache.retain(|_, entry| {
+            tool_cache_ttl(&entry.tool_name)
+                .map(|ttl| now.saturating_sub(entry.cached_at_ms) <= ttl.as_millis() as u64)
+                .unwrap_or(false)
+        });
+        !session_cache.is_empty()
+    });
+
+    while cache.len() > MAX_CACHE_SESSIONS {
+        let Some(oldest_session) = cache
+            .iter()
+            .min_by_key(|(_, entries)| {
+                entries
+                    .values()
+                    .map(|entry| entry.cached_at_ms)
+                    .max()
+                    .unwrap_or(0)
+            })
+            .map(|(session_key, _)| session_key.clone()) else {
+            break;
+        };
+        cache.remove(&oldest_session);
+    }
+}
+
+async fn build_remote_cache_context(state: &ProviderState, app_state: &AppState) -> Option<String> {
+    if let Some(config) = state.config.lock().await.clone() {
+        return Some(format!(
+            "provider:{}:{}:{}:{}:{}",
+            serde_json::to_string(&config.provider_type).ok()?,
+            config.host,
+            config.effective_port(),
+            config.username.as_deref().unwrap_or(""),
+            config.initial_path.as_deref().unwrap_or(""),
+        ));
+    }
+
+    let ftp_manager = app_state.ftp_manager.lock().await;
+    ftp_manager.connected_host().map(|host| format!("ftp:{}", host))
+}
+
+async fn get_cached_tool_result(
+    session_id: Option<&str>,
+    cache_key: &str,
+    tool_name: &str,
+) -> Option<Value> {
+    let ttl = tool_cache_ttl(tool_name)?;
+    let session_key = cache_session_key(session_id);
+    let mut cache = AI_TOOL_RESULT_CACHE.lock().await;
+    gc_tool_cache(&mut cache);
+    let session_cache = cache.get_mut(&session_key)?;
+    let entry = session_cache.get(cache_key)?.clone();
+
+    let age = current_time_ms().saturating_sub(entry.cached_at_ms);
+    if age > ttl.as_millis() as u64 {
+        session_cache.remove(cache_key);
+        if session_cache.is_empty() {
+            cache.remove(&session_key);
+        }
+        return None;
+    }
+
+    match entry.value {
+        Value::Object(mut map) => {
+            map.insert("_cache".to_string(), json!({ "hit": true, "age_ms": age }));
+            Some(Value::Object(map))
+        }
+        other => Some(other),
+    }
+}
+
+async fn store_cached_tool_result(
+    session_id: Option<&str>,
+    tool_name: &str,
+    cache_key: String,
+    value: &Value,
+) {
+    let session_key = cache_session_key(session_id);
+    let mut cache = AI_TOOL_RESULT_CACHE.lock().await;
+    gc_tool_cache(&mut cache);
+    let session_cache = cache.entry(session_key).or_default();
+    session_cache.insert(
+        cache_key,
+        CachedToolResult {
+            tool_name: tool_name.to_string(),
+            value: value.clone(),
+            cached_at_ms: current_time_ms(),
+        },
+    );
+}
+
+async fn invalidate_tool_cache(session_id: Option<&str>) {
+    let session_key = cache_session_key(session_id);
+    let mut cache = AI_TOOL_RESULT_CACHE.lock().await;
+    cache.remove(&session_key);
+}
+
+fn value_as_string_array(args: &Value, key: &str) -> Result<Vec<String>, String> {
+    args.get(key)
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .ok_or_else(|| format!("Missing '{}' array parameter", key))
+}
+
+fn path_basename(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .filter(|name| !name.is_empty())
+}
+
+fn join_remote_path(base: &str, leaf: &str) -> String {
+    format!("{}/{}", base.trim_end_matches('/'), leaf.trim_start_matches('/'))
+}
 
 /// Download a remote file to bytes via StorageProvider or FTP fallback
 async fn download_from_provider(
@@ -943,13 +1118,33 @@ pub async fn execute_ai_tool(
     tool_name: String,
     args: Value,
     context_local_path: Option<String>,
+    session_id: Option<String>,
 ) -> Result<Value, String> {
     // Whitelist check
     if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
         return Err(format!("Unknown or disallowed tool: {}", tool_name));
     }
 
-    match tool_name.as_str() {
+    let remote_cache_context = build_remote_cache_context(&state, &app_state).await;
+
+    let cache_key = if tool_cache_ttl(&tool_name).is_some() {
+        Some(build_tool_cache_key(
+            &tool_name,
+            &args,
+            context_local_path.as_deref(),
+            remote_cache_context.as_deref(),
+        )?)
+    } else {
+        None
+    };
+
+    if let Some(ref key) = cache_key {
+        if let Some(cached) = get_cached_tool_result(session_id.as_deref(), key, &tool_name).await {
+            return Ok(cached);
+        }
+    }
+
+    let result = match tool_name.as_str() {
         "remote_list" => {
             let path = get_str(&args, "path")?;
             validate_path(&path, "path")?;
@@ -1995,6 +2190,129 @@ pub async fn execute_ai_tool(
             }))
         }
 
+        "generate_transfer_plan" => {
+            let direction = get_str(&args, "direction")?;
+            let destination = get_str(&args, "destination")?;
+            let sources = value_as_string_array(&args, "paths")?;
+            if sources.is_empty() {
+                return Err("'paths' must contain at least one source".to_string());
+            }
+
+            let mut warnings: Vec<String> = Vec::new();
+            let mut operations: Vec<Value> = Vec::new();
+
+            match direction.as_str() {
+                "upload" => {
+                    validate_path(&destination, "destination")?;
+                    let mkdir_id = format!("plan_{}_mkdir_remote", uuid::Uuid::new_v4());
+                    operations.push(json!({
+                        "id": mkdir_id,
+                        "toolName": "remote_mkdir",
+                        "title": format!("Ensure remote directory {} exists", destination),
+                        "description": "Create the destination directory on the remote server if needed.",
+                        "category": "prepare",
+                        "dangerLevel": "medium",
+                        "args": { "path": destination.clone() },
+                        "dependsOn": [],
+                    }));
+
+                    for raw_source in &sources {
+                        let resolved_source = resolve_local_path(raw_source, context_local_path.as_deref());
+                        validate_path(&resolved_source, "path")?;
+                        let source_path = std::path::Path::new(&resolved_source);
+                        if !source_path.exists() {
+                            warnings.push(format!("Skipped missing local path: {}", resolved_source));
+                            continue;
+                        }
+
+                        if source_path.is_dir() {
+                            operations.push(json!({
+                                "id": format!("plan_{}_upload_dir", uuid::Uuid::new_v4()),
+                                "toolName": "upload_files",
+                                "title": format!("Upload directory {}", resolved_source),
+                                "description": format!("Recursively upload {} into {}.", resolved_source, destination),
+                                "category": "upload",
+                                "dangerLevel": "medium",
+                                "args": {
+                                    "paths": [resolved_source],
+                                    "remote_dir": destination.clone(),
+                                },
+                                "dependsOn": [mkdir_id.clone()],
+                            }));
+                        } else if let Some(file_name) = path_basename(&resolved_source) {
+                            operations.push(json!({
+                                "id": format!("plan_{}_upload_file", uuid::Uuid::new_v4()),
+                                "toolName": "remote_upload",
+                                "title": format!("Upload {}", file_name),
+                                "description": format!("Upload {} to {}.", resolved_source, join_remote_path(&destination, &file_name)),
+                                "category": "upload",
+                                "dangerLevel": "medium",
+                                "args": {
+                                    "local_path": resolved_source,
+                                    "remote_path": join_remote_path(&destination, &file_name),
+                                },
+                                "dependsOn": [mkdir_id.clone()],
+                            }));
+                        }
+                    }
+                }
+                "download" => {
+                    let resolved_destination = resolve_local_path(&destination, context_local_path.as_deref());
+                    validate_path(&resolved_destination, "destination")?;
+                    let mkdir_id = format!("plan_{}_mkdir_local", uuid::Uuid::new_v4());
+                    operations.push(json!({
+                        "id": mkdir_id,
+                        "toolName": "local_mkdir",
+                        "title": format!("Ensure local directory {} exists", resolved_destination),
+                        "description": "Create the destination directory locally if needed.",
+                        "category": "prepare",
+                        "dangerLevel": "medium",
+                        "args": { "path": resolved_destination.clone() },
+                        "dependsOn": [],
+                    }));
+
+                    for remote_source in &sources {
+                        validate_path(remote_source, "path")?;
+                        match path_basename(remote_source) {
+                            Some(file_name) => {
+                                operations.push(json!({
+                                    "id": format!("plan_{}_download_file", uuid::Uuid::new_v4()),
+                                    "toolName": "remote_download",
+                                    "title": format!("Download {}", file_name),
+                                    "description": format!("Download {} into {}.", remote_source, resolved_destination),
+                                    "category": "download",
+                                    "dangerLevel": "medium",
+                                    "args": {
+                                        "remote_path": remote_source,
+                                        "local_path": format!("{}/{}", resolved_destination.trim_end_matches('/'), file_name),
+                                    },
+                                    "dependsOn": [mkdir_id.clone()],
+                                }));
+                            }
+                            None => warnings.push(format!("Skipped remote source without file name: {}", remote_source)),
+                        }
+                    }
+                }
+                _ => return Err(format!("Invalid transfer plan direction '{}'. Use 'upload' or 'download'.", direction)),
+            }
+
+            let executable_operations = operations.iter()
+                .filter(|op| op.get("category").and_then(Value::as_str) != Some("prepare") || operations.len() == 1)
+                .count();
+
+            Ok(json!({
+                "plan_kind": "transfer",
+                "direction": direction,
+                "destination": destination,
+                "source_count": sources.len(),
+                "operation_count": operations.len(),
+                "executable_operations": executable_operations,
+                "warnings": warnings,
+                "summary": format!("Prepared {} {} operation(s) for {} source item(s).", operations.len(), direction, sources.len()),
+                "operations": operations,
+            }))
+        }
+
         "upload_files" => {
             let local_paths: Vec<String> = args.get("paths")
                 .and_then(|v| v.as_array())
@@ -2613,15 +2931,12 @@ pub async fn execute_ai_tool(
                 .ok_or("Missing 'project_path' parameter")?;
             validate_path(project_path, "project_path")?;
 
-            let formatted = format!("\n[{}] [{}] {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M"),
-                sanitized_category,
-                entry
-            );
-
-            crate::context_intelligence::write_agent_memory(
+            crate::agent_memory_db::agent_memory_store(
+                app.clone(),
                 project_path.to_string(),
-                formatted
+                sanitized_category.clone(),
+                entry.to_string(),
+                None,
             ).await.map_err(|e| e.to_string())?;
 
             Ok(json!({
@@ -3430,5 +3745,13 @@ pub async fn execute_ai_tool(
         }
 
         _ => Err(format!("Tool not implemented: {}", tool_name)),
+    }?;
+
+    if let Some(key) = cache_key {
+        store_cached_tool_result(session_id.as_deref(), &tool_name, key, &result).await;
+    } else {
+        invalidate_tool_cache(session_id.as_deref()).await;
     }
+
+    Ok(result)
 }

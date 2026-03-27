@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
+use globset::GlobBuilder;
 use suppaftp::tokio::{AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
 use suppaftp::types::FileType;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -72,6 +73,28 @@ impl FtpProvider {
         // Try Unix format first, then DOS format
         self.parse_unix_listing(line)
             .or_else(|| self.parse_dos_listing(line))
+    }
+
+    fn join_remote_path(base_path: &str, name: &str) -> String {
+        if name.starts_with('/') {
+            return name.to_string();
+        }
+
+        let trimmed_base = base_path.trim_end_matches('/');
+        if trimmed_base.is_empty() {
+            format!("/{}", name.trim_start_matches('/'))
+        } else {
+            format!("{}/{}", trimmed_base, name.trim_start_matches('/'))
+        }
+    }
+
+    fn normalize_mlsd_name(name: &str) -> String {
+        let trimmed = name.trim_end_matches('/');
+        std::path::Path::new(trimmed)
+            .file_name()
+            .map(|value| value.to_string_lossy().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| name.to_string())
     }
     
     /// Parse Unix-style listing (ls -l format)
@@ -181,7 +204,8 @@ impl FtpProvider {
     fn parse_mlsd_entry(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         // Split on first space after semicolons to get facts and filename
         let (facts_str, name) = line.split_once(' ')?;
-        let name = name.to_string();
+        let raw_name = name.trim();
+        let name = Self::normalize_mlsd_name(raw_name);
 
         if name == "." || name == ".." {
             return None;
@@ -242,11 +266,7 @@ impl FtpProvider {
             return None;
         }
 
-        let path = if base_path.ends_with('/') {
-            format!("{}{}", base_path, name)
-        } else {
-            format!("{}/{}", base_path, name)
-        };
+        let path = Self::join_remote_path(base_path, raw_name);
 
         Some(RemoteEntry {
             name,
@@ -854,7 +874,12 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let pattern_lower = pattern.to_lowercase();
+        let matcher = GlobBuilder::new(pattern)
+            .case_insensitive(true)
+            .literal_separator(true)
+            .build()
+            .map_err(|e| ProviderError::InvalidConfig(format!("Invalid find pattern '{}': {}", pattern, e)))?
+            .compile_matcher();
         let mut results = Vec::new();
         let search_path = if path.is_empty() || path == "." {
             self.current_path.clone()
@@ -881,7 +906,7 @@ impl StorageProvider for FtpProvider {
                     dirs_to_scan.push(entry.path.clone());
                 }
 
-                if entry.name.to_lowercase().contains(&pattern_lower) {
+                if matcher.is_match(&entry.name) {
                     results.push(entry);
                     if results.len() >= 500 {
                         return Ok(results);
@@ -934,16 +959,13 @@ impl StorageProvider for FtpProvider {
         // H3: Stream directly to file instead of buffering entire file in memory
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .write(true)
             .open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
 
-        // Seek to the resume offset
-        file.set_len(offset)
-            .await
-            .map_err(ProviderError::IoError)?;
+        // Seek to the resume offset (no set_len — preserve existing bytes before offset)
         file.seek(std::io::SeekFrom::Start(offset))
             .await
             .map_err(ProviderError::IoError)?;

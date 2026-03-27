@@ -4,8 +4,8 @@
 //! - `detect_project_context`: Detect project type, scripts, dependencies
 //! - `scan_file_imports`: Parse imports/requires/uses from source files
 //! - `get_git_context`: Git branch, recent commits, uncommitted changes
-//! - `read_agent_memory`: Read persistent agent memory for a project
-//! - `write_agent_memory`: Append entries to agent memory file
+//! - `read_agent_memory`: Read relevant persistent agent memory for a project
+//! - `write_agent_memory`: Store a persistent memory entry for a project
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
@@ -34,11 +34,6 @@ fn validate_context_path(path: &str) -> Result<(), String> {
     }
     Ok(())
 }
-
-// ─── Write mutex ────────────────────────────────────────────────────────────
-
-static MEMORY_WRITE_LOCK: LazyLock<tokio::sync::Mutex<()>> =
-    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 // ─── LazyLock regex patterns ────────────────────────────────────────────────
 
@@ -1001,60 +996,36 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
 // ─── Command 4: read_agent_memory ───────────────────────────────────────────
 
 #[tauri::command]
-pub async fn read_agent_memory(project_path: String) -> Result<String, String> {
+pub async fn read_agent_memory(app: tauri::AppHandle, project_path: String) -> Result<String, String> {
     validate_context_path(&project_path)?;
-    let memory_path = Path::new(&project_path).join(".aeroagent");
+    let entries = crate::agent_memory_db::agent_memory_search(
+        app,
+        project_path,
+        None,
+        Some(10),
+    ).await?;
 
-    if !memory_path.exists() {
-        return Ok(String::new());
-    }
-
-    let metadata = std::fs::metadata(&memory_path)
-        .map_err(|e| format!("Failed to read memory file metadata: {}", e))?;
-
-    if metadata.len() > 50 * 1024 {
-        return Err("Agent memory file exceeds 50KB limit".to_string());
-    }
-
-    std::fs::read_to_string(&memory_path)
-        .map_err(|e| format!("Failed to read agent memory: {}", e))
+    Ok(entries.into_iter()
+        .map(|entry| format!("[{}] [{}] {}", entry.created_at, entry.category, entry.content))
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
 // ─── Command 5: write_agent_memory ──────────────────────────────────────────
 
 #[tauri::command]
-pub async fn write_agent_memory(project_path: String, content: String) -> Result<(), String> {
+pub async fn write_agent_memory(
+    app: tauri::AppHandle,
+    project_path: String,
+    content: String,
+) -> Result<(), String> {
     validate_context_path(&project_path)?;
-
-    // Validate content length
-    if content.len() > 5000 {
-        return Err("Content exceeds 5000 character limit".to_string());
-    }
-
-    // Acquire write lock to prevent TOCTOU race on size check
-    let _lock = MEMORY_WRITE_LOCK.lock().await;
-
-    let memory_path = Path::new(&project_path).join(".aeroagent");
-
-    // Check existing file size to ensure total won't exceed 50KB
-    if memory_path.exists() {
-        let metadata = std::fs::metadata(&memory_path)
-            .map_err(|e| format!("Failed to check memory file: {}", e))?;
-        if metadata.len() + content.len() as u64 > 50 * 1024 {
-            return Err("Writing would exceed 50KB memory file limit".to_string());
-        }
-    }
-
-    // Append to file (create if not exists)
-    use std::io::Write;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&memory_path)
-        .map_err(|e| format!("Failed to open memory file: {}", e))?;
-
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write agent memory: {}", e))?;
-
+    crate::agent_memory_db::agent_memory_store(
+        app,
+        project_path,
+        "general".to_string(),
+        content,
+        None,
+    ).await?;
     Ok(())
 }

@@ -52,9 +52,9 @@ Navigate any GitHub repository as if it were a remote directory:
 - **Read** — open files directly, preview content, download to local disk
 - **Upload** — drag a file from local to remote, a Git commit is created automatically
 - **Delete** — remove a file, a Git commit records the deletion
-- **Rename / Move** — rename or move files between directories, each operation is a commit
+- **Rename / Move** — rename or move files between directories through API-backed content operations
 - **Create folders** — directories are created with a `.gitkeep` placeholder (Git does not track empty directories)
-- **Batch-friendly commit prompts** — in the GUI, multi-upload and multi-delete flows ask once for a commit message and reuse it across the batch
+- **Batch-friendly commit prompts** — in the GUI, multi-upload and multi-delete flows ask once for a commit message; batch upload/delete flows can be committed atomically
 - **Search** — find files by name pattern across the entire repository tree
 - **Tree view** — visualize the repository structure
 
@@ -196,14 +196,15 @@ Read more: [Credential Isolation for AI Agents](CREDENTIAL-ISOLATION.md)
 
 ### API Usage
 
-Current public GitHub flows in AeroFTP are built primarily on the GitHub REST API v3. The provider also contains GraphQL foundations for future atomic multi-file commit workflows.
+Current public GitHub flows in AeroFTP use the GitHub REST API v3 for repository browsing and single-file CRUD, plus GraphQL `createCommitOnBranch` for atomic batch upload/delete flows.
 
 | Operation | API |
 | --------- | --- |
 | List files | `GET /repos/{owner}/{repo}/contents/{path}` |
 | Download | Raw media type on Contents API |
-| Upload (commit) | `PUT /repos/{owner}/{repo}/contents/{path}` |
-| Delete (commit) | `DELETE /repos/{owner}/{repo}/contents/{path}` |
+| Upload (single file commit) | `PUT /repos/{owner}/{repo}/contents/{path}` |
+| Delete (single file commit) | `DELETE /repos/{owner}/{repo}/contents/{path}` |
+| Atomic batch upload/delete | GraphQL `createCommitOnBranch` |
 | Releases | `GET/POST /repos/{owner}/{repo}/releases` |
 | Release assets | Upload as raw binary stream |
 | Branches | `GET/POST /repos/{owner}/{repo}/branches` |

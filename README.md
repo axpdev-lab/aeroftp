@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. 23 protocols, 6 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. Multi-protocol, 6 integrated product modules, 47 languages, one app.
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 
 <!-- Row 2: App Features -->
 <p align="center">
-  <img src="https://img.shields.io/badge/protocols-23-green" alt="Protocols" />
+  <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
   <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/AI%20tools-47-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
@@ -69,7 +69,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation to 23 protocols and a complete file management platform through six integrated product modules - the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation into a broad multi-protocol file management platform through six integrated product modules - the **Aero Family**.
 
 ---
 
@@ -83,7 +83,7 @@ AeroFTP
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
 │   └── AeroAgent    - AI-powered assistant (47 tools, 19 providers)
-├── AeroFTP CLI  - Production command-line client (15 commands, 23 protocols, vault profiles)
+├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
 
@@ -93,7 +93,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Reliable sync with 11 protocols (SFTP, S3, Azure, WebDAV, Google Drive, Dropbox, OneDrive, Jottacloud, kDrive, Koofr, OpenDrive), plus 10 additional protocols with known limitations. Bidirectional sync, tray background sync, selective sync, file versioning, .aeroignore, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Reliable sync across the mature AeroCloud protocol set (including SFTP, S3, Azure, WebDAV, Google Drive, Dropbox, OneDrive, Jottacloud, kDrive, Koofr, and OpenDrive), plus additional provider integrations tracked in the protocol matrix. Bidirectional sync, tray background sync, selective sync, file versioning, .aeroignore, share links, and per-project local folders.
 
 | Protocol | Encryption | Features |
 |----------|-----------|----------|
@@ -119,9 +119,9 @@ Turn **any server** into a private personal cloud. Reliable sync with 11 protoco
 | **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, server clone, remote URL upload, trash management |
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, expiring share links |
-| **GitHub** | PAT / Device Flow | Repository as filesystem, atomic multi-file commits (GraphQL), release assets (2 GiB), branch workflow for protected branches, auto PR creation |
+| **GitHub** | PAT / Device Flow | Repository as filesystem, single-file commits plus atomic batch upload/delete flows, release assets (2 GiB), branch workflow for protected branches, auto PR creation |
 
-**Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) — 11 stable protocols, 8 beta, 2 alpha (see protocol maturity badges in setup wizard). 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display, share links, and Dropbox-style conflict naming.
+**Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) with maturity badges shown in the setup wizard. 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display where the provider exposes it, share links, and Dropbox-style conflict naming.
 
 **Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors - directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
 
@@ -218,7 +218,7 @@ The integrated development panel combining three tools in a tabbed interface.
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **47 provider-agnostic tools** that work across all 23 protocols. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
+An AI assistant with **47 provider-agnostic tools** that work across local files and AeroFTP's remote provider backends. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
 
 **Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
 
@@ -259,7 +259,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across all 23 protocols. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
 
 ---
 
@@ -267,7 +267,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-A production command-line interface sharing the same Rust backend as the GUI. 20 commands across 23 protocols with structured JSON output, glob pattern transfers, encrypted vault profiles, and a batch scripting engine.
+A production command-line interface sharing the same Rust backend as the GUI. It provides structured JSON output, glob pattern transfers, encrypted vault profiles, batch scripting, and agent discovery across the supported URL schemes and saved-profile providers.
 
 ```bash
 # Zero-credential connection via saved profiles
@@ -331,7 +331,7 @@ AEROFTP_MASTER_PASSWORD=$SECRET aeroftp-cli put --profile "Deploy" ./dist/ /www/
 
 As of March 2026, no other file transfer client, cloud storage CLI, or multi-protocol transfer tool provides native credential isolation for AI agents operating on remote servers. Existing tools in this category store credentials in plaintext files, reversible encodings, or OS keystores accessible to any same-user process. Credential proxy services that have emerged for AI workflows only cover HTTP APIs - they cannot handle FTP, SFTP, WebDAV, or OAuth token refresh cycles.
 
-AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary - the agent receives only operation results, never the authentication material that produced them. This works across all 23 protocols, including OAuth-authenticated cloud providers.
+AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary - the agent receives only operation results, never the authentication material that produced them. This works across direct-auth, token-based, and browser-authorized cloud providers.
 
 Read the full analysis: **[Credential Isolation for AI Agents](docs/CREDENTIAL-ISOLATION.md)** - architecture, protocol coverage, practical workflows, and implementation references.
 

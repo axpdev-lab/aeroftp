@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.5] - 2026-03-27
+
+### AeroAgent Hardening — APPENDIX-A Execution & Security Audit
+
+Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented end-to-end, validated by independent security audit. 19 findings identified, 17 resolved — including 4 HIGH severity.
+
+#### Added
+
+- **Prompt caching Anthropic**: `cache_control: { type: "ephemeral" }` on system prompt, cache creation/read token metrics propagated to UI with cost savings display
+- **Tool result caching**: Per-session in-memory cache with deterministic key (`tool + args + context + remote_server`), 3-tier TTL (3s/10s/20s), nuclear invalidation on mutations, lazy GC with 128-session LRU cap
+- **Structured transfer plans**: New `generate_transfer_plan` tool with JSON schema, `TransferPlanReview` UI component with per-operation checkboxes, `dependsOn` dependency graph with topological execution and failure propagation across levels
+- **CLI/GUI parity & MCP hardening**: Real tool-aware agent loop in CLI, MCP `tools/list` and `tools/call` derived from CLI dispatcher, recursive path validation, shared deny-list constants between CLI and MCP
+- **Agent memory SQLite**: New `agent_memory_db.rs` backend with structured schema, store/search/delete commands, token-scored retrieval, 90-day lazy decay (6h interval, persisted), 500 entry-per-project cap, backend prompt injection sanitization, deduplication
+- **Voice input local**: New `speech.rs` with whisper.cpp backend, on-demand model download with SHA-256 integrity verification, WAV mono 16kHz validation, local audio recording, 3-state UX (idle/listening/transcribing), non-blocking transcription
+
+#### Changed
+
+- **Tool pipeline failure propagation**: Pipeline now tracks failed tools and skips dependents with transitive propagation — no more cascading errors when a prerequisite fails
+- **Tool approval cache scoping**: `ToolApproval` and `BatchToolApproval` now forward `sessionId` for correct cache isolation
+- **Cache key includes remote server context**: Cache key disambiguated by active server connection, preventing cross-server result leakage
+- **Public documentation synchronized with validated behavior**: CLI, AeroAgent, GitHub integration, and credential-isolation docs now avoid stale command/protocol counts, clarify profile-backed provider support (including 4shared and Drime), document provider-dependent quota reporting, and align GitHub commit semantics with current REST + GraphQL behavior
+- **Appendix-C CLI closure documented with final FTP/FTPS outcome**: Added final closure dossier covering C1-C4 status, multi-provider audit conclusions, and the final FTP/FTPS alignment between GUI and CLI
+
+#### Fixed
+
+- **macOS frozen UI on launch**: Removed App Sandbox from `entitlements.plist` for direct distribution — without Apple Developer signature, sandbox blocks WebKit from loading frontend. Added missing JIT and library validation entitlements required for WebKit. Closes [#62](https://github.com/axpdev-lab/aeroftp/issues/62)
+- **CLI `shell_execute` meta-char bypass**: Added shell metacharacter blocking (pipe, semicolon, backtick, `$`, `&`, parens, braces, newlines) to CLI shell execution, closing trivial deny-list bypass via pipes or subshells
+- **CLI `shell_execute` working directory not validated**: Now validates working directory against deny-list before use — prevents operating in sensitive directories
+- **CLI `shell_execute` deny-list expanded**: Extended from 17 to 39 patterns (added sudo, crontab, systemctl, mount, fdisk, passwd, eval, shred, etc.)
+- **CLI local_trash/batch_rename/stat_batch path validation**: All three tools now validate each individual path, closing deny-list bypass via MCP
+- **MCP argument validation incomplete**: Added `output_path`, `path_a`, `path_b`, `project_path` to validated parameters, plus recursive validation of nested JSON structures
+- **Deny-list discrepancy CLI vs MCP**: Unified into shared constants
+- **Agent memory unlimited storage**: Capped at 500 entries per project with capacity enforcement before INSERT
+- **Agent memory prompt injection via CLI**: Backend sanitization applied before SQL INSERT, not just in frontend
+- **Whisper model download without integrity check**: SHA-256 pinning on model download, verified before atomic rename. Orphan temp file cleanup on all error paths
+- **Transfer plan stale cache**: Plans are always generated fresh (removed from cache whitelist)
+- **FTP CLI recursive/find/stat regressions closed**: `put -r` now pre-creates nested remote directories in parent-first order, FTP `find` uses real glob matching, and FTP `stat` no longer emits duplicated `entry.path` values from MLST/MLSD responses
+- **FTPS CLI security semantics aligned with GUI**: Removed automatic insecure retry after certificate verification failures; live validation on saved Aruba profile `aeroftp.app` now fails closed with `hostname mismatch` unless invalid/self-signed certificate acceptance is explicitly enabled
+
+#### Security (Independent Audit — 19 findings, 17 resolved)
+
+- Independent security audit: 4 HIGH, 7 MEDIUM, 8 LOW findings across 6 areas — all HIGH resolved
+- Post-audit hardening verified by second independent review pass
+- macOS entitlements restructured for safe direct distribution without Apple code signing
+- 8 security fixes across CLI/MCP path validation, shell execution, memory storage, and model integrity
+
 ## [3.1.4] - 2026-03-27
 
 ### Provider & Protocol Sprint (APPENDIX-B)
@@ -65,7 +111,7 @@ AeroCloud sprint hardening closure: 3 external audit findings resolved, VersionB
 
 ### AeroCloud Hardening — Production-Grade Sync Engine
 
-Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning, and .aeroignore support. Audited by 5 parallel Opus 4.6 agents — 10 findings identified and resolved.
+Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning, and .aeroignore support. Audited with 5 parallel independent reviewers — 10 findings identified and resolved.
 
 #### Added
 
@@ -97,7 +143,7 @@ Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening,
 
 #### Security
 
-- 10 audit findings identified by parallel Opus 4.6 agents (2 HIGH, 4 MEDIUM, 4 LOW), all resolved
+- 10 audit findings identified by parallel independent reviewers (2 HIGH, 4 MEDIUM, 4 LOW), all resolved
 - Path traversal protection in `restore_file_version` (validates archive path prefix + rejects `..`)
 - Token revocation detection prevents continued API calls with revoked credentials
 
@@ -129,7 +175,7 @@ Complete Zoho WorkDrive integration upgrade: all 22 MCP tools covered, native Zo
 
 ### GitHub Integration Hardening & Settings Overhaul
 
-Enterprise-grade security audit remediation (5 independent auditors: 4x Claude Opus 4.6 + GPT 5.4), GitHub provider performance upgrades, Settings panel modularization, and AeroCloud full configuration.
+Enterprise-grade security audit remediation (5 independent auditors), GitHub provider performance upgrades, Settings panel modularization, and AeroCloud full configuration.
 
 #### Added
 
@@ -502,10 +548,10 @@ AeroFTP enters GitHub. Browse repositories as filesystems, upload files that bec
 - **Path encoding fix**: GitHub Contents API URLs encode segments individually, not slashes
 - **Installation token permissions**: Override `push:false` bug in GitHub API for bot tokens
 
-#### Security (Dual 10-auditor review: Claude Opus 4.6 + GPT 5.4)
+#### Security (Dual 10-auditor review)
 
 - 83+ findings from 5 Claude auditors (security, performance, UX, Rust quality, OAuth)
-- 7 findings from GPT 5.4 full integration review (4 HIGH, 3 MEDIUM — all resolved)
+- 7 findings from full integration review (4 HIGH, 3 MEDIUM — all resolved)
 - Shell injection eliminated, symlink escape protection, token detection hardened
 - `.pem` private key read in Rust backend only — path crosses IPC, never key content
 - Committer identity conditional: bot for installation tokens, user identity for PAT/Device Flow
@@ -641,7 +687,7 @@ Critical fix for remote file timestamps displayed in UTC instead of local timezo
 
 ### Dual-Engine Security Audit Fix & Yandex Object Storage
 
-Full 8-area security audit by Claude Opus 4.6 (103 findings) + GPT-5.4 independent counter-audit (14 findings). All P0-P2 findings remediated. Yandex Object Storage added as S3 preset.
+Full 8-area security audit (103 findings) + independent counter-audit (14 findings). All P0-P2 findings remediated. Yandex Object Storage added as S3 preset.
 
 #### Added
 
@@ -780,7 +826,7 @@ Production-ready CLI with batch scripting engine, backend-agnostic AI architectu
 
 ### Cloud Provider Audit & Security Hardening
 
-Comprehensive security audit closure with 6 GPT-5.4 residual findings resolved, AeroCloud multi-protocol rebrand, and AeroVault crate extraction to crates.io.
+Comprehensive security audit closure with 6 residual findings resolved, AeroCloud multi-protocol rebrand, and AeroVault crate extraction to crates.io.
 
 #### Changed
 
@@ -802,7 +848,7 @@ Comprehensive security audit closure with 6 GPT-5.4 residual findings resolved, 
 
 #### Security
 
-- **GPT-5.4 residual audit closure**: 6 of 11 remaining partial findings resolved (A5-06, A3-03, A3-05, A7-07, A1-07 fixed; A8-01 risk-accepted with documentation). Score: 29 fixed → 34 fixed, 5 partial, 1 open
+- **Residual audit closure**: 6 of 11 remaining partial findings resolved (A5-06, A3-03, A3-05, A7-07, A1-07 fixed; A8-01 risk-accepted with documentation). Score: 29 fixed → 34 fixed, 5 partial, 1 open
 
 ---
 
@@ -869,7 +915,7 @@ Comprehensive cross-audit reaching grade A- with 45+ security fixes, updater int
 
 #### Security
 
-- **Cross-audit grade**: B+ → A- (Claude Opus 4.6 8-area audit + GPT-5.4 counter-audit, 45+ findings resolved)
+- **Cross-audit grade**: B+ → A- (8-area audit + independent counter-audit, 45+ findings resolved)
 - **39 audit fixes** across 8 security areas: trust boundaries, cryptographic primitives, credential lifecycle, input validation, error handling, dependency supply chain, configuration hardening, transport security
 - **Accepted risks**: CSP `script-src 'unsafe-inline'` (required by Monaco/xterm), CloudService architectural dedup (deferred to v2.9.0)
 
@@ -1267,7 +1313,7 @@ Fixed the long-standing issue where "Install and Restart" would close the app bu
 
 ### Dual-Engine Security Audit Remediation
 
-Comprehensive security hardening based on the most thorough audit in project history — 8 Claude Opus 4.6 specialist agents + GPT-5.3-Codex, identifying 148 unique findings. Post-remediation grade: **A-**.
+Comprehensive security hardening based on the most thorough audit in project history — 8 specialist auditors + independent counter-audit, identifying 148 unique findings. Post-remediation grade: **A-**.
 
 #### Fixed
 
@@ -1630,15 +1676,15 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 - **Box chunked upload**: Session signature changed from `data: &[u8]` to `local_path: &str` — reads chunks from file handle with per-chunk SHA-1
 - **Dropbox upload session**: Large files (>150MB) read chunks from file handle with Tokio `AsyncReadExt`
 - **Provider count**: 15 → 16 protocols (+ Zoho WorkDrive)
-- **Security audit**: 12-auditor 4-phase provider integration audit (Capabilities, Security GPT-5.3, Integration Claude Opus, Bugs Terminator Counter-Audit). Final grade: A-. All findings resolved
-- **Resource management audit**: 5-agent targeted analysis of memory/cache/IPC during massive transfers + GPT-5.3 cross-reference. 17 findings (4 P0, 7 P1, 6 P2), 8 fixed pre-release. See `docs/dev/RESOURCE-ANALYSIS-v2.4.0.md`
+- **Security audit**: 12-auditor 4-phase provider integration audit (capabilities, security, integration, counter-audit). Final grade: A-. All findings resolved
+- **Resource management audit**: 5-agent targeted analysis of memory/cache/IPC during massive transfers + independent cross-reference. 17 findings (4 P0, 7 P1, 6 P2), 8 fixed pre-release
 - **Frontend transfer state cleanup**: `completedTransferIds` and `detailedDeleteCompletedIds` Sets capped at 500 entries with FIFO eviction to prevent unbounded memory growth during sustained transfer sessions
 
 ## [2.3.0] - 2026-02-19
 
 ### Chat History SQLite Redesign
 
-AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FTS5 backend, matching the architecture of VS Code, Cursor, and OpenCode. Full-text search across all conversations, configurable retention with auto-cleanup at startup, dedicated bulk management, export/import sessions, and conversation branching — all validated by a 55-finding security audit from 5 independent reviewers (4x Claude Opus 4.6 + GPT-5.3 Codex).
+AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FTS5 backend, matching the architecture of VS Code, Cursor, and OpenCode. Full-text search across all conversations, configurable retention with auto-cleanup at startup, dedicated bulk management, export/import sessions, and conversation branching — all validated by a 55-finding security audit from 5 independent reviewers.
 
 #### Added
 
@@ -1670,7 +1716,7 @@ AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FT
 
 - **Chat persistence format**: `ai_history.json` flat file → `ai_chat.db` SQLite database with WAL journal mode, 4096-byte page size, and optimized pragmas (synchronous=NORMAL, journal_size_limit=6MB, mmap_size=128MB)
 - **Chat history privacy**: AppConfig directory created with Unix 0700 permissions, SQLite database file with 0600 — matching industry standard (Claude Code uses 0600 per-session JSONL files)
-- **Security audit scope**: 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) covering security, correctness, performance, frontend UX, and severe-grade categories
+- **Security audit scope**: 55+ findings resolved from 5 independent auditors covering security, correctness, performance, frontend UX, and severe-grade categories
 
 ## [2.2.5] - 2026-02-19
 
@@ -1686,7 +1732,7 @@ AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FT
 
 ### Provider Marketplace, 2FA Vault, Remote Vault, CLI & Security Hardening
 
-AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplace modal, adds TOTP two-factor authentication for vault unlock, enables opening AeroVault containers on remote servers, introduces the `aeroftp-cli` command-line binary, and hardens security across 13 findings from a 5-auditor review (4x Claude Opus + GPT-5.3 Codex).
+AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplace modal, adds TOTP two-factor authentication for vault unlock, enables opening AeroVault containers on remote servers, introduces the `aeroftp-cli` command-line binary, and hardens security across 13 findings from a 5-auditor review.
 
 #### Added
 
@@ -1721,7 +1767,7 @@ AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplac
 - **AeroAgent AI providers**: 10 → 15 (added Mistral, Groq, Perplexity, Cohere, Together AI)
 - **Model registry**: 14 new model entries across 5 providers with context windows, pricing, and capability metadata
 - **AI Settings UI**: "Add:" provider buttons replaced by "Browse AI Providers" button opening the Marketplace modal
-- **Security audit**: 5 independent reviewers (4x Claude Opus 4.6 + GPT-5.3 Codex), 13 findings fixed across 8 files
+- **Security audit**: 5 independent reviewers, 13 findings fixed across 8 files
 
 ## [2.2.3] - 2026-02-17
 
@@ -1847,7 +1893,7 @@ Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based
 
 #### Security
 
-- **6-auditor cross-reference**: 4 Claude Opus 4.6 agents + GPT-5.3 Codex + GLM-5 independently audited the entire AeroSync codebase. 31 findings confirmed and fixed, grade improved from B to A-
+- **6-auditor cross-reference**: 6 independent auditors reviewed the entire AeroSync codebase. 31 findings confirmed and fixed, grade improved from B to A-
 - **Defense-in-depth pattern**: Critical fixes (CF-001, CF-003, CF-004) apply dual-layer protection — both the source constant and runtime safety nets
 
 ---
@@ -2372,7 +2418,7 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 
 ### AeroAgent Super Powers & Unified Keystore
 
-17 new features spanning autonomous AI agent capabilities, RAG intelligence, extensibility, encrypted vault directories, and enterprise-grade credential security. AeroAgent gains multi-step tool execution, Ollama auto-detection, conversation export, system prompt customization, Monaco/Terminal integration, intelligent context management, workspace RAG indexing, and a custom plugin system. AeroVault v2 adds full directory support with hierarchical navigation and recursive delete. Security is elevated with a unified encrypted keystore, vault backup/restore, a guided migration wizard, and hardened AI/HTTP/URL handling based on dual audit (Claude Opus 4.6 + GPT-5.2-Codex). AeroPlayer completely rewritten with HTML5 Audio + Web Audio API, 10-band EQ, beat detection, and 14 visualizer modes including 6 WebGL GPU shaders.
+17 new features spanning autonomous AI agent capabilities, RAG intelligence, extensibility, encrypted vault directories, and enterprise-grade credential security. AeroAgent gains multi-step tool execution, Ollama auto-detection, conversation export, system prompt customization, Monaco/Terminal integration, intelligent context management, workspace RAG indexing, and a custom plugin system. AeroVault v2 adds full directory support with hierarchical navigation and recursive delete. Security is elevated with a unified encrypted keystore, vault backup/restore, a guided migration wizard, and hardened AI/HTTP/URL handling based on dual independent audit. AeroPlayer completely rewritten with HTML5 Audio + Web Audio API, 10-band EQ, beat detection, and 14 visualizer modes including 6 WebGL GPU shaders.
 
 #### Added
 
@@ -2435,7 +2481,7 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Credential storage hardened**: All sensitive data (server passwords, API keys, OAuth tokens) now encrypted at rest in vault.db instead of plaintext localStorage
 - **Keystore export encryption**: Backup files use independent Argon2id derivation (not the vault master key) so backups remain secure even if vault password is compromised
 - **Legacy data cleanup**: Migration wizard securely erases localStorage entries after successful vault migration, leaving no plaintext credential residue
-- **Dual security audit remediation**: Claude Opus 4.6 audit (B+ grade, 11 findings) + GPT-5.2-Codex audit (7 findings) — all resolved:
+- **Dual security audit remediation**: Primary audit (B+ grade, 11 findings) + independent counter-audit (7 findings) — all resolved:
   - AI settings migrated from localStorage to encrypted vault (AA-002)
   - OpenAI API header unwrap replaced with safe error propagation (no panic on invalid keys)
   - HTTP status check before JSON parse for all AI provider responses (clear error messages)

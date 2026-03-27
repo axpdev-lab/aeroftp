@@ -1,6 +1,6 @@
 # Credential Isolation for AI Agents
 
-> How AeroFTP enables AI coding agents to operate on remote servers across 23 protocols without exposing credentials.
+> How AeroFTP enables AI coding agents to operate on remote servers and cloud providers without exposing credentials.
 
 ---
 
@@ -15,7 +15,7 @@ However, every such operation requires authentication. The agent needs credentia
 - The credentials are stored in a plaintext configuration file accessible to the agent's process
 - The agent is given a URL containing embedded credentials, visible in shell history and process listings
 
-In each case, the authentication material is exposed to the agent. The agent may log it, include it in context sent to the AI model, persist it in conversation history, or inadvertently surface it in error messages. This is not a theoretical concern — it is the default behavior of every file transfer tool available today.
+In each case, the authentication material is exposed to the agent. The agent may log it, include it in context sent to the AI model, persist it in conversation history, or inadvertently surface it in error messages. This is not a theoretical concern — it is the common behavior of file transfer tools that rely on plaintext config files, environment variables, or directly exposed command-line credentials.
 
 ---
 
@@ -93,11 +93,11 @@ This means a developer can instruct AeroAgent: *"Upload the build folder to the 
 
 ### Protocol Coverage
 
-The credential isolation architecture is not limited to a single protocol or service type. It works across all 23 protocols supported by AeroFTP:
+The credential isolation architecture is not limited to a single protocol or service type. It works across AeroFTP's direct-auth, token-based, and browser-authorized providers:
 
-**Direct authentication**: FTP, FTPS, SFTP, WebDAV/WebDAVS, S3 (AWS, Backblaze, Wasabi, Cloudflare R2, MinIO, and other compatible services), GitHub (repository filesystem, releases, branch workflow), Azure Blob Storage, MEGA, Filen, Internxt Drive, kDrive, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk
+**Direct authentication**: FTP, FTPS, SFTP, WebDAV/WebDAVS, S3-compatible object storage, GitHub (repository filesystem, releases, branch workflow), Azure Blob Storage, MEGA, Filen, Internxt Drive, kDrive, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk
 
-**OAuth-authenticated providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive (authorize once in the GUI; the CLI reuses the stored tokens with automatic refresh)
+**OAuth and profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime (authorize or configure once in the GUI; the CLI reuses the stored credentials or tokens with automatic refresh where supported)
 
 This breadth is significant because credential proxy services that have emerged for AI agent workflows only support HTTP-based APIs. They cannot authenticate to an FTP server, negotiate an SSH handshake, or manage an OAuth token refresh cycle for a cloud storage provider. AeroFTP handles all of these natively.
 

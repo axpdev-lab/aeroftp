@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { FileText, Copy, Check, Download, WrapText, Eye, Code2, Smartphone, Tablet, Monitor, ZoomIn, ZoomOut, ExternalLink, Pipette, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
 import { ViewerBaseProps } from '../types';
 import { MarkdownRenderer } from '../../DevTools/MarkdownRenderer';
 import Prism from 'prismjs';
@@ -252,7 +253,6 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     // Open in system browser
     const openInBrowser = async () => {
         try {
-            const { open } = await import('@tauri-apps/plugin-shell');
             await open(`file://${file.path}`);
         } catch {
             // Fallback: write temp and open

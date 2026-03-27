@@ -46,8 +46,18 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
     }
 
     const n = toolCalls.length;
+    const indexById = new Map(toolCalls.map((toolCall, index) => [toolCall.id, index]));
     // dependency[i] = set of indices that tool i depends on
     const deps: Set<number>[] = Array.from({ length: n }, () => new Set<number>());
+
+    for (let i = 0; i < n; i++) {
+        for (const dependencyId of toolCalls[i].dependsOn || []) {
+            const dependencyIndex = indexById.get(dependencyId);
+            if (dependencyIndex !== undefined && dependencyIndex !== i) {
+                deps[i].add(dependencyIndex);
+            }
+        }
+    }
 
     // Build dependency graph
     for (let i = 0; i < n; i++) {
@@ -112,14 +122,36 @@ export async function executePipeline(
     executor: (tc: AgentToolCall) => Promise<string | null>,
 ): Promise<string[]> {
     const allResults: string[] = [];
+    const failedToolIds = new Map<string, string>();
 
     for (const level of levels) {
-        const settled = await Promise.allSettled(level.tools.map(tc => executor(tc)));
-        for (const result of settled) {
+        const runnableTools: AgentToolCall[] = [];
+
+        for (const toolCall of level.tools) {
+            const blockedBy = (toolCall.dependsOn || []).filter(dependencyId => failedToolIds.has(dependencyId));
+            if (blockedBy.length > 0) {
+                const reason = `Skipped ${toolCall.toolName}: dependency failed (${blockedBy.join(', ')})`;
+                failedToolIds.set(toolCall.id, reason);
+                allResults.push(reason);
+                continue;
+            }
+
+            runnableTools.push(toolCall);
+        }
+
+        const settled = await Promise.allSettled(runnableTools.map(tc => executor(tc)));
+        settled.forEach((result, index) => {
+            const toolCall = runnableTools[index];
             if (result.status === 'fulfilled' && result.value !== null) {
                 allResults.push(result.value);
+                return;
             }
-        }
+
+            const reason = result.status === 'rejected'
+                ? String(result.reason)
+                : `Tool failed without result: ${toolCall.toolName}`;
+            failedToolIds.set(toolCall.id, reason);
+        });
     }
 
     return allResults;

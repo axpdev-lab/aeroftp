@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.5" date="2026-03-27">
+      <description>
+        <p>AeroAgent hardening: prompt caching, tool result caching, structured transfer plans, CLI/MCP parity, SQLite agent memory, local voice input via whisper.cpp. Independent security audit (19 findings, 17 resolved). CLI evolution: 30 subcommands, parallel transfers, resume, config.toml, aliases, MCP resources, FTP/FTPS certificate hardening. macOS entitlements fix for frozen UI on launch.</p>
+      </description>
+    </release>
     <release version="3.1.4" date="2026-03-27">
       <description>
         <p>Provider sprint: S3 enterprise features (storage class, SSE, object tagging, Glacier restore), Azure blob tier management and soft-delete recovery, FileLu v2 API migration (path-based), kDrive trash manager, Hetzner Storage Box preset, FTP hash/checksum commands, ProvidersDialog enterprise column. AeroCloud closure: VersionBrowser browse-all mode, path traversal hardening, dynamic checksum comparison. FileLu promoted to stable (12/23 protocols). 6 external audit findings resolved.</p>

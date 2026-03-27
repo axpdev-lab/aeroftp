@@ -1,18 +1,17 @@
 # AeroAgent — AI Assistant Documentation
 
-**Version**: 2.9.2
-**Date**: 2026-03-10
-**Tool count**: 47 built-in + extensible via plugins
+**Status**: Public architecture overview
+**Tool catalog**: Built-in tool suite + extensible via plugins
 
 ---
 
 ## Overview
 
-AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage files, edit code, search content, interact with remote servers, and automate workflows — all through natural language conversation. It supports 19 AI providers and executes operations across 20 file transfer protocols.
+AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage files, edit code, search content, interact with remote servers, and automate workflows — all through natural language conversation. It supports 19 AI providers and executes operations across local files plus the AeroFTP remote provider backends.
 
 ### Key Capabilities
 
-- **47 provider-agnostic tools** spanning file management, code editing, archives, sync, and system operations
+- **Built-in provider-agnostic tools** spanning file management, code editing, archives, sync, and system operations
 - **19 AI providers**: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21, Cerebras, SambaNova, Fireworks AI, Custom
 - **Multi-step autonomous execution** with DAG-based parallel pipeline
 - **3-level safety system**: safe (auto-execute), medium (confirm), high (explicit approval)
@@ -42,12 +41,12 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 │                        │                             │
 │  ┌─────────────────────▼───────────────────────────┐ │
 │  │              Tool Execution Engine               │ │
-│  │  47 tools · validation · path security · retry   │ │
+│  │  tool catalog · validation · path security · retry │ │
 │  └─────────────────────┬───────────────────────────┘ │
 │                        │                             │
 │  ┌─────────────────────▼───────────────────────────┐ │
 │  │            Shared Rust Backend                   │ │
-│  │  StorageProvider (20 protocols) · AeroVault      │ │
+│  │  StorageProvider backends · AeroVault            │ │
 │  │  context_intelligence · shell_execute            │ │
 │  └─────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────┘
@@ -59,7 +58,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | ----- | ------- |
 | `EventSink` | Abstract event emission (Tauri `app.emit()` vs CLI stdout/stderr) |
 | `CredentialProvider` | Vault-based credential access without exposing passwords |
-| `RemoteBackend` | Protocol-agnostic remote operations (20 protocols) |
+| `RemoteBackend` | Protocol-agnostic remote operations over the AeroFTP provider backends |
 
 ---
 
@@ -379,11 +378,11 @@ Composite tool macros allow chaining multiple tools into reusable workflows:
 AeroAgent tools are available in the AeroFTP CLI via the `ai_core/` trait abstraction:
 
 ```bash
-# Interactive agent mode (planned)
-aeroftp-cli --orchestrate
+# Orchestration mode
+aeroftp-cli agent --orchestrate
 
-# MCP server mode (planned)
-aeroftp-cli --mcp
+# MCP server mode
+aeroftp-cli agent --mcp
 ```
 
 ### Orchestration Protocol
@@ -396,12 +395,12 @@ AeroAgent's architecture maps naturally to the [Model Context Protocol](https://
 
 | MCP Primitive | AeroAgent Equivalent |
 | ------------- | -------------------- |
-| Tools | 47 built-in tools with JSON Schema |
+| Tools | Built-in tools with JSON Schema |
 | Resources | RAG index, vault peek, server profiles |
 | Prompts | Macro system + prompt template library |
 | Sampling | Multi-step execution loop |
 
-MCP server mode will expose all 47 tools as standard MCP endpoints, enabling integration with Claude Desktop, ChatGPT, Cursor, and other MCP-compatible clients.
+MCP server mode exposes the AeroAgent tool catalog as standard MCP endpoints, enabling integration with Claude Desktop, ChatGPT, Cursor, and other MCP-compatible clients.
 
 ---
 

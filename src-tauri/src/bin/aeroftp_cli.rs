@@ -8,6 +8,9 @@
 //!   aeroftp mkdir <url> <path>                Create directory
 //!   aeroftp rm <url> <path> [-rf]             Delete file/directory
 //!   aeroftp mv <url> <from> <to>              Rename/move
+//!   aeroftp cp <url> <from> <to>              Server-side copy when supported
+//!   aeroftp link <url> <path>                 Create a share link when supported
+//!   aeroftp edit <url> <path> <find> <replace> Replace text in a remote UTF-8 file
 //!   aeroftp cat <url> <path>                  Print to stdout
 //!   aeroftp head <url> <path> [-n 20]         Print first N lines
 //!   aeroftp tail <url> <path> [-n 20]         Print last N lines
@@ -22,6 +25,7 @@
 //!   aeroftp dedupe <url> [path]               Find duplicate files
 //!   aeroftp sync <url> <local> <remote>       Sync directories
 //!   aeroftp batch <file>                      Execute .aeroftp script
+//!   aeroftp rcat <url> <remote>               Upload stdin directly to remote file
 //!
 //! URL format: protocol://user:pass@host:port/path
 //! Add --json for machine-readable output.
@@ -46,14 +50,16 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
 };
+use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{self, IsTerminal, Write as IoWrite};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{self, IsTerminal, Read, Write as IoWrite};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use tempfile::NamedTempFile;
 
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
@@ -62,8 +68,8 @@ use std::time::Instant;
     name = "aeroftp",
     about = "AeroFTP CLI — Multi-protocol file transfer client",
     version,
-    long_about = "Supports 22 protocols: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk + OAuth (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho).\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-info --json' for structured capability discovery.",
-    after_help = "EXAMPLES (profiles — no credentials needed):\n  aeroftp profiles                                    List saved servers\n  aeroftp ls --profile \"My Server\" /var/www/ -l        List files\n  aeroftp put --profile \"Production\" ./app.js /www/    Upload file\n  aeroftp get --profile \"NAS\" /backups/db.sql ./       Download file\n  aeroftp sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp agent-info --json                            AI agent discovery\n\nEXAMPLES (URL mode):\n  aeroftp connect sftp://user@myserver.com\n  aeroftp ls sftp://user@myserver.com /var/www/ -l\n  aeroftp get sftp://user@host \"/data/*.csv\"\n  aeroftp cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
+    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-info --json' for structured capability discovery.",
+    after_help = "EXAMPLES (profiles — no credentials needed):\n  aeroftp-cli profiles                                    List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l        List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/    Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./       Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-info --json                            AI agent discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
 )]
 struct Cli {
     /// Output format
@@ -141,6 +147,14 @@ struct Cli {
     /// Bandwidth schedule (e.g., "08:00,512k 12:00,10M 18:00,off")
     #[arg(long, global = true)]
     bwlimit: Option<String>,
+
+    /// Number of parallel transfer workers (default: 4, max: 32)
+    #[arg(long, global = true, default_value_t = 4)]
+    parallel: usize,
+
+    /// Resume interrupted transfers using partial files or remote offsets when supported
+    #[arg(long, global = true)]
+    partial: bool,
 
     // ── Filter flags (apply to ls, get, put, sync, find, rm) ──
 
@@ -240,6 +254,7 @@ enum Commands {
         #[arg(default_value = "_")]
         url: String,
         /// Remote file path (supports glob patterns like "*.csv")
+        #[arg(default_value = "")]
         remote: String,
         /// Local destination (default: current filename)
         local: Option<String>,
@@ -253,6 +268,7 @@ enum Commands {
         #[arg(default_value = "_")]
         url: String,
         /// Local file path (supports glob patterns like "*.csv")
+        #[arg(default_value = "")]
         local: String,
         /// Remote destination path
         remote: Option<String>,
@@ -295,6 +311,45 @@ enum Commands {
         /// Destination path
         #[arg(default_value = "")]
         to: String,
+    },
+    /// Copy a remote file on the server side when supported
+    Cp {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Source path
+        #[arg(default_value = "")]
+        from: String,
+        /// Destination path
+        #[arg(default_value = "")]
+        to: String,
+    },
+    /// Create a share link for a remote file when supported
+    Link {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote path
+        #[arg(default_value = "")]
+        path: String,
+    },
+    /// Find and replace text in a remote UTF-8 file
+    Edit {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Exact text to find
+        #[arg(default_value = "")]
+        find: String,
+        /// Replacement text
+        #[arg(default_value = "")]
+        replace: String,
+        /// Replace only the first occurrence
+        #[arg(long)]
+        first: bool,
     },
     /// Print remote file to stdout (for piping)
     Cat {
@@ -475,6 +530,20 @@ enum Commands {
         /// Path to .aeroftp script file
         file: String,
     },
+    /// Upload stdin directly to a remote file
+    Rcat {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote destination path
+        #[arg(default_value = "")]
+        remote: String,
+    },
+    /// Manage CLI aliases stored in config.toml
+    Alias {
+        #[command(subcommand)]
+        command: AliasCommands,
+    },
     /// AeroAgent — AI-powered interactive agent with tool execution
     Agent {
         /// One-shot message (run and exit)
@@ -539,6 +608,51 @@ enum Commands {
     Profiles,
     /// Show CLI capabilities for AI agent discovery (always JSON)
     AgentInfo,
+}
+
+#[derive(Subcommand)]
+enum AliasCommands {
+    /// Set or update an alias
+    Set {
+        /// Alias name
+        name: String,
+        /// Command tokens that the alias expands to
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Remove an alias
+    Remove {
+        /// Alias name
+        name: String,
+    },
+    /// Show one alias
+    Show {
+        /// Alias name
+        name: String,
+    },
+    /// List all aliases
+    List,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct CliConfigFile {
+    #[serde(default)]
+    defaults: CliDefaults,
+    #[serde(default)]
+    aliases: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct CliDefaults {
+    format: Option<String>,
+    json: Option<bool>,
+    profile: Option<String>,
+    parallel: Option<usize>,
+    partial: Option<bool>,
+    quiet: Option<bool>,
+    verbose: Option<u8>,
+    limit_rate: Option<String>,
+    bwlimit: Option<String>,
 }
 
 // ── Serializable Output Types ──────────────────────────────────────
@@ -659,6 +773,187 @@ struct CliCheckEntry {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
+
+fn cli_config_path() -> Result<PathBuf, String> {
+    let base = dirs::config_dir().ok_or_else(|| "Cannot resolve config directory".to_string())?;
+    Ok(base.join("aeroftp").join("config.toml"))
+}
+
+fn load_cli_config() -> Result<CliConfigFile, String> {
+    let path = cli_config_path()?;
+    if !path.exists() {
+        return Ok(CliConfigFile::default());
+    }
+
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Cannot read config '{}': {}", path.display(), e))?;
+    toml::from_str(&raw)
+        .map_err(|e| format!("Invalid config '{}': {}", path.display(), e))
+}
+
+fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
+    let path = cli_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Cannot create config directory '{}': {}", parent.display(), e))?;
+    }
+
+    let content = toml::to_string_pretty(config)
+        .map_err(|e| format!("Cannot serialize config: {}", e))?;
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Cannot write config '{}': {}", path.display(), e))?;
+    Ok(path)
+}
+
+fn arg_present(args: &[String], long: &str, short: Option<&str>) -> bool {
+    args.iter().skip(1).any(|arg| {
+        arg == long
+            || short.is_some_and(|short_flag| arg == short_flag)
+            || arg.starts_with(&format!("{}=", long))
+            || short.is_some_and(|short_flag| arg.starts_with(&format!("{}=", short_flag)))
+    })
+}
+
+fn verbose_present(args: &[String]) -> bool {
+    args.iter().skip(1).any(|arg| {
+        arg == "--verbose"
+            || (arg.starts_with('-')
+                && arg.len() > 1
+                && arg.chars().skip(1).all(|ch| ch == 'v'))
+    })
+}
+
+fn apply_config_defaults(args: &[String], config: &CliConfigFile) -> Vec<String> {
+    let mut merged = vec![args[0].clone()];
+
+    if let Some(profile) = &config.defaults.profile {
+        if !arg_present(args, "--profile", Some("-P")) {
+            merged.push("--profile".to_string());
+            merged.push(profile.clone());
+        }
+    }
+    if let Some(format) = &config.defaults.format {
+        if !arg_present(args, "--format", None) && !arg_present(args, "--json", None) {
+            merged.push("--format".to_string());
+            merged.push(format.clone());
+        }
+    }
+    if config.defaults.json.unwrap_or(false) && !arg_present(args, "--json", None) && !arg_present(args, "--format", None) {
+        merged.push("--json".to_string());
+    }
+    if let Some(parallel) = config.defaults.parallel {
+        if !arg_present(args, "--parallel", None) {
+            merged.push("--parallel".to_string());
+            merged.push(parallel.to_string());
+        }
+    }
+    if config.defaults.partial.unwrap_or(false) && !arg_present(args, "--partial", None) {
+        merged.push("--partial".to_string());
+    }
+    if config.defaults.quiet.unwrap_or(false) && !arg_present(args, "--quiet", Some("-q")) {
+        merged.push("--quiet".to_string());
+    }
+    if let Some(verbose) = config.defaults.verbose {
+        if verbose > 0 && !verbose_present(args) {
+            merged.push(format!("-{}", "v".repeat(verbose.min(3) as usize)));
+        }
+    }
+    if let Some(limit_rate) = &config.defaults.limit_rate {
+        if !arg_present(args, "--limit-rate", None) {
+            merged.push("--limit-rate".to_string());
+            merged.push(limit_rate.clone());
+        }
+    }
+    if let Some(bwlimit) = &config.defaults.bwlimit {
+        if !arg_present(args, "--bwlimit", None) {
+            merged.push("--bwlimit".to_string());
+            merged.push(bwlimit.clone());
+        }
+    }
+
+    merged.extend(args.iter().skip(1).cloned());
+    merged
+}
+
+fn first_command_index(args: &[String]) -> Option<usize> {
+    let mut idx = 1;
+    while idx < args.len() {
+        let arg = &args[idx];
+        if arg == "--" {
+            return (idx + 1 < args.len()).then_some(idx + 1);
+        }
+        if !arg.starts_with('-') || arg == "-" {
+            return Some(idx);
+        }
+
+        let takes_value = matches!(
+            arg.as_str(),
+            "--format"
+                | "--key"
+                | "--key-passphrase"
+                | "--bucket"
+                | "--region"
+                | "--container"
+                | "--token"
+                | "--tls"
+                | "--two-factor"
+                | "--profile"
+                | "-P"
+                | "--master-password"
+                | "--limit-rate"
+                | "--bwlimit"
+                | "--include"
+                | "--exclude-global"
+                | "--include-from"
+                | "--exclude-from"
+                | "--min-size"
+                | "--max-size"
+                | "--min-age"
+                | "--max-age"
+                | "--parallel"
+        );
+
+        idx += 1;
+        if takes_value && !arg.contains('=') && idx < args.len() {
+            idx += 1;
+        }
+    }
+    None
+}
+
+fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>, String> {
+    let mut expanded = args.to_vec();
+    let mut seen = std::collections::HashSet::new();
+
+    for _ in 0..8 {
+        let Some(cmd_idx) = first_command_index(&expanded) else {
+            return Ok(expanded);
+        };
+        let command = expanded[cmd_idx].clone();
+        if command == "alias" {
+            return Ok(expanded);
+        }
+        let Some(alias_tokens) = config.aliases.get(&command) else {
+            return Ok(expanded);
+        };
+        if !seen.insert(command.clone()) {
+            return Err(format!("Alias cycle detected for '{}'", command));
+        }
+
+        let mut next = expanded[..cmd_idx].to_vec();
+        next.extend(alias_tokens.iter().cloned());
+        next.extend(expanded.iter().skip(cmd_idx + 1).cloned());
+        expanded = next;
+    }
+
+    Err("Alias expansion exceeded maximum depth (8)".to_string())
+}
+
+fn prepare_cli_args(args: Vec<String>) -> Result<Vec<String>, String> {
+    let config = load_cli_config()?;
+    let with_defaults = apply_config_defaults(&args, &config);
+    expand_aliases(&with_defaults, &config)
+}
 
 fn print_json<T: Serialize>(value: &T) {
     match serde_json::to_string_pretty(value) {
@@ -849,6 +1144,19 @@ fn use_color() -> bool {
     }
     // Default: color if stderr is a terminal
     std::io::stderr().is_terminal()
+}
+
+const CLI_DENIED_SYSTEM_PREFIXES: &[&str] = &[
+    "/proc", "/sys", "/dev", "/boot", "/root",
+    "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers",
+];
+
+const CLI_DENIED_HOME_RELATIVE_PREFIXES: &[&str] = &[
+    ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config/gcloud", ".config/aeroftp", ".vault-token",
+];
+
+fn path_matches_prefix(path: &str, prefix: &str) -> bool {
+    path == prefix || path.starts_with(&format!("{}/", prefix))
 }
 
 // ── Filter System ─────────────────────────────────────────────────
@@ -1105,6 +1413,120 @@ fn create_spinner(msg: &str) -> ProgressBar {
     pb.set_message(msg.to_string());
     pb.enable_steady_tick(std::time::Duration::from_millis(80));
     pb
+}
+
+fn effective_parallel_workers(cli: &Cli) -> usize {
+    cli.parallel.clamp(1, 32)
+}
+
+fn create_overall_progress_bar(total_files: usize, total_bytes: u64) -> ProgressBar {
+    let pb = ProgressBar::new(total_bytes);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("Overall [{bar:30.green/dim}] {bytes}/{total_bytes} {bytes_per_sec} ETA {eta} ({pos}/{len} bytes)")
+            .unwrap()
+            .progress_chars("━╸─"),
+    );
+    pb.set_message(format!("{} files", total_files));
+    pb
+}
+
+fn make_aggregate_progress_cb(
+    aggregate: Arc<AtomicU64>,
+    overall_pb: Option<ProgressBar>,
+) -> Box<dyn Fn(u64, u64) + Send> {
+    let last_seen = Arc::new(AtomicU64::new(0));
+    Box::new(move |transferred, _total| {
+        let previous = last_seen.swap(transferred, Ordering::Relaxed);
+        let delta = transferred.saturating_sub(previous);
+        if delta == 0 {
+            return;
+        }
+        let current = aggregate.fetch_add(delta, Ordering::Relaxed) + delta;
+        if let Some(ref pb) = overall_pb {
+            pb.set_position(current);
+        }
+    })
+}
+
+async fn download_with_resume(
+    provider: &mut dyn StorageProvider,
+    remote_path: &str,
+    local_path: &str,
+    cli: &Cli,
+    progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    if cli.partial && provider.supports_resume() {
+        let offset = std::fs::metadata(local_path).map(|meta| meta.len()).unwrap_or(0);
+        if offset > 0 {
+            return provider.resume_download(remote_path, local_path, offset, progress_cb).await;
+        }
+    }
+    provider.download(remote_path, local_path, progress_cb).await
+}
+
+async fn upload_with_resume(
+    provider: &mut dyn StorageProvider,
+    local_path: &str,
+    remote_path: &str,
+    cli: &Cli,
+    progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    if cli.partial && provider.supports_resume() {
+        let local_size = std::fs::metadata(local_path).map(|meta| meta.len()).unwrap_or(0);
+        if let Ok(remote_size) = provider.size(remote_path).await {
+            if remote_size > 0 && remote_size < local_size {
+                return provider.resume_upload(local_path, remote_path, remote_size, progress_cb).await;
+            }
+        }
+    }
+    provider.upload(local_path, remote_path, progress_cb).await
+}
+
+async fn download_transfer_task(
+    url: &str,
+    remote_path: String,
+    local_path: String,
+    cli: &Cli,
+    format: OutputFormat,
+    aggregate: Option<Arc<AtomicU64>>,
+    overall_pb: Option<ProgressBar>,
+) -> Result<(), String> {
+    let (mut provider, _) = create_and_connect(url, cli, format)
+        .await
+        .map_err(|code| format!("connection failed with exit code {}", code))?;
+
+    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
+    let result = download_with_resume(&mut *provider, &remote_path, &local_path, cli, progress_cb)
+        .await
+        .map_err(|e| e.to_string());
+    let _ = provider.disconnect().await;
+    result
+}
+
+async fn upload_transfer_task(
+    url: &str,
+    local_path: String,
+    remote_path: String,
+    cli: &Cli,
+    format: OutputFormat,
+    aggregate: Option<Arc<AtomicU64>>,
+    overall_pb: Option<ProgressBar>,
+) -> Result<(), String> {
+    let (mut provider, _) = create_and_connect(url, cli, format)
+        .await
+        .map_err(|code| format!("connection failed with exit code {}", code))?;
+
+    if let Some(parent) = Path::new(&remote_path).parent() {
+        let _ = provider.mkdir(&parent.to_string_lossy()).await;
+    }
+
+    let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
+    let result = upload_with_resume(&mut *provider, &local_path, &remote_path, cli, progress_cb)
+        .await
+        .map_err(|e| e.to_string());
+    let _ = provider.disconnect().await;
+    result
 }
 
 // ── URL Parsing → ProviderConfig ───────────────────────────────────
@@ -1494,62 +1916,91 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
             };
             println!("  {:<4} {:<30} {:<8} {:<35} {}", i + 1, name, proto.to_uppercase(), host_port, path);
         }
-        eprintln!("\n{} profile(s). Use: aeroftp ls --profile \"Name\" [path]", profiles.len());
+        eprintln!("\n{} profile(s). Use: aeroftp-cli ls --profile \"Name\" [path]", profiles.len());
     }
 
     0
 }
 
+fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
+    let store = open_vault(cli)?;
+    let profiles_json = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read saved profiles: {}", e))?;
+    let profiles = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
+        .map_err(|e| format!("Failed to parse saved profiles: {}", e))?;
+
+    Ok(profiles
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+            })
+        })
+        .collect())
+}
+
 fn cmd_agent_info(cli: &Cli) -> i32 {
-    let profiles = if let Ok(store) = open_vault(cli) {
-        if let Ok(json) = store.get("config_server_profiles") {
-            if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
-                profiles.iter().map(|p| {
-                    serde_json::json!({
-                        "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                        "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
-                        "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-                        "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
-                    })
-                }).collect::<Vec<_>>()
-            } else { vec![] }
-        } else { vec![] }
-    } else { vec![] };
+    let (profiles, profiles_error) = match safe_vault_profiles(cli) {
+        Ok(profiles) => (profiles, None),
+        Err(error) => (vec![], Some(error)),
+    };
+    let profiles = profiles.into_iter()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+            })
+        })
+        .collect::<Vec<_>>();
 
     let info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "description": "AeroFTP CLI — multi-protocol file transfer with encrypted vault profiles",
-        "usage": "aeroftp <command> --profile \"Server Name\" [args]",
+        "usage": "aeroftp-cli <command> --profile \"Server Name\" [args]",
         "credential_model": "Use --profile to connect via encrypted vault. Never pass passwords directly.",
         "profiles": {
+            "status": if profiles_error.is_some() { "unavailable" } else { "ok" },
             "count": profiles.len(),
-            "list_command": "aeroftp profiles --json",
+            "list_command": "aeroftp-cli profiles --json",
             "servers": profiles,
+            "error": profiles_error,
         },
         "commands": {
             "safe": [
-                {"name": "ls", "syntax": "aeroftp ls --profile NAME /path/ [-l] [--json]", "description": "List directory"},
-                {"name": "cat", "syntax": "aeroftp cat --profile NAME /path/file", "description": "Print file to stdout"},
-                {"name": "stat", "syntax": "aeroftp stat --profile NAME /path/ [--json]", "description": "File metadata"},
-                {"name": "find", "syntax": "aeroftp find --profile NAME /path/ \"*.ext\" [--json]", "description": "Search files"},
-                {"name": "tree", "syntax": "aeroftp tree --profile NAME /path/ [-d N] [--json]", "description": "Directory tree"},
-                {"name": "df", "syntax": "aeroftp df --profile NAME [--json]", "description": "Storage quota"},
-                {"name": "connect", "syntax": "aeroftp connect --profile NAME", "description": "Test connection"},
-                {"name": "profiles", "syntax": "aeroftp profiles [--json]", "description": "List saved servers"},
-                {"name": "get", "syntax": "aeroftp get --profile NAME /remote/file [./local]", "description": "Download file"},
-                {"name": "get -r", "syntax": "aeroftp get --profile NAME /remote/dir/ ./local/ -r", "description": "Download directory"},
+                {"name": "ls", "syntax": "aeroftp-cli ls --profile NAME /path/ [-l] [--json]", "description": "List directory"},
+                {"name": "cat", "syntax": "aeroftp-cli cat --profile NAME /path/file", "description": "Print file to stdout"},
+                {"name": "stat", "syntax": "aeroftp-cli stat --profile NAME /path/ [--json]", "description": "File metadata"},
+                {"name": "find", "syntax": "aeroftp-cli find --profile NAME /path/ \"*.ext\" [--json]", "description": "Search files"},
+                {"name": "tree", "syntax": "aeroftp-cli tree --profile NAME /path/ [-d N] [--json]", "description": "Directory tree"},
+                {"name": "df", "syntax": "aeroftp-cli df --profile NAME [--json]", "description": "Storage quota"},
+                {"name": "connect", "syntax": "aeroftp-cli connect --profile NAME", "description": "Test connection"},
+                {"name": "profiles", "syntax": "aeroftp-cli profiles [--json]", "description": "List saved servers"},
+                {"name": "get", "syntax": "aeroftp-cli get --profile NAME /remote/file [./local]", "description": "Download file"},
+                {"name": "get -r", "syntax": "aeroftp-cli get --profile NAME /remote/dir/ ./local/ -r", "description": "Download directory"},
             ],
             "modify": [
-                {"name": "put", "syntax": "aeroftp put --profile NAME ./local /remote/path", "description": "Upload file"},
-                {"name": "put -r", "syntax": "aeroftp put --profile NAME ./local/ /remote/ -r", "description": "Upload directory"},
-                {"name": "mkdir", "syntax": "aeroftp mkdir --profile NAME /remote/dir", "description": "Create directory"},
-                {"name": "mv", "syntax": "aeroftp mv --profile NAME /old /new", "description": "Move/rename"},
-                {"name": "sync", "syntax": "aeroftp sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
+                {"name": "put", "syntax": "aeroftp-cli put --profile NAME ./local /remote/path", "description": "Upload file"},
+                {"name": "put -r", "syntax": "aeroftp-cli put --profile NAME ./local/ /remote/ -r", "description": "Upload directory"},
+                {"name": "mkdir", "syntax": "aeroftp-cli mkdir --profile NAME /remote/dir", "description": "Create directory"},
+                {"name": "mv", "syntax": "aeroftp-cli mv --profile NAME /old /new", "description": "Move/rename"},
+                {"name": "cp", "syntax": "aeroftp-cli cp --profile NAME /old /new", "description": "Server-side copy when supported"},
+                {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
+                {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first]", "description": "Replace text in a remote UTF-8 file"},
+                {"name": "sync", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
             ],
             "destructive": [
-                {"name": "rm", "syntax": "aeroftp rm --profile NAME /path", "description": "Delete file (confirm with user)"},
-                {"name": "rm -rf", "syntax": "aeroftp rm --profile NAME /dir/ -rf", "description": "Delete directory (always confirm)"},
-                {"name": "sync --delete", "syntax": "aeroftp sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (always confirm)"},
+                {"name": "rm", "syntax": "aeroftp-cli rm --profile NAME /path", "description": "Delete file (confirm with user)"},
+                {"name": "rm -rf", "syntax": "aeroftp-cli rm --profile NAME /dir/ -rf", "description": "Delete directory (always confirm)"},
+                {"name": "sync --delete", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (always confirm)"},
             ],
         },
         "output": {
@@ -1574,7 +2025,8 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "ftp", "ftps", "sftp", "webdav", "webdavs", "s3",
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
-            "googledrive", "dropbox", "onedrive", "box", "pcloud", "zohoworkdrive"
+            "github", "googledrive", "dropbox", "onedrive", "box",
+            "pcloud", "zohoworkdrive", "fourshared", "drime"
         ],
         "safety_rules": [
             "Always use --profile instead of passwords in URLs",
@@ -1612,6 +2064,35 @@ fn resolve_url_or_profile(url: &str, cli: &Cli, format: OutputFormat) -> Result<
             print_error(format, &e, 5);
             Err(5)
         }
+    }
+}
+
+fn normalize_profile_option_key(key: &str) -> &str {
+    match key {
+        "tlsMode" => "tls_mode",
+        "verifyCert" => "verify_cert",
+        "pathStyle" => "path_style",
+        "accountName" => "account_name",
+        "accessKey" => "access_key",
+        "sasToken" => "sas_token",
+        "pcloudRegion" => "region",
+        other => other,
+    }
+}
+
+fn insert_profile_option(extra: &mut HashMap<String, String>, key: &str, value: &serde_json::Value) {
+    let normalized_key = normalize_profile_option_key(key).to_string();
+
+    if let Some(string_value) = value.as_str() {
+        extra.insert(normalized_key, string_value.to_string());
+    } else if let Some(bool_value) = value.as_bool() {
+        extra.insert(normalized_key, bool_value.to_string());
+    } else if let Some(number_value) = value.as_i64() {
+        extra.insert(normalized_key, number_value.to_string());
+    } else if let Some(number_value) = value.as_u64() {
+        extra.insert(normalized_key, number_value.to_string());
+    } else if let Some(number_value) = value.as_f64() {
+        extra.insert(normalized_key, number_value.to_string());
     }
 }
 
@@ -1677,7 +2158,7 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     let profile = match matched {
         Some(p) => p,
         None => {
-            print_error(format, &format!("Profile not found: '{}'. Run 'aeroftp profiles' to list.", profile_name), 5);
+            print_error(format, &format!("Profile not found: '{}'. Run 'aeroftp-cli profiles' to list.", profile_name), 5);
             return Err(5);
         }
     };
@@ -1755,9 +2236,7 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     // Load provider-specific options from profile
     if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
         for (k, v) in opts {
-            if let Some(s) = v.as_str() {
-                extra.insert(k.clone(), s.to_string());
-            }
+            insert_profile_option(&mut extra, k, v);
         }
     }
 
@@ -2313,13 +2792,12 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
         }
     };
 
-    let pt = provider.provider_type();
-    let host = provider.display_name();
-    let port = 443u16; // display-only, actual port handled by provider
-    let user = String::new();
-
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
+    let pt = provider.provider_type();
+    let host = provider.display_name();
+    let port = display_port_for_provider(&pt, server_info.as_deref());
+    let user = String::new();
 
     if let Some(sp) = spinner { sp.finish_and_clear(); }
 
@@ -2515,19 +2993,24 @@ async fn cmd_get(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    let (mut provider, _url_path) = match create_and_connect(url, cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    if remote.trim().is_empty() {
+        print_error(format, "Missing remote path for get", 5);
+        return 5;
+    }
 
     if recursive {
-        return cmd_get_recursive(&mut *provider, remote, local, cli, format, cancelled).await;
+        return cmd_get_recursive(url, remote, local, cli, format, cancelled).await;
     }
 
     // Check for glob patterns
     if remote.contains('*') || remote.contains('?') {
-        return cmd_get_glob(&mut *provider, remote, local, cli, format, cancelled).await;
+        return cmd_get_glob(url, remote, local, cli, format, cancelled).await;
     }
+
+    let (mut provider, _url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
     let filename = remote.rsplit('/').next().unwrap_or("download");
     let local_path = local.unwrap_or(filename);
@@ -2559,7 +3042,7 @@ async fn cmd_get(
         None
     };
 
-    match provider.download(remote, local_path, progress_cb).await {
+    match download_with_resume(&mut *provider, remote, local_path, cli, progress_cb).await {
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
@@ -2605,8 +3088,9 @@ async fn cmd_get(
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
-            // Clean up partial file on failure
-            let _ = std::fs::remove_file(local_path);
+            if !cli.partial {
+                let _ = std::fs::remove_file(local_path);
+            }
             print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
@@ -2615,7 +3099,7 @@ async fn cmd_get(
 }
 
 async fn cmd_get_recursive(
-    provider: &mut dyn StorageProvider,
+    url: &str,
     remote_dir: &str,
     local_base: Option<&str>,
     cli: &Cli,
@@ -2627,15 +3111,18 @@ async fn cmd_get_recursive(
     let mp = MultiProgress::new();
 
     let spinner = if !quiet {
-        let sp = mp.add(create_spinner("Scanning remote directory..."));
-        Some(sp)
+        Some(mp.add(create_spinner("Scanning remote directory...")))
     } else {
         None
     };
 
-    // BFS to collect all files (depth-limited to prevent infinite traversal)
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
     let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
-    let mut files: Vec<(String, u64)> = Vec::new();
+    let mut files: Vec<(String, String, u64)> = Vec::new();
     let mut dirs: Vec<String> = Vec::new();
 
     while let Some((dir, depth)) = queue.pop() {
@@ -2661,7 +3148,14 @@ async fn cmd_get_recursive(
                         queue.push((e.path.clone(), depth + 1));
                         dirs.push(e.path);
                     } else {
-                        files.push((e.path, e.size));
+                        let relative = e.path.strip_prefix(remote_dir).unwrap_or(&e.path).trim_start_matches('/');
+                        let Some(relative) = validate_relative_path(relative) else {
+                            continue;
+                        };
+                        let local_path_buf = Path::new(local_base).join(relative);
+                        if verify_path_within_root(&local_path_buf, Path::new(local_base)).is_ok() {
+                            files.push((e.path, local_path_buf.to_string_lossy().to_string(), e.size));
+                        }
                     }
                 }
             }
@@ -2677,21 +3171,8 @@ async fn cmd_get_recursive(
         sp.finish_and_clear();
     }
 
-    let total_bytes: u64 = files.iter().map(|(_, s)| *s).sum();
-    let total_files = files.len();
-
-    if !quiet {
-        eprintln!(
-            "Found {} files ({}) in {} directories",
-            total_files,
-            format_size(total_bytes),
-            dirs.len() + 1
-        );
-    }
-
-    // Create local directories (with path traversal protection)
     for dir in &dirs {
-        let relative = dir.strip_prefix(remote_dir).unwrap_or(dir);
+        let relative = dir.strip_prefix(remote_dir).unwrap_or(dir).trim_start_matches('/');
         let Some(relative) = validate_relative_path(relative) else {
             if !quiet {
                 eprintln!("Warning: skipping unsafe directory path: {}", dir);
@@ -2699,78 +3180,66 @@ async fn cmd_get_recursive(
             continue;
         };
         let local_dir = Path::new(local_base).join(relative);
-        if let Err(e) = verify_path_within_root(&local_dir, Path::new(local_base)) {
-            if !quiet { eprintln!("Warning: skipping directory (symlink escape): {}", e); }
-            continue;
+        if verify_path_within_root(&local_dir, Path::new(local_base)).is_ok() {
+            let _ = std::fs::create_dir_all(&local_dir);
         }
-        let _ = std::fs::create_dir_all(&local_dir);
     }
 
-    // Download files
-    let start = Instant::now();
-    let mut downloaded: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let _ = provider.disconnect().await;
 
-    let overall_pb = if !quiet {
-        let pb = mp.add(ProgressBar::new(total_files as u64));
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("Overall [{bar:30.green/dim}] {pos}/{len} files")
-                .unwrap()
-                .progress_chars("━╸─"),
+    let total_bytes: u64 = files.iter().map(|(_, _, size)| *size).sum();
+    let total_files = files.len();
+    if !quiet {
+        eprintln!(
+            "Found {} files ({}) in {} directories using {} workers",
+            total_files,
+            format_size(total_bytes),
+            dirs.len() + 1,
+            effective_parallel_workers(cli)
         );
-        Some(pb)
+    }
+
+    let start = Instant::now();
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let overall_pb = if !quiet && total_bytes > 0 {
+        Some(mp.add(create_overall_progress_bar(total_files, total_bytes)))
     } else {
         None
     };
 
-    for (remote_path, _size) in &files {
-        if cancelled.load(Ordering::Relaxed) {
-            errors.push("Cancelled by user".to_string());
-            break;
-        }
-
-        let relative = remote_path
-            .strip_prefix(remote_dir)
-            .unwrap_or(remote_path);
-        let Some(relative) = validate_relative_path(relative) else {
-            errors.push(format!("{}: unsafe path (traversal rejected)", remote_path));
-            if let Some(ref pb) = overall_pb { pb.inc(1); }
-            continue;
-        };
-        let local_path_buf = Path::new(local_base).join(relative);
-        if let Err(e) = verify_path_within_root(&local_path_buf, Path::new(local_base)) {
-            errors.push(format!("{}: {}", remote_path, e));
-            if let Some(ref pb) = overall_pb { pb.inc(1); }
-            continue;
-        }
-        let local_path = local_path_buf.to_string_lossy().to_string();
-
-        // Ensure parent exists
-        if let Some(parent) = Path::new(&local_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        match provider.download(remote_path, &local_path, None).await {
-            Ok(()) => {
-                downloaded += 1;
+    let results = futures_util::stream::iter(files.into_iter().map(|(remote_path, local_path, _size)| {
+        let cancelled = cancelled.clone();
+        let aggregate = aggregate.clone();
+        let overall_pb = overall_pb.clone();
+        async move {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("Cancelled by user".to_string());
             }
-            Err(e) => {
-                errors.push(format!("{}: {}", remote_path, e));
+            if let Some(parent) = Path::new(&local_path).parent() {
+                let _ = std::fs::create_dir_all(parent);
             }
+            let result = download_transfer_task(url, remote_path.clone(), local_path, cli, format, Some(aggregate), overall_pb).await;
+            result.map(|_| remote_path)
         }
-
-        if let Some(ref pb) = overall_pb {
-            pb.inc(1);
-        }
-    }
+    }))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
     }
 
-    let elapsed = start.elapsed();
+    let mut downloaded: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+    for result in results {
+        match result {
+            Ok(_) => downloaded += 1,
+            Err(err) => errors.push(err),
+        }
+    }
 
+    let elapsed = start.elapsed();
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -2799,16 +3268,11 @@ async fn cmd_get_recursive(
         }
     }
 
-    let _ = provider.disconnect().await;
-    if downloaded == total_files as u32 {
-        0
-    } else {
-        4
-    }
+    if downloaded == total_files as u32 { 0 } else { 4 }
 }
 
 async fn cmd_get_glob(
-    provider: &mut dyn StorageProvider,
+    url: &str,
     pattern: &str,
     local_base: Option<&str>,
     cli: &Cli,
@@ -2833,10 +3297,16 @@ async fn cmd_get_glob(
         }
     };
 
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
     let entries = match provider.list(dir).await {
         Ok(e) => e,
         Err(e) => {
             print_error(format, &format!("ls failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
             return provider_error_to_exit_code(&e);
         }
     };
@@ -2860,32 +3330,51 @@ async fn cmd_get_glob(
         return 0;
     }
 
+    let _ = provider.disconnect().await;
+
     let start = Instant::now();
     let total = matched.len();
+    let total_bytes: u64 = matched.iter().map(|entry| entry.size).sum();
     let mut downloaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let overall_pb = if !cli.quiet && matches!(format, OutputFormat::Text) && total_bytes > 0 {
+        Some(create_overall_progress_bar(total, total_bytes))
+    } else {
+        None
+    };
 
     let _ = std::fs::create_dir_all(local_base);
 
-    for entry in &matched {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        if validate_relative_path(&entry.name).is_none() {
-            errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
-            continue;
-        }
+    let results = futures_util::stream::iter(matched.into_iter().map(|entry| {
+        let cancelled = cancelled.clone();
+        let aggregate = aggregate.clone();
+        let overall_pb = overall_pb.clone();
         let local_path = format!("{}/{}", local_base, entry.name);
-        match provider.download(&entry.path, &local_path, None).await {
-            Ok(()) => {
-                downloaded += 1;
-                if !cli.quiet && matches!(format, OutputFormat::Text) {
-                    println!("  {} → {}", entry.name, local_path);
-                }
+        async move {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("Cancelled by user".to_string());
             }
-            Err(e) => {
-                errors.push(format!("{}: {}", entry.name, e));
+            if validate_relative_path(&entry.name).is_none() {
+                return Err(format!("{}: unsafe path (traversal rejected)", entry.name));
             }
+            download_transfer_task(url, entry.path.clone(), local_path.clone(), cli, format, Some(aggregate), overall_pb)
+                .await
+                .map(|_| entry.name.clone())
+        }
+    }))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
+
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
+    }
+
+    for result in results {
+        match result {
+            Ok(_) => downloaded += 1,
+            Err(err) => errors.push(err),
         }
     }
 
@@ -2913,7 +3402,6 @@ async fn cmd_get_glob(
         }
     }
 
-    let _ = provider.disconnect().await;
     if downloaded == total as u32 { 0 } else { 4 }
 }
 
@@ -2926,19 +3414,24 @@ async fn cmd_put(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    let (mut provider, _url_path) = match create_and_connect(url, cli, format).await {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
+    if local.trim().is_empty() {
+        print_error(format, "Missing local path for put", 5);
+        return 5;
+    }
 
     if recursive {
-        return cmd_put_recursive(&mut *provider, local, remote, cli, format, cancelled).await;
+        return cmd_put_recursive(url, local, remote, cli, format, cancelled).await;
     }
 
     // Check for glob patterns in local path
     if local.contains('*') || local.contains('?') {
-        return cmd_put_glob(&mut *provider, local, remote, cli, format, cancelled).await;
+        return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
     }
+
+    let (mut provider, _url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
     let filename = Path::new(local)
         .file_name()
@@ -2977,7 +3470,7 @@ async fn cmd_put(
         None
     };
 
-    match provider.upload(local, remote_path, progress_cb).await {
+    match upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await {
         Ok(()) => {
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -3033,14 +3526,17 @@ async fn cmd_put(
 }
 
 async fn cmd_put_recursive(
-    provider: &mut dyn StorageProvider,
+    url: &str,
     local_dir: &str,
     remote_base: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    let remote_base = remote_base.unwrap_or("/");
+    let remote_base = match remote_base.unwrap_or("/").trim_end_matches('/') {
+        "" => "/".to_string(),
+        value => value.to_string(),
+    };
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
     // Walk local directory (bounded: max 100 levels deep, 500K entries)
@@ -3074,11 +3570,11 @@ async fn cmd_put_recursive(
             continue;
         }
 
-        let remote_path = format!(
-            "{}/{}",
-            remote_base.trim_end_matches('/'),
-            relative_str
-        );
+        let remote_path = if remote_base == "/" {
+            format!("/{}", relative_str)
+        } else {
+            format!("{}/{}", remote_base, relative_str)
+        };
 
         if entry.file_type().is_dir() {
             dirs.push(remote_path);
@@ -3091,6 +3587,16 @@ async fn cmd_put_recursive(
     let total_bytes: u64 = files.iter().map(|(_, _, s)| *s).sum();
     let total_files = files.len();
 
+    if remote_base != "/" {
+        dirs.push(remote_base.clone());
+    }
+    dirs.sort_by(|left, right| {
+        let left_depth = left.matches('/').count();
+        let right_depth = right.matches('/').count();
+        left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
+    });
+    dirs.dedup();
+
     if !quiet {
         eprintln!(
             "Found {} files ({}) in {} directories",
@@ -3100,32 +3606,52 @@ async fn cmd_put_recursive(
         );
     }
 
-    // Create remote directories
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
     for dir in &dirs {
         let _ = provider.mkdir(dir).await;
     }
+    let _ = provider.disconnect().await;
 
     // Upload files
     let start = Instant::now();
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let overall_pb = if !quiet && total_bytes > 0 {
+        Some(create_overall_progress_bar(total_files, total_bytes))
+    } else {
+        None
+    };
+
+    let results = futures_util::stream::iter(files.into_iter().map(|(local_path, remote_path, _size)| {
+        let cancelled = cancelled.clone();
+        let aggregate = aggregate.clone();
+        let overall_pb = overall_pb.clone();
+        async move {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("Cancelled by user".to_string());
+            }
+            upload_transfer_task(url, local_path.clone(), remote_path.clone(), cli, format, Some(aggregate), overall_pb)
+                .await
+                .map(|_| local_path)
+        }
+    }))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
+
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
+    }
+
     let mut uploaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
-
-    for (local_path, remote_path, _size) in &files {
-        if cancelled.load(Ordering::Relaxed) {
-            errors.push("Cancelled by user".to_string());
-            break;
-        }
-
-        match provider.upload(local_path, remote_path, None).await {
-            Ok(()) => {
-                uploaded += 1;
-                if !quiet && matches!(format, OutputFormat::Text) {
-                    println!("  {} → {}", local_path, remote_path);
-                }
-            }
-            Err(e) => {
-                errors.push(format!("{}: {}", local_path, e));
-            }
+    for result in results {
+        match result {
+            Ok(_) => uploaded += 1,
+            Err(err) => errors.push(err),
         }
     }
 
@@ -3155,8 +3681,6 @@ async fn cmd_put_recursive(
             });
         }
     }
-
-    let _ = provider.disconnect().await;
     if uploaded == total_files as u32 { 0 } else { 4 }
 }
 
@@ -3282,6 +3806,193 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     }
 }
 
+async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    if !provider.supports_server_copy() {
+        print_error(format, "Server-side copy is not supported by this provider", 7);
+        let _ = provider.disconnect().await;
+        return 7;
+    }
+
+    match provider.server_copy(from, to).await {
+        Ok(()) => {
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        eprintln!("{} ⇒ {}", from, to);
+                    }
+                }
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: format!("{} ⇒ {}", from, to),
+                }),
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("cp failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+async fn cmd_link(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    if !provider.supports_share_links() {
+        print_error(format, "Share links are not supported by this provider", 7);
+        let _ = provider.disconnect().await;
+        return 7;
+    }
+
+    match provider.create_share_link(path, None).await {
+        Ok(link) => {
+            match format {
+                OutputFormat::Text => println!("{}", link),
+                OutputFormat::Json => {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": path,
+                        "url": link,
+                    }));
+                }
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("link failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+async fn cmd_edit(
+    url: &str,
+    path: &str,
+    find: &str,
+    replace: &str,
+    replace_all: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if path.is_empty() {
+        print_error(format, "edit requires a remote path", 5);
+        return 5;
+    }
+    if find.is_empty() {
+        print_error(format, "edit requires a non-empty find string", 5);
+        return 5;
+    }
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let data = match provider.download_to_bytes(path).await {
+        Ok(data) => data,
+        Err(e) => {
+            print_error(format, &format!("edit failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    let mut content = match String::from_utf8(data) {
+        Ok(content) => content,
+        Err(_) => {
+            print_error(format, "edit supports only UTF-8 text files", 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    content = content.strip_prefix('\u{FEFF}').unwrap_or(&content).to_string();
+
+    let occurrences = content.matches(find).count();
+    if occurrences == 0 {
+        match format {
+            OutputFormat::Text => {
+                if !cli.quiet {
+                    eprintln!("No matches found in {}", path);
+                }
+            }
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "status": "ok",
+                    "path": path,
+                    "occurrences": 0,
+                    "replaced": 0,
+                    "message": "No matches found",
+                }));
+            }
+        }
+        let _ = provider.disconnect().await;
+        return 0;
+    }
+
+    let new_content = if replace_all {
+        content.replace(find, replace)
+    } else {
+        content.replacen(find, replace, 1)
+    };
+    let replaced = if replace_all { occurrences } else { 1 };
+
+    let mut temp_file = match NamedTempFile::new() {
+        Ok(file) => file,
+        Err(e) => {
+            print_error(format, &format!("edit failed: cannot create temp file: {}", e), 99);
+            let _ = provider.disconnect().await;
+            return 99;
+        }
+    };
+
+    if let Err(e) = temp_file.write_all(new_content.as_bytes()) {
+        print_error(format, &format!("edit failed: cannot write temp file: {}", e), 99);
+        let _ = provider.disconnect().await;
+        return 99;
+    }
+
+    let temp_path = temp_file.path().to_string_lossy().to_string();
+    match provider.upload(&temp_path, path, None).await {
+        Ok(()) => {
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        eprintln!("Replaced {} occurrence(s) in {}", replaced, path);
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": path,
+                        "occurrences": occurrences,
+                        "replaced": replaced,
+                        "message": format!("Replaced {} occurrence(s) in {}", replaced, path),
+                    }));
+                }
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("edit failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
 async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
     const MAX_CAT_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
 
@@ -3314,7 +4025,7 @@ async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 
                             .take(8192)
                             .any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\r' && b != b'\t'))
                     {
-                        eprintln!("Warning: binary content detected. Pipe to file: aeroftp cat ... > output.bin");
+                        eprintln!("Warning: binary content detected. Pipe to file: aeroftp-cli cat ... > output.bin");
                     }
                     let stdout = io::stdout();
                     let mut handle = stdout.lock();
@@ -3352,6 +4063,190 @@ async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 
             print_error(format, &format!("cat failed: {}", e), provider_error_to_exit_code(&e));
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    if remote.trim().is_empty() {
+        print_error(format, "Missing remote path for rcat", 5);
+        return 5;
+    }
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let mut temp = match tempfile::NamedTempFile::new() {
+        Ok(file) => file,
+        Err(e) => {
+            print_error(format, &format!("Cannot create temporary file for stdin upload: {}", e), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+
+    let bytes = match io::copy(&mut io::stdin().lock(), &mut temp) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            print_error(format, &format!("Cannot read stdin: {}", e), 2);
+            let _ = provider.disconnect().await;
+            return 2;
+        }
+    };
+
+    if let Err(e) = temp.flush() {
+        print_error(format, &format!("Cannot flush temporary stdin file: {}", e), 5);
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let start = Instant::now();
+    match provider.upload(temp.path().to_string_lossy().as_ref(), remote, None).await {
+        Ok(()) => {
+            let elapsed = start.elapsed();
+            let speed = if elapsed.as_secs_f64() > 0.0 {
+                (bytes as f64 / elapsed.as_secs_f64()) as u64
+            } else {
+                0
+            };
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        println!(
+                            "stdin → {} ({}, {}, {:.1}s)",
+                            remote,
+                            format_size(bytes),
+                            format_speed(speed),
+                            elapsed.as_secs_f64()
+                        );
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&CliTransferResult {
+                        status: "ok",
+                        operation: "upload-stdin".to_string(),
+                        path: remote.to_string(),
+                        bytes,
+                        elapsed_secs: elapsed.as_secs_f64(),
+                        speed_bps: speed,
+                    });
+                }
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("stdin upload failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+fn cmd_alias(command: &AliasCommands, format: OutputFormat) -> i32 {
+    let mut config = match load_cli_config() {
+        Ok(config) => config,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    match command {
+        AliasCommands::Set { name, command } => {
+            config.aliases.insert(name.clone(), command.clone());
+            match save_cli_config(&config) {
+                Ok(path) => match format {
+                    OutputFormat::Text => {
+                        println!("Alias '{}' saved in {}", name, path.display());
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "command": command,
+                            "config": path.display().to_string(),
+                        }));
+                    }
+                },
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            }
+            0
+        }
+        AliasCommands::Remove { name } => {
+            if config.aliases.remove(name).is_none() {
+                print_error(format, &format!("Alias not found: {}", name), 2);
+                return 2;
+            }
+            match save_cli_config(&config) {
+                Ok(path) => match format {
+                    OutputFormat::Text => {
+                        println!("Alias '{}' removed from {}", name, path.display());
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "removed": true,
+                            "config": path.display().to_string(),
+                        }));
+                    }
+                },
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            }
+            0
+        }
+        AliasCommands::Show { name } => {
+            let Some(alias) = config.aliases.get(name) else {
+                print_error(format, &format!("Alias not found: {}", name), 2);
+                return 2;
+            };
+            match format {
+                OutputFormat::Text => println!("{} = {}", name, alias.join(" ")),
+                OutputFormat::Json => {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "alias": name,
+                        "command": alias,
+                    }));
+                }
+            }
+            0
+        }
+        AliasCommands::List => {
+            let mut aliases: Vec<_> = config.aliases.iter().collect();
+            aliases.sort_by(|(left, _), (right, _)| left.cmp(right));
+            match format {
+                OutputFormat::Text => {
+                    for (name, command) in aliases {
+                        println!("{} = {}", name, command.join(" "));
+                    }
+                }
+                OutputFormat::Json => {
+                    let aliases_json: Vec<_> = aliases
+                        .into_iter()
+                        .map(|(name, command)| {
+                            serde_json::json!({
+                                "name": name,
+                                "command": command,
+                            })
+                        })
+                        .collect();
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "aliases": aliases_json,
+                    }));
+                }
+            }
+            0
         }
     }
 }
@@ -4126,6 +5021,9 @@ async fn cmd_sync(
     // Execute renames (--track-renames)
     let mut renamed = 0u32;
     for (old_remote, new_local) in &renames {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
         let old_path = format!("{}/{}", remote.trim_end_matches('/'), old_remote);
         let new_path = format!("{}/{}", remote.trim_end_matches('/'), new_local);
         if !dry_run {
@@ -4142,6 +5040,9 @@ async fn cmd_sync(
     }
 
     for path in &to_delete_remote {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
         if validate_relative_path(path).is_none() {
             errors.push(format!("delete remote {}: unsafe path (traversal rejected)", path));
             continue;
@@ -4154,6 +5055,9 @@ async fn cmd_sync(
     }
 
     for path in &to_delete_local {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
         if validate_relative_path(path).is_none() {
             errors.push(format!("delete local {}: unsafe path (traversal rejected)", path));
             continue;
@@ -4435,7 +5339,7 @@ async fn cmd_tree(
 }
 
 async fn cmd_put_glob(
-    provider: &mut dyn StorageProvider,
+    url: &str,
     local_pattern: &str,
     remote_base: Option<&str>,
     cli: &Cli,
@@ -4499,7 +5403,6 @@ async fn cmd_put_glob(
                 }),
             }
         }
-        let _ = provider.disconnect().await;
         return 0;
     }
 
@@ -4507,24 +5410,42 @@ async fn cmd_put_glob(
 
     let start = Instant::now();
     let total = matched.len();
+    let total_bytes: u64 = matched.iter().map(|(_, _, size)| *size).sum();
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let overall_pb = if !cli.quiet && matches!(format, OutputFormat::Text) && total_bytes > 0 {
+        Some(create_overall_progress_bar(total, total_bytes))
+    } else {
+        None
+    };
+
+    let results = futures_util::stream::iter(matched.into_iter().map(|(local_path, filename, _size)| {
+        let cancelled = cancelled.clone();
+        let aggregate = aggregate.clone();
+        let overall_pb = overall_pb.clone();
+        let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
+        async move {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err("Cancelled by user".to_string());
+            }
+            upload_transfer_task(url, local_path, remote_path, cli, format, Some(aggregate), overall_pb)
+                .await
+                .map(|_| filename)
+        }
+    }))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
+
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
+    }
+
     let mut uploaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
-
-    for (local_path, filename, _size) in &matched {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
-        match provider.upload(local_path, &remote_path, None).await {
-            Ok(()) => {
-                uploaded += 1;
-                if !cli.quiet && matches!(format, OutputFormat::Text) {
-                    println!("  {} \u{2192} {}", local_path, remote_path);
-                }
-            }
-            Err(e) => {
-                errors.push(format!("{}: {}", filename, e));
-            }
+    for result in results {
+        match result {
+            Ok(_) => uploaded += 1,
+            Err(err) => errors.push(err),
         }
     }
 
@@ -4551,8 +5472,6 @@ async fn cmd_put_glob(
             });
         }
     }
-
-    let _ = provider.disconnect().await;
     if uploaded == total as u32 { 0 } else { 4 }
 }
 
@@ -4703,6 +5622,24 @@ async fn cmd_touch(
                 }
             }
         }
+    }
+}
+
+fn display_port_for_provider(provider_type: &ProviderType, server_info: Option<&str>) -> u16 {
+    if let Some(info) = server_info {
+        if let Some((_, port_str)) = info.rsplit_once(':') {
+            if !port_str.is_empty() && port_str.chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(port) = port_str.parse::<u16>() {
+                    return port;
+                }
+            }
+        }
+    }
+
+    match provider_type {
+        ProviderType::Ftp | ProviderType::Ftps => 21,
+        ProviderType::Sftp => 22,
+        _ => 443,
     }
 }
 
@@ -4937,11 +5874,20 @@ async fn cmd_check(
 }
 
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
-    let content = match std::fs::read_to_string(file) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &format!("Cannot read batch file '{}': {}", file, e), 2);
+    let content = if file == "-" {
+        let mut stdin = String::new();
+        if let Err(e) = io::stdin().read_to_string(&mut stdin) {
+            print_error(format, &format!("Cannot read batch script from stdin: {}", e), 2);
             return 2;
+        }
+        stdin
+    } else {
+        match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(e) => {
+                print_error(format, &format!("Cannot read batch file '{}': {}", file, e), 2);
+                return 2;
+            }
         }
     };
 
@@ -5516,6 +6462,7 @@ fn tool_danger_level(tool: &str) -> u8 {
         | "local_stat_batch" | "local_diff" | "local_tree" | "local_file_info"
         | "local_disk_usage" | "local_find_duplicates" | "clipboard_read" | "app_info"
         | "server_list_saved" | "rag_search" | "rag_index" | "preview_edit"
+        | "generate_transfer_plan"
         | "vault_peek" | "hash_file" => 0,
         // Medium — local writes
         "local_write" | "local_mkdir" | "local_edit" | "local_rename" | "local_copy_files"
@@ -5737,24 +6684,30 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         });
         if let Ok(canonical) = resolved {
             let s = canonical.to_string_lossy();
-            let denied = ["/proc", "/sys", "/dev", "/boot", "/root",
-                         "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers"];
-            if denied.iter().any(|d| s.starts_with(d)) {
+            if CLI_DENIED_SYSTEM_PREFIXES.iter().any(|d| path_matches_prefix(&s, d)) {
                 return Err(format!("{}: access to system path denied: {}", param, s));
             }
             if let Ok(home) = std::env::var("HOME") {
-                let home_denied = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
-                                  ".docker", ".config/aeroftp", ".vault-token"];
-                for sensitive in &home_denied {
-                    if s.starts_with(&format!("{}/{}", home, sensitive)) {
+                for sensitive in CLI_DENIED_HOME_RELATIVE_PREFIXES {
+                    if path_matches_prefix(&s, &format!("{}/{}", home, sensitive)) {
                         return Err(format!("{}: access to sensitive path denied: {}", param, s));
                     }
                 }
             }
-            if s.starts_with("/run/secrets") {
+            if path_matches_prefix(&s, "/run/secrets") {
                 return Err(format!("{}: access to system path denied: {}", param, s));
             }
         }
+
+        if let Ok(home) = std::env::var("HOME") {
+            for sensitive in CLI_DENIED_HOME_RELATIVE_PREFIXES {
+                let full = format!("{}/{}", home, sensitive);
+                if path_matches_prefix(path, &full) {
+                    return Err(format!("{}: access to sensitive path denied: {}", param, path));
+                }
+            }
+        }
+
         Ok(())
     };
 
@@ -5991,6 +6944,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let mut renamed = 0u32;
             let mut errors = Vec::new();
             for (idx, source) in paths.iter().enumerate() {
+                if let Err(e) = validate_path(source, "paths[]") {
+                    errors.push(format!("{}: {}", source, e));
+                    continue;
+                }
                 let p = std::path::Path::new(source);
                 let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                 let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
@@ -6017,6 +6974,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                     _ => { errors.push(format!("Unknown mode: {}", mode)); continue; }
                 };
                 let dest = format!("{}/{}", parent, new_name);
+                if let Err(e) = validate_path(&dest, "destination") {
+                    errors.push(format!("{} -> {}: {}", source, dest, e));
+                    continue;
+                }
                 match std::fs::rename(source, &dest) {
                     Ok(_) => renamed += 1,
                     Err(e) => errors.push(format!("{}: {}", source, e)),
@@ -6033,6 +6994,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let mut trashed = 0u32;
             let mut errors = Vec::new();
             for source in &paths {
+                if let Err(e) = validate_path(source, "paths[]") {
+                    errors.push(format!("{}: {}", source, e));
+                    continue;
+                }
                 match trash::delete(source) {
                     Ok(_) => trashed += 1,
                     Err(e) => errors.push(format!("{}: {}", source, e)),
@@ -6230,6 +7195,9 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 return Err("Maximum 100 paths allowed".to_string());
             }
             let stats: Vec<serde_json::Value> = paths.iter().map(|p| {
+                if let Err(error) = validate_path(p, "paths[]") {
+                    return json!({ "path": p, "exists": false, "error": error });
+                }
                 match std::fs::metadata(p) {
                     Ok(meta) => json!({
                         "path": p,
@@ -6334,18 +7302,42 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let working_dir = get_str_opt("working_dir");
             let timeout_secs = args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(30).min(120);
 
+            // Defense-in-depth: reject shell meta-characters that enable denylist bypass
+            // (pipes, subshells, backticks, semicolons, eval chains, etc.)
+            // Mirrors ai_tools.rs shell_execute meta-char filter
+            const SHELL_META: &[char] = &['|', ';', '`', '$', '&', '(', ')', '{', '}', '\n', '\r'];
+            if SHELL_META.iter().any(|c| command.contains(*c)) {
+                return Err(
+                    "Command contains shell meta-characters (|;&`$(){}\\n\\r). Use simple commands only."
+                        .to_string(),
+                );
+            }
+
             // Denylist (mirrors ai_tools.rs DENIED_COMMAND_PATTERNS)
             static DENIED: &[&str] = &[
                 "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "fork bomb",
-                "chmod -R 777 /", "wget|sh", "curl|sh", "curl|bash", "wget|bash",
-                "> /dev/sda", "shutdown", "reboot", "init 0", "init 6",
+                "chmod -R 777 /", "chmod 777 /", "chown ",
+                "wget|sh", "curl|sh", "curl|bash", "wget|bash",
+                "> /dev/sda", "shutdown", "reboot", "halt",
+                "init 0", "init 6",
                 "kill -9 1", "killall", "pkill -9",
+                "python -c", "python3 -c", "eval ",
+                "base64 -d", "base64 --decode",
+                "truncate", "shred",
+                "crontab", "nohup", "systemctl", "service ",
+                "mount ", "umount ", "fdisk", "parted",
+                "iptables", "useradd", "userdel", "passwd", "sudo ",
             ];
             let cmd_lower = command.to_lowercase();
             for pattern in DENIED {
                 if cmd_lower.contains(pattern) {
                     return Err(format!("Command denied for safety: contains '{}'", pattern));
                 }
+            }
+
+            // Validate working_dir against deny-list
+            if let Some(ref wd) = working_dir {
+                validate_path(wd, "working_dir")?;
             }
 
             let mut cmd = tokio::process::Command::new("sh");
@@ -6492,18 +7484,16 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "agent_memory_write" => {
             let entry = get_str("entry")?;
             let category = get_str_opt("category").unwrap_or_else(|| "general".to_string());
-            let memory_path = std::env::current_dir()
-                .map(|cwd| cwd.join(".aeroagent"))
-                .unwrap_or_else(|_| std::path::PathBuf::from(".aeroagent"));
-            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M");
-            let line = format!("\n## [{}] {}\n{}\n", category, timestamp, entry);
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new()
-                .create(true).append(true).open(&memory_path)
-                .map_err(|e| format!("Failed to open memory file: {}", e))?;
-            file.write_all(line.as_bytes())
-                .map_err(|e| format!("Failed to write memory: {}", e))?;
-            Ok(json!({ "success": true, "message": format!("Saved to {}", memory_path.display()) }))
+            let project_path = std::env::current_dir()
+                .map(|cwd| cwd.to_string_lossy().to_string())
+                .unwrap_or_else(|_| ".".to_string());
+            let stored = ftp_client_gui_lib::agent_memory_db::store_memory_entry_cli(
+                &project_path,
+                &category,
+                &entry,
+                None,
+            )?;
+            Ok(json!({ "success": true, "message": format!("Saved memory entry {}", stored.id) }))
         }
 
         "app_info" => {
@@ -6815,7 +7805,7 @@ async fn cmd_agent(
 
     // MCP server mode
     if mcp {
-        return cmd_agent_mcp(&cfg.provider_name).await;
+        return cmd_agent_mcp(&cfg.provider_name, _cli).await;
     }
 
     // Orchestration mode (JSON-RPC 2.0 over stdio)
@@ -7249,31 +8239,33 @@ fn validate_mcp_path(path: &str) -> Result<(), String> {
         }
     }
     // Sensitive absolute paths — check both raw and canonicalized path
-    let denied_prefixes: &[&str] = &[
-        "/proc", "/sys", "/dev", "/boot", "/root",
-        "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers",
-    ];
     // Check raw path first
-    for prefix in denied_prefixes {
-        if path == *prefix || path.starts_with(&format!("{}/", prefix)) {
+    for prefix in CLI_DENIED_SYSTEM_PREFIXES {
+        if path_matches_prefix(path, prefix) {
             return Err(format!("Access denied: {}", prefix));
         }
     }
-    // Resolve symlinks and re-check (prevents /tmp/evil -> /etc/shadow bypass)
-    if let Ok(canonical) = std::fs::canonicalize(path) {
+    // Resolve symlinks and re-check (prevents /tmp/evil -> /etc/shadow bypass).
+    // For non-existent paths, canonicalize the parent to cover write targets too.
+    let resolved = std::fs::canonicalize(path).or_else(|_| {
+        std::path::Path::new(path)
+            .parent()
+            .map(std::fs::canonicalize)
+            .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+    });
+    if let Ok(canonical) = resolved {
         let resolved = canonical.to_string_lossy();
-        for prefix in denied_prefixes {
-            if resolved.as_ref() == *prefix || resolved.starts_with(&format!("{}/", prefix)) {
+        for prefix in CLI_DENIED_SYSTEM_PREFIXES {
+            if path_matches_prefix(&resolved, prefix) {
                 return Err(format!("Access denied (resolved): {}", prefix));
             }
         }
         // Sensitive home-relative paths (resolved)
         if let Some(home) = std::env::var_os("HOME") {
             let home = home.to_string_lossy().to_string();
-            let denied_home: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube"];
-            for dir in denied_home {
+            for dir in CLI_DENIED_HOME_RELATIVE_PREFIXES {
                 let full = format!("{}/{}", home, dir);
-                if resolved.as_ref() == full.as_str() || resolved.starts_with(&format!("{}/", full)) {
+                if path_matches_prefix(&resolved, &full) {
                     return Err(format!("Access denied: ~/{}", dir));
                 }
             }
@@ -7282,21 +8274,111 @@ fn validate_mcp_path(path: &str) -> Result<(), String> {
     // Also check raw home-relative paths (for non-existent paths)
     if let Some(home) = std::env::var_os("HOME") {
         let home = home.to_string_lossy().to_string();
-        let denied_home: &[&str] = &[".ssh", ".gnupg", ".aws", ".kube"];
-        for dir in denied_home {
+        for dir in CLI_DENIED_HOME_RELATIVE_PREFIXES {
             let full = format!("{}/{}", home, dir);
-            if path == full || path.starts_with(&format!("{}/", full)) {
+            if path_matches_prefix(path, &full) {
                 return Err(format!("Access denied: ~/{}", dir));
             }
         }
     }
+    if path_matches_prefix(path, "/run/secrets") {
+        return Err("Access denied: /run/secrets".into());
+    }
     Ok(())
+}
+
+fn is_mcp_path_key(key: &str) -> bool {
+    matches!(
+        key,
+        "path"
+            | "local_path"
+            | "remote_path"
+            | "from"
+            | "to"
+            | "destination"
+            | "working_dir"
+            | "archive_path"
+            | "output_dir"
+            | "output_path"
+            | "path_a"
+            | "path_b"
+            | "project_path"
+    )
+}
+
+fn is_mcp_path_array_key(key: &str) -> bool {
+    matches!(key, "paths")
+}
+
+fn validate_mcp_value(key: Option<&str>, value: &serde_json::Value) -> Result<(), String> {
+    match value {
+        serde_json::Value::String(path) => {
+            if key.is_some_and(is_mcp_path_key) {
+                validate_mcp_path(path)?;
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for item in values {
+                match item {
+                    serde_json::Value::String(path) if key.is_some_and(is_mcp_path_array_key) => {
+                        validate_mcp_path(path)?;
+                    }
+                    _ => validate_mcp_value(None, item)?,
+                }
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (nested_key, nested_value) in map {
+                validate_mcp_value(Some(nested_key), nested_value)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_mcp_args(args: &serde_json::Value) -> Result<(), String> {
+    validate_mcp_value(None, args)
+}
+
+fn mcp_tool_name(name: &str) -> String {
+    format!("aeroftp_{}", name)
 }
 
 const MCP_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
 
-async fn cmd_agent_mcp(provider_name: &str) -> i32 {
+async fn cmd_agent_mcp(provider_name: &str, cli: &Cli) -> i32 {
     use std::io::BufRead;
+
+    let (safe_profiles, vault_error) = match safe_vault_profiles(cli) {
+        Ok(profiles) => (profiles, None),
+        Err(error) => (vec![], Some(error)),
+    };
+    let resources: Vec<serde_json::Value> = safe_profiles
+        .iter()
+        .map(|profile| {
+            let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+            let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or(name);
+            serde_json::json!({
+                "uri": format!("aeroftp://profiles/{}", id),
+                "name": format!("AeroFTP profile: {}", name),
+                "description": format!("Saved AeroFTP profile for {}", name),
+                "mimeType": "application/json",
+            })
+        })
+        .collect();
+    let profiles_catalog = serde_json::json!({
+        "uri": "aeroftp://profiles",
+        "name": "AeroFTP saved profiles",
+        "description": "Safe list of saved AeroFTP profiles without credentials",
+        "mimeType": "application/json",
+    });
+    let profiles_status = serde_json::json!({
+        "uri": "aeroftp://profiles/status",
+        "name": "AeroFTP profiles status",
+        "description": "Availability status for saved profile resources",
+        "mimeType": "application/json",
+    });
 
     // MCP initialization
     let stdin = io::stdin();
@@ -7339,6 +8421,7 @@ async fn cmd_agent_mcp(provider_name: &str) -> i32 {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {
                             "tools": { "listChanged": false },
+                            "resources": { "subscribe": false, "listChanged": false }
                         },
                         "serverInfo": {
                             "name": "aeroftp-agent",
@@ -7353,34 +8436,70 @@ async fn cmd_agent_mcp(provider_name: &str) -> i32 {
             }
 
             "tools/list" => {
-                let tools: Vec<serde_json::Value> = vec![
+                let tools: Vec<serde_json::Value> = cli_tool_definitions().iter().map(|tool| {
                     serde_json::json!({
-                        "name": "aeroftp_local_list",
-                        "description": "List files in a local directory",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string", "description": "Directory path" }
-                            },
-                            "required": ["path"]
-                        }
-                    }),
-                    serde_json::json!({
-                        "name": "aeroftp_local_read",
-                        "description": "Read a local file's contents",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "path": { "type": "string", "description": "File path" }
-                            },
-                            "required": ["path"]
-                        }
-                    }),
-                ];
+                        "name": mcp_tool_name(&tool.name),
+                        "description": tool.description,
+                        "inputSchema": tool.parameters,
+                    })
+                }).collect();
                 println!("{}", serde_json::json!({
                     "jsonrpc": "2.0", "id": id,
                     "result": { "tools": tools }
                 }));
+            }
+
+            "resources/list" => {
+                let mut listed = vec![profiles_catalog.clone(), profiles_status.clone()];
+                listed.extend(resources.clone());
+                println!("{}", serde_json::json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "resources": listed }
+                }));
+            }
+
+            "resources/read" => {
+                let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
+                let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+                let content = if uri == "aeroftp://profiles" {
+                    Some(serde_json::to_string_pretty(&serde_json::json!({
+                        "status": if vault_error.is_some() { "unavailable" } else { "ok" },
+                        "error": vault_error.clone(),
+                        "profiles": safe_profiles,
+                    })).unwrap_or_default())
+                } else if uri == "aeroftp://profiles/status" {
+                    Some(serde_json::to_string_pretty(&serde_json::json!({
+                        "status": if vault_error.is_some() { "unavailable" } else { "ok" },
+                        "error": vault_error.clone(),
+                        "count": safe_profiles.len(),
+                    })).unwrap_or_default())
+                } else if let Some(profile_id) = uri.strip_prefix("aeroftp://profiles/") {
+                    safe_profiles
+                        .iter()
+                        .find(|profile| {
+                            profile.get("id").and_then(|v| v.as_str()) == Some(profile_id)
+                        })
+                        .map(|profile| serde_json::to_string_pretty(profile).unwrap_or_default())
+                } else {
+                    None
+                };
+
+                match content {
+                    Some(text) => println!("{}", serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": {
+                            "contents": [{
+                                "uri": uri,
+                                "mimeType": "application/json",
+                                "text": text
+                            }]
+                        }
+                    })),
+                    None => println!("{}", serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32002, "message": format!("Resource not found: {}", uri) }
+                    })),
+                }
             }
 
             "tools/call" => {
@@ -7391,55 +8510,12 @@ async fn cmd_agent_mcp(provider_name: &str) -> i32 {
                 // Strip aeroftp_ prefix for internal dispatch
                 let internal_name = tool_name.strip_prefix("aeroftp_").unwrap_or(tool_name);
 
-                // For now, handle basic tools inline
-                let result = match internal_name {
-                    "local_list" => {
-                        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-                        if let Err(e) = validate_mcp_path(path) {
-                            serde_json::json!({ "error": e })
-                        } else {
-                            match std::fs::read_dir(path) {
-                                Ok(entries) => {
-                                    let items: Vec<String> = entries
-                                        .filter_map(|e| e.ok())
-                                        .map(|e| e.file_name().to_string_lossy().to_string())
-                                        .collect();
-                                    serde_json::json!({ "entries": items, "total": items.len() })
-                                }
-                                Err(e) => serde_json::json!({ "error": e.to_string() }),
-                            }
-                        }
-                    }
-                    "local_read" => {
-                        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                        if let Err(e) = validate_mcp_path(path) {
-                            serde_json::json!({ "error": e })
-                        } else if std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) > 1_048_576 {
-                            serde_json::json!({ "error": "File exceeds 1 MB read limit" })
-                        } else {
-                            match std::fs::read_to_string(path) {
-                                Ok(content) => {
-                                    let truncated = content.len() > 5120;
-                                    let display = if truncated {
-                                        // Safe UTF-8 truncation: find last char boundary at or before 5120
-                                        let safe_end = content.char_indices()
-                                            .take_while(|(i, _)| *i <= 5120)
-                                            .last()
-                                            .map(|(i, _)| i)
-                                            .unwrap_or(0);
-                                        &content[..safe_end]
-                                    } else {
-                                        &content
-                                    };
-                                    serde_json::json!({ "content": display, "size": content.len(), "truncated": truncated })
-                                }
-                                Err(e) => serde_json::json!({ "error": e.to_string() }),
-                            }
-                        }
-                    }
-                    _ => {
-                        serde_json::json!({ "error": format!("Tool '{}' not yet implemented in MCP mode", tool_name) })
-                    }
+                let result = match validate_mcp_args(&args) {
+                    Ok(_) => match execute_cli_tool(internal_name, &args).await {
+                        Ok(value) => value,
+                        Err(e) => serde_json::json!({ "error": e }),
+                    },
+                    Err(e) => serde_json::json!({ "error": e }),
                 };
 
                 println!("{}", serde_json::json!({
@@ -7477,9 +8553,9 @@ async fn main() {
     }
 
     // Show banner when help is displayed (no args, --help, or -h)
-    let args: Vec<String> = std::env::args().collect();
-    let show_help = args.len() <= 1
-        || args.iter().any(|a| a == "--help" || a == "-h" || a == "help");
+    let raw_args: Vec<String> = std::env::args().collect();
+    let show_help = raw_args.len() <= 1
+        || raw_args.iter().any(|a| a == "--help" || a == "-h" || a == "help");
     if show_help {
         if use_color() {
             eprintln!("\x1b[36m");
@@ -7498,7 +8574,15 @@ async fn main() {
         }
     }
 
-    let cli = Cli::parse();
+    let args = match prepare_cli_args(raw_args) {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(5);
+        }
+    };
+
+    let cli = Cli::parse_from(args);
     let format = cli.output_format();
 
     // Setup tracing based on verbosity
@@ -7555,7 +8639,7 @@ async fn main() {
             let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(remote.as_str()))
             } else {
-                ("_", remote.as_str(), local.as_deref())
+                (url.as_str(), remote.as_str(), local.as_deref())
             };
             cmd_get(u, r, l, *recursive, &cli, format, cancelled).await
         }
@@ -7568,13 +8652,17 @@ async fn main() {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(local.as_str()))
             } else {
-                ("_", local.as_str(), remote.as_deref())
+                (url.as_str(), local.as_str(), remote.as_deref())
             };
             cmd_put(u, l, r, *recursive, &cli, format, cancelled).await
         }
         Commands::Mkdir { url, path } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_mkdir("_", p, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_mkdir(u, p, &cli, format).await
         }
         Commands::Rm {
             url,
@@ -7582,32 +8670,90 @@ async fn main() {
             recursive,
             force,
         } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_rm("_", p, *recursive, *force, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_rm(u, p, *recursive, *force, &cli, format).await
         }
         Commands::Mv { url, from, to } => {
-            let (f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                (url.as_str(), from.as_str())
+            let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), from.as_str())
             } else {
-                (from.as_str(), to.as_str())
+                (url.as_str(), from.as_str(), to.as_str())
             };
-            cmd_mv("_", f, t, &cli, format).await
+            cmd_mv(u, f, t, &cli, format).await
+        }
+        Commands::Cp { url, from, to } => {
+            let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), from.as_str())
+            } else {
+                (url.as_str(), from.as_str(), to.as_str())
+            };
+            cmd_cp(u, f, t, &cli, format).await
+        }
+        Commands::Link { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_link(u, p, &cli, format).await
+        }
+        Commands::Edit {
+            url,
+            path,
+            find,
+            replace,
+            first,
+        } => {
+            let (u, p, f, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), path.as_str(), find.as_str())
+            } else {
+                (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
+            };
+            cmd_edit(u, p, f, r, !first, &cli, format).await
         }
         Commands::Cat { url, path } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_cat("_", p, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_cat(u, p, &cli, format).await
+        }
+        Commands::Rcat { url, remote } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), remote.as_str())
+            };
+            cmd_rcat(u, p, &cli, format).await
         }
         Commands::Head { url, path, lines } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_head("_", p, *lines, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_head(u, p, *lines, &cli, format).await
         }
         Commands::Tail { url, path, lines } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_tail("_", p, *lines, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_tail(u, p, *lines, &cli, format).await
         }
         Commands::Touch { url, path, timestamp } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_touch("_", p, timestamp.as_deref(), &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_touch(u, p, timestamp.as_deref(), &cli, format).await
         }
         Commands::Hashsum {
             algorithm,
@@ -7615,8 +8761,12 @@ async fn main() {
             path,
             download: _,
         } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_hashsum(*algorithm, "_", p, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_hashsum(*algorithm, u, p, &cli, format).await
         }
         Commands::Check {
             url,
@@ -7625,28 +8775,32 @@ async fn main() {
             checksum,
             one_way,
         } => {
-            let (l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                (url.as_str(), local.as_str())
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), local.as_str())
             } else {
-                (local.as_str(), remote.as_str())
+                (url.as_str(), local.as_str(), remote.as_str())
             };
-            cmd_check("_", l, r, *checksum, *one_way, &cli, format).await
+            cmd_check(u, l, r, *checksum, *one_way, &cli, format).await
         }
         Commands::Stat { url, path } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_stat("_", p, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_stat(u, p, &cli, format).await
         }
         Commands::Find {
             url,
             path,
             pattern,
         } => {
-            let (p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                (url.as_str(), path.as_str())
+            let (u, p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), path.as_str())
             } else {
-                (path.as_str(), pattern.as_str())
+                (url.as_str(), path.as_str(), pattern.as_str())
             };
-            cmd_find("_", p, pat, &cli, format).await
+            cmd_find(u, p, pat, &cli, format).await
         }
         Commands::Df { url } => cmd_df(url, &cli, format).await,
         Commands::Tree {
@@ -7654,8 +8808,12 @@ async fn main() {
             path,
             max_depth,
         } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_tree("_", p, *max_depth, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_tree(u, p, *max_depth, &cli, format).await
         }
         Commands::Sync {
             url,
@@ -7673,7 +8831,7 @@ async fn main() {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
-                ("_", local.as_str(), remote.as_str())
+                (url.as_str(), local.as_str(), remote.as_str())
             };
             cmd_sync(
                 u, l, r, direction, *dry_run, *delete, exclude,
@@ -7687,17 +8845,33 @@ async fn main() {
             cmd_about(u, &cli, format).await
         }
         Commands::Dedupe { url, path, mode, dry_run } => {
-            let p = if cli.profile.is_some() && !url.contains("://") && url != "_" { url } else { path };
-            cmd_dedupe("_", p, mode, *dry_run, &cli, format).await
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_dedupe(u, p, mode, *dry_run, &cli, format).await
         }
         Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            clap_complete::generate(*shell, &mut cmd, "aeroftp", &mut std::io::stdout());
-            0
+            match std::panic::catch_unwind(|| {
+                let mut cmd = Cli::command();
+                clap_complete::generate(*shell, &mut cmd, "aeroftp", &mut std::io::stdout());
+            }) {
+                Ok(()) => 0,
+                Err(_) => {
+                    print_error(
+                        format,
+                        "Shell completion generation failed because the current CLI positional layout is incompatible with clap completion metadata.",
+                        7,
+                    );
+                    7
+                }
+            }
         }
         Commands::Profiles => list_vault_profiles(&cli, format),
         Commands::AgentInfo => cmd_agent_info(&cli),
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
+        Commands::Alias { command } => cmd_alias(command, format),
         Commands::Agent {
             message,
             provider,
@@ -7742,6 +8916,7 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_parse_speed_limit_megabytes() {
@@ -7845,6 +9020,48 @@ mod tests {
         assert_eq!(config.provider_type, ProviderType::S3);
         assert_eq!(config.extra.get("bucket").map(|s| s.as_str()), Some("mybucket"));
         assert_eq!(config.extra.get("region").map(|s| s.as_str()), Some("eu-west-1"));
+    }
+
+    #[test]
+    fn test_insert_profile_option_normalizes_tencent_path_style() {
+        let mut extra = HashMap::new();
+
+        insert_profile_option(&mut extra, "pathStyle", &json!(false));
+        insert_profile_option(&mut extra, "endpoint", &json!("https://cos.ap-guangzhou.myqcloud.com"));
+        insert_profile_option(&mut extra, "bucket", &json!("mybucket-1250000000"));
+        insert_profile_option(&mut extra, "region", &json!("ap-guangzhou"));
+
+        assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("false"));
+        assert_eq!(extra.get("endpoint").map(|s| s.as_str()), Some("https://cos.ap-guangzhou.myqcloud.com"));
+        assert_eq!(extra.get("bucket").map(|s| s.as_str()), Some("mybucket-1250000000"));
+        assert_eq!(extra.get("region").map(|s| s.as_str()), Some("ap-guangzhou"));
+    }
+
+    #[test]
+    fn test_insert_profile_option_normalizes_common_camel_case_keys() {
+        let mut extra = HashMap::new();
+
+        insert_profile_option(&mut extra, "verifyCert", &json!(false));
+        insert_profile_option(&mut extra, "tlsMode", &json!("implicit"));
+        insert_profile_option(&mut extra, "sasToken", &json!("sig"));
+        insert_profile_option(&mut extra, "accountName", &json!("acct"));
+
+        assert_eq!(extra.get("verify_cert").map(|s| s.as_str()), Some("false"));
+        assert_eq!(extra.get("tls_mode").map(|s| s.as_str()), Some("implicit"));
+        assert_eq!(extra.get("sas_token").map(|s| s.as_str()), Some("sig"));
+        assert_eq!(extra.get("account_name").map(|s| s.as_str()), Some("acct"));
+    }
+
+    #[test]
+    fn test_display_port_for_provider_parses_server_info() {
+        let port = display_port_for_provider(&ProviderType::Ftp, Some("FTP Server: ftp.axpdev.it:21"));
+        assert_eq!(port, 21);
+    }
+
+    #[test]
+    fn test_display_port_for_provider_falls_back_by_protocol() {
+        assert_eq!(display_port_for_provider(&ProviderType::Sftp, None), 22);
+        assert_eq!(display_port_for_provider(&ProviderType::Mega, None), 443);
     }
 
     #[test]

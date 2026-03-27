@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 21 March 2026
-> Version: v3.0.7
+> Last Updated: 27 March 2026
+> Version: v3.1.5
 >
 > **Note**: GitHub (23rd protocol) supports repository filesystem (list, upload/commit, download, delete/commit, tree, search), release asset management (up to 2 GiB), automatic branch workflow for protected branches, and PR creation. Feature matrix tables below will be updated in a future pass to include GitHub columns.
 
@@ -240,7 +240,7 @@ Accessible via folder context menu "Open as Cryptomator Vault":
 - **Explicit TLS (AUTH TLS)**: Upgrades plain connection on port 21 via `into_secure()`
 - **Implicit TLS**: Direct TLS connection on port 990
 - **Explicit if available**: Attempts AUTH TLS, falls back to plain FTP if unsupported
-- **Certificate verification**: Configurable per-connection (accept self-signed certs)
+- **Certificate verification**: Configurable per-connection. When verification is enabled, invalid, self-signed, or hostname-mismatched certificates are rejected. Disabling verification explicitly accepts those certificates and weakens MITM protection.
 - **Backend**: suppaftp v8 with `tokio-async-native-tls` feature
 
 **Default changed in v1.5.0**: FTP now defaults to 'explicit_if_available' (TLS opportunistic) instead of plain FTP
@@ -255,8 +255,8 @@ Bidirectional directory synchronization compares local and remote files by times
 
 | Protocol | Compare | Upload | Download | Progress | Notes |
 |----------|---------|--------|----------|----------|-------|
-| **FTP** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
-| **FTPS** | Yes | Yes | Yes | Yes | Via `ftp_manager` (legacy path) |
+| **FTP** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
+| **FTPS** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
 | **SFTP** | Yes | Yes (ssh2/SCP) | Yes | Yes | Uploads via ssh2/SCP fallback (russh write bug) |
 | **WebDAV** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **S3** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |

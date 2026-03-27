@@ -16,6 +16,7 @@ interface ToolApprovalProps {
     onReject: () => void;
     onApproveSession?: (toolName: string) => void;
     allTools?: AITool[];
+    sessionId?: string;
 }
 
 const dangerIcons: Record<DangerLevel, typeof Shield> = {
@@ -42,7 +43,7 @@ function getMainArg(_toolName: string, args: Record<string, unknown>): string {
     return '';
 }
 
-export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject, onApproveSession, allTools }) => {
+export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject, onApproveSession, allTools, sessionId }) => {
     const [expanded, setExpanded] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
@@ -87,6 +88,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                 replace_all: toolCall.args.replace_all ?? true,
                 remote: toolCall.toolName === 'remote_edit',
             },
+            sessionId,
         })
         .then((result: unknown) => {
             const r = result as Record<string, unknown>;
@@ -98,7 +100,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
         })
         .catch((err: unknown) => setDiffError(String(err)))
         .finally(() => setDiffLoading(false));
-    }, [toolCall.id]);
+    }, [isEditTool, sessionId, toolCall.args.find, toolCall.args.path, toolCall.args.replace, toolCall.args.replace_all, toolCall.id, toolCall.status, toolCall.toolName]);
 
     const label = getToolLabel(toolCall.toolName, t);
     const mainArg = getMainArg(toolCall.toolName, toolCall.args);

@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import {
     X, FileDown, FileUp, Download, Upload, Check, AlertTriangle
@@ -60,7 +61,6 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         setExporting(true);
         setResult(null);
         try {
-            const { save } = await import('@tauri-apps/plugin-dialog');
             const filePath = await save({
                 defaultPath: 'sync-config.aerosync',
                 filters: [{ name: 'AeroSync Template', extensions: ['aerosync'] }],
@@ -90,7 +90,6 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         setImporting(true);
         setResult(null);
         try {
-            const { open } = await import('@tauri-apps/plugin-dialog');
             const filePath = await open({
                 filters: [{ name: 'AeroSync Template', extensions: ['aerosync'] }],
                 multiple: false,

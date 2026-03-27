@@ -329,6 +329,21 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             }
             return lines.join('\n');
         }
+        if (r.plan_kind === 'transfer' && Array.isArray(r.operations)) {
+            const warnings = Array.isArray(r.warnings) ? r.warnings as string[] : [];
+            const lines: string[] = [];
+            lines.push(`**Transfer plan ready**`);
+            lines.push(`Direction: ${String(r.direction)}`);
+            lines.push(`Sources: ${String(r.source_count ?? 0)}`);
+            lines.push(`Operations: ${String(r.operation_count ?? 0)}`);
+            lines.push(`Destination: \`${String(r.destination ?? '')}\``);
+            if (warnings.length > 0) {
+                lines.push(`\n**Warnings (${warnings.length}):**`);
+                warnings.forEach(w => lines.push(`  - ${escapeMarkdown(w)}`));
+            }
+            lines.push('\nReview the plan card below before execution.');
+            return lines.join('\n');
+        }
         // Edit results
         if (r.replaced !== undefined) {
             return r.success

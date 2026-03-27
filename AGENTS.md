@@ -59,7 +59,7 @@ The `profiles --json` output:
 ]
 ```
 
-## Commands Reference
+## Common Commands
 
 ### File Operations
 
@@ -99,6 +99,7 @@ The `profiles --json` output:
 |---------|-------|-------------|
 | `connect` | `aeroftp-cli connect --profile NAME` | Test connection |
 | `df` | `aeroftp-cli df --profile NAME [--json]` | Storage quota |
+| `about` | `aeroftp-cli about --profile NAME [--json]` | Provider/server info with quota when available |
 | `profiles` | `aeroftp-cli profiles [--json]` | List saved servers |
 | `agent-info` | `aeroftp-cli agent-info --json` | Full capabilities JSON |
 
@@ -223,12 +224,14 @@ aeroftp-cli df --profile "Production" --json
 
 ## Supported Protocols
 
-23 protocols, all accessible via `--profile`:
+Saved profiles cover both direct-auth and browser-authorized providers.
 
-**Direct auth** (work immediately): FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, MEGA, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob
+**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, MEGA, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob
 
-**OAuth** (browser auth on first use, then automatic): Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive
+**Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime
+
+`df` and quota fields are provider-dependent. For several object-storage providers, `about` and `df` may omit quota data because the upstream API does not expose `storage_info`.
 
 ---
 
-*AeroFTP CLI v2.9.9+ — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

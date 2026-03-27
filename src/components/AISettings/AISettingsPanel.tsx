@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { TransferProgressBar } from '../TransferProgressBar';
 import {
     X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield,
@@ -572,7 +573,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         const streamId = `pull_${Date.now()}`;
 
         // Listen for progress events from Tauri backend
-        const { listen } = await import('@tauri-apps/api/event');
         const unlisten = await listen<{ status: string; total?: number; completed?: number; done: boolean }>(
             `ollama-pull-${streamId}`,
             (event) => {

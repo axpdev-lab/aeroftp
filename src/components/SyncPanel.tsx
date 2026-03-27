@@ -4,6 +4,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import {
     FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType,
     isFtpProtocol, TransferProgress, TransferEvent, SyncIndex,
@@ -537,8 +539,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const handleExportJSON = async () => {
         if (comparisons.length === 0) return;
         try {
-            const { save } = await import('@tauri-apps/plugin-dialog');
-            const { writeTextFile } = await import('@tauri-apps/plugin-fs');
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             const filePath = await save({
                 defaultPath: `aerosync-dryrun-${ts}.json`,
@@ -564,8 +564,6 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const handleExportCSV = async () => {
         if (comparisons.length === 0) return;
         try {
-            const { save } = await import('@tauri-apps/plugin-dialog');
-            const { writeTextFile } = await import('@tauri-apps/plugin-fs');
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             const filePath = await save({
                 defaultPath: `aerosync-dryrun-${ts}.csv`,

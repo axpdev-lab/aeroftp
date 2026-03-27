@@ -1,6 +1,5 @@
 # AeroFTP CLI — User Guide
 
-> **Version**: 3.0.8
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
 > **License**: GPL-3.0
 
@@ -8,9 +7,9 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, supporting 23 protocols through a single binary with consistent behavior across all of them.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers sync, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, and AI agent discovery/orchestration.
 
-### Supported Protocols
+### Direct URL Protocols
 
 | Protocol | URL Scheme | Auth Method |
 |----------|-----------|-------------|
@@ -29,16 +28,10 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 | OpenDrive | `opendrive://` | Password |
 | GitHub | `github://` | PAT / Device Flow |
 | Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
-| Google Drive | — | OAuth2 (via `--profile`) |
-| Dropbox | — | OAuth2 (via `--profile`) |
-| OneDrive | — | OAuth2 (via `--profile`) |
-| Box | — | OAuth2 (via `--profile`) |
-| pCloud | — | OAuth2 (via `--profile`) |
-| Zoho WorkDrive | — | OAuth2 (via `--profile`) |
-| 4shared | — | OAuth1 (via `--profile`) |
-| kDrive | — | OAuth2 (via `--profile`) |
 
-> **OAuth providers** do not have URL schemes. Use `--profile` to connect via saved server profiles authorized from the AeroFTP GUI.
+### Profile-Backed Providers
+
+Use `--profile` for providers authorized or configured in the GUI vault. This includes Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, and Drime, and it also works for direct-auth providers when you prefer vault-backed credentials.
 
 ---
 
@@ -49,7 +42,7 @@ The CLI binary (`aeroftp-cli`) is included in all AeroFTP distribution packages 
 ```bash
 # Verify installation
 aeroftp-cli --version
-# aeroftp 3.0.8
+# aeroftp X.Y.Z
 
 aeroftp-cli --help
 ```
@@ -148,7 +141,7 @@ Error: Ambiguous profile 'SSH'. Matches: SSH Lumo Cloud, SSH MyCloud HD. Use exa
 
 ### OAuth Providers via Profile
 
-OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared) require browser authorization. Authorize once in the AeroFTP GUI, then use the CLI. Note: 4shared uses OAuth 1.0 and works in CLI after completing authorization in the GUI.
+Browser-authorized and profile-backed API providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, Drime) are best used through saved profiles. Authorize or configure them once in the AeroFTP GUI, then reuse them from the CLI. Note: 4shared uses OAuth 1.0 and works in CLI after completing authorization in the GUI.
 
 ```bash
 # After authorizing Google Drive in the GUI:
@@ -269,6 +262,34 @@ aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```bash
 aeroftp-cli mv sftp://user@host /var/www/old-name.txt /var/www/new-name.txt
 ```
+
+### cp — Server-Side Copy
+
+```bash
+aeroftp-cli cp --profile "server" /var/www/app.js /var/www/app.backup.js
+```
+
+Copies a remote file or object on the server side when the provider supports it. Returns exit code 7 when server-side copy is unavailable for that provider.
+
+### link — Create Share Link
+
+```bash
+aeroftp-cli link --profile "server" /public/report.pdf
+```
+
+Creates a share link for a remote file when the provider supports share URLs. The returned link is printed to stdout or emitted as JSON with `--json`.
+
+### edit — Remote Find/Replace
+
+```bash
+# Replace all occurrences
+aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title"
+
+# Replace only the first occurrence
+aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" --first
+```
+
+This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
 
 ### cat — Print File Content
 
@@ -406,7 +427,7 @@ aeroftp-cli about --profile "server"
 aeroftp-cli about --profile "server" --json
 ```
 
-Shows provider name, type, server info, and storage quota (used/free/total) in a single command. More detailed than `df` — includes protocol version, server software, and connection parameters alongside quota information.
+Shows provider name, type, server info, and storage quota (used/free/total) when available. More detailed than `df` — includes protocol version, server software, and connection parameters alongside quota information. Some object-storage providers do not expose quota via the upstream API, so `about` and `df` may return provider info without quota fields.
 
 ### dedupe — Find Duplicate Files
 
@@ -461,6 +482,8 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "1M"
 
 Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`.
 
+Global transfer flags like `--parallel` and `--partial` also apply to `sync`, `get`, and `put`. `--parallel` controls concurrent worker count for bulk/recursive transfers, while `--partial` resumes interrupted transfers when the provider supports partial files or remote offsets.
+
 ### batch — Execute Script
 
 ```bash
@@ -468,6 +491,64 @@ aeroftp-cli batch deploy.aeroftp
 ```
 
 Executes a `.aeroftp` script file containing a sequence of commands. See [Batch Scripting](#batch-scripting) below.
+
+### rcat — Upload stdin Directly
+
+```bash
+printf 'hello from stdin\n' | aeroftp-cli rcat --profile "server" /remote/path/message.txt
+```
+
+Reads stdin and uploads it directly to a remote file. Useful for pipelines, generated content, and agent workflows where creating a temporary local file would be unnecessary.
+
+### alias — Manage Command Aliases
+
+```bash
+# Create or update an alias
+aeroftp-cli alias set prod-ls ls --profile Production /var/www/ -l
+
+# Show one alias
+aeroftp-cli alias show prod-ls
+
+# List all aliases
+aeroftp-cli alias list
+
+# Remove an alias
+aeroftp-cli alias remove prod-ls
+```
+
+Aliases are stored in the CLI `config.toml` file and expanded before command parsing. Alias expansion is cycle-protected.
+
+### agent — AeroAgent from the CLI
+
+```bash
+# One-shot prompt
+aeroftp-cli agent --provider ollama --message "list the saved servers"
+
+# Orchestration mode over stdin/stdout
+aeroftp-cli agent --orchestrate
+
+# MCP server mode
+aeroftp-cli agent --mcp
+```
+
+Runs AeroAgent through the shared Rust backend. It supports one-shot prompts, interactive runs, orchestration mode, and MCP server mode for external agent clients.
+
+### completions — Generate Shell Completion Scripts
+
+```bash
+aeroftp-cli completions bash
+aeroftp-cli completions zsh
+```
+
+Generates completion scripts for `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
+
+### agent-info — AI Agent Discovery Metadata
+
+```bash
+aeroftp-cli agent-info --json
+```
+
+Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, and saved profile status. This is the recommended discovery surface for AI coding agents.
 
 ---
 
@@ -493,6 +574,8 @@ Executes a `.aeroftp` script file containing a sequence of commands. See [Batch 
 | `--two-factor <code>` | 2FA code for Filen/Internxt (env: `AEROFTP_2FA`) |
 | `--limit-rate <speed>` | Speed limit (e.g., `1M`, `500K`) |
 | `--bwlimit <schedule>` | Bandwidth schedule (e.g., `"08:00,512k 18:00,off"` or `"1M"`) |
+| `--parallel <n>` | Number of parallel transfer workers for recursive/bulk operations |
+| `--partial` | Resume interrupted transfers when the provider supports partial files or remote offsets |
 | `--include <pattern>` | Include only files matching glob pattern (repeatable) |
 | `--exclude-global <pattern>` | Exclude files matching glob pattern (repeatable) |
 | `--include-from <file>` | Read include patterns from file |
@@ -552,6 +635,32 @@ Error responses:
   "code": 6
 }
 ```
+
+---
+
+## CLI Configuration
+
+The CLI reads defaults and aliases from `config.toml` under the user config directory:
+
+- Linux: `~/.config/aeroftp/config.toml`
+- macOS: `~/Library/Application Support/aeroftp/config.toml`
+- Windows: `%APPDATA%/aeroftp/config.toml`
+
+Example:
+
+```toml
+[defaults]
+profile = "Production"
+json = true
+parallel = 8
+partial = true
+limit_rate = "5M"
+
+[aliases]
+prod-ls = ["ls", "--profile", "Production", "/var/www/", "-l"]
+```
+
+Supported defaults include `profile`, `format`, `json`, `parallel`, `partial`, `quiet`, `verbose`, `limit_rate`, and `bwlimit`.
 
 ---
 
@@ -728,9 +837,13 @@ aeroftp-cli connect ftp://user@host --tls explicit
 # Implicit TLS (port 990)
 aeroftp-cli connect ftps://user@host
 
-# Skip certificate verification (self-signed)
+# Skip certificate verification (invalid, self-signed, or hostname-mismatched cert)
 aeroftp-cli connect ftp://user@host --tls explicit --insecure
 ```
+
+When certificate verification is enabled, FTPS connections fail closed on invalid certificates, including hostname mismatch. Use `--insecure` only when you intentionally trust that server despite certificate validation failure.
+
+The same rule applies to saved `--profile` connections. If a saved FTPS profile points to a host whose certificate does not match the configured hostname, AeroFTP CLI fails immediately and does not retry automatically with verification disabled. For example, a saved Aruba profile like `aeroftp.app` fails closed on `hostname mismatch` until you explicitly allow invalid/self-signed certificates in the saved profile or use `--insecure` for a direct URL connection.
 
 ### S3
 
@@ -864,6 +977,8 @@ aeroftp-cli connect sftp://user@host -vv
 # Test with --insecure for certificate issues
 aeroftp-cli connect ftp://user@host --tls explicit --insecure
 ```
+
+If a saved FTPS profile fails with `certificate verify failed` or `hostname mismatch`, that is now the expected secure behavior unless the profile explicitly allows invalid or self-signed certificates.
 
 ### FTP Passive Mode
 

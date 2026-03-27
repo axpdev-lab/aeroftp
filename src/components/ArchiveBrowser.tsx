@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { tempDir } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
 import { Archive, File, Folder, Lock, Download, Eye, X, ChevronRight, ChevronDown, EyeOff, Loader2 } from 'lucide-react';
 import { ArchiveEntry, ArchiveType } from '../types';
@@ -214,8 +215,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         // Extract to temp and open with system preview
         setExtracting(entryName);
         try {
-            const { tempDir: getTempDir } = await import('@tauri-apps/api/path');
-            const tempDirPath = await getTempDir();
+            const tempDirPath = await tempDir();
             const fileName = entryName.split(/[\\/]/).pop() || 'preview';
             const tempPath = `${tempDirPath}aeroftp_preview_${Date.now()}_${fileName}`;
             const cmd = `extract_${archiveType}_entry`;

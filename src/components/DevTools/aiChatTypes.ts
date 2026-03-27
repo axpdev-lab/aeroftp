@@ -27,6 +27,33 @@ export interface VisionImage {
     preview: string;    // "data:image/jpeg;base64,..." for local display
 }
 
+export interface TransferPlanOperation {
+    id: string;
+    toolName: string;
+    title: string;
+    description: string;
+    category: 'prepare' | 'upload' | 'download';
+    dangerLevel: 'safe' | 'medium' | 'high';
+    args: Record<string, unknown>;
+    dependsOn?: string[];
+}
+
+export interface TransferPlan {
+    direction: 'upload' | 'download';
+    destination: string;
+    source_count: number;
+    operation_count: number;
+    executable_operations: number;
+    summary: string;
+    warnings: string[];
+    operations: TransferPlanOperation[];
+}
+
+export interface TransferPlanResultData {
+    kind: 'transfer_plan';
+    plan: TransferPlan;
+}
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -51,6 +78,7 @@ export interface Message {
         cacheReadTokens?: number;      // Anthropic: tokens read from cache (90% cheaper)
         cacheSavings?: number;         // Estimated USD savings from caching
     };
+    toolResultData?: TransferPlanResultData;
 }
 
 export interface AIChatProps {

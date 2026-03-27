@@ -4,6 +4,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
+interface AgentMemoryEntry {
+    id: number;
+    category: string;
+    content: string;
+    created_at: number;
+}
+
 /**
  * Sanitize agent memory content to prevent prompt injection.
  * Strips lines that contain common system prompt override patterns.
@@ -34,6 +41,14 @@ export function useAgentMemory(projectPath: string | undefined) {
     const lastPathRef = useRef<string | undefined>(undefined);
     const mountedRef = useRef(true);
 
+    const formatEntries = useCallback((entries: AgentMemoryEntry[]) => {
+        return sanitizeAgentMemory(
+            entries
+                .map(entry => `[${new Date(entry.created_at * 1000).toISOString().slice(0, 16).replace('T', ' ')}] [${entry.category}] ${entry.content}`)
+                .join('\n'),
+        );
+    }, []);
+
     // Auto-load on mount/path change
     useEffect(() => {
         mountedRef.current = true;
@@ -49,9 +64,9 @@ export function useAgentMemory(projectPath: string | undefined) {
         lastPathRef.current = projectPath;
         memoryLoadedRef.current = true;
 
-        invoke<string>('read_agent_memory', { projectPath })
-            .then(raw => {
-                if (mountedRef.current) setMemory(sanitizeAgentMemory(raw));
+        invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query: null, limit: 10 })
+            .then(entries => {
+                if (mountedRef.current) setMemory(formatEntries(entries));
             })
             .catch(() => {
                 if (mountedRef.current) setMemory('');
@@ -63,16 +78,25 @@ export function useAgentMemory(projectPath: string | undefined) {
     // Append new entry
     const appendMemory = useCallback(async (entry: string, category: string = 'general') => {
         if (!projectPath) return;
-        const formatted = `\n[${new Date().toISOString().slice(0, 16).replace('T', ' ')}] [${category}] ${entry}`;
         try {
-            await invoke('write_agent_memory', { projectPath, content: formatted });
+            await invoke('agent_memory_store', { projectPath, category, content: entry, serverHost: null });
             // Reload after write
-            const raw = await invoke<string>('read_agent_memory', { projectPath });
-            if (mountedRef.current) setMemory(sanitizeAgentMemory(raw));
+            const entries = await invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query: null, limit: 10 });
+            if (mountedRef.current) setMemory(formatEntries(entries));
         } catch {
             // Silent failure
         }
-    }, [projectPath]);
+    }, [formatEntries, projectPath]);
 
-    return { memory, appendMemory };
+    const searchMemory = useCallback(async (query: string, limit = 5) => {
+        if (!projectPath) return '';
+        try {
+            const entries = await invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query, limit });
+            return formatEntries(entries);
+        } catch {
+            return '';
+        }
+    }, [formatEntries, projectPath]);
+
+    return { memory, appendMemory, searchMemory };
 }

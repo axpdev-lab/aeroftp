@@ -16,6 +16,7 @@ interface BatchToolApprovalProps {
     onApproveSingle: (id: string) => void;
     onRejectAll: () => void;
     allTools?: AITool[];
+    sessionId?: string;
 }
 
 const dangerConfig: Record<DangerLevel, { accent: string; icon: typeof Shield }> = {
@@ -43,7 +44,8 @@ const BatchToolItem: React.FC<{
     expandedId: string | null;
     setExpandedId: (id: string | null) => void;
     t: (key: string, params?: Record<string, string | number>) => string;
-}> = ({ tc, allTools, onApproveSingle, expandedId, setExpandedId, t }) => {
+    sessionId?: string;
+}> = ({ tc, allTools, onApproveSingle, expandedId, setExpandedId, t, sessionId }) => {
     const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
     const [diffLoading, setDiffLoading] = useState(false);
     const [diffError, setDiffError] = useState<string | null>(null);
@@ -72,6 +74,7 @@ const BatchToolItem: React.FC<{
                 replace_all: tc.args.replace_all ?? true,
                 remote: tc.toolName === 'remote_edit',
             },
+            sessionId,
         })
         .then((result: unknown) => {
             const r = result as Record<string, unknown>;
@@ -79,7 +82,7 @@ const BatchToolItem: React.FC<{
         })
         .catch((err: unknown) => setDiffError(String(err)))
         .finally(() => setDiffLoading(false));
-    }, [tc.id]);
+    }, [isEditTool, sessionId, tc.args.find, tc.args.path, tc.args.replace, tc.args.replace_all, tc.id, tc.status, tc.toolName]);
 
     return (
         <div className={`border-l-2 ${config.accent} text-xs`} role="listitem">
@@ -219,6 +222,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
     onApproveSingle,
     onRejectAll,
     allTools,
+    sessionId,
 }) => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [justApproved, setJustApproved] = useState(false);
@@ -266,6 +270,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                         t={t}
+                        sessionId={sessionId}
                     />
                 ))}
             </div>

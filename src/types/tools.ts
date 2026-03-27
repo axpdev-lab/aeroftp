@@ -23,6 +23,7 @@ export interface AgentToolCall {
     id: string;
     toolName: string;
     args: Record<string, unknown>;
+    dependsOn?: string[];
     status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'error';
     result?: unknown;
     error?: string;
@@ -161,6 +162,16 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'replace_all', type: 'boolean', description: 'Replace all occurrences (default: true)', required: false },
         ],
         dangerLevel: 'medium',
+    },
+    {
+        name: 'generate_transfer_plan',
+        description: 'Create a reviewable transfer plan for multiple uploads or downloads before executing any file transfers. Returns a structured list of planned operations without changing files.',
+        parameters: [
+            { name: 'direction', type: 'string', description: 'Transfer direction: upload or download', required: true },
+            { name: 'paths', type: 'array', description: 'Array of source paths to transfer', required: true },
+            { name: 'destination', type: 'string', description: 'Destination directory path', required: true },
+        ],
+        dangerLevel: 'safe',
     },
     {
         name: 'upload_files',
@@ -557,6 +568,7 @@ RULES:
 1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically.
 2. Medium/high risk tools need user approval — the system shows an approval prompt automatically. Do NOT ask for confirmation yourself — just call the tool directly and the UI will handle approval.
 3. Never delete files without explicit user request.
+4. For multi-file uploads or downloads, call generate_transfer_plan first. Use the reviewed plan before executing transfer operations.
 
 When using a tool, respond with:
 TOOL: tool_name

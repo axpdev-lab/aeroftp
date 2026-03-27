@@ -59,6 +59,8 @@ mod cyber_tools;
 mod totp;
 mod chat_history;
 mod file_tags;
+pub mod agent_memory_db;
+mod speech;
 mod vault_history;
 mod image_edit;
 mod server_health;
@@ -7514,6 +7516,20 @@ pub fn run() {
                 }
             }
 
+            // Initialize Agent Memory SQLite database
+            match agent_memory_db::init_db(app.handle()) {
+                Ok(conn) => {
+                    app.manage(agent_memory_db::AgentMemoryDb(std::sync::Mutex::new(conn)));
+                }
+                Err(e) => {
+                    log::error!("Agent memory DB init failed: {e}");
+                    let conn = rusqlite::Connection::open_in_memory()
+                        .expect("in-memory SQLite");
+                    let _ = agent_memory_db::init_db_schema(&conn);
+                    app.manage(agent_memory_db::AgentMemoryDb(std::sync::Mutex::new(conn)));
+                }
+            }
+
             // Initialize Vault History SQLite database
             {
                 let config_dir = app.path().app_config_dir().unwrap_or_default();
@@ -7847,6 +7863,7 @@ pub fn run() {
     // Master Password state for app-level security
     let builder = builder.manage(master_password::MasterPasswordState::new());
     let builder = builder.manage(totp::TotpState::default());
+    let builder = builder.manage(speech::SpeechState::default());
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -8014,6 +8031,12 @@ pub fn run() {
             context_intelligence::get_git_context,
             context_intelligence::read_agent_memory,
             context_intelligence::write_agent_memory,
+            agent_memory_db::agent_memory_store,
+            agent_memory_db::agent_memory_search,
+            agent_memory_db::agent_memory_delete,
+            speech::speech_model_status,
+            speech::download_speech_model,
+            speech::speech_to_text,
             // Archive browsing & selective extraction
             archive_browse::list_zip,
             archive_browse::list_7z,

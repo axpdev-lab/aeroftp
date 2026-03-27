@@ -10,13 +10,13 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | -------- | ----------- |
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
-| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix (20 protocols) |
+| **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
-| **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant — 47 tools, 19 providers, architecture, safety system |
+| **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant — architecture, tool catalog, safety system, CLI/MCP modes |
 | **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format — cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
-| **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI — 14 commands, batch scripting, glob transfers |
-| **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference — StorageProvider trait, 7 auth patterns, upload/pagination/XML parsing, adding new providers (20 protocols) |
+| **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI — command guide, profiles, batch scripting, aliases, completions, agent integration |
+| **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference — StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 
 ---
@@ -87,18 +87,18 @@ The **Unified Encrypted Keystore** stores all sensitive data in the AES-256-GCM 
 
 AeroVault v2 encrypted containers now support **full directory hierarchies**: create nested folders inside vaults, navigate with breadcrumb UI, add files to specific directories, and recursively delete directories with all contents. Three new backend commands: `vault_v2_create_directory`, `vault_v2_delete_entries` (recursive), `vault_v2_add_files_to_dir`.
 
-## AeroFTP CLI (v2.9.1)
+## AeroFTP CLI
 
-Production command-line client with **14 commands** across **12 protocols** (FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr). Features `--json` structured output, glob pattern transfers, `.aeroftp` batch scripting engine with variables and error policies, and progress bars. See **[CLI-GUIDE.md](./CLI-GUIDE.md)** for complete usage documentation.
+Production command-line client with direct URL mode for core protocols plus vault-backed `--profile` access for saved servers and browser-authorized providers. Features structured `--json` output, glob and recursive transfers, `.aeroftp` batch scripting, `config.toml` defaults, aliases, shell completions, agent discovery, and AeroAgent orchestration. See **[CLI-GUIDE.md](./CLI-GUIDE.md)** for complete usage documentation.
 
-## AeroAgent (v2.6.0)
+## AeroAgent
 
-AeroAgent features **47 tools** across 10 categories, **19 AI providers** (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom), a **Command Palette** (Ctrl+Shift+P), **Plugin Registry** with GitHub-based browser, **plugin hooks**, context menu AI actions, AI status widget, and drag & drop file analysis.
+AeroAgent provides a broad built-in tool catalog across local files, remote operations, archives, search, sync control, clipboard, shell execution, and persistent memory, with support for 19 AI providers. It also includes a Command Palette, plugin registry, tool execution safety system, and CLI/MCP integration paths.
 
 ---
 
-- **Documentation Version**: 2.9.4
-- **Last Update**: 2026-03-12
+- **Documentation Version**: 3.1.5
+- **Last Update**: 2026-03-27
 
 ---
 

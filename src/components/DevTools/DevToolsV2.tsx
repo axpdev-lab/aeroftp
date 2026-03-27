@@ -6,6 +6,7 @@ import { Code, Terminal, MessageSquare, X, Maximize2, Minimize2, Columns2, Colum
 import { PreviewFile } from './types';
 import { CodeEditor } from './CodeEditor';
 import { SSHTerminal, SshConnectionInfo } from './SSHTerminal';
+import { readTextFile } from '@tauri-apps/plugin-fs';
 import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
 import type { EffectiveTheme } from '../../hooks/useTheme';
@@ -334,7 +335,6 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             if (normalizedChanged === normalizedOpen) {
                 // Re-read the file content
                 try {
-                    const { readTextFile } = await import('@tauri-apps/plugin-fs');
                     const content = await readTextFile(path);
                     window.dispatchEvent(new CustomEvent('editor-reload', { detail: { path, content } }));
                 } catch {

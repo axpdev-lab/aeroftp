@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
@@ -203,6 +204,10 @@ const App: React.FC = () => {
       window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
     } catch { /* ignore */ }
   }, [swapPanels, setSwapPanels, SETTINGS_KEY]);
+
+  const usesProviderApi = (protocol?: ProviderType) => {
+    return !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
+  };
 
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
@@ -1185,7 +1190,7 @@ const App: React.FC = () => {
 
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = protocol && isNonFtpProvider(protocol);
+    const isProvider = usesProviderApi(protocol);
 
     const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
 
@@ -1710,7 +1715,7 @@ const App: React.FC = () => {
       // Use override protocol if provided, then connectionParams, then active session (most robust)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -1727,7 +1732,7 @@ const App: React.FC = () => {
         // Log to activity only on explicit loads (not after mutations like rename/delete)
         if (!silent) {
           if (response.files?.length > 0) {
-            humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: protocol }, 'success');
+            humanLog.logRaw('activity.loaded_items', 'INFO', { count: response.files.length, provider: protocol || 'unknown' }, 'success');
           } else {
             activityLog.log('INFO', `No files returned from ${protocol} provider`, 'running');
           }
@@ -2324,7 +2329,7 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
-    const isProvider = !!protocol && !isOAuth && isNonFtpProvider(protocol);
+    const isProvider = !!protocol && !isOAuth && usesProviderApi(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
     if (isOAuth) {
@@ -2354,7 +2359,7 @@ const App: React.FC = () => {
       return;
     }
 
-    // S3, WebDAV and MEGA use provider_connect
+    // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
       if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github') || (!effectiveParams.username && protocol !== 'github')) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
@@ -2705,8 +2710,8 @@ const App: React.FC = () => {
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
-    // All non-FTP, non-OAuth providers use provider_connect/provider_list_files
-    const isS3OrWebDAV = !!protocol && !isOAuth && isNonFtpProvider(protocol);
+    // All non-OAuth protocols on the provider API path use provider_connect/provider_list_files
+    const usesProviderApiForSession = !!protocol && !isOAuth && usesProviderApi(protocol);
 
     // Reconnect to the new server and refresh data
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connecting' } : s));
@@ -2815,7 +2820,7 @@ const App: React.FC = () => {
 
         // Now navigate to the session's path
         response = await invoke('provider_change_dir', { path: targetSession.remotePath || '/' });
-      } else if (isS3OrWebDAV) {
+      } else if (usesProviderApiForSession) {
         logger.debug('[switchSession] Provider (S3/WebDAV), reconnecting...');
 
         let connectParams = targetSession.connectionParams;
@@ -3018,7 +3023,7 @@ const App: React.FC = () => {
 
       // Determine protocol (from cloud config, server profile, or default)
       const protocol = (cloudConfig.protocol_type || cloudServer.protocol || 'ftp') as ProviderType;
-      const isProvider = isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
       const isFtp = isFtpProtocol(protocol);
       const protocolLabel = protocol.toUpperCase();
 
@@ -3249,7 +3254,7 @@ const App: React.FC = () => {
       // Use override protocol if provided, then connectionParams, then active session (most robust)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
 
       let response: FileListResponse;
       if (isProvider) {
@@ -3325,7 +3330,7 @@ const App: React.FC = () => {
     if (isSyncNavigation && syncBasePaths && isConnected) {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
 
       const relativePath = path.startsWith(syncBasePaths.local)
         ? path.slice(syncBasePaths.local.length)
@@ -3382,7 +3387,7 @@ const App: React.FC = () => {
     if (!syncNavDialog) return;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
-    const isProviderConn = !!protocol && isNonFtpProvider(protocol);
+    const isProviderConn = usesProviderApi(protocol);
     try {
       if (syncNavDialog.isRemote) {
         if (isProviderConn) {
@@ -3484,7 +3489,7 @@ const App: React.FC = () => {
     // Check if we're using a Provider (get protocol from active session as fallback)
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = !!protocol && isNonFtpProvider(protocol);
+    const isProvider = usesProviderApi(protocol);
 
     try {
       if (isDir) {
@@ -3569,7 +3574,7 @@ const App: React.FC = () => {
       // Check if we're using a Provider (get protocol from active session as fallback)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
       const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
 
       if (isDir) {
@@ -3721,7 +3726,7 @@ const App: React.FC = () => {
   const attemptBatchReconnect = async (): Promise<boolean> => {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = !!protocol && isNonFtpProvider(protocol);
+    const isProvider = usesProviderApi(protocol);
 
     circuitBreaker.markReconnecting();
     notify.info(t('toast.reconnecting'), t('transfer.circuitBreaker.attemptingReconnect'));
@@ -3777,7 +3782,7 @@ const App: React.FC = () => {
   const resumeBatch = async () => {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isProvider = !!protocol && isNonFtpProvider(protocol);
+    const isProvider = usesProviderApi(protocol);
 
     // Lightweight connection verify — warn on failure but still resume (CB will catch next error)
     try {
@@ -3863,7 +3868,7 @@ const App: React.FC = () => {
             if (sourceIsRemote) {
               const activeSession = sessions.find(s => s.id === activeSessionId);
               const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-              if (protocol && isNonFtpProvider(protocol)) {
+              if (usesProviderApi(protocol)) {
                 await invoke('provider_delete_file', { path: file.path });
               } else {
                 await invoke('delete_remote_file', { path: file.path });
@@ -3885,7 +3890,7 @@ const App: React.FC = () => {
         // Move files to target directory
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const useProvider = protocol && isNonFtpProvider(protocol) && protocol !== 'sftp';
+        const useProvider = usesProviderApi(protocol) && protocol !== 'sftp';
 
         for (const file of files) {
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
@@ -4585,7 +4590,7 @@ const App: React.FC = () => {
       // Get protocol from active session as fallback (outside loop for efficiency)
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
       const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
       let batchCommitMessage: string | undefined;
 
@@ -4818,7 +4823,7 @@ const App: React.FC = () => {
     const performDelete = async () => {
       const logId = humanLog.logStart('DELETE', { filename: path });
       try {
-        const isProvider = !!protocol && isNonFtpProvider(protocol);
+        const isProvider = usesProviderApi(protocol);
 
         if (isProvider) {
           if (isDir) {
@@ -4908,7 +4913,7 @@ const App: React.FC = () => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const isProvider = !!protocol && isNonFtpProvider(protocol);
+            const isProvider = usesProviderApi(protocol);
 
             if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
@@ -4977,7 +4982,7 @@ const App: React.FC = () => {
       if (isRemote) {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const isProvider = !!protocol && isNonFtpProvider(protocol);
+        const isProvider = usesProviderApi(protocol);
 
         if (isProvider) {
           await invoke('provider_rename', { from: path, to: newPath });
@@ -5034,7 +5039,7 @@ const App: React.FC = () => {
         if (isRemote) {
           const activeSession = sessions.find(s => s.id === activeSessionId);
           const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-          const isProvider = !!protocol && isNonFtpProvider(protocol);
+          const isProvider = usesProviderApi(protocol);
 
           if (isProvider) {
             await invoke('provider_rename', { from: oldPath, to: newPath });
@@ -5089,7 +5094,7 @@ const App: React.FC = () => {
             // Get protocol from active session as fallback
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-            const isProvider = !!protocol && isNonFtpProvider(protocol);
+            const isProvider = usesProviderApi(protocol);
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -6393,7 +6398,7 @@ const App: React.FC = () => {
       // Get protocol from active session as fallback
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = !!protocol && isNonFtpProvider(protocol);
+      const isProvider = usesProviderApi(protocol);
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
     } else {
@@ -6531,7 +6536,7 @@ const App: React.FC = () => {
           onToggleEditor={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'editor' }))}
           onToggleTerminal={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'terminal' }))}
           onToggleAgent={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }))}
-          onQuit={async () => { try { const { getCurrentWindow } = await import('@tauri-apps/api/window'); await getCurrentWindow().close(); } catch { /* noop */ } }}
+          onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
         />
@@ -7354,7 +7359,7 @@ const App: React.FC = () => {
                 }
 
                 // Check if this is a non-FTP provider protocol (S3, WebDAV, MEGA, Filen use provider_connect)
-                const isProvider = normalizedParams.protocol && isNonFtpProvider(normalizedParams.protocol);
+                const isProvider = usesProviderApi(normalizedParams.protocol);
 
                 if (isProvider) {
                   // S3/WebDAV connection via provider_connect

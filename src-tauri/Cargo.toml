@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.1.4"
+version = "3.1.5"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -24,6 +24,7 @@ tauri-build = { version = "2", features = [] }
 filetime = "0.2"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
 log = "0.4"
 futures-util = "0.3"
 tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
@@ -129,6 +130,8 @@ totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238
 
 # Chat History SQLite (v2.3.0)
 rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite with FTS5 (bundled = no system libsqlite3)
+hound = "3"                                                            # WAV decoding for local speech-to-text
+whisper-rs = "0.16.0"                                                  # Local speech-to-text via whisper.cpp bindings
 
 # CLI Foundation (v2.3.0)
 clap = { version = "4", features = ["derive", "env"] }                  # CLI argument parser
@@ -137,6 +140,7 @@ indicatif = "0.17"                                                     # Progres
 rpassword = "7"                                                        # Secure password input (no echo)
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup
 globset = "0.4"                                                        # Glob patterns for batch transfers
+tempfile = "3"                                                        # Temporary files for stdin upload/resume workflows
 
 # Windows Explorer badge integration (v2.0.5)
 [target.'cfg(windows)'.dependencies]
@@ -149,7 +153,6 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
-tempfile = "3"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from './AIIcons';
@@ -14,11 +14,11 @@ import { ToolApproval } from './ToolApproval';
 import { BatchToolApproval } from './BatchToolApproval';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ThinkingBlock } from './ThinkingBlock';
-import { type Conversation, cleanupHistory } from '../../utils/chatHistory';
+import { type Conversation, cleanupHistory, loadSession } from '../../utils/chatHistory';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
-import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS } from './aiChatTypes';
+import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentMode, AGENT_MODE_MAX_STEPS, TransferPlan, TransferPlanOperation, TransferPlanResultData } from './aiChatTypes';
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError } from './aiChatUtils';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
@@ -62,6 +62,108 @@ const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 1
         <circle cx="92.5" cy="92.5" r="12.5"><animate attributeName="fill-opacity" begin="700ms" dur="1s" values="1;.2;1" calcMode="linear" repeatCount="indefinite"/></circle>
     </svg>
 );
+
+const VOICE_SAMPLE_RATE = 16000;
+
+type SpeechModelStatus = {
+    available: boolean;
+    modelName: string;
+    modelPath: string;
+    modelSizeBytes?: number | null;
+    downloadUrl: string;
+};
+
+type SpeechTranscriptionResult = {
+    text: string;
+    language?: string | null;
+    durationMs: number;
+    modelName: string;
+};
+
+type VoiceCaptureRefs = {
+    stream: MediaStream | null;
+    audioContext: AudioContext | null;
+    source: MediaStreamAudioSourceNode | null;
+    processor: ScriptProcessorNode | null;
+    sink: GainNode | null;
+    sampleRate: number;
+};
+
+const mergeAudioChunks = (chunks: Float32Array[]): Float32Array => {
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+    }
+    return merged;
+};
+
+const resampleAudio = (input: Float32Array, sourceRate: number, targetRate: number): Float32Array => {
+    if (sourceRate === targetRate) return input;
+    const ratio = sourceRate / targetRate;
+    const outputLength = Math.max(1, Math.round(input.length / ratio));
+    const output = new Float32Array(outputLength);
+    for (let index = 0; index < outputLength; index += 1) {
+        const position = index * ratio;
+        const lower = Math.floor(position);
+        const upper = Math.min(lower + 1, input.length - 1);
+        const weight = position - lower;
+        output[index] = input[lower] * (1 - weight) + input[upper] * weight;
+    }
+    return output;
+};
+
+const encodeWav = (samples: Float32Array, sampleRate: number): Uint8Array => {
+    const bytesPerSample = 2;
+    const blockAlign = bytesPerSample;
+    const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+    const view = new DataView(buffer);
+    const writeString = (offset: number, value: string) => {
+        for (let index = 0; index < value.length; index += 1) {
+            view.setUint8(offset + index, value.charCodeAt(index));
+        }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, samples.length * bytesPerSample, true);
+
+    let offset = 44;
+    for (const sample of samples) {
+        const clamped = Math.max(-1, Math.min(1, sample));
+        view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+        offset += bytesPerSample;
+    }
+
+    return new Uint8Array(buffer);
+};
+
+const bytesToBase64 = (bytes: Uint8Array): string => {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return window.btoa(binary);
+};
+
+const normalizeSpeechLanguage = (language: string | undefined): string | undefined => {
+    if (!language) return undefined;
+    const normalized = language.split(/[-_]/)[0]?.trim().toLowerCase();
+    return normalized || undefined;
+};
 
 /** Hook: cycle through thinking messages while loading — typewriter effect */
 function useThinkingMessage(isActive: boolean, t: (key: string) => string, intervalMs = 3000): { text: string; isTyping: boolean } {
@@ -144,6 +246,122 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
         case 'custom': return <Bot size={size} className="text-gray-400" />;
         default: return <Bot size={size} />;
     }
+};
+
+const isTransferPlan = (value: unknown): value is TransferPlan => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Record<string, unknown>;
+    return (candidate.direction === 'upload' || candidate.direction === 'download')
+        && typeof candidate.destination === 'string'
+        && Array.isArray(candidate.operations);
+};
+
+const isTransferPlanResultData = (value: unknown): value is TransferPlanResultData => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Record<string, unknown>;
+    return candidate.kind === 'transfer_plan' && isTransferPlan(candidate.plan);
+};
+
+const TransferPlanReview: React.FC<{
+    plan: TransferPlan;
+    isExecuting: boolean;
+    onExecute: (selectedOperationIds: string[]) => Promise<void>;
+}> = ({ plan, isExecuting, onExecute }) => {
+    const defaultSelection = useMemo(
+        () => new Set(plan.operations.filter(op => op.category !== 'prepare').map(op => op.id)),
+        [plan],
+    );
+    const [selectedOperationIds, setSelectedOperationIds] = useState<Set<string>>(defaultSelection);
+
+    useEffect(() => {
+        setSelectedOperationIds(defaultSelection);
+    }, [defaultSelection]);
+
+    const toggleOperation = (operationId: string) => {
+        setSelectedOperationIds(prev => {
+            const next = new Set(prev);
+            if (next.has(operationId)) next.delete(operationId);
+            else next.add(operationId);
+            return next;
+        });
+    };
+
+    const selectedCount = selectedOperationIds.size;
+
+    return (
+        <div className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-cyan-300">
+                        {plan.direction === 'upload' ? <Upload size={14} /> : <Download size={14} />}
+                        <span>Transfer Plan Review</span>
+                    </div>
+                    <p className="mt-1 text-xs text-cyan-100/80">
+                        {plan.summary}
+                    </p>
+                    <p className="mt-1 text-[11px] text-cyan-100/60">
+                        Destination: {plan.destination}
+                    </p>
+                </div>
+                <button
+                    onClick={() => void onExecute(Array.from(selectedOperationIds))}
+                    disabled={isExecuting || selectedCount === 0}
+                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {isExecuting ? 'Executing...' : `Execute ${selectedCount} operation(s)`}
+                </button>
+            </div>
+
+            {plan.warnings.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-100">
+                    <div className="mb-1 flex items-center gap-1 font-medium text-amber-300">
+                        <AlertTriangle size={12} />
+                        <span>Warnings</span>
+                    </div>
+                    <ul className="space-y-1">
+                        {plan.warnings.map((warning, index) => (
+                            <li key={`${warning}-${index}`}>{warning}</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            <div className="mt-3 space-y-2">
+                {plan.operations.map((operation: TransferPlanOperation) => {
+                    const isPrepare = operation.category === 'prepare';
+                    const isSelected = isPrepare || selectedOperationIds.has(operation.id);
+                    return (
+                        <label
+                            key={operation.id}
+                            className={`flex items-start gap-3 rounded-lg border p-2 text-xs ${isSelected ? 'border-cyan-400/40 bg-cyan-400/10' : 'border-white/10 bg-white/5'}`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={isPrepare || isExecuting}
+                                onChange={() => toggleOperation(operation.id)}
+                                className="mt-0.5"
+                            />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-white">{operation.title}</span>
+                                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
+                                        {operation.category}
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-white/70">{operation.description}</p>
+                                {Array.isArray(operation.dependsOn) && operation.dependsOn.length > 0 && (
+                                    <p className="mt-1 text-[10px] text-white/45">
+                                        Depends on {operation.dependsOn.length} preparatory step(s)
+                                    </p>
+                                )}
+                            </div>
+                        </label>
+                    );
+                })}
+            </div>
+        </div>
+    );
 };
 
 export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath }) => {
@@ -258,10 +476,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [isLoading, setIsLoading] = useState(false);
     const { text: thinkingMessage, isTyping: thinkingIsTyping } = useThinkingMessage(isLoading, t);
     const [isListening, setIsListening] = useState(false);
+    const [isTranscribingAudio, setIsTranscribingAudio] = useState(false);
+    const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [availableModels, setAvailableModels] = useState<SelectedModel[]>([]);
     const [selectedModel, setSelectedModel] = useState<SelectedModel | null>(null);
     const [pendingToolCalls, setPendingToolCalls] = useState<AgentToolCall[]>([]);
+    const [executingTransferPlanId, setExecutingTransferPlanId] = useState<string | null>(null);
     const [isAutoExecuting, setIsAutoExecuting] = useState(false);
     const [autoStepCount, setAutoStepCount] = useState(0);
     const [macros] = useState<ToolMacro[]>(DEFAULT_MACROS);
@@ -366,6 +587,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const streamUnlistenRef = useRef<(() => void) | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const voiceCaptureRef = useRef<VoiceCaptureRefs>({
+        stream: null,
+        audioContext: null,
+        source: null,
+        processor: null,
+        sink: null,
+        sampleRate: VOICE_SAMPLE_RATE,
+    });
+    const recordedChunksRef = useRef<Float32Array[]>([]);
+    const voiceStatusTimeoutRef = useRef<number | null>(null);
     const ragIndexRef = useRef<Record<string, unknown> | null>(null);
     const ragIndexedPathRef = useRef<string | null>(null);
     const sessionApprovedToolsRef = useRef<Set<string>>(new Set());
@@ -373,7 +604,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     // Phase 3: Context Intelligence
     const projectPath = localPath || remotePath;
-    const { memory: agentMemory, appendMemory: appendAgentMemory } = useAgentMemory(projectPath);
+    const { memory: agentMemory, appendMemory: appendAgentMemory, searchMemory } = useAgentMemory(projectPath);
     const projectContextRef = useRef<ProjectContext | null>(null);
     const gitSummaryRef = useRef<string | null>(null);
     const gitBranchRef = useRef<string | null>(null);
@@ -643,6 +874,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 toolName: 'rag_index',
                 args: { path: indexPath, recursive: true, max_files: 100 },
                 contextLocalPath: localPath || undefined,
+                sessionId: activeConversationId || undefined,
             }).then((result: unknown) => {
                 ragIndexRef.current = result as Record<string, unknown>;
                 ragIndexedPathRef.current = indexPath;
@@ -652,7 +884,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             });
         }, 1000);
         return () => clearTimeout(timer);
-    }, [localPath, cachedAiSettings?.advancedSettings?.enableAutoRAGIndexing]);
+    }, [localPath, cachedAiSettings?.advancedSettings?.enableAutoRAGIndexing, activeConversationId]);
 
     // Phase 3: Auto-detect project context (#66)
     useEffect(() => {
@@ -690,33 +922,177 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         });
     }, [editorFilePath]);
 
-    // Speech recognition for audio input
-    const speechSupported = ('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window);
-    const toggleListening = () => {
-        if (!speechSupported) return;
+    const setTemporaryVoiceStatus = useCallback((message: string | null, timeoutMs = 4000) => {
+        if (voiceStatusTimeoutRef.current !== null) {
+            window.clearTimeout(voiceStatusTimeoutRef.current);
+            voiceStatusTimeoutRef.current = null;
+        }
+        setVoiceStatus(message);
+        if (message && timeoutMs > 0) {
+            voiceStatusTimeoutRef.current = window.setTimeout(() => {
+                setVoiceStatus(null);
+                voiceStatusTimeoutRef.current = null;
+            }, timeoutMs);
+        }
+    }, []);
 
-        if (isListening) {
-            setIsListening(false);
+    const resizeComposer = useCallback(() => {
+        if (!inputRef.current) return;
+        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+    }, []);
+
+    const appendTranscriptToComposer = useCallback((transcript: string) => {
+        const trimmed = transcript.trim();
+        if (!trimmed) return;
+        setInput(prev => `${prev}${prev ? ' ' : ''}${trimmed}`);
+        requestAnimationFrame(() => {
+            resizeComposer();
+            inputRef.current?.focus();
+        });
+    }, [resizeComposer]);
+
+    const cleanupVoiceCapture = useCallback(async () => {
+        const current = voiceCaptureRef.current;
+        current.processor?.disconnect();
+        current.source?.disconnect();
+        current.sink?.disconnect();
+        current.stream?.getTracks().forEach(track => track.stop());
+        if (current.audioContext) {
+            await current.audioContext.close().catch(() => undefined);
+        }
+        voiceCaptureRef.current = {
+            stream: null,
+            audioContext: null,
+            source: null,
+            processor: null,
+            sink: null,
+            sampleRate: VOICE_SAMPLE_RATE,
+        };
+    }, []);
+
+    const transcribeRecordedAudio = useCallback(async (chunks: Float32Array[], sourceRate: number) => {
+        const merged = mergeAudioChunks(chunks);
+        if (merged.length === 0) {
+            setTemporaryVoiceStatus('No audio captured.', 3000);
             return;
         }
 
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = navigator.language || 'en-US';
+        setIsTranscribingAudio(true);
+        try {
+            const speechStatus = await invoke<SpeechModelStatus>('speech_model_status');
+            if (!speechStatus.available) {
+                setVoiceStatus('Downloading local voice model...');
+                await invoke<SpeechModelStatus>('download_speech_model');
+            }
 
-        recognition.onstart = () => setIsListening(true);
-        recognition.onend = () => setIsListening(false);
-        recognition.onerror = () => setIsListening(false);
-        recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
-            setInput(prev => prev + (prev ? ' ' : '') + transcript);
-            inputRef.current?.focus();
-        };
+            setVoiceStatus('Transcribing locally...');
+            const pcm16k = resampleAudio(merged, sourceRate, VOICE_SAMPLE_RATE);
+            const wavBytes = encodeWav(pcm16k, VOICE_SAMPLE_RATE);
+            const audioBase64 = bytesToBase64(wavBytes);
+            const result = await invoke<SpeechTranscriptionResult>('speech_to_text', {
+                audioBase64,
+                language: normalizeSpeechLanguage(navigator.language),
+            });
 
-        recognition.start();
-    };
+            if (!result.text.trim()) {
+                setTemporaryVoiceStatus('No speech detected.', 3500);
+                return;
+            }
+
+            appendTranscriptToComposer(result.text);
+            setTemporaryVoiceStatus(
+                result.language ? `Voice input ready (${result.language}).` : 'Voice input ready.',
+                2500,
+            );
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setTemporaryVoiceStatus(message || 'Local transcription failed.', 5000);
+        } finally {
+            setIsTranscribingAudio(false);
+        }
+    }, [appendTranscriptToComposer, setTemporaryVoiceStatus]);
+
+    const stopListeningSession = useCallback(async (shouldTranscribe: boolean) => {
+        const chunks = recordedChunksRef.current;
+        const sourceRate = voiceCaptureRef.current.sampleRate || VOICE_SAMPLE_RATE;
+        recordedChunksRef.current = [];
+        await cleanupVoiceCapture();
+        setIsListening(false);
+        if (shouldTranscribe) {
+            await transcribeRecordedAudio(chunks, sourceRate);
+        }
+    }, [cleanupVoiceCapture, transcribeRecordedAudio]);
+
+    const voiceSupported = typeof window !== 'undefined'
+        && typeof navigator !== 'undefined'
+        && !!navigator.mediaDevices?.getUserMedia
+        && ('AudioContext' in window || 'webkitAudioContext' in (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }));
+
+    const toggleListening = useCallback(async () => {
+        if (!voiceSupported || isTranscribingAudio) return;
+
+        if (isListening) {
+            await stopListeningSession(true);
+            return;
+        }
+
+        try {
+            setVoiceStatus('Listening locally...');
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+            });
+            const AudioContextCtor = window.AudioContext
+                || (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+            if (!AudioContextCtor) {
+                throw new Error(t('ai.speechNotSupported'));
+            }
+
+            const audioContext = new AudioContextCtor();
+            await audioContext.resume();
+            const source = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+            const sink = audioContext.createGain();
+            sink.gain.value = 0;
+
+            recordedChunksRef.current = [];
+            processor.onaudioprocess = (event: AudioProcessingEvent) => {
+                const inputChannel = event.inputBuffer.getChannelData(0);
+                recordedChunksRef.current.push(new Float32Array(inputChannel));
+            };
+
+            source.connect(processor);
+            processor.connect(sink);
+            sink.connect(audioContext.destination);
+
+            voiceCaptureRef.current = {
+                stream,
+                audioContext,
+                source,
+                processor,
+                sink,
+                sampleRate: audioContext.sampleRate,
+            };
+            setIsListening(true);
+        } catch (error) {
+            await cleanupVoiceCapture();
+            setIsListening(false);
+            const message = error instanceof Error ? error.message : String(error);
+            setTemporaryVoiceStatus(message || 'Unable to access microphone.', 5000);
+        }
+    }, [cleanupVoiceCapture, isListening, isTranscribingAudio, setTemporaryVoiceStatus, stopListeningSession, t, voiceSupported]);
+
+    useEffect(() => () => {
+        if (voiceStatusTimeoutRef.current !== null) {
+            window.clearTimeout(voiceStatusTimeoutRef.current);
+        }
+        void cleanupVoiceCapture();
+    }, [cleanupVoiceCapture]);
 
     // Execute a tool via unified provider-agnostic command (built-in or plugin)
     // SECURITY: Check built-in tools FIRST to prevent plugin name hijacking
@@ -733,7 +1109,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
         }
         dispatchAIStatus('tool-execution');
-        const result = await invoke('execute_ai_tool', { toolName, args, contextLocalPath: localPath || undefined });
+        const result = await invoke('execute_ai_tool', {
+            toolName,
+            args,
+            contextLocalPath: localPath || undefined,
+            sessionId: activeConversationId || undefined,
+        });
         dispatchAIStatus('streaming');
         return result;
     };
@@ -872,6 +1253,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
             }
             const formattedResult = formatToolResult(toolCall.toolName, result);
+            const transferPlanData = toolCall.toolName === 'generate_transfer_plan' && result && typeof result === 'object' && isTransferPlan(result)
+                ? ({ kind: 'transfer_plan', plan: result } as TransferPlanResultData)
+                : undefined;
 
             // Check for soft failures (tool returned success: false)
             if (result && typeof result === 'object' && 'success' in (result as Record<string, unknown>) && !(result as Record<string, unknown>).success) {
@@ -904,6 +1288,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 content: formattedResult,
                 toolName: toolCall.toolName,
                 timestamp: new Date(),
+                toolResultData: transferPlanData,
             };
             setMessages(prev => [...prev, resultMessage]);
 
@@ -989,6 +1374,62 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return null;
         }
     };
+
+    const executeTransferPlan = useCallback(async (messageId: string, plan: TransferPlan, selectedOperationIds: string[]) => {
+        const selectedSet = new Set(selectedOperationIds);
+        const selectedOperations = plan.operations.filter(op => op.category !== 'prepare' && selectedSet.has(op.id));
+        if (selectedOperations.length === 0) {
+            setMessages(prev => [...prev, {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: 'No transfer operations selected.',
+                timestamp: new Date(),
+            }]);
+            return;
+        }
+
+        const requiredIds = new Set<string>(selectedOperationIds);
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const operation of plan.operations) {
+                if (!requiredIds.has(operation.id)) continue;
+                for (const dependency of operation.dependsOn || []) {
+                    if (!requiredIds.has(dependency)) {
+                        requiredIds.add(dependency);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        const plannedCalls: AgentToolCall[] = plan.operations
+            .filter(operation => requiredIds.has(operation.id))
+            .map(operation => ({
+                id: operation.id,
+                toolName: operation.toolName,
+                args: operation.args,
+                dependsOn: operation.dependsOn,
+                status: 'approved',
+            }));
+
+        setExecutingTransferPlanId(messageId);
+        setIsLoading(true);
+        try {
+            setMessages(prev => [...prev, {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: `Executing reviewed transfer plan: ${selectedOperations.length} selected operation(s), ${plannedCalls.length} total with dependencies.`,
+                timestamp: new Date(),
+            }]);
+
+            const levels = buildExecutionLevels(plannedCalls);
+            await executePipeline(levels, executeTool);
+        } finally {
+            setExecutingTransferPlanId(null);
+            setIsLoading(false);
+        }
+    }, [executeTool]);
 
     // Multi-step autonomous tool execution loop
     const executeMultiStep = async (
@@ -1285,6 +1726,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 return `- Workspace indexed: ${idx.files_count} files (${extSummary})`;
             })() : null;
 
+            const relevantAgentMemory = await searchMemory(userMessage.content, 5);
+
             // Build smart context with priority-based allocation
             const contextTokenBudget = Math.floor(modelContextWindow * 0.15); // 15% for smart context
             const smartCtx = buildSmartContext(
@@ -1292,7 +1735,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 taskType,
                 projectContextRef.current,
                 gitSummaryRef.current,
-                agentMemory,
+                relevantAgentMemory || agentMemory,
                 fileImportsRef.current,
                 ragSummary,
                 contextTokenBudget,
@@ -1311,7 +1754,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 projectContext: projectContextRef.current,
                 gitBranch: gitBranchRef.current || undefined,
                 gitSummary: gitSummaryRef.current || undefined,
-                agentMemory,
+                agentMemory: relevantAgentMemory || agentMemory,
                 fileImports: fileImportsRef.current,
                 smartContextBlock: smartContextBlock || undefined,
             });
@@ -1860,7 +2303,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     let conv = conversations.find(c => c.id === sessionId);
                     if (!conv) {
                         // UX-002: Load session on-demand if not in local list
-                        const { loadSession } = await import('../../utils/chatHistory');
                         conv = await loadSession(sessionId) ?? undefined;
                     }
                     if (conv) switchConversation(conv);
@@ -2043,6 +2485,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                                 editorFilePath={editorFilePath}
                                                 editorFileName={editorFileName}
                                             />
+                                            {isTransferPlanResultData(message.toolResultData) && (
+                                                <TransferPlanReview
+                                                    plan={message.toolResultData.plan}
+                                                    isExecuting={executingTransferPlanId === message.id}
+                                                    onExecute={async (selectedOperationIds) => {
+                                                        await executeTransferPlan(message.id, message.toolResultData!.plan, selectedOperationIds);
+                                                    }}
+                                                />
+                                            )}
                                         </div>
                                         {message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id) && (
                                             <div className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${ct.gradient} to-transparent flex items-end justify-center`}>
@@ -2151,6 +2602,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <ToolApproval
                                 toolCall={pendingToolCalls[0]}
                                 allTools={allTools}
+                                sessionId={activeConversationId || undefined}
                                 onApproveSession={agentMode === 'safe' ? undefined : (toolName: string) => {
                                     sessionApprovedToolsRef.current.add(toolName);
                                 }}
@@ -2187,6 +2639,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <BatchToolApproval
                                 toolCalls={pendingToolCalls}
                                 allTools={allTools}
+                                sessionId={activeConversationId || undefined}
                                 onApproveAll={async () => {
                                     setIsLoading(true);
                                     // Track all approved tool signatures for duplicate detection
@@ -2307,17 +2760,24 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         >
                             <ImageIcon size={16} />
                         </button>
-                        {speechSupported && (
-                            <button
-                                onClick={toggleListening}
-                                className={`p-1.5 rounded transition-colors ${isListening
-                                    ? 'text-red-400 bg-red-500/20'
-                                    : ct.btn}`}
-                                title={isListening ? t('ai.stopListening') : t('ai.voiceInput')}
-                            >
-                                {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                            </button>
-                        )}
+                        <button
+                            onClick={() => void toggleListening()}
+                            disabled={!voiceSupported || isLoading || isTranscribingAudio}
+                            className={`p-1.5 rounded transition-colors ${isListening
+                                ? 'text-red-400 bg-red-500/20'
+                                : isTranscribingAudio
+                                    ? 'text-cyan-300 bg-cyan-500/15'
+                                    : ct.btn} ${(!voiceSupported || isLoading || isTranscribingAudio) && !isListening ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            title={!voiceSupported
+                                ? t('ai.speechNotSupported')
+                                : isTranscribingAudio
+                                    ? 'Transcribing locally...'
+                                    : isListening
+                                        ? t('ai.stopListening')
+                                        : t('ai.voiceInput')}
+                        >
+                            {isTranscribingAudio ? <RefreshCw size={16} className="animate-spin" /> : isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                        </button>
                         <button
                             onClick={handleSend}
                             disabled={(!input.trim() && attachedImages.length === 0) || isLoading}
@@ -2326,6 +2786,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             <Send size={16} />
                         </button>
                     </div>
+
+                    {voiceStatus && (
+                        <div className={`px-3 pb-2 text-[11px] ${ct.textMuted}`}>
+                            {voiceStatus}
+                        </div>
+                    )}
 
                     {/* Bottom Row - Model Selector + Disclaimer (inside the box) */}
                     <div className={`flex items-center justify-between px-3 py-2 border-t ${ct.border} text-xs`}>
