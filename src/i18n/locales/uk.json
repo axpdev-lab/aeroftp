@@ -368,7 +368,9 @@
       "shareLinksFor": "Посилання для спільного доступу до",
       "deleteShareLinkPrompt": "Введіть ID посилання для видалення (або скасуйте):",
       "shareLinkDeleted": "Посилання видалено",
-      "newDocumentName": "Назва документа:"
+      "newDocumentName": "Назва документа:",
+      "pcloudTrashTitle": "Кошик pCloud",
+      "kdriveTrashTitle": "Кошик kDrive"
     },
     "transfer": {
       "transferring": "Передача...",

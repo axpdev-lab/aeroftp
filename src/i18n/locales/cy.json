@@ -368,7 +368,9 @@
       "shareLinksFor": "Dolenni rhannu ar gyfer",
       "deleteShareLinkPrompt": "Rhowch ID y ddolen i'w dileu (neu ganslo):",
       "shareLinkDeleted": "Dolen rannu wedi'i dileu",
-      "newDocumentName": "Enw'r ddogfen:"
+      "newDocumentName": "Enw'r ddogfen:",
+      "pcloudTrashTitle": "Sbwriel pCloud",
+      "kdriveTrashTitle": "Sbwriel kDrive"
     },
     "transfer": {
       "transferring": "Yn trosglwyddo...",

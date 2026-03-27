@@ -368,7 +368,9 @@
       "shareLinksFor": "Viungo vya kushiriki vya",
       "deleteShareLinkPrompt": "Weka kitambulisho cha kiungo cha kufuta (au ghairi):",
       "shareLinkDeleted": "Kiungo cha kushiriki kimefutwa",
-      "newDocumentName": "Jina la hati:"
+      "newDocumentName": "Jina la hati:",
+      "pcloudTrashTitle": "Takataka ya pCloud",
+      "kdriveTrashTitle": "Takataka ya kDrive"
     },
     "transfer": {
       "transferring": "Inahamisha...",

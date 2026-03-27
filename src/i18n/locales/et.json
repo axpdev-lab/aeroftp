@@ -368,7 +368,9 @@
       "shareLinksFor": "Jagamislingid:",
       "deleteShareLinkPrompt": "Sisestage kustutatava lingi ID (või tühistage):",
       "shareLinkDeleted": "Jagamislink kustutatud",
-      "newDocumentName": "Dokumendi nimi:"
+      "newDocumentName": "Dokumendi nimi:",
+      "pcloudTrashTitle": "pCloud prügikast",
+      "kdriveTrashTitle": "kDrive prügikast"
     },
     "transfer": {
       "transferring": "Ülekanne...",

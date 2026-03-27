@@ -368,7 +368,9 @@
       "shareLinksFor": "Partekatzeko estekak honentzat:",
       "deleteShareLinkPrompt": "Sartu ezabatu nahi duzun estekaren IDa (edo utzi):",
       "shareLinkDeleted": "Partekatzeko esteka ezabatuta",
-      "newDocumentName": "Dokumentuaren izena:"
+      "newDocumentName": "Dokumentuaren izena:",
+      "pcloudTrashTitle": "pCloud zakarrontzia",
+      "kdriveTrashTitle": "kDrive zakarrontzia"
     },
     "transfer": {
       "transferring": "Transferitzen...",

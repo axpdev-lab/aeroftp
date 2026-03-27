@@ -368,7 +368,9 @@
       "shareLinksFor": "共有リンク：",
       "deleteShareLinkPrompt": "削除するリンクIDを入力してください（またはキャンセル）：",
       "shareLinkDeleted": "共有リンクを削除しました",
-      "newDocumentName": "ドキュメント名："
+      "newDocumentName": "ドキュメント名：",
+      "pcloudTrashTitle": "pCloud ゴミ箱",
+      "kdriveTrashTitle": "kDrive ゴミ箱"
     },
     "transfer": {
       "transferring": "転送中...",

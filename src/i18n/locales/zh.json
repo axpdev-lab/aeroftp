@@ -368,7 +368,9 @@
       "shareLinksFor": "分享链接：",
       "deleteShareLinkPrompt": "输入要删除的链接 ID（或取消）：",
       "shareLinkDeleted": "分享链接已删除",
-      "newDocumentName": "文档名称："
+      "newDocumentName": "文档名称：",
+      "pcloudTrashTitle": "pCloud 回收站",
+      "kdriveTrashTitle": "kDrive 回收站"
     },
     "transfer": {
       "transferring": "传输中...",

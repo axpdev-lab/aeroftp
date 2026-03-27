@@ -368,7 +368,9 @@
       "shareLinksFor": "Enllaços compartits de",
       "deleteShareLinkPrompt": "Introduïu l'ID de l'enllaç per eliminar (o cancel·la):",
       "shareLinkDeleted": "Enllaç compartit eliminat",
-      "newDocumentName": "Nom del document:"
+      "newDocumentName": "Nom del document:",
+      "pcloudTrashTitle": "Paperera de pCloud",
+      "kdriveTrashTitle": "Paperera de kDrive"
     },
     "transfer": {
       "transferring": "Transferint...",

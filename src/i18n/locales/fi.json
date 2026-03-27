@@ -368,7 +368,9 @@
       "shareLinksFor": "Jakolinkit kohteelle",
       "deleteShareLinkPrompt": "Syötä poistettavan linkin tunnus (tai peruuta):",
       "shareLinkDeleted": "Jakolinkki poistettu",
-      "newDocumentName": "Asiakirjan nimi:"
+      "newDocumentName": "Asiakirjan nimi:",
+      "pcloudTrashTitle": "pCloud roskakori",
+      "kdriveTrashTitle": "kDrive roskakori"
     },
     "transfer": {
       "transferring": "Siirretään...",

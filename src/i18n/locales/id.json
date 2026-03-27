@@ -368,7 +368,9 @@
       "shareLinksFor": "Tautan berbagi untuk",
       "deleteShareLinkPrompt": "Masukkan ID tautan untuk dihapus (atau batal):",
       "shareLinkDeleted": "Tautan berbagi dihapus",
-      "newDocumentName": "Nama dokumen:"
+      "newDocumentName": "Nama dokumen:",
+      "pcloudTrashTitle": "Sampah pCloud",
+      "kdriveTrashTitle": "Sampah kDrive"
     },
     "transfer": {
       "transferring": "Mentransfer...",

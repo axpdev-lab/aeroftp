@@ -368,7 +368,9 @@
       "shareLinksFor": "Linki udostępniania dla",
       "deleteShareLinkPrompt": "Wprowadź ID linku do usunięcia (lub anuluj):",
       "shareLinkDeleted": "Link udostępniania usunięty",
-      "newDocumentName": "Nazwa dokumentu:"
+      "newDocumentName": "Nazwa dokumentu:",
+      "pcloudTrashTitle": "Kosz pCloud",
+      "kdriveTrashTitle": "Kosz kDrive"
     },
     "transfer": {
       "transferring": "Przesyłanie...",

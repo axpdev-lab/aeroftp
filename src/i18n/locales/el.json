@@ -368,7 +368,9 @@
       "shareLinksFor": "Σύνδεσμοι κοινής χρήσης για",
       "deleteShareLinkPrompt": "Εισαγάγετε το αναγνωριστικό συνδέσμου για διαγραφή (ή ακυρώστε):",
       "shareLinkDeleted": "Ο σύνδεσμος κοινής χρήσης διαγράφηκε",
-      "newDocumentName": "Όνομα εγγράφου:"
+      "newDocumentName": "Όνομα εγγράφου:",
+      "pcloudTrashTitle": "Κάδος pCloud",
+      "kdriveTrashTitle": "Κάδος kDrive"
     },
     "transfer": {
       "transferring": "Μεταφορά...",

@@ -368,7 +368,9 @@
       "shareLinksFor": "Enlaces compartidos de",
       "deleteShareLinkPrompt": "Introduce el ID del enlace a eliminar (o cancela):",
       "shareLinkDeleted": "Enlace compartido eliminado",
-      "newDocumentName": "Nombre del documento:"
+      "newDocumentName": "Nombre del documento:",
+      "pcloudTrashTitle": "Papelera de pCloud",
+      "kdriveTrashTitle": "Papelera de kDrive"
     },
     "transfer": {
       "transferring": "Transfiriendo...",

@@ -368,7 +368,9 @@
       "shareLinksFor": "Links de partilha de",
       "deleteShareLinkPrompt": "Introduza o ID do link a eliminar (ou cancele):",
       "shareLinkDeleted": "Link de partilha eliminado",
-      "newDocumentName": "Nome do documento:"
+      "newDocumentName": "Nome do documento:",
+      "pcloudTrashTitle": "Lixeira do pCloud",
+      "kdriveTrashTitle": "Lixeira do kDrive"
     },
     "transfer": {
       "transferring": "Transferindo...",

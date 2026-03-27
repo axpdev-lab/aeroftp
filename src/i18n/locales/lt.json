@@ -368,7 +368,9 @@
       "shareLinksFor": "Bendrinimo nuorodos:",
       "deleteShareLinkPrompt": "Įveskite nuorodos ID, kurį norite ištrinti (arba atšaukite):",
       "shareLinkDeleted": "Bendrinimo nuoroda ištrinta",
-      "newDocumentName": "Dokumento pavadinimas:"
+      "newDocumentName": "Dokumento pavadinimas:",
+      "pcloudTrashTitle": "pCloud šiukšlinė",
+      "kdriveTrashTitle": "kDrive šiukšlinė"
     },
     "transfer": {
       "transferring": "Perduodama...",

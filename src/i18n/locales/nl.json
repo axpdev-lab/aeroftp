@@ -368,7 +368,9 @@
       "shareLinksFor": "Deellinks voor",
       "deleteShareLinkPrompt": "Voer de link-ID in om te verwijderen (of annuleer):",
       "shareLinkDeleted": "Deellink verwijderd",
-      "newDocumentName": "Documentnaam:"
+      "newDocumentName": "Documentnaam:",
+      "pcloudTrashTitle": "pCloud prullenbak",
+      "kdriveTrashTitle": "kDrive prullenbak"
     },
     "transfer": {
       "transferring": "Overdragen...",

@@ -37,7 +37,6 @@
       "browse": "Sfoglia",
       "select": "Seleziona",
       "copy": "Copia",
-      "duplicate": "Duplica",
       "paste": "Incolla",
       "cut": "Taglia",
       "rename": "Rinomina",
@@ -536,7 +535,9 @@
       "shareLinksFor": "Link di condivisione per",
       "deleteShareLinkPrompt": "Inserisci l'ID del link da eliminare (o annulla):",
       "shareLinkDeleted": "Link di condivisione eliminato",
-      "newDocumentName": "Nome del documento:"
+      "newDocumentName": "Nome del documento:",
+      "pcloudTrashTitle": "Cestino pCloud",
+      "kdriveTrashTitle": "Cestino kDrive"
     },
     "transfer": {
       "transferring": "Trasferimento in corso...",

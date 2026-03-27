@@ -368,7 +368,9 @@
       "shareLinksFor": "Liên kết chia sẻ cho",
       "deleteShareLinkPrompt": "Nhập ID liên kết để xóa (hoặc hủy):",
       "shareLinkDeleted": "Đã xóa liên kết chia sẻ",
-      "newDocumentName": "Tên tài liệu:"
+      "newDocumentName": "Tên tài liệu:",
+      "pcloudTrashTitle": "Thùng rác pCloud",
+      "kdriveTrashTitle": "Thùng rác kDrive"
     },
     "transfer": {
       "transferring": "Đang truyền...",

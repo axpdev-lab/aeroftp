@@ -368,7 +368,9 @@
       "shareLinksFor": "Ссылки для общего доступа к",
       "deleteShareLinkPrompt": "Введите ID ссылки для удаления (или отмените):",
       "shareLinkDeleted": "Ссылка удалена",
-      "newDocumentName": "Имя документа:"
+      "newDocumentName": "Имя документа:",
+      "pcloudTrashTitle": "Корзина pCloud",
+      "kdriveTrashTitle": "Корзина kDrive"
     },
     "transfer": {
       "transferring": "Передача...",

@@ -368,7 +368,9 @@
       "shareLinksFor": "공유 링크:",
       "deleteShareLinkPrompt": "삭제할 링크 ID를 입력하세요 (또는 취소):",
       "shareLinkDeleted": "공유 링크가 삭제되었습니다",
-      "newDocumentName": "문서 이름:"
+      "newDocumentName": "문서 이름:",
+      "pcloudTrashTitle": "pCloud 휴지통",
+      "kdriveTrashTitle": "kDrive 휴지통"
     },
     "transfer": {
       "transferring": "전송 중...",

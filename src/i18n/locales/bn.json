@@ -368,7 +368,9 @@
       "shareLinksFor": "[NEEDS TRANSLATION] Share links for",
       "deleteShareLinkPrompt": "[NEEDS TRANSLATION] Enter link ID to delete (or cancel):",
       "shareLinkDeleted": "[NEEDS TRANSLATION] Share link deleted",
-      "newDocumentName": "[NEEDS TRANSLATION] Document name:"
+      "newDocumentName": "[NEEDS TRANSLATION] Document name:",
+      "pcloudTrashTitle": "pCloud ট্র্যাশ",
+      "kdriveTrashTitle": "kDrive ট্র্যাশ"
     },
     "transfer": {
       "transferring": "স্থানান্তর করা হচ্ছে...",

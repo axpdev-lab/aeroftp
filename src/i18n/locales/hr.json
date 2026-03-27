@@ -368,7 +368,9 @@
       "shareLinksFor": "Veze za dijeljenje za",
       "deleteShareLinkPrompt": "Unesite ID veze za brisanje (ili otkažite):",
       "shareLinkDeleted": "Veza za dijeljenje obrisana",
-      "newDocumentName": "Naziv dokumenta:"
+      "newDocumentName": "Naziv dokumenta:",
+      "pcloudTrashTitle": "pCloud smeće",
+      "kdriveTrashTitle": "kDrive smeće"
     },
     "transfer": {
       "transferring": "Prijenos...",

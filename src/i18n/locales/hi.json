@@ -368,7 +368,9 @@
       "shareLinksFor": "शेयर लिंक:",
       "deleteShareLinkPrompt": "हटाने के लिए लिंक ID दर्ज करें (या रद्द करें):",
       "shareLinkDeleted": "शेयर लिंक हटाया गया",
-      "newDocumentName": "दस्तावेज़ का नाम:"
+      "newDocumentName": "दस्तावेज़ का नाम:",
+      "pcloudTrashTitle": "pCloud ट्रैश",
+      "kdriveTrashTitle": "kDrive ट्रैश"
     },
     "transfer": {
       "transferring": "स्थानांतरित हो रहा है...",

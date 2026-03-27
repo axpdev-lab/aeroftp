@@ -368,7 +368,9 @@
       "shareLinksFor": "ลิงก์แชร์สำหรับ",
       "deleteShareLinkPrompt": "กรอก ID ลิงก์ที่ต้องการลบ (หรือยกเลิก):",
       "shareLinkDeleted": "ลบลิงก์แชร์แล้ว",
-      "newDocumentName": "ชื่อเอกสาร:"
+      "newDocumentName": "ชื่อเอกสาร:",
+      "pcloudTrashTitle": "ถังขยะ pCloud",
+      "kdriveTrashTitle": "ถังขยะ kDrive"
     },
     "transfer": {
       "transferring": "กำลังถ่ายโอน...",

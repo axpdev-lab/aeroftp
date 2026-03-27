@@ -368,7 +368,9 @@
       "shareLinksFor": "Freigabelinks für",
       "deleteShareLinkPrompt": "Link-ID zum Löschen eingeben (oder abbrechen):",
       "shareLinkDeleted": "Freigabelink gelöscht",
-      "newDocumentName": "Dokumentname:"
+      "newDocumentName": "Dokumentname:",
+      "pcloudTrashTitle": "pCloud Papierkorb",
+      "kdriveTrashTitle": "kDrive Papierkorb"
     },
     "transfer": {
       "transferring": "Übertragung...",

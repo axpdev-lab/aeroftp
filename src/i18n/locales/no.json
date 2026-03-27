@@ -368,7 +368,9 @@
       "shareLinksFor": "Delingslenker for",
       "deleteShareLinkPrompt": "Skriv inn lenke-ID for å slette (eller avbryt):",
       "shareLinkDeleted": "Delingslenke slettet",
-      "newDocumentName": "Dokumentnavn:"
+      "newDocumentName": "Dokumentnavn:",
+      "pcloudTrashTitle": "pCloud papirkurv",
+      "kdriveTrashTitle": "kDrive papirkurv"
     },
     "transfer": {
       "transferring": "Overfører...",

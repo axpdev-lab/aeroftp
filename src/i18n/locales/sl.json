@@ -368,7 +368,9 @@
       "shareLinksFor": "Povezave za skupno rabo za",
       "deleteShareLinkPrompt": "Vnesite ID povezave za brisanje (ali prekličite):",
       "shareLinkDeleted": "Povezava za skupno rabo izbrisana",
-      "newDocumentName": "Ime dokumenta:"
+      "newDocumentName": "Ime dokumenta:",
+      "pcloudTrashTitle": "Koš pCloud",
+      "kdriveTrashTitle": "Koš kDrive"
     },
     "transfer": {
       "transferring": "Prenašanje...",

@@ -368,7 +368,9 @@
       "shareLinksFor": "Mga share link para sa",
       "deleteShareLinkPrompt": "Ilagay ang link ID na buburahin (o kanselahin):",
       "shareLinkDeleted": "Na-delete ang share link",
-      "newDocumentName": "Pangalan ng dokumento:"
+      "newDocumentName": "Pangalan ng dokumento:",
+      "pcloudTrashTitle": "Basurahan ng pCloud",
+      "kdriveTrashTitle": "Basurahan ng kDrive"
     },
     "transfer": {
       "transferring": "Naglilipat...",

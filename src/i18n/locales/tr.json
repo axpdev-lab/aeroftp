@@ -368,7 +368,9 @@
       "shareLinksFor": "Paylaşım bağlantıları:",
       "deleteShareLinkPrompt": "Silinecek bağlantı kimliğini girin (veya iptal edin):",
       "shareLinkDeleted": "Paylaşım bağlantısı silindi",
-      "newDocumentName": "Belge adı:"
+      "newDocumentName": "Belge adı:",
+      "pcloudTrashTitle": "pCloud Çöp Kutusu",
+      "kdriveTrashTitle": "kDrive Çöp Kutusu"
     },
     "transfer": {
       "transferring": "Aktarılıyor...",

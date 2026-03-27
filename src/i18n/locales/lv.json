@@ -368,7 +368,9 @@
       "shareLinksFor": "Kopīgošanas saites priekš",
       "deleteShareLinkPrompt": "Ievadiet saites ID dzēšanai (vai atceliet):",
       "shareLinkDeleted": "Kopīgošanas saite dzēsta",
-      "newDocumentName": "Dokumenta nosaukums:"
+      "newDocumentName": "Dokumenta nosaukums:",
+      "pcloudTrashTitle": "pCloud atkritne",
+      "kdriveTrashTitle": "kDrive atkritne"
     },
     "transfer": {
       "transferring": "Pārsūta...",

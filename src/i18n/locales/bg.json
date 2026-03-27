@@ -368,7 +368,9 @@
       "shareLinksFor": "Споделени линкове за",
       "deleteShareLinkPrompt": "Въведете ID на линка за изтриване (или откажете):",
       "shareLinkDeleted": "Споделеният линк е изтрит",
-      "newDocumentName": "Име на документа:"
+      "newDocumentName": "Име на документа:",
+      "pcloudTrashTitle": "Кошче на pCloud",
+      "kdriveTrashTitle": "Кошче на kDrive"
     },
     "transfer": {
       "transferring": "Прехвърляне...",

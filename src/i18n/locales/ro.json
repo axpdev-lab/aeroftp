@@ -368,7 +368,9 @@
       "shareLinksFor": "Linkuri de partajare pentru",
       "deleteShareLinkPrompt": "Introduceți ID-ul linkului de șters (sau anulați):",
       "shareLinkDeleted": "Link de partajare șters",
-      "newDocumentName": "Numele documentului:"
+      "newDocumentName": "Numele documentului:",
+      "pcloudTrashTitle": "Coș de gunoi pCloud",
+      "kdriveTrashTitle": "Coș de gunoi kDrive"
     },
     "transfer": {
       "transferring": "Se transferă...",

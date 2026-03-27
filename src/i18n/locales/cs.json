@@ -368,7 +368,9 @@
       "shareLinksFor": "Sdílené odkazy pro",
       "deleteShareLinkPrompt": "Zadejte ID odkazu ke smazání (nebo zrušte):",
       "shareLinkDeleted": "Sdílený odkaz smazán",
-      "newDocumentName": "Název dokumentu:"
+      "newDocumentName": "Název dokumentu:",
+      "pcloudTrashTitle": "Koš pCloud",
+      "kdriveTrashTitle": "Koš kDrive"
     },
     "transfer": {
       "transferring": "Přenášení...",
