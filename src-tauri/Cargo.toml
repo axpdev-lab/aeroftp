@@ -130,10 +130,6 @@ totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238
 
 # Chat History SQLite (v2.3.0)
 rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite with FTS5 (bundled = no system libsqlite3)
-# Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-hound = "3"
-whisper-rs = "0.16.0"
 
 # CLI Foundation (v2.3.0)
 clap = { version = "4", features = ["derive", "env"] }                  # CLI argument parser
@@ -143,6 +139,11 @@ rpassword = "7"                                                        # Secure 
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup
 globset = "0.4"                                                        # Glob patterns for batch transfers
 tempfile = "3"                                                        # Temporary files for stdin upload/resume workflows
+
+# Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+hound = "3"
+whisper-rs = "0.16.0"
 
 # Windows Explorer badge integration (v2.0.5)
 [target.'cfg(windows)'.dependencies]
