@@ -130,8 +130,10 @@ totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238
 
 # Chat History SQLite (v2.3.0)
 rusqlite = { version = "0.32", features = ["bundled"] }                # SQLite with FTS5 (bundled = no system libsqlite3)
-hound = "3"                                                            # WAV decoding for local speech-to-text
-whisper-rs = "0.16.0"                                                  # Local speech-to-text via whisper.cpp bindings
+# Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+hound = "3"
+whisper-rs = "0.16.0"
 
 # CLI Foundation (v2.3.0)
 clap = { version = "4", features = ["derive", "env"] }                  # CLI argument parser

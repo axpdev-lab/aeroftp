@@ -60,7 +60,41 @@ mod totp;
 mod chat_history;
 mod file_tags;
 pub mod agent_memory_db;
+#[cfg(not(target_os = "macos"))]
 mod speech;
+#[cfg(target_os = "macos")]
+mod speech {
+    //! Stub: macOS uses native Web Speech API via WKWebView — whisper.cpp not needed.
+    use serde::Serialize;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    pub struct SpeechState {
+        _dummy: Mutex<()>,
+    }
+
+    #[derive(Serialize, Clone)]
+    pub struct SpeechModelStatus {
+        pub available: bool,
+        pub model_path: Option<String>,
+        pub model_size_bytes: Option<u64>,
+    }
+
+    #[tauri::command]
+    pub fn speech_model_status(_state: tauri::State<'_, SpeechState>) -> Result<SpeechModelStatus, String> {
+        Ok(SpeechModelStatus { available: false, model_path: None, model_size_bytes: None })
+    }
+
+    #[tauri::command]
+    pub async fn download_speech_model(_app: tauri::AppHandle, _state: tauri::State<'_, SpeechState>) -> Result<String, String> {
+        Err("Speech-to-text not available on macOS — use native voice input".to_string())
+    }
+
+    #[tauri::command]
+    pub async fn speech_to_text(_audio_base64: String, _language: Option<String>, _app: tauri::AppHandle, _state: tauri::State<'_, SpeechState>) -> Result<serde_json::Value, String> {
+        Err("Speech-to-text not available on macOS — use native voice input".to_string())
+    }
+}
 mod vault_history;
 mod image_edit;
 mod server_health;
