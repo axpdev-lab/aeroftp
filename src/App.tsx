@@ -7910,10 +7910,16 @@ const App: React.FC = () => {
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
-                        webdav: () => setShowNextcloudTrash(true),
                         pcloud: () => setShowPCloudTrash(true),
                       };
-                      const handler = trashMap[proto || ''];
+                      let handler = trashMap[proto || ''];
+                      // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
+                      if (proto === 'webdav') {
+                        const pid = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
+                        if (pid === 'nextcloud' || pid === 'felicloud') {
+                          handler = () => setShowNextcloudTrash(true);
+                        }
+                      }
                       return handler ? (
                         <button
                           onClick={handler}
