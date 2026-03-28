@@ -1136,7 +1136,6 @@ impl StorageProvider for SftpProvider {
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let sftp = self.get_sftp()?;
         let root = self.normalize_path(path);
-        let pattern_lower = pattern.to_lowercase();
         let mut results = Vec::new();
         let mut dirs_to_scan = vec![root];
 
@@ -1164,7 +1163,7 @@ impl StorageProvider for SftpProvider {
                     dirs_to_scan.push(entry_path.clone());
                 }
 
-                if name.to_lowercase().contains(&pattern_lower) {
+                if super::matches_find_pattern(&name, pattern) {
                     results.push(remote_entry);
                     if results.len() >= 500 {
                         return Ok(results);

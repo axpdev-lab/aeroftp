@@ -1487,7 +1487,6 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let pattern_lower = pattern.to_lowercase();
         let mut results = Vec::new();
         let mut dirs_to_scan = vec![path.to_string()];
 
@@ -1502,7 +1501,7 @@ impl StorageProvider for WebDavProvider {
                     dirs_to_scan.push(entry.path.clone());
                 }
 
-                if entry.name.to_lowercase().contains(&pattern_lower) {
+                if super::matches_find_pattern(&entry.name, pattern) {
                     results.push(entry);
                     if results.len() >= 500 {
                         return Ok(results);

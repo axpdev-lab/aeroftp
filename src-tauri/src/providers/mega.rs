@@ -146,8 +146,16 @@ impl MegaProvider {
                 }
             };
 
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
             if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                return Ok(stdout);
+            }
+
+            // MEGA-FIND-01: mega-find may exit non-zero (e.g. 53) even when it
+            // produces valid results on stdout (pattern match succeeds but the
+            // literal path lookup fails). Accept stdout if it has content.
+            if !stdout.trim().is_empty() {
                 return Ok(stdout);
             }
 

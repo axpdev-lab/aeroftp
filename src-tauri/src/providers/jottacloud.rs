@@ -1248,9 +1248,8 @@ impl StorageProvider for JottacloudProvider {
         let xml = resp.text().await.unwrap_or_default();
         let all_entries = Self::parse_folder_xml(&xml, &resolved);
 
-        let pattern_lower = pattern.to_lowercase();
         Ok(all_entries.into_iter().filter(|e| {
-            e.name.to_lowercase().contains(&pattern_lower)
+            super::matches_find_pattern(&e.name, pattern)
         }).collect())
     }
 

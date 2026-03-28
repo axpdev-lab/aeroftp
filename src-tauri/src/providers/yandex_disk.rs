@@ -989,7 +989,6 @@ impl StorageProvider for YandexDiskProvider {
             return Err(ProviderError::NotConnected);
         }
         // Use flat file list and filter by pattern
-        let pattern_lower = pattern.to_lowercase();
         let mut results = Vec::new();
         let mut offset: u64 = 0;
         let limit: u64 = 1000;
@@ -1018,7 +1017,7 @@ impl StorageProvider for YandexDiskProvider {
 
             let count = list.items.len() as u64;
             for item in &list.items {
-                if item.name.to_lowercase().contains(&pattern_lower) {
+                if super::matches_find_pattern(&item.name, pattern) {
                     results.push(resource_to_entry(item));
                 }
             }

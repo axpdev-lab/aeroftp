@@ -240,7 +240,7 @@ impl PCloudProvider {
                     format!("{}/{}", base_path, item.name)
                 };
 
-                if item.name.to_lowercase().contains(pattern) {
+                if super::matches_find_pattern(&item.name, pattern) {
                     results.push(RemoteEntry {
                         name: item.name.clone(),
                         path: item_path.clone(),
@@ -1021,8 +1021,6 @@ impl StorageProvider for PCloudProvider {
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let resolved = self.resolve_path(path);
-        let pattern_lower = pattern.to_lowercase();
-
         // Use recursive listfolder and filter client-side
         // PA-009: pCloud returns all items in a single recursive response (no pagination)
         let url = format!("{}/listfolder?path={}&recursive=1",
@@ -1040,7 +1038,7 @@ impl StorageProvider for PCloudProvider {
             .ok_or_else(|| ProviderError::ParseError("No metadata".to_string()))?;
 
         let mut results = Vec::new();
-        self.collect_matching(&metadata, &resolved, &pattern_lower, &mut results);
+        self.collect_matching(&metadata, &resolved, pattern, &mut results);
         Ok(results)
     }
 }

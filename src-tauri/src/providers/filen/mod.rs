@@ -1592,7 +1592,6 @@ impl StorageProvider for FilenProvider {
         // The current implementation recursively lists and decrypts directories client-side.
         // This is inherently slow for large directory trees. Consider caching the decrypted
         // directory tree for faster subsequent searches.
-        let pattern_lower = pattern.to_lowercase();
         let mut results = Vec::new();
         let mut dirs_to_scan = vec![if path == "." || path.is_empty() {
             self.current_path.clone()
@@ -1610,7 +1609,7 @@ impl StorageProvider for FilenProvider {
             for dir in &dirs_to_scan {
                 if let Ok(entries) = self.list(dir).await {
                     for entry in entries {
-                        if entry.name.to_lowercase().contains(&pattern_lower) {
+                        if crate::providers::matches_find_pattern(&entry.name, pattern) {
                             results.push(entry.clone());
                         }
                         if entry.is_dir && results.len() < 500 {

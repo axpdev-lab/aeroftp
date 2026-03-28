@@ -1762,16 +1762,14 @@ impl StorageProvider for GitHubProvider {
             .await
             .map_err(ProviderError::from)?;
 
-        let pattern_lower = pattern.to_lowercase();
-
         let entries = response
             .tree
             .into_iter()
             .filter(|item| {
-                // Match filename or path against pattern (case-insensitive)
+                // Match filename or path against pattern (glob or substring)
                 let name = item.path.rsplit('/').next().unwrap_or(&item.path);
-                name.to_lowercase().contains(&pattern_lower)
-                    || item.path.to_lowercase().contains(&pattern_lower)
+                crate::providers::matches_find_pattern(name, pattern)
+                    || crate::providers::matches_find_pattern(&item.path, pattern)
             })
             .take(100)
             .map(|item| {

@@ -2215,6 +2215,7 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         "opendrive" => ProviderType::OpenDrive,
         "kdrive" => ProviderType::KDrive,
         "github" => ProviderType::GitHub,
+        "swift" => ProviderType::Swift,
         "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" => ProviderType::GoogleDrive,
         "dropbox" => ProviderType::Dropbox,

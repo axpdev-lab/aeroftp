@@ -1708,7 +1708,6 @@ impl StorageProvider for S3Provider {
         // Use ListObjectsV2 with prefix (no delimiter to get all recursive objects)
         let mut all_entries = Vec::new();
         let mut continuation_token: Option<String> = None;
-        let pattern_lower = pattern.to_lowercase();
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![
@@ -1786,7 +1785,7 @@ impl StorageProvider for S3Provider {
                                 if let Some(ref key) = find_key {
                                     if !key.ends_with('/') {
                                         let name = key.rsplit('/').next().unwrap_or(key);
-                                        if name.to_lowercase().contains(&pattern_lower) {
+                                        if super::matches_find_pattern(name, pattern) {
                                             let size: u64 = find_size.as_ref()
                                                 .and_then(|s| s.parse().ok())
                                                 .unwrap_or(0);

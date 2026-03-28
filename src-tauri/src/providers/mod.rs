@@ -86,6 +86,23 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// Match a filename against a find pattern.
+/// Supports glob patterns (`*`, `?`, `[`) via globset, falls back to
+/// case-insensitive substring match for plain strings like "report".
+pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
+    let is_glob = pattern.contains('*') || pattern.contains('?') || pattern.contains('[');
+    if is_glob {
+        if let Ok(glob) = globset::Glob::new(pattern) {
+            glob.compile_matcher().is_match(name)
+        } else {
+            // Invalid glob — fall back to substring
+            name.to_lowercase().contains(&pattern.to_lowercase())
+        }
+    } else {
+        name.to_lowercase().contains(&pattern.to_lowercase())
+    }
+}
+
 /// H2: Maximum size for download_to_bytes operations (500 MB).
 /// Prevents OOM when a remote file is unexpectedly large.
 /// For larger files, use the streaming download() method instead.
