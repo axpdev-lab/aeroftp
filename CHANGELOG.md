@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.7] - 2026-03-28
+
+### Glob Find & Production Polish
+
+#### Fixed
+- **Find glob patterns**: 8 providers (WebDAV, SFTP, S3, Jottacloud, Yandex Disk, GitHub, Filen, pCloud) now support glob patterns (*.txt, *.png) via globset. Previously only substring matching worked.
+- **MEGA find**: Accept results even when mega-find exits with code 53.
+- **Blomp hidden in production**: Blomp provider only visible in dev mode until storage proxy 403 is resolved.
+
 ## [3.1.6] - 2026-03-28
 
 ### FeliCloud, Share Link Modal & Provider Bug Fixes

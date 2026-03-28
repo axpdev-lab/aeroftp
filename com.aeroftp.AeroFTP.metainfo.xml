@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.7" date="2026-03-28">
+      <description>
+        <p>Glob pattern matching for find across 8 providers, MEGA find exit code fix, Blomp hidden in production.</p>
+      </description>
+    </release>
     <release version="3.1.6" date="2026-03-28">
       <description>
         <p>FeliCloud (20th provider): EU/GDPR Nextcloud cloud with OCS share links and trash management. Share Link Modal with copy confirmation and password display. Activity log coverage for 14 trash managers and 30+ provider operations. Fixed 4shared OAuth1 signature, Google Drive soft-delete, MEGA download and trash path, Dropbox restore. FileLu listing 2x faster via parallel API calls.</p>
