@@ -68,12 +68,14 @@ import { BoxTagsDialog } from './components/BoxTagsDialog';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
+import { NextcloudTrashManager } from './components/NextcloudTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
 import { PCloudTrashManager } from './components/PCloudTrashManager';
 import { KDriveTrashManager } from './components/KDriveTrashManager';
 import { FilenNotesPanel } from './components/FilenNotesPanel';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
+import { ShareLinkModal } from './components/ShareLinkModal';
 import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
@@ -138,7 +140,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -364,6 +366,8 @@ const App: React.FC = () => {
   const [showYandexTrash, setShowYandexTrash] = useState(false);
   const [showPCloudTrash, setShowPCloudTrash] = useState(false);
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
+  const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
+  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -1953,6 +1957,13 @@ const App: React.FC = () => {
         username: params.username || 'token',
       };
     }
+    if (protocol === 'swift') {
+      return {
+        ...params,
+        server: params.server || 'https://authenticate.blomp.com',
+        port: params.port || 443,
+      };
+    }
     return params;
   };
 
@@ -2361,7 +2372,7 @@ const App: React.FC = () => {
 
     // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
-      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github') || (!effectiveParams.username && protocol !== 'github')) {
+      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -2393,7 +2404,11 @@ const App: React.FC = () => {
               ? `Jottacloud ${effectiveParams.username}`
               : protocol === 'mega' || protocol === 'internxt' || protocol === 'filen'
                 ? effectiveParams.username
-                : effectiveParams.server.split(':')[0]);
+                : protocol === 'swift'
+                  ? `Blomp ${effectiveParams.username}`
+                  : effectiveParams.providerId === 'felicloud'
+                    ? `FeliCloud ${effectiveParams.username}`
+                    : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
 
@@ -5185,7 +5200,9 @@ const App: React.FC = () => {
               const f = remoteFiles.find(rf => rf.name === name);
               return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
             });
+            const logId = humanLog.logRaw('activity.trash_move_start', 'DELETE', { provider: 'Jottacloud', filename: filesToUse.join(', ') }, 'running');
             await invoke('jottacloud_move_to_trash', { paths });
+            humanLog.updateEntry(logId, { status: 'success', message: `[Jottacloud] Moved ${paths.length} item(s) to trash` });
             notify.success(t('toast.movedToTrash', { count: paths.length }));
             loadRemoteFiles(undefined, true);
           } catch (err) {
@@ -5195,43 +5212,8 @@ const App: React.FC = () => {
         divider: true,
       }] : []),
       // MEGA: Move to Trash (soft delete — recoverable via Rubbish Bin)
-      ...(currentProtocol === 'mega' ? [{
-        label: t('contextMenu.moveToTrash'),
-        icon: <Trash2 size={14} className="text-red-500" />,
-        action: async () => {
-          try {
-            const paths = filesToUse.map(name => {
-              const f = remoteFiles.find(rf => rf.name === name);
-              return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
-            });
-            await invoke('mega_move_to_trash', { paths });
-            notify.success(t('toast.movedToTrash', { count: paths.length }));
-            loadRemoteFiles(undefined, true);
-          } catch (err) {
-            notify.error(t('toast.moveToTrashFailed'), String(err));
-          }
-        },
-        divider: true,
-      }] : []),
-      // Google Drive: Move to Trash (soft delete — recoverable)
-      ...(currentProtocol === 'googledrive' ? [{
-        label: t('contextMenu.moveToTrash'),
-        icon: <Trash2 size={14} className="text-blue-500" />,
-        action: async () => {
-          try {
-            const paths = filesToUse.map(name => {
-              const f = remoteFiles.find(rf => rf.name === name);
-              return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
-            });
-            await invoke('google_drive_trash_file', { paths });
-            notify.success(t('toast.movedToTrash', { count: paths.length }));
-            loadRemoteFiles(undefined, true);
-          } catch (err) {
-            notify.error(t('toast.moveToTrashFailed'), String(err));
-          }
-        },
-        divider: true,
-      }] : []),
+      // MEGA: Delete now does soft-delete (move to //bin/) via the trait — no separate menu item needed
+      // Google Drive: Delete now does soft-delete (trash) via the trait — no separate menu item needed
       // Box: Move to Trash (soft delete — recoverable)
       ...(currentProtocol === 'box' ? [{
         label: t('contextMenu.moveToTrash'),
@@ -5242,7 +5224,9 @@ const App: React.FC = () => {
               const f = remoteFiles.find(rf => rf.name === name);
               return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
             });
+            const logId = humanLog.logRaw('activity.trash_move_start', 'DELETE', { provider: 'Box', filename: filesToUse.join(', ') }, 'running');
             await invoke('box_trash_files', { paths });
+            humanLog.updateEntry(logId, { status: 'success', message: `[Box] Moved ${paths.length} item(s) to trash` });
             notify.success(t('toast.movedToTrash', { count: paths.length }));
             loadRemoteFiles(undefined, true);
           } catch (err) {
@@ -5259,11 +5243,13 @@ const App: React.FC = () => {
               label: t('filelu.makePublic'),
               icon: <span style={{ fontSize: 13 }}>🌐</span>,
               action: async () => {
+                const logId = humanLog.logRaw('activity.filelu_set_public', 'INFO', { provider: 'FileLu', filename: file.name }, 'running');
                 try {
                   await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
                   setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
                   notify.success(t('filelu.fileSetPublic'));
-                } catch (err) { notify.error(String(err)); }
+                  humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public' });
+                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make file public failed' }); }
               },
             }];
           }
@@ -5272,11 +5258,13 @@ const App: React.FC = () => {
               label: t('filelu.togglePrivate'),
               icon: <span style={{ fontSize: 13 }}>👁</span>,
               action: async () => {
+                const logId = humanLog.logRaw('activity.filelu_set_private', 'INFO', { provider: 'FileLu', filename: file.name }, 'running');
                 try {
                   await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: true });
                   setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'private' } : r));
                   notify.success(t('filelu.fileSetPrivate'));
-                } catch (err) { notify.error(String(err)); }
+                  humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file private' });
+                } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make file private failed' }); }
               },
             }];
           }
@@ -5296,6 +5284,7 @@ const App: React.FC = () => {
                 placeholder: t('filelu.enterFilePassword'),
                 onConfirm: async (pwd: string) => {
                   setInputDialog(null);
+                  const logId = humanLog.logRaw('activity.filelu_set_file_password', 'INFO', { provider: 'FileLu', filename: file.name }, 'running');
                   try {
                     await invoke('filelu_set_file_password', { path: file.path, password: pwd });
                     setRemoteFiles(prev => prev.map(r => r.path === file.path
@@ -5309,8 +5298,10 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.filePasswordSet') : t('filelu.filePasswordRemoved'));
+                    humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Set file password' });
                   } catch (err) {
                     notify.error(t('filelu.filePasswordError'), String(err));
+                    humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Set file password failed' });
                   }
                 }
               });
@@ -5349,6 +5340,7 @@ const App: React.FC = () => {
                 placeholder: t('filelu.enterFolderPassword'),
                 onConfirm: async (pwd: string) => {
                   setInputDialog(null);
+                  const logId = humanLog.logRaw('activity.filelu_set_folder_password', 'INFO', { provider: 'FileLu', filename: file.name }, 'running');
                   try {
                     await invoke('filelu_set_folder_password', { path: file.path, password: pwd });
                     setRemoteFiles(prev => prev.map(r => r.path === file.path
@@ -5362,8 +5354,10 @@ const App: React.FC = () => {
                       : r,
                     ));
                     notify.success(pwd ? t('filelu.folderPasswordSet') : t('filelu.folderPasswordRemoved'));
+                    humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Set folder password' });
                   } catch (err) {
                     notify.error(t('filelu.folderPasswordError'), String(err));
+                    humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Set folder password failed' });
                   }
                 }
               });
@@ -5475,6 +5469,15 @@ const App: React.FC = () => {
           case 'filen': return <FilenLogo size={14} />;
           case 'opendrive': return <OpenDriveLogo size={14} />;
           case 'github': return <GitHubLogo size={14} />;
+          case 'webdav': return <FeliCloudLogo size={14} />;
+          case 'filelu': return <FileLuLogo size={14} />;
+          case 'kdrive': return <KDriveLogo size={14} />;
+          case 'drime': return <DrimeCloudLogo size={14} />;
+          case 'yandexdisk': return <YandexDiskLogo size={14} />;
+          case 'koofr': return <KoofrLogo size={14} />;
+          case 'jottacloud': return <JottacloudLogo size={14} />;
+          case 'zohoworkdrive': return <ZohoWorkDriveLogo size={14} />;
+          case 'azure': return <AzureLogo size={14} />;
           default: return <Share2 size={14} />;
         }
       })();
@@ -5492,6 +5495,7 @@ const App: React.FC = () => {
             label: `${t('filelu.makePublic')} + ${t('contextMenu.createShareLink')}`,
             icon: <Share2 size={14} />,
             action: async () => {
+              const logId = humanLog.logRaw('activity.filelu_make_public_share', 'INFO', { provider: 'FileLu', filename: file.name }, 'running');
               try {
                 await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
                 setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
@@ -5499,8 +5503,10 @@ const App: React.FC = () => {
                 const shareUrl = await invoke<string>('provider_create_share_link', { path: file.path });
                 await invoke('copy_to_clipboard', { text: shareUrl });
                 notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+                humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public + shared' });
               } catch (err: unknown) {
                 notify.error(t('contextMenu.shareLinkFailed'), String(err));
+                humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Make public + share failed' });
               }
             }
           });
@@ -5509,15 +5515,28 @@ const App: React.FC = () => {
       items.push({
         label: t('contextMenu.createShareLink'),
         icon: shareIcon,
-        action: async () => {
-          try {
-            notify.info(t('contextMenu.creatingShareLink'), t('contextMenu.shareLinkMoment'));
-            const shareUrl = await invoke<string>('provider_create_share_link', { path: file.path });
-            await invoke('copy_to_clipboard', { text: shareUrl });
-            notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
-          } catch (err: unknown) {
-            notify.error(t('contextMenu.shareLinkFailed'), String(err));
-          }
+        action: () => {
+          const providerLabel = (() => {
+            switch (currentProtocol) {
+              case 'googledrive': return 'Google Drive';
+              case 'dropbox': return 'Dropbox';
+              case 'onedrive': return 'OneDrive';
+              case 'mega': return 'MEGA';
+              case 'box': return 'Box';
+              case 'pcloud': return 'pCloud';
+              case 'filen': return 'Filen';
+              case 'opendrive': return 'OpenDrive';
+              case 'github': return 'GitHub';
+              case 'filelu': return 'FileLu';
+              case 'webdav': return (connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'FeliCloud' : 'Nextcloud';
+              case 'kdrive': return 'kDrive';
+              case 'drime': return 'Drime Cloud';
+              case 'azure': return 'Azure';
+              case 's3': return 'S3';
+              default: return currentProtocol?.toUpperCase() || 'Provider';
+            }
+          })();
+          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerIcon: shareIcon });
         }
       });
       }
@@ -5638,11 +5657,13 @@ const App: React.FC = () => {
           badge: proBadge,
           disabled: hasWatermark,
           action: async () => {
+            const logId = humanLog.logRaw('activity.box_set_watermark', 'INFO', { provider: 'Box', filename: file.name }, 'running');
             try {
               await invoke('box_set_watermark', { path: file.path });
               notify.success(t('box.watermarkApplied'));
               loadRemoteFiles(undefined, true);
-            } catch (err) { notify.error(String(err)); }
+              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Set watermark' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Set watermark failed' }); }
           },
         });
         items.push({
@@ -5651,11 +5672,13 @@ const App: React.FC = () => {
           badge: proBadge,
           disabled: !hasWatermark,
           action: async () => {
+            const logId = humanLog.logRaw('activity.box_remove_watermark', 'INFO', { provider: 'Box', filename: file.name }, 'running');
             try {
               await invoke('box_remove_watermark', { path: file.path });
               notify.success(t('box.watermarkRemoved'));
               loadRemoteFiles(undefined, true);
-            } catch (err) { notify.error(String(err)); }
+              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Removed watermark' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Remove watermark failed' }); }
           },
         });
       }
@@ -5666,35 +5689,20 @@ const App: React.FC = () => {
           icon: <Lock size={14} className="text-amber-500" />,
           badge: proBadge,
           action: async () => {
+            const logId = humanLog.logRaw('activity.box_lock_folder', 'INFO', { provider: 'Box', filename: file.name }, 'running');
             try {
               await invoke('box_lock_folder', { path: file.path });
               notify.success(t('box.folderLocked'));
-            } catch (err) { notify.error(String(err)); }
+              humanLog.updateEntry(logId, { status: 'success', message: '[Box] Locked folder' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Lock folder failed' }); }
           },
           divider: true,
         });
       }
     }
     // Note: Dropbox tags API exists but returns errors — disabled for now
-    if (currentProtocol === 'onedrive') {
-      // OneDrive: Move to Trash
-      items.push({
-        label: t('contextMenu.moveToTrash'),
-        icon: <Trash2 size={14} className="text-blue-500" />,
-        action: async () => {
-          const paths = filesToUse.map(name => {
-            const f = remoteFiles.find(rf => rf.name === name);
-            return f?.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${name}`;
-          });
-          try {
-            await invoke('onedrive_trash_files', { paths });
-            notify.success(t('toast.movedToTrash', { count: paths.length }));
-            loadRemoteFiles(undefined, true);
-          } catch (err) { notify.error(String(err)); }
-        },
-      });
-      // Note: OneDrive "View Trash" not available — Microsoft Graph v1.0 has no recycle bin list endpoint
-    }
+    // OneDrive: Delete already does soft-delete (Graph API DELETE = move to recycle bin).
+    // Trash button added to toolbar for viewing/restoring trash items.
     // Koofr, OpenDrive, Yandex: View Trash moved to toolbar button
     // GitHub: View on GitHub, Copy Raw URL, File History
     if (currentProtocol === 'github' && currentServer) {
@@ -5755,11 +5763,13 @@ const App: React.FC = () => {
           label: isStarred ? t('googledrive.unstar') : t('googledrive.star'),
           icon: <Star size={14} className={isStarred ? 'text-yellow-400 fill-yellow-400' : 'text-yellow-400'} />,
           action: async () => {
+            const logId = humanLog.logRaw(isStarred ? 'activity.gdrive_unstar' : 'activity.gdrive_star', 'INFO', { provider: 'Google Drive', filename: file.name }, 'running');
             try {
               await invoke('google_drive_set_starred', { paths: [file.path], starred: !isStarred });
               notify.success(isStarred ? t('googledrive.unstarred') : t('googledrive.starred'));
               loadRemoteFiles(undefined, true);
-            } catch (err) { notify.error(String(err)); }
+              humanLog.updateEntry(logId, { status: 'success', message: isStarred ? '[Google Drive] Unstarred file' : '[Google Drive] Starred file' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: isStarred ? '[Google Drive] Unstar failed' : '[Google Drive] Star failed' }); }
           },
         });
         // Google Drive: Add Comment (single file only)
@@ -6292,11 +6302,13 @@ const App: React.FC = () => {
               onConfirm: async (name: string) => {
                 setInputDialog(null);
                 if (!name.trim()) return;
+                const logId = humanLog.logRaw('activity.zoho_create_document', 'INFO', { provider: 'Zoho WorkDrive', filename: name.trim() }, 'running');
                 try {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'writer', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Writer', url);
                   loadRemoteFiles(undefined, true);
-                } catch (err) { notify.error('Create failed', String(err)); }
+                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Writer document' });
+                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Writer document failed' }); }
               },
             });
           },
@@ -6312,11 +6324,13 @@ const App: React.FC = () => {
               onConfirm: async (name: string) => {
                 setInputDialog(null);
                 if (!name.trim()) return;
+                const logId = humanLog.logRaw('activity.zoho_create_document', 'INFO', { provider: 'Zoho WorkDrive', filename: name.trim() }, 'running');
                 try {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'sheet', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Sheet', url);
                   loadRemoteFiles(undefined, true);
-                } catch (err) { notify.error('Create failed', String(err)); }
+                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Sheet document' });
+                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Sheet document failed' }); }
               },
             });
           },
@@ -6333,11 +6347,13 @@ const App: React.FC = () => {
               onConfirm: async (name: string) => {
                 setInputDialog(null);
                 if (!name.trim()) return;
+                const logId = humanLog.logRaw('activity.zoho_create_document', 'INFO', { provider: 'Zoho WorkDrive', filename: name.trim() }, 'running');
                 try {
                   const url = await invoke<string>('zoho_create_native_document', { name: name.trim(), docType: 'show', folderPath: currentRemotePath || '' });
                   notify.success('Zoho Show', url);
                   loadRemoteFiles(undefined, true);
-                } catch (err) { notify.error('Create failed', String(err)); }
+                  humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Created Show document' });
+                } catch (err) { notify.error('Create failed', String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Zoho WorkDrive] Create Show document failed' }); }
               },
             });
           },
@@ -6751,12 +6767,14 @@ const App: React.FC = () => {
                     <div className="flex items-center justify-between pt-1">
                       <span className="text-gray-400 dark:text-gray-500">{String(link.attributes.created_time || '')}</span>
                       <button onClick={async () => {
+                        const logId = humanLog.logRaw('activity.zoho_delete_share_link', 'INFO', { provider: 'Zoho WorkDrive', filename: link.id }, 'running');
                         try {
                           await invoke('zoho_delete_share_link', { linkId: link.id });
                         } catch { /* Ghost link — already deleted on server, remove from UI */ }
                         // Track deleted IDs so Zoho GET cache won't re-show them
                         zohoDeletedLinkIds.add(link.id);
                         notify.success(t('contextMenu.shareLinkDeleted'), link.id);
+                        humanLog.updateEntry(logId, { status: 'success', message: '[Zoho WorkDrive] Deleted share link' });
                         setZohoShareLinksDialog(prev => prev ? { ...prev, links: prev.links.filter(l => l.id !== link.id) } : null);
                       }} className="px-2 py-0.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-[11px] font-medium">
                         <Trash2 size={12} className="inline mr-1" />{t('common.delete') || 'Delete'}
@@ -7126,6 +7144,22 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showNextcloudTrash && (
+          <NextcloudTrashManager
+            providerName={(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'FeliCloud' : 'Nextcloud'}
+            onClose={() => setShowNextcloudTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {shareLinkDialog && (
+          <ShareLinkModal
+            path={shareLinkDialog.path}
+            fileName={shareLinkDialog.fileName}
+            providerName={shareLinkDialog.providerName}
+            providerIcon={shareLinkDialog.providerIcon}
+            onClose={() => setShareLinkDialog(null)}
+          />
+        )}
         {showOpenDriveTrash && (
           <OpenDriveTrashManager
             onClose={() => setShowOpenDriveTrash(false)}
@@ -7191,10 +7225,12 @@ const App: React.FC = () => {
                   onClick={async () => {
                     const d = fileLuFolderSettingsDialog;
                     if (!d) return;
+                    const logId = humanLog.logRaw('activity.filelu_folder_settings', 'INFO', { provider: 'FileLu', filename: d.name }, 'running');
                     try {
                       await invoke('filelu_set_folder_settings', { path: d.path, filedrop: d.filedrop, isPublic: d.isPublic });
                       notify.success(t('filelu.folderSettingsSaved'));
-                    } catch (err) { notify.error(String(err)); }
+                      humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Updated folder settings' });
+                    } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[FileLu] Update folder settings failed' }); }
                     setFileLuFolderSettingsDialog(null);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -7874,6 +7910,8 @@ const App: React.FC = () => {
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
+                        webdav: () => setShowNextcloudTrash(true),
+                        pcloud: () => setShowPCloudTrash(true),
                       };
                       const handler = trashMap[proto || ''];
                       return handler ? (

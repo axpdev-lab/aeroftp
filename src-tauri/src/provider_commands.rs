@@ -135,6 +135,7 @@ impl ProviderConnectionParams {
             "opendrive" => ProviderType::OpenDrive,
             "yandexdisk" => ProviderType::YandexDisk,
             "github" => ProviderType::GitHub,
+            "swift" => ProviderType::Swift,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -452,12 +453,12 @@ pub async fn provider_list_files(
     path: Option<String>,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
-    
+
     let provider = provider_lock.as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     let list_path = path.as_deref().unwrap_or(".");
-    
+
     let files = provider.list(list_path).await
         .map_err(|e| format!("Failed to list files: {}", e))?;
     
@@ -1656,21 +1657,22 @@ pub async fn oauth2_logout(
 pub async fn provider_create_share_link(
     state: State<'_, ProviderState>,
     path: String,
+    expires_in_secs: Option<u64>,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard.as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    
+
     if !provider.supports_share_links() {
         return Err(format!(
-            "{} does not support native share links", 
+            "{} does not support native share links",
             provider.provider_type()
         ));
     }
-    
-    let share_url = provider.create_share_link(&path, None).await
+
+    let share_url = provider.create_share_link(&path, expires_in_secs).await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
-    
+
     info!("Created share link for {}: {}", path, share_url);
     Ok(share_url)
 }
@@ -3016,8 +3018,10 @@ pub async fn mega_restore_from_trash(
         .downcast_mut::<crate::providers::mega::MegaProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
+    // Restore to current working directory (MEGAcmd doesn't preserve original path in rubbish bin)
+    let cwd = mega.pwd().await.unwrap_or_else(|_| "/".to_string());
     for filename in &filenames {
-        mega.restore_from_trash(filename, "/").await
+        mega.restore_from_trash(filename, &cwd).await
             .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
     }
     Ok(())

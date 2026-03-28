@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // FileLu confirmed permanent delete endpoint: api/file/permanent_delete?key=X&file_code=Y
 const PERMANENT_DELETE_ENABLED = true;
@@ -32,6 +33,7 @@ function formatDeletedAgo(seconds: number | null): string {
 
 export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<DeletedFileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -69,14 +71,18 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
   const restoreSelected = async () => {
     if (selected.size === 0) return;
+    const selectedCount = selected.size;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'FileLu', count: selectedCount });
     setActionLoading('restore');
     try {
       for (const code of selected) {
         await invoke('filelu_restore_file', { fileCode: code });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Restored ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -85,13 +91,17 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
   const deleteSelected = async () => {
     if (selected.size === 0) return;
+    const selectedCount = selected.size;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'FileLu', count: selectedCount });
     setActionLoading('delete');
     try {
       for (const code of selected) {
         await invoke('filelu_permanent_delete', { fileCode: code });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[FileLu] Permanently deleted ${selectedCount} item(s) from trash` });
       await loadTrash();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[FileLu] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);

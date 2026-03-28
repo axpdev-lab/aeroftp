@@ -1036,6 +1036,84 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://nextcloud.com/sign-up/',
     },
     {
+        id: 'felicloud',
+        name: 'FeliCloud',
+        description: 'FeliCloud (10 GB free, Nextcloud-based, EU/GDPR)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#2196F3',
+        stable: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.username,
+                label: 'Email',
+                placeholder: 'your@email.com',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'Password or App Token',
+                helpText: 'Use an App Token from Settings → Security for better security',
+            },
+        ],
+        defaults: {
+            server: 'https://cloud.felicloud.com/remote.php/dav/files/{username}/',
+            port: 443,
+            basePath: '/remote.php/dav/files/{username}/',
+        },
+        endpoints: {
+            webdavPath: '/remote.php/dav/files/{username}/',
+            shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+            versioning: true,
+            trash: true,
+        },
+        helpUrl: 'https://felicloud.com/en/',
+        signupUrl: 'https://felicloud.com/en/',
+    },
+    {
+        id: 'blomp',
+        name: 'Blomp',
+        description: 'Blomp (40 GB free, OpenStack Swift)',
+        protocol: 'swift',
+        category: 'swift',
+        icon: 'Cloud',
+        color: '#7C3AED',
+        stable: false, // Waiting for Blomp support — storage proxy returns 403
+        fields: [
+            {
+                key: 'username',
+                label: 'Email',
+                type: 'email',
+                required: true,
+                placeholder: 'your@blomp.com',
+                group: 'credentials',
+            },
+            {
+                key: 'password',
+                label: 'Password',
+                type: 'password',
+                required: true,
+                group: 'credentials',
+            },
+        ],
+        defaults: {
+            server: 'https://authenticate.blomp.com',
+            port: 443,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+            versioning: false,
+            trash: false,
+        },
+        helpUrl: 'https://blomp.com',
+        signupUrl: 'https://blomp.com',
+    },
+    {
         id: 'mega',
         name: 'MEGA',
         description: 'Secure cloud storage with client-side encryption',
@@ -1243,6 +1321,7 @@ class ProviderRegistryImpl implements ProviderRegistry {
             s3: [],
             webdav: [],
             mega: [],
+            swift: [],
         };
 
         this.getAll().forEach(p => {

@@ -468,8 +468,8 @@ impl StorageProvider for MegaProvider {
             cb(0, 0);
         }
 
-        // XFER-03: Add --resume flag for resume support
-        match self.run_mega_cmd_with_reauth("mega-get", &["--resume", &abs_remote, l]).await {
+        // Download file (--resume removed: not supported by all MEGAcmd versions)
+        match self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, l]).await {
             Ok(out) => {
                 self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
                 // XFER-02: Signal completion with file size
@@ -558,11 +558,9 @@ impl StorageProvider for MegaProvider {
     }
 
     async fn delete(&mut self, p: &str) -> Result<(), ProviderError> {
-        let p = self.resolve_path(p);
-        // Soft delete: moves to rubbish bin (consistent with rmdir_recursive)
-        // Permanent delete available via permanent_delete_from_trash()
-        self.run_mega_cmd_with_reauth("mega-rm", &[&p]).await?;
-        Ok(())
+        // Soft delete: move to rubbish bin via mega-mv to //bin/
+        // Permanent delete only from Trash Manager UI
+        self.move_to_trash(p).await
     }
 
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
@@ -848,16 +846,16 @@ impl StorageProvider for MegaProvider {
 /// MEGA-specific methods (trash management, etc.)
 impl MegaProvider {
     /// Move a file or directory to the MEGA rubbish bin (soft delete).
+    /// Uses `mega-mv` to //bin instead of `mega-rm` which permanently deletes.
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(path);
-        // mega-rm without -f moves to rubbish bin. -r handles directories.
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p]).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&p, "//bin/"]).await?;
         Ok(())
     }
 
-    /// TRASH-02: List items in the MEGA rubbish bin via `mega-ls /Rubbish`.
+    /// TRASH-02: List items in the MEGA rubbish bin via `mega-ls //bin`.
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let output = self.run_mega_cmd_with_reauth("mega-ls", &["-l", "/Rubbish"]).await
+        let output = self.run_mega_cmd_with_reauth("mega-ls", &["-l", "//bin"]).await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => {
                     // Empty rubbish or path doesn't exist — return empty list
@@ -870,7 +868,7 @@ impl MegaProvider {
             Ok(out) => {
                 let mut entries = Vec::new();
                 for line in out.lines() {
-                    if let Some(entry) = Self::parse_ls_line(line, "/Rubbish") {
+                    if let Some(entry) = Self::parse_ls_line(line, "//bin") {
                         entries.push(entry);
                     }
                 }
@@ -883,7 +881,7 @@ impl MegaProvider {
 
     /// TRASH-03: Restore an item from rubbish bin to a destination path.
     pub async fn restore_from_trash(&mut self, filename: &str, dest: &str) -> Result<(), ProviderError> {
-        let rubbish_path = format!("/Rubbish/{}", filename.trim_start_matches('/'));
+        let rubbish_path = format!("//bin/{}", filename.trim_start_matches('/'));
         let abs_dest = self.resolve_path(dest);
         self.run_mega_cmd_with_reauth("mega-mv", &[&rubbish_path, &abs_dest]).await?;
         Ok(())
@@ -891,7 +889,7 @@ impl MegaProvider {
 
     /// TRASH-04: Permanently delete an item from the rubbish bin.
     pub async fn permanent_delete_from_trash(&mut self, filename: &str) -> Result<(), ProviderError> {
-        let rubbish_path = format!("/Rubbish/{}", filename.trim_start_matches('/'));
+        let rubbish_path = format!("//bin/{}", filename.trim_start_matches('/'));
         // Use -f flag for permanent deletion
         self.run_mega_cmd_with_reauth("mega-rm", &["-f", &rubbish_path]).await?;
         Ok(())

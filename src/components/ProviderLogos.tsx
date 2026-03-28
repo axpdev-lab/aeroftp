@@ -266,6 +266,28 @@ export const FileLuLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// FeliCloud — blue cloud outline (Nextcloud-based, EU)
+export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/felicloud.png"
+        alt="FeliCloud"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
+// Blomp — purple smiling cloud (OpenStack Swift, 40 GB free)
+export const BlompLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/blomp.png"
+        alt="Blomp"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // 4shared — blue "4" logo
 export const FourSharedLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 400 400">
@@ -391,4 +413,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'filelu-s3': FileLuLogo,
     'yandexdisk': YandexDiskLogo,
     'yandex-storage': YandexCloudLogo,
+    'felicloud': FeliCloudLogo,
+    'blomp': BlompLogo,
 };

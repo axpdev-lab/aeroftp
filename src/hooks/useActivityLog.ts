@@ -31,7 +31,8 @@ export type OperationType =
     | 'UPDATE'
     | 'ERROR'
     | 'INFO'
-    | 'SUCCESS';
+    | 'SUCCESS'
+    | 'RESTORE';
 
 export type OperationStatus = 'pending' | 'running' | 'success' | 'error';
 
@@ -220,6 +221,7 @@ export function getOperationIcon(operation: OperationType): string {
         ERROR: 'alert-circle',
         INFO: 'info',
         SUCCESS: 'check-circle',
+        RESTORE: 'rotate-ccw',
     };
     return icons[operation];
 }

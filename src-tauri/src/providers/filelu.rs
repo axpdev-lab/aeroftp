@@ -457,44 +457,53 @@ impl FileLuProvider {
     /// Hybrid listing: v1 file/list (fld_id) for files + v2 folder/list (folder_path) for subfolders.
     /// FileLu v2 does NOT have a file/list endpoint that filters by folder_path —
     /// it returns ALL files in the account. So we use v1 for files and v2 for folders.
+    /// Both calls run in parallel via tokio::join! to halve listing latency.
     async fn list_folder_hybrid(&self, folder_path: &str, fld_id: u64) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
         let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
         let per_page = "100";
-        let mut all_files: Vec<FileEntry> = Vec::new();
-        let mut all_folders: Vec<FolderEntry> = Vec::new();
 
         // v1: file/list by fld_id (correctly filters files to this folder only)
-        for page in 1..=MAX_LIST_PAGES {
-            let page_str = page.to_string();
-            let url = self.api_url_with(
-                "file/list",
-                &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
-            );
-            let resp = self.get_with_retry(&url).await?;
-            let result = Self::parse_api::<FileListResult>(resp).await?;
-            let count = result.files.len();
-            all_files.extend(result.files.into_iter().filter(|f| {
-                f.fld_id.map_or(true, |id| id == fld_id)
-            }));
-            if count < 100 { break; }
-        }
+        let files_fut = async {
+            let mut all_files: Vec<FileEntry> = Vec::new();
+            for page in 1..=MAX_LIST_PAGES {
+                let page_str = page.to_string();
+                let url = self.api_url_with(
+                    "file/list",
+                    &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+                );
+                let resp = self.get_with_retry(&url).await?;
+                let result = Self::parse_api::<FileListResult>(resp).await?;
+                let count = result.files.len();
+                all_files.extend(result.files.into_iter().filter(|f| {
+                    f.fld_id.map_or(true, |id| id == fld_id)
+                }));
+                if count < 100 { break; }
+            }
+            Ok::<_, ProviderError>(all_files)
+        };
 
         // v2: folder/list by path (no fld_id needed for subfolders)
-        for page in 1..=MAX_LIST_PAGES {
-            let page_str = page.to_string();
-            let url = self.api_v2_url(
-                "folder/list",
-                &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
-            );
-            let resp = self.get_with_retry(&url).await?;
-            let result = Self::parse_api::<FolderListResult>(resp).await?;
-            let count = result.folders.len();
-            all_folders.extend(result.folders);
-            if count < 100 { break; }
-        }
+        let folders_fut = async {
+            let mut all_folders: Vec<FolderEntry> = Vec::new();
+            for page in 1..=MAX_LIST_PAGES {
+                let page_str = page.to_string();
+                let url = self.api_v2_url(
+                    "folder/list",
+                    &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
+                );
+                let resp = self.get_with_retry(&url).await?;
+                let result = Self::parse_api::<FolderListResult>(resp).await?;
+                let count = result.folders.len();
+                all_folders.extend(result.folders);
+                if count < 100 { break; }
+            }
+            Ok::<_, ProviderError>(all_folders)
+        };
 
-        Ok(FolderListResult { files: all_files, folders: all_folders })
+        let (files_result, folders_result) = tokio::join!(files_fut, folders_fut);
+
+        Ok(FolderListResult { files: files_result?, folders: folders_result? })
     }
 
     /// Legacy v1 list — kept for operations that still need fld_id (upload, mkdir)

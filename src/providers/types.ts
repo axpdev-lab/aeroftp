@@ -12,9 +12,9 @@
 // Protocol Types
 // ============================================================================
 
-export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu';
+export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu' | 'swift';
 
-export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega';
+export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega' | 'swift';
 
 // ============================================================================
 // Provider Field Configuration

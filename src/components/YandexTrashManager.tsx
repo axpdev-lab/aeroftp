@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { RemoteFile } from '../types';
 import { formatSize } from '../utils/formatters';
 
@@ -16,6 +17,7 @@ interface YandexTrashManagerProps {
 
 export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<RemoteFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -73,13 +75,17 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
   const handleRestore = async () => {
     const paths = getSelectedPaths();
     if (paths.length === 0) return;
+    const selectedCount = paths.length;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Yandex Disk', count: selectedCount });
     setActionLoading('restore');
     setError(null);
     try {
       await invoke('yandex_restore_from_trash', { paths });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Restored ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -89,13 +95,17 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
   const handlePermanentDelete = async () => {
     const paths = getSelectedPaths();
     if (paths.length === 0) return;
+    const selectedCount = paths.length;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Yandex Disk', count: selectedCount });
     setActionLoading('delete');
     setError(null);
     try {
       await invoke('yandex_permanent_delete', { paths });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Permanently deleted ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -104,13 +114,17 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
 
   const confirmEmptyTrash = async () => {
     setPendingEmptyConfirm(false);
+    const totalCount = items.length;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Yandex Disk', count: totalCount });
     setActionLoading('empty');
     setError(null);
     try {
       await invoke('yandex_empty_trash');
+      humanLog.updateEntry(logId, { status: 'success', message: `[Yandex Disk] Emptied trash (${totalCount} item(s))` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Yandex Disk] Failed to empty trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);

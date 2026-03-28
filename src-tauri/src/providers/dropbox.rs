@@ -32,6 +32,7 @@ struct DropboxMetadata {
     path_lower: Option<String>,
     path_display: Option<String>,
     id: Option<String>,
+    rev: Option<String>,
     #[serde(default)]
     size: u64,
     client_modified: Option<String>,
@@ -147,6 +148,11 @@ impl DropboxProvider {
         let path = meta.path_display.clone()
             .unwrap_or_else(|| meta.path_lower.clone().unwrap_or_default());
 
+        let mut metadata = HashMap::new();
+        if let Some(ref rev) = meta.rev {
+            metadata.insert("rev".to_string(), rev.clone());
+        }
+
         RemoteEntry {
             name: meta.name.clone(),
             path,
@@ -159,7 +165,7 @@ impl DropboxProvider {
             is_symlink: false,
             link_target: None,
             mime_type: None,
-            metadata: HashMap::new(),
+            metadata,
         }
     }
 
@@ -230,8 +236,8 @@ impl DropboxProvider {
         Ok(deleted)
     }
 
-    /// Restore a deleted file by path and revision
-    #[allow(dead_code)]
+    /// Restore a deleted file. If `rev` is empty, automatically fetches
+    /// the latest revision via `files/list_revisions` before restoring.
     pub async fn restore_file(&mut self, path: &str, rev: &str) -> Result<(), ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
@@ -239,14 +245,33 @@ impl DropboxProvider {
             self.normalize_path(&format!("{}/{}", self.current_path, path))
         };
 
+        let effective_rev = if rev.is_empty() {
+            // Fetch latest revision for deleted file
+            let rev_body = serde_json::json!({
+                "path": full_path,
+                "mode": "path",
+                "limit": 1
+            });
+            let rev_result: serde_json::Value = self.rpc_call("files/list_revisions", &rev_body).await?;
+            rev_result.get("entries")
+                .and_then(|e| e.as_array())
+                .and_then(|a| a.first())
+                .and_then(|e| e.get("rev"))
+                .and_then(|r| r.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| ProviderError::NotFound("No revision found for deleted file".into()))?
+        } else {
+            rev.to_string()
+        };
+
         let body = serde_json::json!({
             "path": full_path,
-            "rev": rev
+            "rev": effective_rev
         });
 
         let _: serde_json::Value = self.rpc_call("files/restore", &body).await?;
 
-        info!("Restored {} to revision {}", path, rev);
+        info!("Restored {} to revision {}", path, effective_rev);
         Ok(())
     }
 

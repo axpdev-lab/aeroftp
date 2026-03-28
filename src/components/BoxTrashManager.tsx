@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
   name: string;
@@ -24,6 +25,7 @@ interface BoxTrashManagerProps {
 
 export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -72,6 +74,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
   const handleRestore = async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Box', count: ids.length });
     setActionLoading('restore');
     try {
       for (const itemId of ids) {
@@ -79,9 +82,11 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
         const itemType = item ? getItemType(item) : 'file';
         await invoke('box_restore_from_trash', { itemId, itemType });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Box] Restored ${ids.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Box] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -99,6 +104,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
     setPendingDeleteConfirm(false);
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Box', count: ids.length });
     setActionLoading('delete');
     try {
       for (const itemId of ids) {
@@ -106,9 +112,11 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
         const itemType = item ? getItemType(item) : 'file';
         await invoke('box_permanent_delete', { itemId, itemType });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Box] Permanently deleted ${ids.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Box] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -137,7 +145,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — Box
+              {t('contextMenu.trashTitle')} - Box
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

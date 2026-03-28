@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize } from '../utils/formatters';
 
 interface KoofrTrashItem {
@@ -24,6 +25,7 @@ interface KoofrTrashManagerProps {
 
 export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<KoofrTrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -77,12 +79,16 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
   const handleRestore = async () => {
     const files = getSelectedFiles();
     if (files.length === 0) return;
+    const selectedCount = files.length;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Koofr', count: selectedCount });
     setActionLoading('restore');
     try {
       await invoke('koofr_restore_trash', { files });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Koofr] Restored ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Koofr] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -98,12 +104,16 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
 
   const confirmEmptyTrash = async () => {
     setPendingEmptyConfirm(false);
+    const totalCount = items.length;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Koofr', count: totalCount });
     setActionLoading('empty');
     try {
       await invoke('koofr_empty_trash');
+      humanLog.updateEntry(logId, { status: 'success', message: `[Koofr] Emptied trash (${totalCount} item(s))` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Koofr] Failed to empty trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -135,7 +145,7 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-green-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — Koofr
+              {t('contextMenu.trashTitle')} - Koofr
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
   name: string;
@@ -24,6 +25,7 @@ interface MegaTrashManagerProps {
 
 export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -69,12 +71,15 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
   const handleRestore = async () => {
     const filenames = Array.from(selected);
     if (filenames.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'MEGA', count: filenames.length });
     setActionLoading('restore');
     try {
       await invoke('mega_restore_from_trash', { filenames });
+      humanLog.updateEntry(logId, { status: 'success', message: `[MEGA] Restored ${filenames.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[MEGA] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -93,12 +98,15 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     setPendingDeleteConfirm(false);
     const filenames = Array.from(selected);
     if (filenames.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'MEGA', count: filenames.length });
     setActionLoading('delete');
     try {
       await invoke('mega_permanent_delete', { filenames });
+      humanLog.updateEntry(logId, { status: 'success', message: `[MEGA] Permanently deleted ${filenames.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[MEGA] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -127,7 +135,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-red-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — MEGA
+              {t('contextMenu.trashTitle')} - MEGA
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

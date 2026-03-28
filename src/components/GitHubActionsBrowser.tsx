@@ -15,6 +15,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { GitHubActionsIcon } from './icons/GitHubActionsIcon';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface WorkflowRun {
   id: number;
@@ -81,6 +82,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   onClose,
 }) => {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,10 +138,15 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
 
   const runAction = async (command: string, runId: number) => {
     setActionInProgress(runId);
+    const actionLabel = command === 'github_cancel_workflow' ? 'Cancel workflow' :
+      command === 'github_rerun_failed_jobs' ? 'Re-run failed jobs' : 'Re-run workflow';
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'GitHub' }, 'running');
     try {
       await invoke(command, { runId });
+      humanLog.updateEntry(logId, { status: 'success', message: `[GitHub] ${actionLabel} #${runId}` });
       setTimeout(fetchRuns, 2000);
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[GitHub] ${actionLabel} failed` });
       setError(String(err));
     } finally {
       setActionInProgress(null);

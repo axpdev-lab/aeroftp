@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
   name: string;
@@ -25,6 +26,7 @@ interface DropboxTrashManagerProps {
 
 export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: DropboxTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -72,6 +74,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
   const handleRestore = async () => {
     const paths = Array.from(selected);
     if (paths.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Dropbox', count: paths.length });
     setActionLoading('restore');
     try {
       for (const path of paths) {
@@ -79,9 +82,11 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
         const rev = item?.metadata?.rev || '';
         await invoke('dropbox_restore_from_trash', { path, rev });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Restored ${paths.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -99,14 +104,17 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     setPendingDeleteConfirm(false);
     const paths = Array.from(selected);
     if (paths.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Dropbox', count: paths.length });
     setActionLoading('delete');
     try {
       for (const path of paths) {
         await invoke('dropbox_permanent_delete', { path });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Dropbox] Permanently deleted ${paths.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Dropbox] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -135,7 +143,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — Dropbox
+              {t('contextMenu.trashTitle')} - Dropbox
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})
@@ -162,10 +170,6 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
             <button onClick={handleRestore} disabled={selected.size === 0 || actionLoading !== null} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
               {actionLoading === 'restore' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
               {t('contextMenu.restoreFromTrash')} {selected.size > 0 && `(${selected.size})`}
-            </button>
-            <button onClick={handlePermanentDelete} disabled={selected.size === 0 || actionLoading !== null} className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed">
-              {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
-              {t('contextMenu.permanentDelete')} {selected.size > 0 && `(${selected.size})`}
             </button>
           </div>
         )}
@@ -230,24 +234,8 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
         </div>
       </div>
 
-      {/* Confirmation dialog */}
-      {pendingDeleteConfirm && (
-        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
-            <p className="text-gray-900 dark:text-gray-100 mb-4">
-              {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setPendingDeleteConfirm(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                {t('common.cancel')}
-              </button>
-              <button onClick={confirmPermanentDelete} className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600">
-                {t('contextMenu.permanentDelete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Note: Permanent delete removed — Dropbox API requires Team scope (files.permanent_delete)
+           which is not available for personal accounts. Trash auto-empties after 30 days. */}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { GitHubPagesIcon } from './icons/GitHubPagesIcon';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface PagesSite {
   url: string | null;
@@ -46,6 +47,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   onClose,
 }) => {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [site, setSite] = useState<PagesSite | null>(null);
   const [builds, setBuilds] = useState<PagesBuild[]>([]);
   const [loading, setLoading] = useState(false);
@@ -369,6 +371,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                         disabled={savingConfig}
                         onClick={async () => {
                           setSavingConfig(true);
+                          const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'GitHub' }, 'running');
                           try {
                             await invoke('github_update_pages', {
                               cname: configCname || null,
@@ -376,9 +379,11 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                               sourceBranch: configBranch || null,
                               sourcePath: configPath || null,
                             });
+                            humanLog.updateEntry(logId, { status: 'success', message: '[GitHub] Updated Pages configuration' });
                             await fetchData();
                             setShowConfigEdit(false);
                           } catch (err) {
+                            humanLog.updateEntry(logId, { status: 'error', message: '[GitHub] Failed to update Pages configuration' });
                             setError(String(err));
                           } finally {
                             setSavingConfig(false);

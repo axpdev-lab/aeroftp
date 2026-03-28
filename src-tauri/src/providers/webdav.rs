@@ -24,6 +24,23 @@ use super::{
     sanitize_api_error,
 };
 
+/// A trash item from a Nextcloud trashbin PROPFIND response.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NextcloudTrashEntry {
+    /// Trash item identifier (from WebDAV href, needed for restore/delete).
+    pub id: String,
+    /// Original filename before deletion.
+    pub name: String,
+    /// Original path (relative to user root) before deletion.
+    pub original_path: String,
+    /// Unix timestamp of when the file was deleted.
+    pub deleted_at: u64,
+    /// File size in bytes (0 for directories).
+    pub size: u64,
+    /// Whether this is a directory.
+    pub is_dir: bool,
+}
+
 // ============ HTTP Digest Authentication (RFC 2617) ============
 
 /// State for HTTP Digest authentication
@@ -225,6 +242,318 @@ impl WebDavProvider {
         }
     }
     
+    // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
+
+    /// Detect if this WebDAV server is a Nextcloud instance (URL pattern match).
+    fn is_nextcloud(&self) -> bool {
+        self.config.url.contains("/remote.php/dav/files/")
+    }
+
+    /// Extract the Nextcloud base URL (e.g. https://cloud.felicloud.com).
+    fn nextcloud_base_url(&self) -> Option<String> {
+        self.config.url.find("/remote.php/")
+            .map(|idx| self.config.url[..idx].to_string())
+    }
+
+    /// Make an authenticated request to an arbitrary URL (for OCS / trashbin endpoints
+    /// that live outside the WebDAV files path).
+    fn request_url(&mut self, method: Method, url: &str) -> reqwest::RequestBuilder {
+        let builder = self.client.request(method.clone(), url);
+        if let Some(ref mut state) = self.digest_auth {
+            let uri_path = extract_uri_path(url);
+            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, self.config.password.expose_secret());
+            builder.header("Authorization", auth)
+        } else {
+            builder.basic_auth(&self.config.username, Some(self.config.password.expose_secret()))
+        }
+    }
+
+    /// OCS: Create a public share link for a file/folder.
+    /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
+    /// retries automatically with a generated password and returns "url\npassword".
+    pub async fn nextcloud_create_share(&mut self, path: &str, expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+        let base = self.nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares", base);
+
+        let mut form_body = format!("path={}&shareType=3&permissions=1",
+            urlencoding::encode(path));
+        if let Some(secs) = expires_in_secs {
+            let days = (secs / 86400).max(1);
+            let expire = chrono::Utc::now() + chrono::Duration::days(days as i64);
+            form_body.push_str(&format!("&expireDate={}", expire.format("%Y-%m-%d")));
+        }
+
+        let resp: reqwest::Response = self.request_url(Method::POST, &url)
+            .header("OCS-APIREQUEST", "true")
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(form_body.clone())
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        let text = resp.text().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        // If server requires password on share links (403), retry with auto-generated password
+        if status == StatusCode::FORBIDDEN && text.contains("password") {
+            let password = Self::generate_share_password();
+            let form_with_pw = format!("{}&password={}", form_body, urlencoding::encode(&password));
+
+            let resp2: reqwest::Response = self.request_url(Method::POST, &url)
+                .header("OCS-APIREQUEST", "true")
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(form_with_pw)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            let status2 = resp2.status();
+            let text2 = resp2.text().await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            if !status2.is_success() {
+                return Err(ProviderError::ServerError(format!("OCS share failed: HTTP {} - {}", status2, &text2[..text2.len().min(200)])));
+            }
+
+            let json: serde_json::Value = serde_json::from_str(&text2)
+                .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
+
+            let share_url = json.pointer("/ocs/data/url")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))?;
+
+            // Return URL + password separated by newline so frontend can display both
+            return Ok(format!("{}\n{}", share_url, password));
+        }
+
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!("OCS share failed: HTTP {} - {}", status, &text[..text.len().min(200)])));
+        }
+        let json: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
+
+        json.pointer("/ocs/data/url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))
+    }
+
+    /// Generate a random 16-char password for share links.
+    fn generate_share_password() -> String {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let lower: &[u8] = b"abcdefghijkmnpqrstuvwxyz";
+        let upper: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ";
+        let digits: &[u8] = b"23456789";
+        let special: &[u8] = b"!@#$%&*?";
+        let all: &[u8] = b"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*?";
+        // Guarantee at least one of each category
+        let mut pwd = vec![
+            lower[rng.gen_range(0..lower.len())] as char,
+            upper[rng.gen_range(0..upper.len())] as char,
+            digits[rng.gen_range(0..digits.len())] as char,
+            special[rng.gen_range(0..special.len())] as char,
+        ];
+        // Fill remaining 12 chars from full set
+        for _ in 0..12 {
+            pwd.push(all[rng.gen_range(0..all.len())] as char);
+        }
+        // Shuffle to avoid predictable positions
+        for i in (1..pwd.len()).rev() {
+            let j = rng.gen_range(0..=i);
+            pwd.swap(i, j);
+        }
+        pwd.into_iter().collect()
+    }
+
+    /// Nextcloud trashbin: list deleted items.
+    pub async fn nextcloud_list_trash(&mut self) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
+        let base = self.nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let url = format!("{}/remote.php/dav/trashbin/{}/trash/", base, self.config.username);
+
+        let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:propfind xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns" xmlns:oc="http://owncloud.org/ns">
+                <d:prop>
+                    <nc:trashbin-filename/>
+                    <nc:trashbin-original-location/>
+                    <nc:trashbin-deletion-time/>
+                    <d:getcontentlength/>
+                    <d:resourcetype/>
+                </d:prop>
+            </d:propfind>"#;
+
+        let resp = self.request_url(webdav_methods::propfind(), &url)
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml")
+            .body(propfind_body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() && resp.status() != StatusCode::MULTI_STATUS {
+            return Err(ProviderError::ServerError(format!("Trashbin PROPFIND failed: HTTP {}", resp.status())));
+        }
+
+        let xml = resp.text().await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        self.parse_trashbin_response(&xml)
+    }
+
+    /// Parse trashbin PROPFIND XML into entries.
+    fn parse_trashbin_response(&self, xml: &str) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
+        let mut entries = Vec::new();
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        let mut in_response = false;
+        let mut current_tag: Option<String> = None;
+        let mut href = String::new();
+        let mut trash_filename = String::new();
+        let mut trash_location = String::new();
+        let mut trash_deletion_time = String::new();
+        let mut content_length = String::new();
+        let mut is_collection = false;
+        let mut in_resourcetype = false;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Err(_) => break,
+                Ok(Event::Eof) => break,
+                Ok(Event::Start(ref e)) => {
+                    let local = e.local_name();
+                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("").to_string();
+                    match tag.as_str() {
+                        "response" => {
+                            in_response = true;
+                            href.clear();
+                            trash_filename.clear();
+                            trash_location.clear();
+                            trash_deletion_time.clear();
+                            content_length.clear();
+                            is_collection = false;
+                        }
+                        "resourcetype" => { in_resourcetype = true; }
+                        "collection" if in_resourcetype => { is_collection = true; }
+                        _ if in_response => { current_tag = Some(tag); }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let local = e.local_name();
+                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                    if tag == "collection" && in_resourcetype { is_collection = true; }
+                }
+                Ok(Event::End(ref e)) => {
+                    let local = e.local_name();
+                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("");
+                    match tag {
+                        "response" if in_response => {
+                            in_response = false;
+                            // Skip the collection itself (the trash/ container)
+                            if !trash_filename.is_empty() {
+                                let id = href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("").to_string();
+                                entries.push(NextcloudTrashEntry {
+                                    id,
+                                    name: trash_filename.clone(),
+                                    original_path: trash_location.clone(),
+                                    deleted_at: trash_deletion_time.parse::<u64>().unwrap_or(0),
+                                    size: content_length.parse::<u64>().unwrap_or(0),
+                                    is_dir: is_collection,
+                                });
+                            }
+                        }
+                        "resourcetype" => { in_resourcetype = false; }
+                        _ => { current_tag = None; }
+                    }
+                }
+                Ok(Event::Text(ref e)) => {
+                    if let Some(ref tag) = current_tag {
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                        if !text.is_empty() {
+                            match tag.as_str() {
+                                "href" => href = text,
+                                "trashbin-filename" => trash_filename = text,
+                                "trashbin-original-location" => trash_location = text,
+                                "trashbin-deletion-time" => trash_deletion_time = text,
+                                "getcontentlength" => content_length = text,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(entries)
+    }
+
+    /// Nextcloud trashbin: restore a single item.
+    pub async fn nextcloud_restore_trash(&mut self, id: &str) -> Result<(), ProviderError> {
+        let base = self.nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let from = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, self.config.username, id);
+        let dest = format!("{}/remote.php/dav/trashbin/{}/restore/{}", base, self.config.username, id);
+
+        let resp = self.request_url(Method::from_bytes(b"MOVE").unwrap(), &from)
+            .header("Destination", &dest)
+            .header("Overwrite", "T")
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        if !status.is_success() && status != StatusCode::CREATED && status != StatusCode::NO_CONTENT {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!("Restore failed: HTTP {} — {}", status, &body[..body.len().min(200)])));
+        }
+        Ok(())
+    }
+
+    /// Nextcloud trashbin: permanently delete a single item.
+    pub async fn nextcloud_delete_trash_item(&mut self, id: &str) -> Result<(), ProviderError> {
+        let base = self.nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let url = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, self.config.username, id);
+
+        let resp = self.request_url(Method::DELETE, &url)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(ProviderError::ServerError(format!("Delete trash item failed: HTTP {}", status)));
+        }
+        Ok(())
+    }
+
+    /// Nextcloud trashbin: empty entire trash.
+    pub async fn nextcloud_empty_trash(&mut self) -> Result<(), ProviderError> {
+        let base = self.nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let url = format!("{}/remote.php/dav/trashbin/{}/trash", base, self.config.username);
+
+        let resp = self.request_url(Method::DELETE, &url)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(ProviderError::ServerError(format!("Empty trash failed: HTTP {}", status)));
+        }
+        Ok(())
+    }
+
     /// Parse PROPFIND XML response into RemoteEntry list using quick-xml
     fn parse_propfind_response(&self, xml: &str, base_path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut entries = Vec::new();
@@ -1298,6 +1627,18 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
+    fn supports_share_links(&self) -> bool {
+        self.is_nextcloud()
+    }
+
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        expires_in_secs: Option<u64>,
+    ) -> Result<String, ProviderError> {
+        self.nextcloud_create_share(path, expires_in_secs).await
+    }
+
     fn supports_server_copy(&self) -> bool {
         true
     }
@@ -1329,6 +1670,64 @@ impl StorageProvider for WebDavProvider {
             }
         }
     }
+}
+
+// ─── Nextcloud Tauri Commands ────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn webdav_list_trash(
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+) -> Result<Vec<NextcloudTrashEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    let webdav = provider.as_any_mut()
+        .downcast_mut::<WebDavProvider>()
+        .ok_or("Not a WebDAV connection")?;
+    webdav.nextcloud_list_trash().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn webdav_restore_trash(
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    let webdav = provider.as_any_mut()
+        .downcast_mut::<WebDavProvider>()
+        .ok_or("Not a WebDAV connection")?;
+    for id in &ids {
+        webdav.nextcloud_restore_trash(id).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn webdav_delete_trash(
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    let webdav = provider.as_any_mut()
+        .downcast_mut::<WebDavProvider>()
+        .ok_or("Not a WebDAV connection")?;
+    for id in &ids {
+        webdav.nextcloud_delete_trash_item(id).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn webdav_empty_trash(
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    let webdav = provider.as_any_mut()
+        .downcast_mut::<WebDavProvider>()
+        .ok_or("Not a WebDAV connection")?;
+    webdav.nextcloud_empty_trash().await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

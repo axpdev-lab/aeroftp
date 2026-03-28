@@ -112,11 +112,12 @@ const THEMES = {
             ERROR: 'text-red-600',
             INFO: 'text-gray-600',
             SUCCESS: 'text-green-600',
+            RESTORE: 'text-emerald-600',
         },
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
             DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '', UPDATE: '',
-            ERROR: '', INFO: '', SUCCESS: '',
+            ERROR: '', INFO: '', SUCCESS: '', RESTORE: '',
         },
         liveIndicator: 'bg-blue-500',
         liveText: 'text-blue-600',
@@ -167,11 +168,12 @@ const THEMES = {
             ERROR: 'text-red-400',
             INFO: 'text-gray-400',
             SUCCESS: 'text-green-400',
+            RESTORE: 'text-emerald-400',
         },
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
             DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '', UPDATE: '',
-            ERROR: '', INFO: '', SUCCESS: '',
+            ERROR: '', INFO: '', SUCCESS: '', RESTORE: '',
         },
         liveIndicator: 'bg-blue-500',
         liveText: 'text-blue-400',
@@ -222,11 +224,12 @@ const THEMES = {
             ERROR: 'text-[#f7768e]',
             INFO: 'text-[#a9b1d6]',
             SUCCESS: 'text-[#9ece6a]',
+            RESTORE: 'text-[#73daca]',
         },
         operationGlow: {
             CONNECT: '', DISCONNECT: '', UPLOAD: '', DOWNLOAD: '',
             DELETE: '', RENAME: '', MOVE: '', MKDIR: '', NAVIGATE: '', UPDATE: '',
-            ERROR: '', INFO: '', SUCCESS: '',
+            ERROR: '', INFO: '', SUCCESS: '', RESTORE: '',
         },
         liveIndicator: 'bg-[#7aa2f7]',
         liveText: 'text-[#7aa2f7]',
@@ -277,6 +280,7 @@ const THEMES = {
             ERROR: 'text-red-500',
             INFO: 'text-gray-300',
             SUCCESS: 'text-emerald-400',
+            RESTORE: 'text-emerald-300',
         },
         operationGlow: {
             CONNECT: 'drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]',
@@ -292,6 +296,7 @@ const THEMES = {
             ERROR: 'drop-shadow-[0_0_6px_rgba(239,68,68,1)]',
             INFO: '',
             SUCCESS: 'drop-shadow-[0_0_6px_rgba(16,185,129,0.8)]',
+            RESTORE: 'drop-shadow-[0_0_6px_rgba(16,185,129,0.6)]',
         },
         liveIndicator: 'bg-emerald-400',
         liveText: 'text-emerald-400',
@@ -627,6 +632,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         <option value="UPLOAD">{t('activityPanel.filters.upload')}</option>
                         <option value="DOWNLOAD">{t('activityPanel.filters.download')}</option>
                         <option value="DELETE">{t('activityPanel.filters.delete')}</option>
+                        <option value="RESTORE">{t('activityPanel.filters.restore') || 'RESTORE'}</option>
                         <option value="NAVIGATE">{t('activityPanel.filters.navigate')}</option>
                         <option value="ERROR">{t('activityPanel.filters.errors')}</option>
                     </select>

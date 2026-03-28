@@ -27,7 +27,7 @@ const API_BASE: &str = "https://api.4shared.com/v1_2";
 const UPLOAD_BASE: &str = "https://upload.4shared.com/v1_2";
 
 /// Maximum items per page for 4shared API list operations
-const PAGE_SIZE: u32 = 1000;
+const PAGE_SIZE: u32 = 100;
 
 // FS-008: StatusBar path/quota overlap is a frontend CSS issue, fixed in
 // src/components/StatusBar.tsx (min-w-0 flex-1). Not applicable to this file.
@@ -703,6 +703,7 @@ impl StorageProvider for FourSharedProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
+        tracing::debug!("[4shared] 4shared Listing path='{}' folder_id='{}'", normalized, folder_id);
 
         let mut entries = Vec::new();
 
@@ -713,17 +714,20 @@ impl StorageProvider for FourSharedProvider {
                 "{}/folders/{}/children?offset={}&limit={}",
                 API_BASE, folder_id, offset, PAGE_SIZE
             );
+            tracing::debug!("[4shared] 4shared GET folders: {}", folders_url);
             let resp = self.signed_get(&folders_url).await?;
+            let status = resp.status();
+            tracing::debug!("[4shared] 4shared folders status: {}", status);
 
-            if !resp.status().is_success() {
-                let status = resp.status();
+            if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                debug!("4shared list children failed ({}): {}", status, &body[..body.len().min(200)]);
+                tracing::debug!("[4shared] 4shared list children FAILED ({}): {}", status, &body[..body.len().min(300)]);
                 break;
             }
 
             let body = resp.text().await
                 .map_err(|e| ProviderError::ParseError(format!("Read folders body: {}", e)))?;
+            tracing::debug!("[4shared] 4shared folders response ({}B): {}", body.len(), &body[..body.len().min(500)]);
             let folders = Self::parse_folder_list(&body);
             let page_count = folders.len() as u32;
 
@@ -776,17 +780,20 @@ impl StorageProvider for FourSharedProvider {
                 "{}/folders/{}/files?offset={}&limit={}",
                 API_BASE, folder_id, offset, PAGE_SIZE
             );
+            tracing::debug!("[4shared] 4shared GET files: {}", files_url);
             let resp = self.signed_get(&files_url).await?;
+            let fstatus = resp.status();
+            tracing::debug!("[4shared] 4shared files status: {}", fstatus);
 
-            if !resp.status().is_success() {
-                let status = resp.status();
+            if !fstatus.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                debug!("4shared list files failed ({}): {}", status, &body[..body.len().min(200)]);
+                tracing::debug!("[4shared] 4shared list files FAILED ({}): {}", fstatus, &body[..body.len().min(300)]);
                 break;
             }
 
             let body = resp.text().await
                 .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
+            tracing::debug!("[4shared] 4shared files response ({}B): {}", body.len(), &body[..body.len().min(500)]);
             let files = Self::parse_file_list(&body);
             let page_count = files.len() as u32;
 
@@ -956,6 +963,7 @@ impl StorageProvider for FourSharedProvider {
             .post(&url)
             .header("Authorization", &auth)
             .header("Content-Type", "application/octet-stream")
+            .header("Content-Length", file_size.to_string())
             .body(body)
             .send()
             .await

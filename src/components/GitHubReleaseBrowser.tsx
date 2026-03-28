@@ -17,6 +17,7 @@ import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
@@ -480,6 +481,7 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
   onToggleExpand, onDeleteRelease, onDeleteAsset, onUploadAsset, onError,
 }) => {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
 
   if (loading) {
     return (
@@ -670,11 +672,18 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                         title: `Download ${asset.name}`,
                                       });
                                       if (savePath) {
-                                        await invoke('github_download_release_asset', {
-                                          tag: release.tag,
-                                          assetName: asset.name,
-                                          localPath: savePath,
-                                        });
+                                        const logId = humanLog.logRaw('activity.provider_operation', 'DOWNLOAD', { provider: 'GitHub' }, 'running');
+                                        try {
+                                          await invoke('github_download_release_asset', {
+                                            tag: release.tag,
+                                            assetName: asset.name,
+                                            localPath: savePath,
+                                          });
+                                          humanLog.updateEntry(logId, { status: 'success', message: `[GitHub] Downloaded release asset ${asset.name}` });
+                                        } catch (dlErr) {
+                                          humanLog.updateEntry(logId, { status: 'error', message: `[GitHub] Failed to download release asset ${asset.name}` });
+                                          throw dlErr;
+                                        }
                                       }
                                     } catch (err) {
                                       if (onError) onError('Download', String(err));

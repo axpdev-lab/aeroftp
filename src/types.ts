@@ -18,7 +18,7 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'jottacloud' | 'drime' | 'filelu' | 'koofr' | 'opendrive' | 'yandexdisk' | 'github';
+export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'jottacloud' | 'drime' | 'filelu' | 'koofr' | 'opendrive' | 'yandexdisk' | 'github' | 'swift';
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -37,7 +37,7 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
 
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'swift'].includes(type);
 };
 
 // Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
@@ -47,12 +47,12 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'].includes(type);
+  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'swift'].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'internxt', 'jottacloud', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'jottacloud', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'webdav', 'azure', 'kdrive', 'drime'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode

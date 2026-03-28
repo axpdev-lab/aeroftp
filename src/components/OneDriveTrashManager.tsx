@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
   name: string;
@@ -24,6 +25,7 @@ interface OneDriveTrashManagerProps {
 
 export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -71,14 +73,17 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
   const handleRestore = async () => {
     const itemIds = Array.from(selected);
     if (itemIds.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'OneDrive', count: itemIds.length });
     setActionLoading('restore');
     try {
       for (const itemId of itemIds) {
         await invoke('onedrive_restore_from_trash', { itemId });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[OneDrive] Restored ${itemIds.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[OneDrive] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -96,14 +101,17 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
     setPendingDeleteConfirm(false);
     const itemIds = Array.from(selected);
     if (itemIds.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'OneDrive', count: itemIds.length });
     setActionLoading('delete');
     try {
       for (const itemId of itemIds) {
         await invoke('onedrive_permanent_delete', { itemId });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[OneDrive] Permanently deleted ${itemIds.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[OneDrive] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -132,7 +140,7 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — OneDrive
+              {t('contextMenu.trashTitle')} - OneDrive
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

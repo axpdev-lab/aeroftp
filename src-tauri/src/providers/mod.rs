@@ -48,6 +48,7 @@ pub mod koofr;
 pub mod opendrive;
 pub mod yandex_disk;
 pub mod github;
+pub mod swift;
 pub mod http_retry;
 pub mod atomic_write;
 
@@ -78,6 +79,7 @@ pub use koofr::KoofrProvider;
 pub use opendrive::OpenDriveProvider;
 pub use yandex_disk::YandexDiskProvider;
 pub use github::GitHubProvider;
+pub use swift::SwiftProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
 
 use async_trait::async_trait;
@@ -605,6 +607,10 @@ impl ProviderFactory {
                 let gh_config = github::GitHubConfig::from_provider_config(config)?;
                 Ok(Box::new(GitHubProvider::new(gh_config)?))
             }
+            ProviderType::Swift => {
+                let swift_config = swift::SwiftConfig::from_provider_config(config)?;
+                Ok(Box::new(SwiftProvider::new(swift_config)))
+            }
         }
     }
     
@@ -636,6 +642,7 @@ impl ProviderFactory {
             ProviderType::OpenDrive,
             ProviderType::YandexDisk,
             ProviderType::GitHub,
+            ProviderType::Swift,
         ]
     }
 }

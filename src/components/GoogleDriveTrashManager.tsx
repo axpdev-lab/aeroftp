@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
   name: string;
@@ -24,6 +25,7 @@ interface GoogleDriveTrashManagerProps {
 
 export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDriveTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -73,12 +75,15 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
   const handleRestore = async () => {
     const fileIds = getSelectedIds();
     if (fileIds.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Google Drive', count: fileIds.length });
     setActionLoading('restore');
     try {
       await invoke('google_drive_restore_from_trash', { fileIds });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Google Drive] Restored ${fileIds.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Google Drive] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -97,12 +102,15 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     setPendingDeleteConfirm(false);
     const fileIds = getSelectedIds();
     if (fileIds.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Google Drive', count: fileIds.length });
     setActionLoading('delete');
     try {
       await invoke('google_drive_permanent_delete', { fileIds });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Google Drive] Permanently deleted ${fileIds.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Google Drive] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -131,7 +139,7 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — Google Drive
+              {t('contextMenu.trashTitle')} - Google Drive
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

@@ -7,6 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 /** RemoteEntry as returned by Rust (includes metadata with Zoho file ID) */
 interface TrashEntry {
@@ -25,6 +26,7 @@ interface ZohoTrashManagerProps {
 
 export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<TrashEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -74,12 +76,15 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
   const handleRestore = async () => {
     const ids = getSelectedIds();
     if (ids.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Zoho WorkDrive', count: ids.length });
     setActionLoading('restore');
     try {
       await invoke('zoho_restore_from_trash', { fileIds: ids });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Zoho WorkDrive] Restored ${ids.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Zoho WorkDrive] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -98,12 +103,15 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     setPendingDeleteConfirm(false);
     const ids = getSelectedIds();
     if (ids.length === 0) return;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Zoho WorkDrive', count: ids.length });
     setActionLoading('delete');
     try {
       await invoke('zoho_permanent_delete', { fileIds: ids });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Zoho WorkDrive] Permanently deleted ${ids.length} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[Zoho WorkDrive] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -133,7 +141,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
           <div className="flex items-center gap-2">
             <Trash2 size={18} className="text-gray-600 dark:text-gray-400" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('contextMenu.trashTitle')} — Zoho WorkDrive
+              {t('contextMenu.trashTitle')} - Zoho WorkDrive
             </h2>
             <span className="text-xs text-gray-500 dark:text-gray-500">
               ({items.length})

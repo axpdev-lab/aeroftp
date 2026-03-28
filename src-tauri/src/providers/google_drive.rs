@@ -1194,37 +1194,9 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        let path = path.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
-            (&path[..pos], &path[pos + 1..])
-        } else {
-            ("", path)
-        };
-
-        let parent_id = if parent_path.is_empty() {
-            self.current_folder_id.clone()
-        } else {
-            self.resolve_path(parent_path).await?
-        };
-
-        let file = self.find_by_name(file_name, &parent_id).await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-
-        let url = format!("{}/files/{}", DRIVE_API_BASE, file.id);
-        
-        let response = self.client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() && response.status().as_u16() != 404 {
-            return Err(ProviderError::Other(format!("Delete failed: {}", response.status())));
-        }
-
-        info!("Deleted: {}", path);
-        Ok(())
+        // Soft-delete: move to trash (recoverable via Trash Manager).
+        // Permanent deletion only happens from the Trash Manager UI.
+        self.trash_file(path).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {

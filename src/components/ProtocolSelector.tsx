@@ -22,7 +22,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -303,6 +303,18 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         tooltip: t('protocol.koofrTooltip'),
     },
     {
+        type: 'webdav',
+        name: 'FeliCloud',
+        icon: <FeliCloudLogo size={18} />,
+        description: t('protocol.felicloudDesc'),
+        defaultPort: 443,
+        badge: 'API OCS',
+        color: 'text-orange-500',
+        isCloudStorage: true,
+        category: 'service',
+        tooltip: t('protocol.felicloudTooltip'),
+    },
+    {
         type: 'opendrive',
         name: 'OpenDrive',
         icon: <OpenDriveLogo size={18} />,
@@ -346,6 +358,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isCloudStorage: true,
         tooltip: t('protocol.pcloudTooltip'),
     },
+    {
+        type: 'swift',
+        name: 'Blomp',
+        icon: <BlompLogo size={18} />,
+        description: t('protocol.blompDesc'),
+        defaultPort: 443,
+        badge: 'Swift',
+        color: 'text-purple-500',
+        isCloudStorage: true,
+        tooltip: t('protocol.blompTooltip'),
+    },
 ];
 
 // Temporary fallback for getProtocolInfo when called outside component (no t function available)
@@ -375,6 +398,8 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
+    { type: 'webdav', name: 'FeliCloud', icon: <FeliCloudLogo size={18} />, description: 'FeliCloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'FeliCloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant' },
+    { type: 'swift', name: 'Blomp', icon: <BlompLogo size={18} />, description: 'Blomp (40 GB free, OpenStack Swift)', defaultPort: 443, badge: 'Swift', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Blomp 40GB free OpenStack Swift' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -1268,6 +1293,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         opendrive: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         yandexdisk: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
         github: 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300',
+        swift: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
     };
 
     return (

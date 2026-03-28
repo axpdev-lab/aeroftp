@@ -113,10 +113,37 @@ fn sign(
     base64::engine::general_purpose::STANDARD.encode(result)
 }
 
+/// Split a URL into base URL (without query string) and query parameters.
+/// RFC 5849 Section 3.4.1.2: query params must be extracted and included
+/// in the signature base string separately from the URL.
+fn split_url_query(url: &str) -> (String, Vec<(String, String)>) {
+    if let Some(qmark) = url.find('?') {
+        let base = url[..qmark].to_string();
+        let query = &url[qmark + 1..];
+        let params: Vec<(String, String)> = query
+            .split('&')
+            .filter(|p| !p.is_empty())
+            .filter_map(|p| {
+                let mut parts = p.splitn(2, '=');
+                let key = parts.next()?.to_string();
+                let value = parts.next().unwrap_or("").to_string();
+                Some((key, value))
+            })
+            .collect();
+        (base, params)
+    } else {
+        (url.to_string(), Vec::new())
+    }
+}
+
 /// Build an OAuth 1.0 `Authorization` header for a signed request.
 ///
 /// `extra_params` are additional query/body params that must be included
 /// in the signature base string (but NOT in the Authorization header).
+///
+/// RFC 5849: The URL passed to this function may contain query parameters.
+/// They are automatically extracted, included in the signature base string,
+/// and the base URL (without query string) is used for signing.
 pub fn authorization_header(
     method: &str,
     url: &str,
@@ -126,7 +153,11 @@ pub fn authorization_header(
     let nonce = generate_nonce();
     let timestamp = generate_timestamp();
 
-    // Collect all params for signature (OAuth + extra)
+    // RFC 5849 Section 3.4.1.2: Extract query parameters from URL and include
+    // them in the signature base string. The base URL excludes the query string.
+    let (base_url, query_params) = split_url_query(url);
+
+    // Collect all params for signature (OAuth + query + extra)
     let mut params = BTreeMap::new();
     params.insert("oauth_consumer_key".to_string(), creds.consumer_key.clone());
     params.insert("oauth_nonce".to_string(), nonce.clone());
@@ -135,11 +166,16 @@ pub fn authorization_header(
     params.insert("oauth_token".to_string(), creds.token.clone());
     params.insert("oauth_version".to_string(), "1.0".to_string());
 
+    // Include query parameters from URL in signature
+    for (k, v) in &query_params {
+        params.insert(k.clone(), v.clone());
+    }
+
     for (k, v) in extra_params {
         params.insert(k.to_string(), v.to_string());
     }
 
-    let signature = sign(method, url, &params, &creds.consumer_secret, &creds.token_secret);
+    let signature = sign(method, &base_url, &params, &creds.consumer_secret, &creds.token_secret);
 
     // Build header (only oauth_* params + signature)
     format!(
@@ -175,8 +211,14 @@ pub fn authorization_header_consumer_only(
         params.insert(k.to_string(), v.to_string());
     }
 
+    // Extract query params from URL for signing
+    let (base_url, query_params) = split_url_query(url);
+    for (k, v) in &query_params {
+        params.insert(k.clone(), v.clone());
+    }
+
     // token_secret is empty for request_token
-    let signature = sign(method, url, &params, consumer_secret, "");
+    let signature = sign(method, &base_url, &params, consumer_secret, "");
 
     format!(
         "OAuth oauth_consumer_key=\"{}\", oauth_nonce=\"{}\", oauth_signature=\"{}\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"{}\", oauth_version=\"1.0\"",

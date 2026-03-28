@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { RemoteFile } from '../types';
 import { formatSize } from '../utils/formatters';
 
@@ -21,6 +22,7 @@ interface OpenDriveTrashActionItem {
 
 export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTrashManagerProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<RemoteFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -86,13 +88,17 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
   const handleRestore = async () => {
     const selectedItems = getSelectedItems();
     if (selectedItems.length === 0) return;
+    const selectedCount = selectedItems.length;
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'OpenDrive', count: selectedCount });
     setActionLoading('restore');
     setError(null);
     try {
       await invoke('opendrive_restore_from_trash', { items: selectedItems });
+      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Restored ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to restore from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -102,13 +108,17 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
   const handlePermanentDelete = async () => {
     const selectedItems = getSelectedItems();
     if (selectedItems.length === 0) return;
+    const selectedCount = selectedItems.length;
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'OpenDrive', count: selectedCount });
     setActionLoading('delete');
     setError(null);
     try {
       await invoke('opendrive_permanent_delete', { items: selectedItems });
+      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Permanently deleted ${selectedCount} item(s) from trash` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to permanently delete from trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -117,13 +127,17 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
 
   const confirmEmptyTrash = async () => {
     setPendingEmptyConfirm(false);
+    const totalCount = items.length;
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'OpenDrive', count: totalCount });
     setActionLoading('empty');
     setError(null);
     try {
       await invoke('opendrive_empty_trash');
+      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Emptied trash (${totalCount} item(s))` });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Failed to empty trash` });
       setError(String(err));
     } finally {
       setActionLoading(null);

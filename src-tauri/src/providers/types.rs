@@ -64,6 +64,8 @@ pub enum ProviderType {
     YandexDisk,
     /// GitHub (Repository & Releases browser)
     GitHub,
+    /// OpenStack Swift Object Storage (Blomp, OVH, Rackspace)
+    Swift,
 }
 
 impl fmt::Display for ProviderType {
@@ -94,6 +96,7 @@ impl fmt::Display for ProviderType {
             ProviderType::OpenDrive => write!(f, "OpenDrive"),
             ProviderType::YandexDisk => write!(f, "Yandex Disk"),
             ProviderType::GitHub => write!(f, "GitHub"),
+            ProviderType::Swift => write!(f, "Swift"),
         }
     }
 }
@@ -127,9 +130,10 @@ impl ProviderType {
             ProviderType::OpenDrive => 443,
             ProviderType::YandexDisk => 443,
             ProviderType::GitHub => 443,
+            ProviderType::Swift => 443,
         }
     }
-    
+
     /// Check if this provider uses encryption by default
     #[allow(dead_code)]
     pub fn uses_encryption(&self) -> bool {
@@ -157,7 +161,8 @@ impl ProviderType {
             ProviderType::Koofr |
             ProviderType::OpenDrive |
             ProviderType::YandexDisk |
-            ProviderType::GitHub
+            ProviderType::GitHub |
+            ProviderType::Swift
         )
     }
 

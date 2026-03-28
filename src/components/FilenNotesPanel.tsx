@@ -10,6 +10,7 @@ import {
   Hash, Check
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 // ─── Types ───
 
@@ -83,6 +84,7 @@ const NOTE_TYPE_LABELS: Record<NoteTypeOption, string> = {
 
 export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
 
   // State: list view
   const [notes, setNotes] = useState<FilenNote[]>([]);
@@ -251,6 +253,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       saveTimeoutRef.current = null;
     }
     setSaving(true);
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_edit_content', {
         uuid: selectedNote.uuid,
@@ -263,23 +266,27 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           title: noteTitle,
         });
       }
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Saved note "${noteTitle}"` });
       setDirty(false);
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to save note' });
       setError(String(err));
     } finally {
       setSaving(false);
     }
-  }, [selectedNote, saving, noteContent, noteTitle, noteType]);
+  }, [selectedNote, saving, noteContent, noteTitle, noteType, humanLog]);
 
   const createNote = useCallback(async () => {
     if (!newTitle.trim()) return;
     setCreating(true);
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       const uuid = await invoke<string>('filen_notes_create', {
         title: newTitle.trim(),
         content: '',
         noteType: newType,
       });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Created note "${newTitle.trim()}"` });
       const createdTitle = newTitle.trim();
       const createdType = newType;
       setShowCreateForm(false);
@@ -305,71 +312,92 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         setDirty(false);
       }
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to create note' });
       setError(String(err));
     } finally {
       setCreating(false);
     }
-  }, [newTitle, newType, openNote]);
+  }, [newTitle, newType, openNote, humanLog]);
 
   const toggleFavorite = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const action = note.favorite ? 'Unfavorited' : 'Favorited';
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_toggle_favorite', { uuid: note.uuid, favorite: !note.favorite });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, favorite: !n.favorite } : n));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] ${action} note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to toggle favorite' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   const togglePinned = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const action = note.pinned ? 'Unpinned' : 'Pinned';
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_toggle_pinned', { uuid: note.uuid, pinned: !note.pinned });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, pinned: !n.pinned } : n));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] ${action} note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to toggle pinned' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   const trashNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_trash', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, trash: true } : n));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Trashed note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to trash note' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   const restoreNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const logId = humanLog.logRaw('activity.provider_operation', 'RESTORE', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_restore', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, trash: false, archive: false } : n));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Restored note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to restore note' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   const deleteNotePermanently = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const logId = humanLog.logRaw('activity.provider_operation', 'DELETE', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_delete', { uuid: note.uuid });
       setNotes(prev => prev.filter(n => n.uuid !== note.uuid));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Permanently deleted note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to permanently delete note' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   const archiveNote = useCallback(async (note: FilenNote, e: React.MouseEvent) => {
     e.stopPropagation();
+    const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_archive', { uuid: note.uuid });
       setNotes(prev => prev.map(n => n.uuid === note.uuid ? { ...n, archive: true } : n));
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Archived note "${note.title}"` });
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to archive note' });
       setError(String(err));
     }
-  }, []);
+  }, [humanLog]);
 
   // ── History ──
 
@@ -388,14 +416,17 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
 
   const restoreVersion = useCallback(async (historyId: number) => {
     if (!selectedNote) return;
+    const logId = humanLog.logRaw('activity.provider_operation', 'RESTORE', { provider: 'Filen' }, 'running');
     try {
       await invoke('filen_notes_history_restore', { uuid: selectedNote.uuid, historyId });
+      humanLog.updateEntry(logId, { status: 'success', message: `[Filen] Restored note version` });
       setHistory(null);
       openNote(selectedNote);
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: '[Filen] Failed to restore note version' });
       setError(String(err));
     }
-  }, [selectedNote, openNote]);
+  }, [selectedNote, openNote, humanLog]);
 
   // ── Filtering ──
 
