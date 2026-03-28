@@ -9,10 +9,14 @@
  */
 
 import React, { useCallback, useRef } from 'react';
+import { VirtuosoGrid } from 'react-virtuoso';
 import { ImageThumbnail } from './ImageThumbnail';
 import type { LocalFile } from '../types';
 
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i;
+
+/** Soglia minima per attivare la virtualizzazione (coerente con VirtualFileList) */
+const VIRTUALIZE_THRESHOLD = 100;
 
 interface LargeIconsGridProps {
   files: LocalFile[];
@@ -246,48 +250,76 @@ export function LargeIconsGrid({
     if (!isAtRoot) onNavigateUp();
   }, [isAtRoot, onNavigateUp]);
 
-  return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2 p-2">
-      {/* Go Up item */}
-      <div
-        className={`flex flex-col items-center p-3 rounded-lg cursor-pointer transition-colors select-none ${
-          isAtRoot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700/30'
-        }`}
-        onClick={handleNavigateUp}
-        title="Go up"
-      >
-        <div className="flex items-center justify-center w-16 h-16">
-          {getFolderUpIcon ? getFolderUpIcon().icon : getFileIcon('..', true).icon}
-        </div>
-        <span className="text-xs text-center leading-tight mt-1.5 italic text-gray-500">..</span>
-      </div>
+  const shouldVirtualize = files.length > VIRTUALIZE_THRESHOLD;
 
-      {/* File cards */}
-      {files.map((file, i) => (
-        <LargeIconCard
-          key={`${file.name}-${i}`}
-          file={file}
-          isSelected={selectedFiles.has(file.name)}
-          isDragOver={dragOverTarget === file.path}
-          currentPath={currentPath}
-          getFileIcon={getFileIcon}
-          onFileClick={onFileClick}
-          onFileDoubleClick={onFileDoubleClick}
-          onContextMenu={onContextMenu}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onDragLeave={onDragLeave}
-          onDragEnd={onDragEnd}
-          inlineRename={inlineRename}
-          onInlineRenameChange={onInlineRenameChange}
-          onInlineRenameCommit={onInlineRenameCommit}
-          onInlineRenameCancel={onInlineRenameCancel}
-          formatBytes={formatBytes}
-          showFileExtensions={showFileExtensions}
-        />
-      ))}
+  const GoUpItem = (
+    <div
+      className={`flex flex-col items-center p-3 rounded-lg cursor-pointer transition-colors select-none ${
+        isAtRoot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700/30'
+      }`}
+      onClick={handleNavigateUp}
+      title="Go up"
+    >
+      <div className="flex items-center justify-center w-16 h-16">
+        {getFolderUpIcon ? getFolderUpIcon().icon : getFileIcon('..', true).icon}
+      </div>
+      <span className="text-xs text-center leading-tight mt-1.5 italic text-gray-500">..</span>
     </div>
+  );
+
+  const renderCard = useCallback((index: number) => {
+    const file = files[index];
+    return (
+      <LargeIconCard
+        key={`${file.name}-${index}`}
+        file={file}
+        isSelected={selectedFiles.has(file.name)}
+        isDragOver={dragOverTarget === file.path}
+        currentPath={currentPath}
+        getFileIcon={getFileIcon}
+        onFileClick={onFileClick}
+        onFileDoubleClick={onFileDoubleClick}
+        onContextMenu={onContextMenu}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragLeave={onDragLeave}
+        onDragEnd={onDragEnd}
+        inlineRename={inlineRename}
+        onInlineRenameChange={onInlineRenameChange}
+        onInlineRenameCommit={onInlineRenameCommit}
+        onInlineRenameCancel={onInlineRenameCancel}
+        formatBytes={formatBytes}
+        showFileExtensions={showFileExtensions}
+      />
+    );
+  }, [files, selectedFiles, dragOverTarget, currentPath, getFileIcon, onFileClick,
+    onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
+    onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
+    onInlineRenameCancel, formatBytes, showFileExtensions]);
+
+  // Non-virtualized path for small directories (<=100 items)
+  if (!shouldVirtualize) {
+    return (
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2 p-2">
+        {GoUpItem}
+        {files.map((_file, i) => renderCard(i))}
+      </div>
+    );
+  }
+
+  // Virtualized path for large directories (>100 items)
+  return (
+    <VirtuosoGrid
+      totalCount={files.length}
+      overscan={200}
+      listClassName="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2 p-2"
+      components={{
+        Header: () => <>{GoUpItem}</>,
+      }}
+      itemContent={renderCard}
+      style={{ height: '100%' }}
+    />
   );
 }
 
