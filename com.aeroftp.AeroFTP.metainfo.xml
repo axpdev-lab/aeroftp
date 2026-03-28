@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.6" date="2026-03-28">
+      <description>
+        <p>FeliCloud (20th provider): EU/GDPR Nextcloud cloud with OCS share links and trash management. Share Link Modal with copy confirmation and password display. Activity log coverage for 14 trash managers and 30+ provider operations. Fixed 4shared OAuth1 signature, Google Drive soft-delete, MEGA download and trash path, Dropbox restore. FileLu listing 2x faster via parallel API calls.</p>
+      </description>
+    </release>
     <release version="3.1.5" date="2026-03-27">
       <description>
         <p>AeroAgent hardening: prompt caching, tool result caching, structured transfer plans, CLI/MCP parity, SQLite agent memory, local voice input via whisper.cpp. Independent security audit (19 findings, 17 resolved). CLI evolution: 30 subcommands, parallel transfers, resume, config.toml, aliases, MCP resources, FTP/FTPS certificate hardening. macOS entitlements fix for frozen UI on launch.</p>

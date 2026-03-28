@@ -461,4 +461,4 @@ We gratefully acknowledge security researchers who help improve AeroFTP:
 
 *No reports yet — be the first!*
 
-*AeroFTP v3.1.4 - 27 March 2026*
+*AeroFTP v3.1.6 - 28 March 2026*

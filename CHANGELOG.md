@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.6] - 2026-03-28
+
+### FeliCloud, Share Link Modal & Provider Bug Fixes
+
+#### New Features
+- **FeliCloud** (20th cloud provider): Nextcloud-based EU cloud with 10 GB free, GDPR compliant. Full OCS API integration with share links (auto-generated passwords when server requires) and WebDAV trashbin management.
+- **Share Link Modal**: New dedicated modal replacing toast notifications. Shows link in copyable field with visual confirmation, password section for servers that require it, loading/error states, and retry button.
+- **Activity Log Coverage**: All trash operations (restore, permanent delete, empty) tracked across 14 providers. Move-to-trash (5 providers), share link creation, and 30+ provider-specific operations (FileLu, Box, Google Drive, Zoho, GitHub, Filen) now logged.
+- **RESTORE Operation Type**: New activity log filter with themed colors across all 4 UI themes.
+- **Public ROADMAP.md**: Transparent roadmap with full provider timeline (1-20), current work, and future plans.
+
+#### Performance
+- **FileLu listing 2x faster**: Parallel v1 file/list + v2 folder/list via `tokio::join!`.
+
+#### Bug Fixes
+- **4shared OAuth1 signature**: Query parameters now correctly extracted from URL for RFC 5849 signature base string. Fixed PAGE_SIZE limit (100, was 1000). Fixed upload missing Content-Length header.
+- **Google Drive delete**: Now performs soft-delete (move to trash) instead of permanent delete. Removed duplicate "Move to Trash" menu item.
+- **MEGA**: Fixed download (`--resume` flag removed, unsupported by MEGAcmd 2.5.x). Fixed trash path (`//bin/` for MEGAcmd 2.5.1). Delete now soft-deletes via `mega-mv`. Restore goes to current directory.
+- **Dropbox**: Restore auto-fetches file revision via `list_revisions` when rev is missing. Permanent delete button removed (requires Team scope unavailable on personal accounts).
+- **Share link providers**: Fixed `supportsNativeShareLink` list (removed Internxt, added Azure/kDrive/Drime Cloud). Expiration parameter now properly passed to backend. Provider icons added for all 19 providers in context menu.
+- **FeliCloud share link 403**: Auto-retries with generated password (min 1 lowercase + 1 uppercase + 1 digit + 1 special char) when Nextcloud instance enforces password-protected links.
+- **Em-dash cleanup**: Replaced with regular hyphen across all 9 trash manager titles.
+
+#### i18n
+- 32 new keys (activity log, share link modal, filters) translated across all 47 languages.
+
 ## [3.1.5] - 2026-03-27
 
 ### AeroAgent Hardening — APPENDIX-A Execution & Security Audit
