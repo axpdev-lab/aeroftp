@@ -358,8 +358,9 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isCloudStorage: true,
         tooltip: t('protocol.pcloudTooltip'),
     },
-    {
-        type: 'swift',
+    // Blomp: hidden in production until storage proxy 403 is resolved (stable: false in registry)
+    ...(import.meta.env.DEV ? [{
+        type: 'swift' as const,
         name: 'Blomp',
         icon: <BlompLogo size={18} />,
         description: t('protocol.blompDesc'),
@@ -368,7 +369,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-purple-500',
         isCloudStorage: true,
         tooltip: t('protocol.blompTooltip'),
-    },
+    }] : []),
 ];
 
 // Temporary fallback for getProtocolInfo when called outside component (no t function available)
@@ -399,7 +400,6 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'webdav', name: 'FeliCloud', icon: <FeliCloudLogo size={18} />, description: 'FeliCloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'FeliCloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant' },
-    { type: 'swift', name: 'Blomp', icon: <BlompLogo size={18} />, description: 'Blomp (40 GB free, OpenStack Swift)', defaultPort: 443, badge: 'Swift', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Blomp 40GB free OpenStack Swift' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
