@@ -600,11 +600,9 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.0.0 | **AeroAgent Pro** — Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
 | v2.0.1 | **3 Asian AI Providers** (Kimi, Qwen, DeepSeek) with thinking modes, web search, FIM, context caching, file analysis. **AeroFile Pro** Places Sidebar, BreadcrumbBar, Large Icons, drive detection, custom sidebar locations. Official SVG provider logos for all 10 providers | Done |
 | v2.0.5 | **4shared native REST API** (OAuth 1.0, 14th protocol), CloudMe WebDAV preset, Places Sidebar GVFS/unmounted partitions, Autostart, Windows Explorer badges, OwnCloud removal | Done |
-
 | v2.5.0 | **AeroFile Pro** — LocalFilePanel extraction, local path tabs (12 max, drag-to-reorder), file tags SQLite (7 Finder-style labels), FileTagBadge, tags context menu, sidebar filter, macOS FinderSync, event-driven volume detection, keyboard navigation, ARIA accessibility | Done |
 | v2.5.2 | **AeroImage** — Built-in image editor (crop, resize, rotate, flip, color adjustments, effects, 6 output formats) | Done |
 | v2.6.0 | **AeroAgent Ecosystem** — 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
-
 | v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
 | v2.7.4 | **Complete Provider Integration** — Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
 | v2.8.0 | **Koofr Native API** (20th protocol), **Production CLI** (13 commands, 20 protocols), **AeroAgent Server Exec** (2 new tools, vault-secured), Ed25519 license foundation | Done |
@@ -619,7 +617,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 
 | Version | Feature |
 |---------|---------|
-| v2.9.x | CSP Phase 2 tightening, Biometric unlock, Provider-optimized transfers |
+| v3.2.0 | Advanced Share Links (expiration, password, permissions), Full Activity Logging, Blomp provider |
 
 ---
 
