@@ -44,7 +44,7 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 23 protocols with appropriate transport security:
+AeroFTP supports 25 protocols with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |

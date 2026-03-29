@@ -4,7 +4,7 @@
 pkgname=aeroftp-bin
 pkgver=3.1.8
 pkgrel=1
-pkgdesc="Modern multi-protocol file client with AI, encryption and cloud storage (FTP, SFTP, WebDAV, S3, 23 protocols)"
+pkgdesc="Modern multi-protocol file client with AI, encryption and cloud storage (FTP, SFTP, WebDAV, S3, 25 protocols)"
 arch=('x86_64')
 url="https://aeroftp.app"
 license=('GPL-3.0-or-later')

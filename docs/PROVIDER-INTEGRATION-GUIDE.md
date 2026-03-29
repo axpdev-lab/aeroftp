@@ -43,7 +43,7 @@
 
 ## 1. Architecture Overview
 
-AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All 23 storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and 19 cloud APIs.
+AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All 25 storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and 19 cloud APIs.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -1695,7 +1695,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ## Acknowledgments
 
-This guide documents patterns developed across 30+ releases (v1.5 → v2.9) and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across 23 storage backends.
+This guide documents patterns developed across 30+ releases (v1.5 → v2.9) and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across 25 storage backends.
 
 ---
 

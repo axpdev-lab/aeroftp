@@ -420,7 +420,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 47 tools work identically across all 23 protocols via the `StorageProvider` trait:
+All 47 tools work identically across all 25 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
