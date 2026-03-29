@@ -93,8 +93,12 @@ struct FileEntry {
     /// FileLu API returns this as string "0" or number 0 — use flexible deserializer
     #[serde(default, deserialize_with = "deserialize_opt_u64")]
     fld_id: Option<u64>,
+    direct_link: Option<String>,
+    link: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_boolish")]
     only_me: Option<bool>,
+    #[serde(rename = "public", default, deserialize_with = "deserialize_opt_boolish")]
+    is_public: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_opt_boolish", alias = "has_password", alias = "is_password", alias = "password_protected", alias = "file_password_protected")]
     password_protected: Option<bool>,
 }
@@ -454,16 +458,42 @@ impl FileLuProvider {
         }
     }
 
-    /// Hybrid listing: v1 file/list (fld_id) for files + v2 folder/list (folder_path) for subfolders.
-    /// FileLu v2 does NOT have a file/list endpoint that filters by folder_path —
-    /// it returns ALL files in the account. So we use v1 for files and v2 for folders.
-    /// Both calls run in parallel via tokio::join! to halve listing latency.
-    async fn list_folder_hybrid(&self, folder_path: &str, fld_id: u64) -> Result<FolderListResult, ProviderError> {
+    /// Preferred listing path: FileLu v2 `folder/list` by `folder_path`.
+    /// Support confirmed on 2026-03-28: the response includes both files and folders,
+    /// plus file `hash` and `direct_link` metadata.
+    async fn list_folder_v2(&self, folder_path: &str) -> Result<FolderListResult, ProviderError> {
+        let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
+        let per_page = "100";
+        let mut all_files: Vec<FileEntry> = Vec::new();
+        let mut all_folders: Vec<FolderEntry> = Vec::new();
+
+        for page in 1..=MAX_LIST_PAGES {
+            let page_str = page.to_string();
+            let url = self.api_v2_url(
+                "folder/list",
+                &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
+            );
+            let resp = self.get_with_retry(&url).await?;
+            let result = Self::parse_api::<FolderListResult>(resp).await?;
+            let file_count = result.files.len();
+            let folder_count = result.folders.len();
+            all_files.extend(result.files);
+            all_folders.extend(result.folders);
+            if file_count < 100 && folder_count < 100 {
+                break;
+            }
+        }
+
+        Ok(FolderListResult { files: all_files, folders: all_folders })
+    }
+
+    /// Legacy fallback path kept as a defensive compatibility path.
+    /// Uses v1 `file/list` by `fld_id` for files and v2 `folder/list` by `folder_path` for folders.
+    async fn list_folder_legacy_hybrid(&self, folder_path: &str, fld_id: u64) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
         let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
         let per_page = "100";
 
-        // v1: file/list by fld_id (correctly filters files to this folder only)
         let files_fut = async {
             let mut all_files: Vec<FileEntry> = Vec::new();
             for page in 1..=MAX_LIST_PAGES {
@@ -478,12 +508,13 @@ impl FileLuProvider {
                 all_files.extend(result.files.into_iter().filter(|f| {
                     f.fld_id.map_or(true, |id| id == fld_id)
                 }));
-                if count < 100 { break; }
+                if count < 100 {
+                    break;
+                }
             }
             Ok::<_, ProviderError>(all_files)
         };
 
-        // v2: folder/list by path (no fld_id needed for subfolders)
         let folders_fut = async {
             let mut all_folders: Vec<FolderEntry> = Vec::new();
             for page in 1..=MAX_LIST_PAGES {
@@ -496,14 +527,19 @@ impl FileLuProvider {
                 let result = Self::parse_api::<FolderListResult>(resp).await?;
                 let count = result.folders.len();
                 all_folders.extend(result.folders);
-                if count < 100 { break; }
+                if count < 100 {
+                    break;
+                }
             }
             Ok::<_, ProviderError>(all_folders)
         };
 
         let (files_result, folders_result) = tokio::join!(files_fut, folders_fut);
 
-        Ok(FolderListResult { files: files_result?, folders: folders_result? })
+        Ok(FolderListResult {
+            files: files_result?,
+            folders: folders_result?,
+        })
     }
 
     /// Legacy v1 list — kept for operations that still need fld_id (upload, mkdir)
@@ -550,9 +586,16 @@ impl FileLuProvider {
         parent_path: &str,
         parent_fld_id: u64,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // v1 file/list (fld_id) for files + v2 folder/list (folder_path) for subfolders.
-        // FileLu v2 does NOT have file/list with folder_path filtering — it returns ALL files.
-        let result = self.list_folder_hybrid(parent_path, parent_fld_id).await?;
+        let result = match self.list_folder_v2(parent_path).await {
+            Ok(result) => result,
+            Err(error) => {
+                filelu_log(&format!(
+                    "v2 folder/list failed for '{}', falling back to legacy hybrid listing: {}",
+                    parent_path, error
+                ));
+                self.list_folder_legacy_hybrid(parent_path, parent_fld_id).await?
+            }
+        };
         let mut entries: Vec<RemoteEntry> = Vec::new();
 
         let parent_norm = Self::normalize_path(parent_path);
@@ -615,10 +658,17 @@ impl FileLuProvider {
             if let Some(is_password_protected) = file.password_protected {
                 metadata.insert("filelu_password_protected".to_string(), is_password_protected.to_string());
             }
-            // Expose content hash for sync comparison — FileLu doesn't preserve
-            // original mtime, so hash-based comparison is more reliable.
             if let Some(ref h) = file.hash {
                 metadata.insert("content_hash".to_string(), h.clone());
+            }
+            if let Some(ref direct_link) = file.direct_link {
+                metadata.insert("filelu_direct_link".to_string(), direct_link.clone());
+            }
+            if let Some(ref public_link) = file.link {
+                metadata.insert("filelu_public_link".to_string(), public_link.clone());
+            }
+            if let Some(is_public) = file.is_public {
+                metadata.insert("filelu_public".to_string(), is_public.to_string());
             }
 
             entries.push(RemoteEntry {
@@ -1659,6 +1709,26 @@ mod tests {
         let json = r#"{"size":null}"#;
         let e: FileEntry = serde_json::from_str(json).unwrap();
         assert_eq!(e.size, 0);
+    }
+
+    #[test]
+    fn test_deserialize_v2_filelu_fields() {
+        let json = r#"{
+            "file_code": "218qmsppykci",
+            "name": "kodi.exe",
+            "size": 77567958,
+            "uploaded": "2026-03-12 11:58:00",
+            "hash": "73b6231c2379602a2266fbb0b94e9f302629426",
+            "direct_link": "https://d1028.cdnguest.space/example/kodi.exe",
+            "link": "https://filelu.com/218qmsppykci",
+            "public": 0
+        }"#;
+        let entry: FileEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.name.as_deref(), Some("kodi.exe"));
+        assert_eq!(entry.hash.as_deref(), Some("73b6231c2379602a2266fbb0b94e9f302629426"));
+        assert_eq!(entry.direct_link.as_deref(), Some("https://d1028.cdnguest.space/example/kodi.exe"));
+        assert_eq!(entry.link.as_deref(), Some("https://filelu.com/218qmsppykci"));
+        assert_eq!(entry.is_public, Some(false));
     }
 
     #[test]

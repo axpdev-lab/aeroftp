@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.1.8" date="2026-03-29">
+      <description>
+        <p>Desktop security hardening: Sigstore client-side update verification, backend AI tool approval with native OS dialogs, vault passphrase moved to OS keyring, plugin registry fail-closed. Security documentation restructured.</p>
+      </description>
+    </release>
     <release version="3.1.7" date="2026-03-28">
       <description>
         <p>Glob pattern matching for find across 8 providers, MEGA find exit code fix, Blomp hidden in production.</p>

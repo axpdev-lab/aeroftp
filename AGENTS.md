@@ -222,6 +222,84 @@ aeroftp-cli connect --profile "Production"
 aeroftp-cli df --profile "Production" --json
 ```
 
+## AeroAgent Orchestration
+
+External AI agents can invoke AeroAgent as a subprocess to perform AI-driven multi-step operations with credential isolation. AeroAgent resolves credentials from the vault, executes tool chains autonomously, and returns results — the orchestrating agent never sees passwords or tokens.
+
+### Discover AI Providers
+
+```bash
+# List configured AI providers (from vault and environment)
+aeroftp-cli ai-models --json
+```
+
+The output includes provider name, active model, and source (`vault`, `env`, or `vault+env`). API keys are never included.
+
+### Agent One-Shot Mode
+
+```bash
+# Run a single instruction and exit
+aeroftp-cli agent --provider xai --model grok-3-mini \
+  -m "List files on the Production server at /var/www/" \
+  --auto-approve all -y --json
+```
+
+If `--provider` is omitted, the CLI auto-detects from environment variables or vault-stored API keys.
+
+### Server Operations via Agent
+
+The agent has two tools for vault-backed server operations:
+
+**`server_list_saved`** — Lists all 57 saved server profiles (names, protocols, hosts). No credentials exposed.
+
+**`server_exec`** — Executes operations on any saved server. Credentials resolved internally.
+
+| Operation | Description |
+|-----------|-------------|
+| `ls` | List directory contents |
+| `cat` | Read file content (5 KB cap) |
+| `stat` | File metadata |
+| `find` | Search by pattern |
+| `df` | Storage quota |
+
+Example orchestration flow:
+```bash
+# Step 1: Discover servers
+aeroftp-cli agent -p xai -m "List all saved servers" -y --json
+
+# Step 2: Check a specific server
+aeroftp-cli agent -p xai -m "List files on axpdev.it at /www.axpdev.it/" -y --json
+
+# Step 3: Verify file integrity
+aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
+```
+
+### Auto-Approval Levels
+
+| Level | Behavior |
+|-------|----------|
+| `--auto-approve safe` | Read-only tools only (default) |
+| `--auto-approve medium` | Read + local writes |
+| `--auto-approve high` | Read + writes + uploads |
+| `--auto-approve all` or `-y` | Everything including shell and delete |
+
+### Security
+
+- Credentials are never in command arguments, environment, stdout, or AI model context
+- Shell denylist blocks 35 dangerous command patterns even with `--auto-approve all`
+- Path validation blocks traversal, null bytes, and sensitive paths (`~/.ssh/`, vault files)
+- The agent cannot read the vault database directly — path validator blocks it
+
+### Coming Soon
+
+- **Mutative server_exec**: `put`, `rm`, `mv`, `mkdir` via CLI agent with headless grant model
+- **MCP server mode**: `aeroftp-cli agent --mcp` for native Claude Code / Cursor integration
+- **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` for programmatic agent-to-agent integration
+- **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
+- **Agent session tokens**: Pre-authorized scoped sessions for headless automation
+
+Full orchestration documentation with a verified field test report: **[Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration)**
+
 ## Supported Protocols
 
 Saved profiles cover both direct-auth and browser-authorized providers.
@@ -234,4 +312,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v3.1.8 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

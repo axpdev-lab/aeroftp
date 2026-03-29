@@ -18,6 +18,23 @@
 
 ## Recently Shipped
 
+### v3.1.8 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Desktop Security Hardening** | Sigstore client-side update verification, backend AI tool approval with native OS dialogs, vault passphrase moved to OS keyring, plugin registry fail-closed. |
+| **Agent Orchestration** | External AI agents (Claude Code, Codex, Cursor) can orchestrate AeroAgent via CLI with credential isolation. New `server_list_saved` and `server_exec` tools. New `ai-models` command for provider discovery. [Full documentation](https://docs.aeroftp.app/features/agent-orchestration). |
+| **FileLu v2 Listing** | v2 `folder/list` as primary listing path with legacy hybrid fallback. New metadata fields: content_hash, direct_link, public status. |
+
+### v3.1.7 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Glob Find Patterns** | 8 providers (WebDAV, SFTP, S3, Jottacloud, Yandex Disk, GitHub, Filen, pCloud) now support glob patterns in find. |
+| **LargeIconsGrid Virtualization** | react-virtuoso for large directories. |
+| **DOMPurify CVE Fix** | Override to 3.3.3 (CVE mutation-XSS via monaco-editor). |
+| **Nextcloud Trash Scope** | Trash button restricted to Nextcloud/FeliCloud WebDAV providers only. |
+
 ### v3.1.6 (March 2026)
 
 | Feature | Description |
@@ -105,6 +122,9 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
 | Feature | Status | Description |
 |---------|--------|-------------|
+| **Native MEGA Protocol** | Planned | Remove MEGAcmd dependency. Direct API communication with MEGA servers, no external software required. Brings MEGA in line with how rclone handles it. |
+| **Agent MCP Server** | Planned | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. |
+| **Agent Session Tokens** | Planned | Pre-authorized scoped sessions for headless automation. No interactive dialogs needed within approved scope. |
 | **Advanced Share Links** | Design complete | Expiration date picker, password protection, permission controls. 9 providers support expiration, 6 support configurable permissions. |
 | **Blomp** (21st provider) | Awaiting API access | 40 GB free cloud storage via OpenStack Swift. Backend ready, waiting for storage proxy access. |
 | **Full Activity Logging** | Phase 1 done | Extending activity log to cover all provider-specific operations. |
@@ -116,6 +136,8 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 | Feature | Description |
 |---------|-------------|
 | **Share Link Management** | View, revoke, and manage existing share links across 10+ providers that support it. |
+| **Cross-Server Operations** | Server-to-server diff, sync, and audit via CLI agent with credential isolation across all protocols. |
+| **Autonomous Server Audit** | Scheduled cron-compatible server checks (disk usage, backup freshness, file integrity) with JSON/webhook output. |
 | **Voice Commands** | Whisper-based speech-to-text for AeroAgent, with on-device transcription. |
 | **AeroVault v2** | Next-generation encrypted vault with directory support and AES-256-GCM-SIV chunked encryption. |
 | **AeroCloud v2** | Enhanced personal cloud sync with selective sync, bandwidth throttling, and conflict visualization. |
@@ -160,4 +182,4 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 
 ---
 
-*Last updated: March 28, 2026*
+*Last updated: March 29, 2026*

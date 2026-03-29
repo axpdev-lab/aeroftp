@@ -258,9 +258,9 @@ An AI assistant with **47 provider-agnostic tools** that work across local files
 
 AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and autonomous coding assistants become the standard way to interact with computers, AeroFTP provides native interfaces for both use cases.
 
-**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit.
+**For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows, and 19 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 48 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 19 AI providers.
 
 ---
 
@@ -334,7 +334,7 @@ As of March 2026, no other file transfer client, cloud storage CLI, or multi-pro
 
 AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary - the agent receives only operation results, never the authentication material that produced them. This works across direct-auth, token-based, and browser-authorized cloud providers.
 
-Read the full analysis: **[Credential Isolation for AI Agents](docs/CREDENTIAL-ISOLATION.md)** - architecture, protocol coverage, practical workflows, and implementation references.
+Read the full analysis: **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** - architecture, protocol coverage, and implementation references. See also **[Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration)** for the complete orchestration guide with external agent integration and verified field test report.
 
 ---
 

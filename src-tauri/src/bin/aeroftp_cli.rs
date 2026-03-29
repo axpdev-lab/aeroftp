@@ -606,6 +606,8 @@ enum Commands {
     },
     /// List saved server profiles from the encrypted vault
     Profiles,
+    /// List configured AI providers and models from the encrypted vault
+    AiModels,
     /// Show CLI capabilities for AI agent discovery (always JSON)
     AgentInfo,
 }
@@ -1922,6 +1924,167 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
+fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    // Map provider type to env var name
+    let env_var_for = |ptype: &str| -> &str {
+        match ptype {
+            "openai" => "OPENAI_API_KEY",
+            "anthropic" => "ANTHROPIC_API_KEY",
+            "google" => "GEMINI_API_KEY",
+            "xai" => "XAI_API_KEY",
+            "openrouter" => "OPENROUTER_API_KEY",
+            "ollama" => "OLLAMA_HOST",
+            "kimi" => "KIMI_API_KEY",
+            "qwen" => "QWEN_API_KEY",
+            "deepseek" => "DEEPSEEK_API_KEY",
+            "mistral" => "MISTRAL_API_KEY",
+            "groq" => "GROQ_API_KEY",
+            "perplexity" => "PERPLEXITY_API_KEY",
+            "cohere" => "COHERE_API_KEY",
+            "together" => "TOGETHER_API_KEY",
+            _ => "",
+        }
+    };
+
+    let mut configured: Vec<serde_json::Value> = Vec::new();
+    let mut seen_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // 1. Read ai_settings from vault (saved from the desktop app)
+    if let Ok(settings_json) = store.get("ai_settings") {
+        if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&settings_json) {
+            if let Some(providers) = settings.get("providers").and_then(|v| v.as_array()) {
+                for p in providers {
+                    let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let ptype = p.get("type").and_then(|v| v.as_str()).unwrap_or(id);
+                    let name = p.get("name").and_then(|v| v.as_str()).unwrap_or(ptype);
+                    let enabled = p.get("isEnabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                    let base_url = p.get("baseUrl").and_then(|v| v.as_str()).unwrap_or("");
+
+                    if id.is_empty() { continue; }
+
+                    // Check if API key exists for this provider
+                    let vault_key = format!("ai_apikey_{}", id);
+                    let has_vault_key = store.get(&vault_key).map(|v| !v.is_empty()).unwrap_or(false);
+                    let env_name = env_var_for(ptype);
+                    let has_env_key = if env_name.is_empty() {
+                        false
+                    } else {
+                        std::env::var(env_name).map(|v| !v.is_empty()).unwrap_or(false)
+                    };
+                    // Ollama doesn't need a key
+                    let is_ollama = ptype == "ollama";
+
+                    if !has_vault_key && !has_env_key && !is_ollama { continue; }
+
+                    let source = if has_vault_key && has_env_key {
+                        "vault+env"
+                    } else if has_vault_key {
+                        "vault"
+                    } else if is_ollama {
+                        "local"
+                    } else {
+                        "env"
+                    };
+
+                    // Find the active model from settings
+                    let active_model = settings.get("models").and_then(|m| m.as_array()).and_then(|models| {
+                        models.iter().find(|m| {
+                            m.get("providerId").and_then(|v| v.as_str()) == Some(id)
+                                && m.get("isActive").and_then(|v| v.as_bool()).unwrap_or(false)
+                        })
+                    });
+                    let model_name = active_model
+                        .and_then(|m| m.get("name").and_then(|v| v.as_str()))
+                        .unwrap_or_else(|| default_model(ptype));
+
+                    seen_types.insert(ptype.to_string());
+                    configured.push(serde_json::json!({
+                        "id": id,
+                        "provider": ptype,
+                        "name": name,
+                        "model": model_name,
+                        "source": source,
+                        "enabled": enabled,
+                        "baseUrl": base_url,
+                    }));
+                }
+            }
+        }
+    }
+
+    // 2. Also pick up env-only providers not in vault settings
+    let env_providers = [
+        ("openai", "OpenAI", "OPENAI_API_KEY"),
+        ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
+        ("google", "Gemini", "GEMINI_API_KEY"),
+        ("xai", "xAI", "XAI_API_KEY"),
+        ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
+        ("deepseek", "DeepSeek", "DEEPSEEK_API_KEY"),
+        ("mistral", "Mistral", "MISTRAL_API_KEY"),
+        ("groq", "Groq", "GROQ_API_KEY"),
+        ("perplexity", "Perplexity", "PERPLEXITY_API_KEY"),
+        ("cohere", "Cohere", "COHERE_API_KEY"),
+        ("together", "Together", "TOGETHER_API_KEY"),
+    ];
+    for (ptype, label, env_key) in &env_providers {
+        if seen_types.contains(*ptype) { continue; }
+        if std::env::var(env_key).map(|v| !v.is_empty()).unwrap_or(false) {
+            configured.push(serde_json::json!({
+                "id": ptype,
+                "provider": ptype,
+                "name": label,
+                "model": default_model(ptype),
+                "source": "env",
+                "enabled": true,
+                "baseUrl": "",
+            }));
+        }
+    }
+
+    if configured.is_empty() {
+        if matches!(format, OutputFormat::Json) {
+            println!("[]");
+        } else {
+            println!("No AI providers configured. Set API keys in the AeroFTP desktop app or via environment variables.");
+        }
+        return 0;
+    }
+
+    if matches!(format, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&configured).unwrap_or_default());
+    } else {
+        println!("  {:<4} {:<16} {:<14} {:<40} {:<10} Source", "#", "Name", "Provider", "Active Model", "Enabled");
+        println!("  {}", "\u{2500}".repeat(95));
+        for (i, p) in configured.iter().enumerate() {
+            let enabled_str = if p["enabled"].as_bool().unwrap_or(true) { "yes" } else { "no" };
+            println!(
+                "  {:<4} {:<16} {:<14} {:<40} {:<10} {}",
+                i + 1,
+                truncate_str(p["name"].as_str().unwrap_or(""), 15),
+                p["provider"].as_str().unwrap_or(""),
+                truncate_str(p["model"].as_str().unwrap_or(""), 39),
+                enabled_str,
+                p["source"].as_str().unwrap_or(""),
+            );
+        }
+        eprintln!("\n{} AI provider(s). Use: aeroftp-cli agent --provider <name> --model <model>", configured.len());
+    }
+
+    0
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() <= max { s.to_string() } else { format!("{}...", &s[..max.saturating_sub(3)]) }
+}
+
 fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
     let store = open_vault(cli)?;
     let profiles_json = store
@@ -1944,6 +2107,102 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
             })
         })
         .collect())
+}
+
+/// Variant of safe_vault_profiles that works without a Cli reference (for agent tool context).
+/// Uses the cached vault (already opened by the agent startup flow).
+fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
+    let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not open. Cannot list server profiles.".to_string())?;
+    let profiles_json = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
+        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+
+    Ok(profiles.iter().map(|p| {
+        serde_json::json!({
+            "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+            "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+            "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+            "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+            "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+            "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+            "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+        })
+    }).collect())
+}
+
+/// Create a provider connection from a server profile name (for agent tool context).
+/// Uses the cached vault and existing profile resolution.
+async fn create_and_connect_for_agent(
+    server_query: &str,
+) -> Result<(Box<dyn ftp_client_gui_lib::providers::StorageProvider>, String), String> {
+    let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
+    let profiles_json = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
+        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+
+    // Find matching profile (case-insensitive name, ID, or substring)
+    let query_lower = server_query.to_lowercase();
+    let matched = profiles
+        .iter()
+        .find(|p| {
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            name == query_lower || id == server_query
+        })
+        .or_else(|| {
+            profiles.iter().find(|p| {
+                let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+                name.contains(&query_lower)
+            })
+        })
+        .ok_or_else(|| format!("Server '{}' not found in saved profiles", server_query))?;
+
+    let profile_id = matched.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let profile_name = matched.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+    let protocol = matched.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+    let host = matched.get("host").and_then(|v| v.as_str()).unwrap_or("");
+    let port = matched.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+    let username = matched.get("username").and_then(|v| v.as_str()).unwrap_or("");
+    let initial_path = matched.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
+
+    // Resolve password from vault
+    let password = store.get(&format!("server_{}", profile_id)).unwrap_or_default();
+
+    // Build provider config
+    let provider_type = match protocol.to_uppercase().as_str() {
+        "FTP" => ftp_client_gui_lib::providers::ProviderType::Ftp,
+        "FTPS" => ftp_client_gui_lib::providers::ProviderType::Ftps,
+        "SFTP" => ftp_client_gui_lib::providers::ProviderType::Sftp,
+        "WEBDAV" | "WEBDAVS" => ftp_client_gui_lib::providers::ProviderType::WebDav,
+        "S3" => ftp_client_gui_lib::providers::ProviderType::S3,
+        "GITHUB" => ftp_client_gui_lib::providers::ProviderType::GitHub,
+        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub.", other, profile_name)),
+    };
+
+    let config = ftp_client_gui_lib::providers::ProviderConfig {
+        name: profile_name.to_string(),
+        provider_type,
+        host: host.to_string(),
+        port: if port > 0 { Some(port) } else { None },
+        username: if username.is_empty() { None } else { Some(username.to_string()) },
+        password: if password.is_empty() { None } else { Some(password) },
+        initial_path: Some(initial_path.to_string()),
+        extra: std::collections::HashMap::new(),
+    };
+
+    let mut provider = ftp_client_gui_lib::providers::ProviderFactory::create(&config)
+        .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
+
+    provider.connect().await
+        .map_err(|e| format!("Connection to '{}' failed: {}", profile_name, e))?;
+
+    Ok((provider, initial_path.to_string()))
 }
 
 fn cmd_agent_info(cli: &Cli) -> i32 {
@@ -6369,6 +6628,38 @@ fn detect_ai_provider() -> Option<(String, String, String)> {
     None
 }
 
+/// Detect AI provider from the encrypted vault (desktop app configuration).
+/// Falls back here when no environment variable is set.
+fn detect_ai_provider_from_vault(cli: &Cli) -> Option<(String, String, String)> {
+    let store = open_vault(cli).ok()?;
+    // Priority order: anthropic first (best tool use), then openai, gemini, etc.
+    let providers = [
+        ("anthropic", "https://api.anthropic.com"),
+        ("openai", "https://api.openai.com/v1"),
+        ("gemini", "https://generativelanguage.googleapis.com"),
+        ("xai", "https://api.x.ai/v1"),
+        ("openrouter", "https://openrouter.ai/api/v1"),
+        ("deepseek", "https://api.deepseek.com"),
+        ("mistral", "https://api.mistral.ai/v1"),
+        ("groq", "https://api.groq.com/openai/v1"),
+        ("perplexity", "https://api.perplexity.ai"),
+        ("cohere", "https://api.cohere.com/compatibility"),
+        ("together", "https://api.together.xyz/v1"),
+        ("kimi", "https://api.moonshot.cn/v1"),
+        ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ];
+    for (name, base_url) in &providers {
+        let vault_key = format!("ai_apikey_{}", name);
+        if let Ok(key) = store.get(&vault_key) {
+            if !key.is_empty() {
+                eprintln!("Using AI provider '{}' from AeroFTP vault.", name);
+                return Some((name.to_string(), key, base_url.to_string()));
+            }
+        }
+    }
+    None
+}
+
 /// Get default model for a provider
 fn default_model(provider: &str) -> &'static str {
     match provider {
@@ -6643,6 +6934,14 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
             "command" => ("string", "Shell command to execute", true),
             "working_dir" => ("string", "Working directory (default: cwd)", false),
             "timeout_secs" => ("number", "Timeout in seconds (default: 30, max: 120)", false)
+        }),
+        // === Server operations (vault-backed) ===
+        tool!("server_list_saved", "List all saved server profiles from the encrypted vault. Returns names, protocols, hosts. Passwords are never exposed. Use this to discover which servers are available before using server_exec.", {}),
+        tool!("server_exec", "Execute a file operation on a saved server. Creates a temporary connection using credentials from the vault, executes the operation, then disconnects. Passwords are resolved internally and never exposed. Operations: ls (list files), cat (read file content), stat (file metadata), find (search by pattern), df (disk usage/quota).", {
+            "server" => ("string", "Server name from server_list_saved (exact or partial match)", true),
+            "operation" => ("string", "Operation: ls, cat, stat, find, df", true),
+            "path" => ("string", "Remote path for the operation (default: /)", false),
+            "pattern" => ("string", "Search pattern (required for find)", false)
         }),
     ]
 }
@@ -7511,6 +7810,127 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             }))
         }
 
+        "server_list_saved" => {
+            let profiles = safe_vault_profiles_for_agent()?;
+            Ok(json!({
+                "servers": profiles,
+                "count": profiles.len(),
+            }))
+        }
+
+        "server_exec" => {
+            let server_query = get_str("server")?;
+            let operation = get_str("operation")?;
+            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
+            let pattern = get_str_opt("pattern");
+
+            let valid_ops = ["ls", "cat", "stat", "find", "df"];
+            if !valid_ops.contains(&operation.as_str()) {
+                return Err(format!(
+                    "Invalid operation '{}'. CLI agent supports: {}. Mutative operations (put, rm, mv, mkdir) require explicit CLI commands.",
+                    operation, valid_ops.join(", ")
+                ));
+            }
+
+            // Validate path
+            if path.contains('\0') {
+                return Err("Path contains null bytes".to_string());
+            }
+
+            let (mut provider, _initial_path) = create_and_connect_for_agent(&server_query).await?;
+
+            let result = match operation.as_str() {
+                "ls" => {
+                    let entries = provider.list(&path).await.map_err(|e| e.to_string())?;
+                    let items: Vec<serde_json::Value> = entries.iter().take(200).map(|e| json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                        "modified": e.modified,
+                    })).collect();
+                    json!({
+                        "operation": "ls",
+                        "server": server_query,
+                        "path": path,
+                        "entries": items,
+                        "total": entries.len(),
+                        "truncated": entries.len() > 200,
+                    })
+                }
+                "cat" => {
+                    let data = provider.download_to_bytes(&path).await.map_err(|e| e.to_string())?;
+                    if data.len() > 5 * 1024 {
+                        let preview = String::from_utf8_lossy(&data[..5 * 1024]);
+                        json!({
+                            "operation": "cat",
+                            "server": server_query,
+                            "path": path,
+                            "content": preview,
+                            "size": data.len(),
+                            "truncated": true,
+                        })
+                    } else {
+                        let content = String::from_utf8_lossy(&data);
+                        json!({
+                            "operation": "cat",
+                            "server": server_query,
+                            "path": path,
+                            "content": content,
+                            "size": data.len(),
+                            "truncated": false,
+                        })
+                    }
+                }
+                "stat" => {
+                    let entry = provider.stat(&path).await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "stat",
+                        "server": server_query,
+                        "path": path,
+                        "name": entry.name,
+                        "is_dir": entry.is_dir,
+                        "size": entry.size,
+                        "modified": entry.modified,
+                        "permissions": entry.permissions,
+                    })
+                }
+                "find" => {
+                    let pat = pattern.unwrap_or_else(|| "*".to_string());
+                    let entries = provider.find(&path, &pat).await.map_err(|e| e.to_string())?;
+                    let items: Vec<serde_json::Value> = entries.iter().take(100).map(|e| json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                    })).collect();
+                    json!({
+                        "operation": "find",
+                        "server": server_query,
+                        "path": path,
+                        "pattern": pat,
+                        "results": items,
+                        "total": entries.len(),
+                        "truncated": entries.len() > 100,
+                    })
+                }
+                "df" => {
+                    let info = provider.storage_info().await.map_err(|e| e.to_string())?;
+                    json!({
+                        "operation": "df",
+                        "server": server_query,
+                        "used_bytes": info.used,
+                        "total_bytes": info.total,
+                        "free_bytes": info.free,
+                    })
+                }
+                _ => unreachable!(),
+            };
+
+            let _ = provider.disconnect().await;
+            Ok(result)
+        }
+
         _ => Err(format!("Tool '{}' is not available in CLI mode", tool_name)),
     }
 }
@@ -7780,14 +8200,20 @@ async fn cmd_agent(
         (name.clone(), key, url.to_string())
     } else if let Some(detected) = detect_ai_provider() {
         detected
+    } else if let Some(vault_detected) = detect_ai_provider_from_vault(_cli) {
+        vault_detected
     } else {
         eprintln!("Error: No AI provider configured.");
         eprintln!("Set an API key environment variable:");
         eprintln!("  export ANTHROPIC_API_KEY=sk-ant-...");
         eprintln!("  export OPENAI_API_KEY=sk-...");
+        eprintln!("Or configure a provider in AeroFTP desktop (Settings > AI).");
         eprintln!("Or specify: aeroftp agent --provider anthropic");
         return 5;
     };
+
+    // Ensure vault is open for server_list_saved/server_exec tools (even when provider came from env)
+    let _ = open_vault(_cli);
 
     let model = model_override.unwrap_or_else(|| default_model(&prov_name).to_string());
     let provider_type = provider_type_from_name(&prov_name);
@@ -8871,6 +9297,7 @@ async fn main() {
             }
         }
         Commands::Profiles => list_vault_profiles(&cli, format),
+        Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentInfo => cmd_agent_info(&cli),
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),

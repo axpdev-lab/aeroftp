@@ -93,6 +93,7 @@ type BackendApprovalGrant = {
 
 type ExecuteToolOptions = {
     rememberForSession?: boolean;
+    panelApproved?: boolean;
 };
 
 type VoiceCaptureRefs = {
@@ -661,11 +662,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     /** Auto-approval logic based on unified agent mode and session memory. */
     const isAutoApproved = useCallback((toolName: string) => {
         const mode = agentModeRef.current;
-        // Never auto-approve destructive or credential-backed execution tools, even in Extreme Mode
+        // Extreme: auto-approve ALL tools in the frontend.
+        // The backend OS dialog is the single confirmation gate for mutative tools.
+        if (mode === 'extreme') return true;
+        // Never auto-approve destructive or credential-backed tools in other modes
         const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
-        // Extreme: auto-approve everything else
-        if (mode === 'extreme') return true;
         // Safe tools always auto-approved in all modes
         if (isSafeTool(toolName, allTools)) return true;
         // Safe mode: only safe tools auto-approved, no session memory
@@ -1175,9 +1177,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         throw new Error('Secure backend approval request could not be created for the plugin tool.');
                     }
 
+                    const mode = agentModeRef.current;
+                    const skipNativeDialog = !!options.panelApproved && (mode === 'expert' || mode === 'extreme');
+
                     const grant = await invoke<BackendApprovalGrant>('grant_ai_tool_approval', {
                         requestId: preparation.requestId,
                         rememberForSession: !!options.rememberForSession && preparation.allowSessionGrant,
+                        skipNativeDialog,
                     });
 
                     if (!grant.approved || !grant.grantId) {
@@ -1228,9 +1234,17 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error('Secure backend approval request could not be created.');
             }
 
+            // In expert mode, the user already confirmed via the approval panel —
+            // skip the native OS dialog to avoid double-confirmation.
+            // In safe/normal mode, always show both (defense in depth).
+            // In extreme mode, tools are auto-approved so panelApproved is never true here.
+            const mode = agentModeRef.current;
+            const skipNativeDialog = !!options.panelApproved && (mode === 'expert' || mode === 'extreme');
+
             const grant = await invoke<BackendApprovalGrant>('grant_ai_tool_approval', {
                 requestId: preparation.requestId,
                 rememberForSession: !!options.rememberForSession && preparation.allowSessionGrant,
+                skipNativeDialog,
             });
 
             if (!grant.approved || !grant.grantId) {
@@ -2732,7 +2746,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                     const tc0 = pendingToolCalls[0];
                                     // Track approved tool signature for duplicate detection
                                     executedToolSignaturesRef.current.add(`${tc0.toolName}::${JSON.stringify(tc0.args)}`);
-                                    const toolResult = await executeTool(tc0, 0, undefined, { rememberForSession });
+                                    const toolResult = await executeTool(tc0, 0, undefined, { rememberForSession, panelApproved: true });
                                     if (rememberForSession && toolResult !== null) {
                                         sessionApprovedToolsRef.current.add(tc0.toolName);
                                     }

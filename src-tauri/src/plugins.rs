@@ -419,9 +419,8 @@ pub async fn prepare_plugin_tool_approval(
             &synthetic_tool_name,
             scope_key,
             tool.danger_level != "high",
-            format!("Approve AI plugin tool: {}", tool_name),
             format!(
-                "AeroFTP AI is requesting permission to run a plugin tool in the desktop backend.\nThis confirmation happens in the desktop process, not in the webview.\n\nRequested operation:\n- plugin: {}\n- tool: {}\n- command: {}",
+                "AeroAgent wants to: Run Plugin Tool\n\n  plugin: {}\n  tool: {}\n  command: {}\n\nThis confirmation runs in the desktop process, not in the webview.",
                 manifest.name,
                 tool_name,
                 tool.command,

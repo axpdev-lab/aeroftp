@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.8] - 2026-03-29
+
+### Desktop Security Hardening
+
+#### Security
+- **Sigstore updater verification**: In-app updates now verify `.sigstore.json` bundles against GitHub OIDC workflow identity before installing. Artifacts that fail verification are deleted automatically
+- **Linux update helper hardening**: The privileged helper now receives SHA-256 from the backend and re-verifies integrity before executing `dpkg`/`rpm`, closing the TOCTOU gap
+- **AI backend approval system**: All mutative AI tools require a cryptographic grant issued by the Rust backend and confirmed via native OS dialog. Grants are single-use (or session-scoped for non-destructive tools), expire after 2 min / 8 hours, and are bound to tool + session
+- **Plugin tools under approval**: Plugin tools called by the AI now go through the same backend grant flow as built-in tools
+- **Vault keyring default**: The vault passphrase is now stored in the OS credential manager (GNOME Keyring, macOS Keychain, Windows Credential Manager) instead of cleartext on disk. Legacy vaults are migrated automatically on first launch
+- **Keyring fallback**: When the system keyring is unavailable on first launch, AeroFTP bootstraps into master password mode instead of failing
+- **Plugin registry disabled**: Remote plugin fetch and install are disabled until the registry supports cryptographic authentication. Local plugins continue to work
+- **`server_exec` in NEVER_AUTO_APPROVE**: Credential-backed server execution tool now always requires explicit approval, even in Extreme mode
+
+#### Changed
+- **SECURITY.md restructured**: Concise policy document with deep links to [docs.aeroftp.app/security](https://docs.aeroftp.app/security/overview) for full technical details
+- **Security documentation**: 6 new pages on docs.aeroftp.app covering overview, AI security, supply chain, privacy, audits, and vulnerability disclosure
+
+#### Fixed
+- **`keyring` crate mock backend**: Fixed missing platform features in Cargo.toml that caused the keyring crate to compile with an in-memory mock backend on all platforms, which would have caused irrecoverable vault passphrase loss on app restart
+- **Nextcloud trash button**: Restricted to Nextcloud/FeliCloud WebDAV providers only
+- **LargeIconsGrid performance**: Virtualized with react-virtuoso for large directories
+- **DOMPurify CVE**: Overridden to 3.3.3 (CVE mutation-XSS via monaco-editor)
+- **Clippy lint fixes**: Resolved `Cow<str>.as_ref()` ambiguity in sync.rs and aeroftp_cli.rs triggered by sigstore dependency
+
 ## [3.1.7] - 2026-03-28
 
 ### Glob Find & Production Polish

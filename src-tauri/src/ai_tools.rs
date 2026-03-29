@@ -247,7 +247,6 @@ struct AiToolApprovalRequest {
     scope_key: String,
     created_at_ms: u64,
     allow_session_grant: bool,
-    title: String,
     message: String,
 }
 
@@ -348,29 +347,60 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     details
 }
 
+fn human_tool_label(tool_name: &str) -> &str {
+    match tool_name {
+        "local_write" => "Write Local File",
+        "local_delete" => "Delete Local File",
+        "local_trash" => "Move to Trash",
+        "local_mkdir" => "Create Local Directory",
+        "local_rename" => "Rename Local File",
+        "local_edit" => "Edit Local File",
+        "local_move_files" => "Move Local Files",
+        "local_batch_rename" => "Batch Rename Files",
+        "local_copy_files" => "Copy Local Files",
+        "remote_upload" => "Upload to Remote",
+        "remote_download" => "Download from Remote",
+        "remote_delete" => "Delete Remote File",
+        "remote_rename" => "Rename Remote File",
+        "remote_mkdir" => "Create Remote Directory",
+        "remote_edit" => "Edit Remote File",
+        "upload_files" => "Upload Multiple Files",
+        "download_files" => "Download Multiple Files",
+        "shell_execute" => "Execute Shell Command",
+        "server_exec" => "Server Operation",
+        "archive_compress" => "Create Archive",
+        "archive_decompress" => "Extract Archive",
+        "clipboard_write" => "Write to Clipboard",
+        "sync_control" => "Sync Control",
+        other => other,
+    }
+}
+
 pub(crate) fn build_ai_tool_approval_message(tool_name: &str, args: &Value) -> String {
+    let label = human_tool_label(tool_name);
     let mut lines = vec![
-        "AeroFTP AI is requesting permission to run a backend-enforced tool.".to_string(),
-        "This confirmation happens in the desktop process, not in the webview.".to_string(),
+        format!("AeroAgent wants to: {}", label),
         String::new(),
-        "Requested operation:".to_string(),
     ];
 
-    lines.extend(
-        build_ai_tool_approval_details(tool_name, args)
-            .into_iter()
-            .map(|detail| format!("- {}", detail)),
-    );
+    let details = build_ai_tool_approval_details(tool_name, args);
+    // Skip the first detail (tool name, already in the title)
+    for detail in details.into_iter().skip(1) {
+        lines.push(format!("  {}", detail));
+    }
 
     if tool_name == "server_exec" {
         lines.push(String::new());
-        lines.push("This tool uses a saved server profile and can access credentials-backed remote operations.".to_string());
+        lines.push("Uses saved server credentials from the vault.".to_string());
     }
 
     if tool_name == "shell_execute" {
         lines.push(String::new());
-        lines.push("This tool executes a shell command on the local machine.".to_string());
+        lines.push("Runs a shell command on this machine.".to_string());
     }
+
+    lines.push(String::new());
+    lines.push("This confirmation runs in the desktop process, not in the webview.".to_string());
 
     lines.join("\n")
 }
@@ -474,7 +504,6 @@ pub(crate) async fn prepare_backend_approval_request(
     tool_name: &str,
     scope_key: String,
     allow_session_grant: bool,
-    title: String,
     message: String,
 ) -> AiToolApprovalPreparation {
     let session_key = cache_session_key(session_id);
@@ -499,7 +528,6 @@ pub(crate) async fn prepare_backend_approval_request(
         scope_key,
         created_at_ms: current_time_ms(),
         allow_session_grant,
-        title,
         message,
     };
 
@@ -1484,7 +1512,6 @@ pub async fn prepare_ai_tool_approval(
             &tool_name,
             scope_key,
             allow_session_grant,
-            format!("Approve AI tool: {}", tool_name),
             build_ai_tool_approval_message(&tool_name, &args),
         )
         .await,
@@ -1496,6 +1523,7 @@ pub async fn grant_ai_tool_approval(
     app: tauri::AppHandle,
     request_id: String,
     remember_for_session: bool,
+    skip_native_dialog: bool,
 ) -> Result<AiToolApprovalGrantResponse, String> {
     let request = {
         let mut requests = AI_TOOL_APPROVAL_REQUESTS.lock().await;
@@ -1509,29 +1537,35 @@ pub async fn grant_ai_tool_approval(
         return Err("Session approval is not allowed for this AI tool.".to_string());
     }
 
-    let dialog_title = if remember_for_session {
-        format!("Approve AI tool for session: {}", request.tool_name)
-    } else {
-        request.title.clone()
-    };
-    let dialog_message = format!("{}\n\n{}", request.message, approval_scope_message(remember_for_session));
+    // When the frontend already showed an approval panel (expert mode),
+    // skip the native OS dialog to avoid double-confirmation.
+    // In safe/normal mode, always show the OS dialog as a second factor.
+    if !skip_native_dialog {
+        let label = human_tool_label(&request.tool_name);
+        let dialog_title = if remember_for_session {
+            format!("AeroAgent - {} (session)", label)
+        } else {
+            format!("AeroAgent - {}", label)
+        };
+        let dialog_message = format!("{}\n\n{}", request.message, approval_scope_message(remember_for_session));
 
-    let approved = tokio::task::spawn_blocking(move || {
-        app.dialog()
-            .message(dialog_message)
-            .title(dialog_title)
-            .kind(MessageDialogKind::Warning)
-            .buttons(MessageDialogButtons::OkCancel)
-            .blocking_show()
-    })
-    .await
-    .map_err(|error| format!("Failed to show backend approval dialog: {}", error))?;
+        let approved = tokio::task::spawn_blocking(move || {
+            app.dialog()
+                .message(dialog_message)
+                .title(dialog_title)
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancel)
+                .blocking_show()
+        })
+        .await
+        .map_err(|error| format!("Failed to show backend approval dialog: {}", error))?;
 
-    if !approved {
-        return Ok(AiToolApprovalGrantResponse {
-            approved: false,
-            grant_id: None,
-        });
+        if !approved {
+            return Ok(AiToolApprovalGrantResponse {
+                approved: false,
+                grant_id: None,
+            });
+        }
     }
 
     let grant_id = Uuid::new_v4().to_string();
@@ -4034,13 +4068,28 @@ pub async fn execute_ai_tool(
             let servers = load_saved_servers()?;
             let server = find_server_by_name_or_id(&servers, &server_query)?;
 
-            // Check if this server is already connected via the active FTP session
-            // to avoid FTP "Data connection already open" conflicts from dual connections
+            // Check if this server is already connected via the active session
+            // to avoid FTP "Data connection already open" conflicts from dual connections.
+            // Check both the legacy FTP manager and the provider system.
+            let target_host = server.host.trim_start_matches("ftp.").to_lowercase();
+
+            if has_provider(&state).await {
+                let config = state.config.lock().await;
+                if let Some(ref cfg) = *config {
+                    let active_host = cfg.host.trim_start_matches("ftp.").to_lowercase();
+                    if active_host == target_host || active_host.contains(&target_host) || target_host.contains(&active_host) {
+                        return Err(format!(
+                            "Server '{}' is already connected in the active session. Use remote_list, remote_read, upload_files, download_files instead of server_exec for the currently connected server.",
+                            server.name
+                        ));
+                    }
+                }
+            }
+
             if has_ftp(&app_state).await {
                 let manager = app_state.ftp_manager.lock().await;
                 if let Some(active_server) = manager.connected_host() {
                     let active_host = active_server.trim_start_matches("ftp.").to_lowercase();
-                    let target_host = server.host.trim_start_matches("ftp.").to_lowercase();
                     if active_host == target_host || active_server.contains(&server.host) || server.host.contains(active_server) {
                         return Err(format!(
                             "Server '{}' is already connected in the active session. Use remote_list, remote_read, upload_files, download_files instead of server_exec for the currently connected server.",
