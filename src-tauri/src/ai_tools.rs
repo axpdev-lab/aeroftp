@@ -7,13 +7,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::{Emitter, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::process::Command as TokioCommand;
 use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 use crate::provider_commands::ProviderState;
 use crate::AppState;
 
@@ -50,6 +53,68 @@ const ALLOWED_TOOLS: &[&str] = &[
     // Server management (cross-server operations via saved profiles)
     "server_list_saved", "server_exec",
 ];
+
+const AI_APPROVAL_REQUIRED_REASON: &str =
+    "This AI tool requires explicit approval in the AeroFTP desktop backend. Re-run it through the approved AI flow.";
+const AI_APPROVAL_REQUEST_TTL_MS: u64 = 5 * 60 * 1000;
+const AI_ONE_SHOT_GRANT_TTL_MS: u64 = 2 * 60 * 1000;
+const AI_SESSION_GRANT_TTL_MS: u64 = 8 * 60 * 60 * 1000;
+const MAX_AI_APPROVAL_REQUESTS: usize = 256;
+const MAX_AI_APPROVAL_GRANTS: usize = 512;
+
+fn server_exec_operation(args: &Value) -> Option<&str> {
+    args.get("operation").and_then(|value| value.as_str())
+}
+
+fn server_exec_is_mutating(args: &Value) -> bool {
+    !matches!(server_exec_operation(args), Some("ls" | "cat" | "stat" | "find" | "df"))
+}
+
+fn sync_control_requires_approval(args: &Value) -> bool {
+    !matches!(args.get("action").and_then(|value| value.as_str()), Some("status"))
+}
+
+fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
+    match tool_name {
+        "sync_control" => sync_control_requires_approval(args),
+        "server_exec" => true,
+        _ => matches!(
+            tool_name,
+            "remote_upload"
+                | "remote_delete"
+                | "remote_rename"
+                | "remote_mkdir"
+                | "remote_edit"
+                | "local_write"
+                | "local_mkdir"
+                | "local_delete"
+                | "local_rename"
+                | "local_edit"
+                | "local_move_files"
+                | "local_batch_rename"
+                | "local_copy_files"
+                | "local_trash"
+                | "upload_files"
+                | "download_files"
+                | "archive_compress"
+                | "archive_decompress"
+                | "clipboard_write"
+                | "shell_execute"
+        ),
+    }
+}
+
+fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
+    if tool_name == "shell_execute" {
+        return false;
+    }
+
+    if tool_name == "server_exec" && server_exec_is_mutating(args) {
+        return false;
+    }
+
+    !matches!(tool_name, "remote_delete" | "local_delete" | "local_trash" | "archive_decompress")
+}
 
 /// Validate a remote path argument — reject null bytes and leading dash (argument injection)
 fn validate_remote_path(path: &str, param: &str) -> Result<(), String> {
@@ -161,7 +226,7 @@ struct CachedToolResult {
 static AI_TOOL_RESULT_CACHE: LazyLock<tokio::sync::Mutex<HashMap<String, HashMap<String, CachedToolResult>>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
-fn cache_session_key(session_id: Option<&str>) -> String {
+pub(crate) fn cache_session_key(session_id: Option<&str>) -> String {
     session_id
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("__default__")
@@ -173,6 +238,280 @@ fn current_time_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_millis() as u64
+}
+
+#[derive(Clone)]
+struct AiToolApprovalRequest {
+    session_key: String,
+    tool_name: String,
+    scope_key: String,
+    created_at_ms: u64,
+    allow_session_grant: bool,
+    title: String,
+    message: String,
+}
+
+#[derive(Clone)]
+struct AiToolApprovalGrant {
+    session_key: String,
+    tool_name: String,
+    scope_key: String,
+    created_at_ms: u64,
+    expires_at_ms: u64,
+    remember_for_session: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiToolApprovalPreparation {
+    pub approval_required: bool,
+    pub request_id: Option<String>,
+    pub allow_session_grant: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiToolApprovalGrantResponse {
+    pub approved: bool,
+    pub grant_id: Option<String>,
+}
+
+static AI_TOOL_APPROVAL_REQUESTS: LazyLock<tokio::sync::Mutex<HashMap<String, AiToolApprovalRequest>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+static AI_TOOL_APPROVAL_GRANTS: LazyLock<tokio::sync::Mutex<HashMap<String, AiToolApprovalGrant>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+fn truncate_display(value: &str, max_len: usize) -> String {
+    if value.chars().count() <= max_len {
+        return value.to_string();
+    }
+
+    let truncated: String = value.chars().take(max_len).collect();
+    format!("{}...", truncated)
+}
+
+fn format_approval_value(value: &Value) -> String {
+    match value {
+        Value::String(string_value) => truncate_display(string_value, 160),
+        Value::Array(items) => format!("{} item(s)", items.len()),
+        Value::Bool(boolean_value) => boolean_value.to_string(),
+        Value::Number(number_value) => number_value.to_string(),
+        Value::Null => "null".to_string(),
+        other => truncate_display(&other.to_string(), 160),
+    }
+}
+
+fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> {
+    let mut details = vec![format!("tool: {}", tool_name)];
+
+    for key in [
+        "server",
+        "operation",
+        "command",
+        "path",
+        "local_path",
+        "remote_path",
+        "from",
+        "to",
+        "destination",
+        "local_dir",
+        "remote_dir",
+        "pattern",
+        "action",
+        "theme",
+        "entry",
+        "category",
+    ] {
+        if let Some(value) = args.get(key) {
+            details.push(format!("{}: {}", key, format_approval_value(value)));
+        }
+    }
+
+    if let Some(paths) = args.get("paths").and_then(|value| value.as_array()) {
+        let preview: Vec<String> = paths
+            .iter()
+            .take(3)
+            .filter_map(|value| value.as_str())
+            .map(|path| truncate_display(path, 120))
+            .collect();
+
+        if preview.is_empty() {
+            details.push(format!("paths: {} item(s)", paths.len()));
+        } else {
+            details.push(format!("paths: {} item(s)", paths.len()));
+            for item in preview {
+                details.push(format!("path item: {}", item));
+            }
+        }
+    }
+
+    details
+}
+
+pub(crate) fn build_ai_tool_approval_message(tool_name: &str, args: &Value) -> String {
+    let mut lines = vec![
+        "AeroFTP AI is requesting permission to run a backend-enforced tool.".to_string(),
+        "This confirmation happens in the desktop process, not in the webview.".to_string(),
+        String::new(),
+        "Requested operation:".to_string(),
+    ];
+
+    lines.extend(
+        build_ai_tool_approval_details(tool_name, args)
+            .into_iter()
+            .map(|detail| format!("- {}", detail)),
+    );
+
+    if tool_name == "server_exec" {
+        lines.push(String::new());
+        lines.push("This tool uses a saved server profile and can access credentials-backed remote operations.".to_string());
+    }
+
+    if tool_name == "shell_execute" {
+        lines.push(String::new());
+        lines.push("This tool executes a shell command on the local machine.".to_string());
+    }
+
+    lines.join("\n")
+}
+
+fn approval_scope_message(remember_for_session: bool) -> &'static str {
+    if remember_for_session {
+        "Grant scope: remember this tool for the current chat session."
+    } else {
+        "Grant scope: approve this exact tool plus argument set once."
+    }
+}
+
+fn prune_ai_tool_approval_requests(requests: &mut HashMap<String, AiToolApprovalRequest>) {
+    let now = current_time_ms();
+    requests.retain(|_, request| now.saturating_sub(request.created_at_ms) <= AI_APPROVAL_REQUEST_TTL_MS);
+
+    while requests.len() > MAX_AI_APPROVAL_REQUESTS {
+        let Some(oldest_id) = requests
+            .iter()
+            .min_by_key(|(_, request)| request.created_at_ms)
+            .map(|(request_id, _)| request_id.clone()) else {
+            break;
+        };
+        requests.remove(&oldest_id);
+    }
+}
+
+fn prune_ai_tool_approval_grants(grants: &mut HashMap<String, AiToolApprovalGrant>) {
+    let now = current_time_ms();
+    grants.retain(|_, grant| grant.expires_at_ms > now);
+
+    while grants.len() > MAX_AI_APPROVAL_GRANTS {
+        let Some(oldest_id) = grants
+            .iter()
+            .min_by_key(|(_, grant)| grant.created_at_ms)
+            .map(|(grant_id, _)| grant_id.clone()) else {
+            break;
+        };
+        grants.remove(&oldest_id);
+    }
+}
+
+fn has_matching_session_grant(
+    grants: &HashMap<String, AiToolApprovalGrant>,
+    session_key: &str,
+    tool_name: &str,
+    _scope_key: &str,
+    now: u64,
+) -> bool {
+    grants.values().any(|grant| {
+        grant.remember_for_session
+            && grant.expires_at_ms > now
+            && grant.session_key == session_key
+            && grant.tool_name == tool_name
+    })
+}
+
+pub(crate) async fn ensure_ai_tool_approval(
+    session_id: Option<&str>,
+    tool_name: &str,
+    scope_key: &str,
+    approval_grant_id: Option<&str>,
+) -> Result<(), String> {
+    let session_key = cache_session_key(session_id);
+    let now = current_time_ms();
+    let mut grants = AI_TOOL_APPROVAL_GRANTS.lock().await;
+    prune_ai_tool_approval_grants(&mut grants);
+
+    if let Some(grant_id) = approval_grant_id {
+        let Some(grant) = grants.get(grant_id).cloned() else {
+            return Err(AI_APPROVAL_REQUIRED_REASON.to_string());
+        };
+
+        let scope_matches = if grant.remember_for_session {
+            true
+        } else {
+            grant.scope_key == scope_key
+        };
+
+        if grant.session_key != session_key || grant.tool_name != tool_name || !scope_matches || grant.expires_at_ms <= now {
+            grants.remove(grant_id);
+            return Err(AI_APPROVAL_REQUIRED_REASON.to_string());
+        }
+
+        if !grant.remember_for_session {
+            grants.remove(grant_id);
+        }
+
+        return Ok(());
+    }
+
+    if has_matching_session_grant(&grants, &session_key, tool_name, scope_key, now) {
+        return Ok(());
+    }
+
+    Err(AI_APPROVAL_REQUIRED_REASON.to_string())
+}
+
+pub(crate) async fn prepare_backend_approval_request(
+    session_id: Option<&str>,
+    tool_name: &str,
+    scope_key: String,
+    allow_session_grant: bool,
+    title: String,
+    message: String,
+) -> AiToolApprovalPreparation {
+    let session_key = cache_session_key(session_id);
+
+    {
+        let now = current_time_ms();
+        let mut grants = AI_TOOL_APPROVAL_GRANTS.lock().await;
+        prune_ai_tool_approval_grants(&mut grants);
+        if has_matching_session_grant(&grants, &session_key, tool_name, &scope_key, now) {
+            return AiToolApprovalPreparation {
+                approval_required: false,
+                request_id: None,
+                allow_session_grant: false,
+            };
+        }
+    }
+
+    let request_id = Uuid::new_v4().to_string();
+    let request = AiToolApprovalRequest {
+        session_key,
+        tool_name: tool_name.to_string(),
+        scope_key,
+        created_at_ms: current_time_ms(),
+        allow_session_grant,
+        title,
+        message,
+    };
+
+    let mut requests = AI_TOOL_APPROVAL_REQUESTS.lock().await;
+    prune_ai_tool_approval_requests(&mut requests);
+    requests.insert(request_id.clone(), request);
+
+    AiToolApprovalPreparation {
+        approval_required: true,
+        request_id: Some(request_id),
+        allow_session_grant,
+    }
 }
 
 fn tool_cache_ttl(tool_name: &str) -> Option<Duration> {
@@ -1111,6 +1450,119 @@ async fn create_temp_provider(
 }
 
 #[tauri::command]
+pub async fn prepare_ai_tool_approval(
+    state: State<'_, ProviderState>,
+    app_state: State<'_, AppState>,
+    tool_name: String,
+    args: Value,
+    context_local_path: Option<String>,
+    session_id: Option<String>,
+) -> Result<AiToolApprovalPreparation, String> {
+    if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
+        return Err(format!("Unknown or disallowed tool: {}", tool_name));
+    }
+
+    if !requires_backend_write_approval(&tool_name, &args) {
+        return Ok(AiToolApprovalPreparation {
+            approval_required: false,
+            request_id: None,
+            allow_session_grant: false,
+        });
+    }
+
+    let remote_context = build_remote_cache_context(&state, &app_state).await;
+    let scope_key = build_tool_cache_key(
+        &tool_name,
+        &args,
+        context_local_path.as_deref(),
+        remote_context.as_deref(),
+    )?;
+    let allow_session_grant = allows_session_grant(&tool_name, &args);
+    Ok(
+        prepare_backend_approval_request(
+            session_id.as_deref(),
+            &tool_name,
+            scope_key,
+            allow_session_grant,
+            format!("Approve AI tool: {}", tool_name),
+            build_ai_tool_approval_message(&tool_name, &args),
+        )
+        .await,
+    )
+}
+
+#[tauri::command]
+pub async fn grant_ai_tool_approval(
+    app: tauri::AppHandle,
+    request_id: String,
+    remember_for_session: bool,
+) -> Result<AiToolApprovalGrantResponse, String> {
+    let request = {
+        let mut requests = AI_TOOL_APPROVAL_REQUESTS.lock().await;
+        prune_ai_tool_approval_requests(&mut requests);
+        requests
+            .remove(&request_id)
+            .ok_or_else(|| "The AI approval request expired. Please retry the tool.".to_string())?
+    };
+
+    if remember_for_session && !request.allow_session_grant {
+        return Err("Session approval is not allowed for this AI tool.".to_string());
+    }
+
+    let dialog_title = if remember_for_session {
+        format!("Approve AI tool for session: {}", request.tool_name)
+    } else {
+        request.title.clone()
+    };
+    let dialog_message = format!("{}\n\n{}", request.message, approval_scope_message(remember_for_session));
+
+    let approved = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .message(dialog_message)
+            .title(dialog_title)
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::OkCancel)
+            .blocking_show()
+    })
+    .await
+    .map_err(|error| format!("Failed to show backend approval dialog: {}", error))?;
+
+    if !approved {
+        return Ok(AiToolApprovalGrantResponse {
+            approved: false,
+            grant_id: None,
+        });
+    }
+
+    let grant_id = Uuid::new_v4().to_string();
+    let ttl_ms = if remember_for_session {
+        AI_SESSION_GRANT_TTL_MS
+    } else {
+        AI_ONE_SHOT_GRANT_TTL_MS
+    };
+
+    let mut grants = AI_TOOL_APPROVAL_GRANTS.lock().await;
+    prune_ai_tool_approval_grants(&mut grants);
+    grants.insert(
+        grant_id.clone(),
+        AiToolApprovalGrant {
+            session_key: request.session_key,
+            tool_name: request.tool_name,
+            scope_key: request.scope_key,
+            created_at_ms: current_time_ms(),
+            expires_at_ms: current_time_ms().saturating_add(ttl_ms),
+            remember_for_session,
+        },
+    );
+
+    Ok(AiToolApprovalGrantResponse {
+        approved: true,
+        grant_id: Some(grant_id),
+    })
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_ai_tool(
     app: tauri::AppHandle,
     state: State<'_, ProviderState>,
@@ -1119,6 +1571,7 @@ pub async fn execute_ai_tool(
     args: Value,
     context_local_path: Option<String>,
     session_id: Option<String>,
+    approval_grant_id: Option<String>,
 ) -> Result<Value, String> {
     // Whitelist check
     if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
@@ -1126,6 +1579,21 @@ pub async fn execute_ai_tool(
     }
 
     let remote_cache_context = build_remote_cache_context(&state, &app_state).await;
+
+    if requires_backend_write_approval(&tool_name, &args) {
+        let approval_scope_key = build_tool_cache_key(
+            &tool_name,
+            &args,
+            context_local_path.as_deref(),
+            remote_cache_context.as_deref(),
+        )?;
+        ensure_ai_tool_approval(
+            session_id.as_deref(),
+            &tool_name,
+            &approval_scope_key,
+            approval_grant_id.as_deref(),
+        ).await?;
+    }
 
     let cache_key = if tool_cache_ttl(&tool_name).is_some() {
         Some(build_tool_cache_key(

@@ -215,6 +215,7 @@ const App: React.FC = () => {
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
+  const [masterPasswordBootstrapMode, setMasterPasswordBootstrapMode] = useState(false);
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
 
@@ -633,6 +634,9 @@ const App: React.FC = () => {
         if (result === 'MASTER_PASSWORD_REQUIRED') {
           setIsAppLocked(true);
           setMasterPasswordSet(true);
+        } else if (result === 'MASTER_PASSWORD_SETUP_REQUIRED') {
+          setMasterPasswordBootstrapMode(true);
+          setShowMasterPasswordSetup(true);
         } else {
           // Check if master mode is active (for lock button state)
           const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
@@ -6448,9 +6452,14 @@ const App: React.FC = () => {
         <MasterPasswordSetupDialog
           onComplete={() => {
             setShowMasterPasswordSetup(false);
+            setMasterPasswordBootstrapMode(false);
             setMasterPasswordSet(true);
           }}
-          onClose={() => setShowMasterPasswordSetup(false)}
+          onClose={() => {
+            setShowMasterPasswordSetup(false);
+            setMasterPasswordBootstrapMode(false);
+          }}
+          bootstrapMode={masterPasswordBootstrapMode}
         />
       )}
 

@@ -36,6 +36,7 @@ interface UseAutoUpdateProps {
 
 const THIRTY_MINUTES = 30 * 60 * 1000;
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'dmg', 'snap']);
 
 export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
@@ -74,7 +75,10 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
         }
       } else {
         // Newer version exists but asset not yet available — retry in 30 minutes
-        const assetPending = info.latest_version && info.latest_version !== info.current_version;
+        const assetPending =
+          !!info.latest_version &&
+          info.latest_version !== info.current_version &&
+          RETRYABLE_UPDATE_FORMATS.has((info.install_format || '').toLowerCase());
         if (assetPending) {
           activityLogRef.current.log('INFO', `[Auto] v${info.latest_version} released but .${info.install_format || 'deb'} not yet available, retrying in 30min`, 'pending');
           if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
@@ -82,6 +86,12 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
             pendingRetryRef.current = null;
             checkForUpdate(false);
           }, THIRTY_MINUTES);
+        } else if (manual && info.latest_version && info.latest_version !== info.current_version) {
+          await sendSystemNotification(
+            'Update Available',
+            `Version ${info.latest_version} exists, but no signed package is available for ${info.install_format?.toUpperCase() || 'this'} installs.`
+          );
+          activityLogRef.current.log('INFO', `[Manual] v${info.latest_version} exists but no signed .${info.install_format || 'package'} asset is available for this install path`, 'pending');
         } else if (manual) {
           await sendSystemNotification('No Update Available', `You're running the latest version (${info.current_version})`);
           activityLogRef.current.log('INFO', `[Manual] Up to date: v${info.current_version} (${info.install_format?.toUpperCase() || 'DEB'})`, 'success');

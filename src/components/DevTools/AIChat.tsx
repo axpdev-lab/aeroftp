@@ -80,6 +80,21 @@ type SpeechTranscriptionResult = {
     modelName: string;
 };
 
+type BackendApprovalPreparation = {
+    approvalRequired: boolean;
+    requestId?: string | null;
+    allowSessionGrant: boolean;
+};
+
+type BackendApprovalGrant = {
+    approved: boolean;
+    grantId?: string | null;
+};
+
+type ExecuteToolOptions = {
+    rememberForSession?: boolean;
+};
+
 type VoiceCaptureRefs = {
     stream: MediaStream | null;
     audioContext: AudioContext | null;
@@ -600,11 +615,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const ragIndexRef = useRef<Record<string, unknown> | null>(null);
     const ragIndexedPathRef = useRef<string | null>(null);
     const sessionApprovedToolsRef = useRef<Set<string>>(new Set());
+    const backendApprovalQueueRef = useRef<Promise<void>>(Promise.resolve());
     const [pluginManifests, setPluginManifests] = useState<PluginManifest[]>([]);
 
     // Phase 3: Context Intelligence
     const projectPath = localPath || remotePath;
-    const { memory: agentMemory, appendMemory: appendAgentMemory, searchMemory } = useAgentMemory(projectPath);
+    const { memory: agentMemory, searchMemory, refreshMemory: refreshAgentMemory } = useAgentMemory(projectPath);
     const projectContextRef = useRef<ProjectContext | null>(null);
     const gitSummaryRef = useRef<string | null>(null);
     const gitBranchRef = useRef<string | null>(null);
@@ -645,8 +661,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     /** Auto-approval logic based on unified agent mode and session memory. */
     const isAutoApproved = useCallback((toolName: string) => {
         const mode = agentModeRef.current;
-        // Never auto-approve destructive tools, even in Extreme Mode
-        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress'];
+        // Never auto-approve destructive or credential-backed execution tools, even in Extreme Mode
+        const NEVER_AUTO_APPROVE = ['shell_execute', 'local_delete', 'local_trash', 'archive_decompress', 'server_exec'];
         if (NEVER_AUTO_APPROVE.includes(toolName)) return false;
         // Extreme: auto-approve everything else
         if (mode === 'extreme') return true;
@@ -672,6 +688,21 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
+
+    const runSerializedBackendApproval = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
+        const previous = backendApprovalQueueRef.current;
+        let release = () => {};
+        backendApprovalQueueRef.current = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+
+        await previous;
+        try {
+            return await task();
+        } finally {
+            release();
+        }
+    }, []);
 
     // Phase 4: Keyboard shortcuts (#79)
     const shortcuts = getDefaultShortcuts({
@@ -1096,31 +1127,127 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     // Execute a tool via unified provider-agnostic command (built-in or plugin)
     // SECURITY: Check built-in tools FIRST to prevent plugin name hijacking
-    const executeToolByName = async (toolName: string, args: Record<string, unknown>): Promise<unknown> => {
+    const executeToolByName = async (
+        toolName: string,
+        args: Record<string, unknown>,
+        options: ExecuteToolOptions = {},
+    ): Promise<unknown> => {
         const isBuiltIn = AGENT_TOOLS.some(t => t.name === toolName);
         if (!isBuiltIn) {
             const plugin = findPluginForTool(pluginManifests, toolName);
             if (plugin) {
-                return await invoke('execute_plugin_tool', {
-                    pluginId: plugin.id,
-                    toolName,
-                    argsJson: JSON.stringify(args),
+                const invokePluginTool = async (approvalGrantId?: string): Promise<unknown> => {
+                    dispatchAIStatus('tool-execution');
+                    try {
+                        return await invoke('execute_plugin_tool', {
+                            pluginId: plugin.id,
+                            toolName,
+                            argsJson: JSON.stringify(args),
+                            sessionId: activeConversationId || undefined,
+                            approvalGrantId,
+                        });
+                    } finally {
+                        dispatchAIStatus('streaming');
+                    }
+                };
+
+                const preparePluginApproval = async (): Promise<BackendApprovalPreparation> => {
+                    return await invoke<BackendApprovalPreparation>('prepare_plugin_tool_approval', {
+                        pluginId: plugin.id,
+                        toolName,
+                        argsJson: JSON.stringify(args),
+                        sessionId: activeConversationId || undefined,
+                    });
+                };
+
+                const initialPreparation = await preparePluginApproval();
+                if (!initialPreparation.approvalRequired) {
+                    return await invokePluginTool();
+                }
+
+                return await runSerializedBackendApproval(async () => {
+                    const preparation = await preparePluginApproval();
+                    if (!preparation.approvalRequired) {
+                        return await invokePluginTool();
+                    }
+
+                    if (!preparation.requestId) {
+                        throw new Error('Secure backend approval request could not be created for the plugin tool.');
+                    }
+
+                    const grant = await invoke<BackendApprovalGrant>('grant_ai_tool_approval', {
+                        requestId: preparation.requestId,
+                        rememberForSession: !!options.rememberForSession && preparation.allowSessionGrant,
+                    });
+
+                    if (!grant.approved || !grant.grantId) {
+                        throw new Error('Operation was not approved in the desktop security prompt.');
+                    }
+
+                    return await invokePluginTool(grant.grantId);
                 });
             }
         }
-        dispatchAIStatus('tool-execution');
-        const result = await invoke('execute_ai_tool', {
-            toolName,
-            args,
-            contextLocalPath: localPath || undefined,
-            sessionId: activeConversationId || undefined,
+
+        const invokeBuiltInTool = async (approvalGrantId?: string): Promise<unknown> => {
+            dispatchAIStatus('tool-execution');
+            try {
+                return await invoke('execute_ai_tool', {
+                    toolName,
+                    args,
+                    contextLocalPath: localPath || undefined,
+                    sessionId: activeConversationId || undefined,
+                    approvalGrantId,
+                });
+            } finally {
+                dispatchAIStatus('streaming');
+            }
+        };
+
+        const prepareApproval = async (): Promise<BackendApprovalPreparation> => {
+            return await invoke<BackendApprovalPreparation>('prepare_ai_tool_approval', {
+                toolName,
+                args,
+                contextLocalPath: localPath || undefined,
+                sessionId: activeConversationId || undefined,
+            });
+        };
+
+        const initialPreparation = await prepareApproval();
+        if (!initialPreparation.approvalRequired) {
+            return await invokeBuiltInTool();
+        }
+
+        return await runSerializedBackendApproval(async () => {
+            const preparation = await prepareApproval();
+            if (!preparation.approvalRequired) {
+                return await invokeBuiltInTool();
+            }
+
+            if (!preparation.requestId) {
+                throw new Error('Secure backend approval request could not be created.');
+            }
+
+            const grant = await invoke<BackendApprovalGrant>('grant_ai_tool_approval', {
+                requestId: preparation.requestId,
+                rememberForSession: !!options.rememberForSession && preparation.allowSessionGrant,
+            });
+
+            if (!grant.approved || !grant.grantId) {
+                throw new Error('Operation was not approved in the desktop security prompt.');
+            }
+
+            return await invokeBuiltInTool(grant.grantId);
         });
-        dispatchAIStatus('streaming');
-        return result;
     };
 
     // Execute a tool
-    const executeTool = async (toolCall: AgentToolCall, _macroDepth = 0, _stepCounter?: MacroStepCounter): Promise<string | null> => {
+    const executeTool = async (
+        toolCall: AgentToolCall,
+        _macroDepth = 0,
+        _stepCounter?: MacroStepCounter,
+        options: ExecuteToolOptions = {},
+    ): Promise<string | null> => {
         const tool = getToolByName(toolCall.toolName) || getToolByNameFromAll(toolCall.toolName, allTools);
 
         // Handle macro tool calls
@@ -1224,25 +1351,21 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return null;
         }
 
-        try {
-            // Special case: agent_memory_write — inject project path and refresh memory
-            if (toolCall.toolName === 'agent_memory_write') {
-                const entry = (toolCall.args.entry as string) || '';
-                const category = (toolCall.args.category as string) || 'general';
-                if (!entry) throw new Error(t('ai.error.noEntrySpecified'));
-                await appendAgentMemory(entry, category);
-                const resultMessage: Message = {
-                    id: crypto.randomUUID(),
-                    role: 'assistant',
-                    content: `Memory saved: [${category}] ${entry}`,
-                    timestamp: new Date(),
-                };
-                setMessages(prev => [...prev, resultMessage]);
-                setPendingToolCalls([]);
-                return `Memory saved: ${entry}`;
-            }
+        const executionArgs = toolCall.toolName === 'agent_memory_write'
+            ? (() => {
+                if (!projectPath) {
+                    throw new Error(t('ai.error.noProjectContext') || 'No project context available for agent memory.');
+                }
+                return { ...toolCall.args, project_path: projectPath };
+            })()
+            : toolCall.args;
 
-            const result = await executeToolByName(toolCall.toolName, toolCall.args);
+        try {
+            const result = await executeToolByName(toolCall.toolName, executionArgs, options);
+
+            if (toolCall.toolName === 'agent_memory_write') {
+                await refreshAgentMemory(10);
+            }
 
             // shell_execute: show command in the visible terminal for user awareness (display only, NOT re-executed)
             if (toolCall.toolName === 'shell_execute' && result && typeof result === 'object') {
@@ -1321,7 +1444,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (strategy.autoRetry && strategy.canRetry) {
                 try {
                     const retryResult = await withRetry(
-                        () => executeToolByName(toolCall.toolName, toolCall.args),
+                        () => executeToolByName(toolCall.toolName, executionArgs, options),
                         strategy.maxRetries || 3,
                     );
                     const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
@@ -2603,15 +2726,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 toolCall={pendingToolCalls[0]}
                                 allTools={allTools}
                                 sessionId={activeConversationId || undefined}
-                                onApproveSession={agentMode === 'safe' ? undefined : (toolName: string) => {
-                                    sessionApprovedToolsRef.current.add(toolName);
-                                }}
-                                onApprove={async () => {
+                                allowSessionApproval={agentMode !== 'safe'}
+                                onApprove={async (rememberForSession?: boolean) => {
                                     setIsLoading(true);
                                     const tc0 = pendingToolCalls[0];
                                     // Track approved tool signature for duplicate detection
                                     executedToolSignaturesRef.current.add(`${tc0.toolName}::${JSON.stringify(tc0.args)}`);
-                                    const toolResult = await executeTool(tc0);
+                                    const toolResult = await executeTool(tc0, 0, undefined, { rememberForSession });
+                                    if (rememberForSession && toolResult !== null) {
+                                        sessionApprovedToolsRef.current.add(tc0.toolName);
+                                    }
                                     setPendingToolCalls([]);
                                     if (toolResult && multiStepContextRef.current && !autoStopRef.current) {
                                         const ctx = multiStepContextRef.current;

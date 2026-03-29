@@ -14,8 +14,8 @@ AeroFTP is an open source desktop application licensed under GPL-3.0. We are com
 
 AeroFTP stores the following data **exclusively on your local machine**:
 
-- **Server profiles**: Hostnames, ports, usernames, and protocol settings for your configured connections. Stored in an encrypted vault database (`vault.db`) protected by AES-256-GCM with Argon2id key derivation.
-- **Credentials**: Passwords, OAuth tokens, and API keys are stored in the OS keyring (GNOME Keyring, KDE Wallet, macOS Keychain, Windows Credential Manager) or in the encrypted vault database. Credentials are never stored in plaintext.
+- **Server profiles**: Hostnames, ports, usernames, and protocol settings for your configured connections. Stored in the encrypted local vault database (`vault.db`).
+- **Credentials**: Passwords, OAuth tokens, and API keys are stored in the encrypted local vault database. The vault encryption key is protected either by the system keyring (default) or by a user-supplied master password in master mode. Credentials are never stored in plaintext.
 - **Application settings**: UI preferences, theme selection, language, and general configuration. Stored in the Tauri application data directory.
 - **Chat history**: AI assistant conversations, if used, are stored in a local SQLite database. You can delete all chat history at any time from Settings.
 - **Sync journals**: Transfer logs for the AeroSync feature. Automatically cleaned after 30 days.

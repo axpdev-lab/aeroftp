@@ -42,6 +42,7 @@ tracing-subscriber = "0.3"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 portable-pty = "0.9"
 reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
 notify = { version = "8", default-features = true }                          # Filesystem watcher (v8 required by debouncer-full 0.6)
@@ -73,6 +74,7 @@ rand = "0.8"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2.3.3"
 semver = "1.0.27"
+sigstore = { version = "0.13", default-features = false, features = ["bundle", "sigstore-trust-root", "native-tls"] }
 
 # Secure Credential Storage (v1.3.2 hotfix)
 argon2 = "0.5"

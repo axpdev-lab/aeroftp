@@ -5,15 +5,30 @@
 
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: aeroftp-update-helper <package-file>" >&2
+if [ $# -ne 2 ]; then
+    echo "Usage: aeroftp-update-helper <package-file> <expected-sha256>" >&2
     exit 1
 fi
 
 FILE="$1"
+EXPECTED_SHA256="$2"
 
 if [ ! -f "$FILE" ]; then
     echo "Error: File not found: $FILE" >&2
+    exit 1
+fi
+
+case "$EXPECTED_SHA256" in
+    [0-9a-fA-F][0-9a-fA-F]*)
+        ;;
+    *)
+        echo "Error: Invalid expected SHA-256" >&2
+        exit 1
+        ;;
+esac
+
+if [ ${#EXPECTED_SHA256} -ne 64 ]; then
+    echo "Error: Invalid expected SHA-256 length" >&2
     exit 1
 fi
 
@@ -28,12 +43,28 @@ case "$FILE" in
         ;;
 esac
 
+ACTUAL_SHA256="$(sha256sum "$FILE" | awk '{print $1}')"
+if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+    echo "Error: Package hash mismatch" >&2
+    exit 1
+fi
+
+TMP_COPY="$(mktemp /var/tmp/aeroftp-update-XXXXXX.pkg)"
+trap 'rm -f "$TMP_COPY"' EXIT
+cp --preserve=mode "$FILE" "$TMP_COPY"
+
+COPIED_SHA256="$(sha256sum "$TMP_COPY" | awk '{print $1}')"
+if [ "$COPIED_SHA256" != "$EXPECTED_SHA256" ]; then
+    echo "Error: Package copy hash mismatch" >&2
+    exit 1
+fi
+
 case "$FILE" in
     *.deb)
-        exec dpkg -i "$FILE"
+        exec dpkg -i "$TMP_COPY"
         ;;
     *.rpm)
-        exec rpm -U "$FILE"
+        exec rpm -U "$TMP_COPY"
         ;;
     *)
         echo "Error: Unsupported package format (only .deb and .rpm)" >&2

@@ -49,6 +49,20 @@ export function useAgentMemory(projectPath: string | undefined) {
         );
     }, []);
 
+    const refreshMemory = useCallback(async (limit = 10) => {
+        if (!projectPath) {
+            if (mountedRef.current) setMemory('');
+            return;
+        }
+
+        try {
+            const entries = await invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query: null, limit });
+            if (mountedRef.current) setMemory(formatEntries(entries));
+        } catch {
+            if (mountedRef.current) setMemory('');
+        }
+    }, [formatEntries, projectPath]);
+
     // Auto-load on mount/path change
     useEffect(() => {
         mountedRef.current = true;
@@ -64,29 +78,21 @@ export function useAgentMemory(projectPath: string | undefined) {
         lastPathRef.current = projectPath;
         memoryLoadedRef.current = true;
 
-        invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query: null, limit: 10 })
-            .then(entries => {
-                if (mountedRef.current) setMemory(formatEntries(entries));
-            })
-            .catch(() => {
-                if (mountedRef.current) setMemory('');
-            });
+        void refreshMemory(10);
 
         return () => { mountedRef.current = false; };
-    }, [projectPath]);
+    }, [projectPath, refreshMemory]);
 
     // Append new entry
     const appendMemory = useCallback(async (entry: string, category: string = 'general') => {
         if (!projectPath) return;
         try {
             await invoke('agent_memory_store', { projectPath, category, content: entry, serverHost: null });
-            // Reload after write
-            const entries = await invoke<AgentMemoryEntry[]>('agent_memory_search', { projectPath, query: null, limit: 10 });
-            if (mountedRef.current) setMemory(formatEntries(entries));
+            await refreshMemory(10);
         } catch {
             // Silent failure
         }
-    }, [formatEntries, projectPath]);
+    }, [projectPath, refreshMemory]);
 
     const searchMemory = useCallback(async (query: string, limit = 5) => {
         if (!projectPath) return '';
@@ -98,5 +104,5 @@ export function useAgentMemory(projectPath: string | undefined) {
         }
     }, [formatEntries, projectPath]);
 
-    return { memory, appendMemory, searchMemory };
+    return { memory, appendMemory, searchMemory, refreshMemory };
 }

@@ -8,7 +8,7 @@
 // - AI API keys (ai_apikey_{provider})
 //
 // Two modes:
-// - Auto mode (default): vault.key stores passphrase in cleartext, protected by OS permissions
+// - Auto mode (default): passphrase stored in OS keyring, vault.key stores only a mode marker
 // - Master mode (optional): vault.key passphrase encrypted with Argon2id(user_password) + AES-GCM
 //
 // v2.0 — February 2026
@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use secrecy::zeroize::Zeroize;
 use tracing::{info, warn};
@@ -41,9 +42,12 @@ const VAULTKEY_FILENAME: &str = "vault.key";
 // vault.key binary format constants
 const VAULTKEY_MAGIC: &[u8; 8] = b"AEROVKEY";
 const VAULTKEY_VERSION: u8 = 2;
-const MODE_AUTO: u8 = 0x00;
+const MODE_LEGACY_AUTO_CLEAR: u8 = 0x00;
 const MODE_MASTER: u8 = 0x01;
+const MODE_AUTO_KEYRING: u8 = 0x02;
 const PASSPHRASE_LEN: usize = 64;
+const KEYRING_SERVICE: &str = "com.aeroftp.AeroFTP";
+const KEYRING_ACCOUNT: &str = "vault-passphrase";
 
 // ============ Error Types ============
 
@@ -95,8 +99,10 @@ struct VaultKeyFile {
 }
 
 enum VaultKeyMode {
-    /// Passphrase stored in cleartext, protected by OS file permissions
-    Auto { passphrase: [u8; PASSPHRASE_LEN] },
+    /// Legacy passphrase stored in cleartext on disk. Only used for migration.
+    LegacyAuto { passphrase: [u8; PASSPHRASE_LEN] },
+    /// Passphrase stored in the OS credential manager.
+    AutoKeyring,
     /// Passphrase encrypted with Argon2id(user_password) + AES-256-GCM
     Master {
         salt: [u8; 32],
@@ -144,9 +150,13 @@ impl VaultKeyFile {
         data.push(VAULTKEY_VERSION);
 
         match &self.mode {
-            VaultKeyMode::Auto { passphrase } => {
-                data.push(MODE_AUTO);
+            VaultKeyMode::LegacyAuto { passphrase } => {
+                data.push(MODE_LEGACY_AUTO_CLEAR);
                 data.extend_from_slice(passphrase);
+                data.extend_from_slice(&[0u8; 2]); // padding
+            }
+            VaultKeyMode::AutoKeyring => {
+                data.push(MODE_AUTO_KEYRING);
                 data.extend_from_slice(&[0u8; 2]); // padding
             }
             VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
@@ -162,8 +172,8 @@ impl VaultKeyFile {
 
     /// Parse from bytes
     fn from_bytes(data: &[u8]) -> Result<Self, CredentialError> {
-        // Minimum: magic(8) + version(1) + mode(1) + passphrase(64) + padding(2) = 76
-        if data.len() < 76 {
+        // Minimum: magic(8) + version(1) + mode(1) + padding(2) = 12
+        if data.len() < 12 {
             return Err(CredentialError::InvalidKeyFile);
         }
         if &data[0..8] != VAULTKEY_MAGIC {
@@ -175,16 +185,19 @@ impl VaultKeyFile {
 
         let mode_byte = data[9];
         match mode_byte {
-            MODE_AUTO => {
+            MODE_LEGACY_AUTO_CLEAR => {
                 if data.len() < 76 {
                     return Err(CredentialError::InvalidKeyFile);
                 }
                 let mut passphrase = [0u8; PASSPHRASE_LEN];
                 passphrase.copy_from_slice(&data[10..10 + PASSPHRASE_LEN]);
                 Ok(VaultKeyFile {
-                    mode: VaultKeyMode::Auto { passphrase },
+                    mode: VaultKeyMode::LegacyAuto { passphrase },
                 })
             }
+            MODE_AUTO_KEYRING => Ok(VaultKeyFile {
+                mode: VaultKeyMode::AutoKeyring,
+            }),
             MODE_MASTER => {
                 // magic(8) + ver(1) + mode(1) + salt(32) + nonce(12) + enc_passphrase(80) + padding(2) = 136
                 if data.len() < 136 {
@@ -256,7 +269,8 @@ impl VaultKeyFile {
     /// Decrypt passphrase using master password (master mode only)
     fn decrypt_passphrase(&self, password: &str) -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
         match &self.mode {
-            VaultKeyMode::Auto { passphrase } => Ok(*passphrase),
+            VaultKeyMode::LegacyAuto { passphrase } => Ok(*passphrase),
+            VaultKeyMode::AutoKeyring => load_passphrase_from_keyring(),
             VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
                 let key = crate::crypto::derive_key_strong(password, salt)
                     .map_err(CredentialError::Encryption)?;
@@ -271,6 +285,42 @@ impl VaultKeyFile {
             }
         }
     }
+}
+
+fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| CredentialError::Encryption(format!("Failed to access system keyring: {}", e)))
+}
+
+fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), CredentialError> {
+    let entry = keyring_entry()?;
+    let encoded = BASE64.encode(passphrase);
+    entry
+        .set_password(&encoded)
+        .map_err(|e| CredentialError::Encryption(format!("Failed to write vault key to system keyring: {}", e)))
+}
+
+fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
+    let entry = keyring_entry()?;
+    let encoded = entry
+        .get_password()
+        .map_err(|e| CredentialError::Encryption(format!("Vault key missing from system keyring: {}", e)))?;
+    let decoded = BASE64
+        .decode(encoded.as_bytes())
+        .map_err(|e| CredentialError::Encryption(format!("Invalid keyring payload: {}", e)))?;
+    if decoded.len() != PASSPHRASE_LEN {
+        return Err(CredentialError::InvalidKeyFile);
+    }
+    let mut passphrase = [0u8; PASSPHRASE_LEN];
+    passphrase.copy_from_slice(&decoded);
+    Ok(passphrase)
+}
+
+fn delete_passphrase_from_keyring() {
+    let Ok(entry) = keyring_entry() else {
+        return;
+    };
+    let _ = entry.delete_credential();
 }
 
 // ============ Credential Store ============
@@ -289,6 +339,7 @@ impl Drop for CredentialStore {
 
 impl CredentialStore {
     // ---- Initialization ----
+    pub const INIT_MASTER_PASSWORD_SETUP_REQUIRED: &'static str = "MASTER_PASSWORD_SETUP_REQUIRED";
 
     /// VER-005: File-based lock to prevent concurrent vault creation (CLI+GUI TOCTOU).
     /// Uses `create_new(true)` as an atomic mutex. Stale locks (>30s) are auto-removed.
@@ -352,14 +403,21 @@ impl CredentialStore {
         if !VaultKeyFile::exists() {
             // VER-005: Acquire file lock to prevent concurrent CLI+GUI vault creation
             let lock_path = Self::acquire_init_lock()?;
-            let result = if !VaultKeyFile::exists() {
+            let init_result = if !VaultKeyFile::exists() {
                 // Double-check after acquiring lock (another process may have created it)
                 Self::first_run_init()
             } else {
                 Ok(())
             };
             Self::release_init_lock(&lock_path);
-            result?;
+
+            match init_result {
+                Ok(()) => {}
+                Err(CredentialError::Encryption(_)) if !VaultKeyFile::exists() => {
+                    return Ok(Self::INIT_MASTER_PASSWORD_SETUP_REQUIRED.to_string());
+                }
+                Err(error) => return Err(error),
+            }
 
             // If another process created the vault while we waited, fall through
             // to the normal open path below. If we created it, first_run_init
@@ -371,11 +429,30 @@ impl CredentialStore {
 
         let key_file = VaultKeyFile::read()?;
         match &key_file.mode {
-            VaultKeyMode::Auto { passphrase } => {
+            VaultKeyMode::LegacyAuto { passphrase } => {
+                info!("Migrating legacy cleartext vault.key to system keyring");
+                store_passphrase_in_keyring(passphrase)?;
+                VaultKeyFile {
+                    mode: VaultKeyMode::AutoKeyring,
+                }
+                .write()?;
+
                 let vault_key = crate::crypto::derive_from_passphrase(passphrase);
                 let vault_path = Self::vault_path()?;
 
                 // If vault.db doesn't exist yet (shouldn't happen but be safe), create it
+                if !vault_path.exists() {
+                    Self::create_empty_vault(&vault_path, &vault_key)?;
+                }
+
+                Self::open_and_cache(vault_path, vault_key)?;
+                Ok("OK".to_string())
+            }
+            VaultKeyMode::AutoKeyring => {
+                let passphrase = load_passphrase_from_keyring()?;
+                let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
+                let vault_path = Self::vault_path()?;
+
                 if !vault_path.exists() {
                     Self::create_empty_vault(&vault_path, &vault_key)?;
                 }
@@ -389,7 +466,7 @@ impl CredentialStore {
         }
     }
 
-    /// First run: generate random passphrase, create vault.key (auto) + vault.db (empty)
+    /// First run: generate random passphrase, store it in keyring, create vault.key + vault.db.
     fn first_run_init() -> Result<(), CredentialError> {
         // Ensure config directory exists with secure permissions
         let dir = config_dir()?;
@@ -401,9 +478,10 @@ impl CredentialStore {
         // A2-03: Zeroize intermediate buffer immediately
         passphrase_bytes.zeroize();
 
-        // Write vault.key in auto mode
+        store_passphrase_in_keyring(&passphrase)?;
+
         let key_file = VaultKeyFile {
-            mode: VaultKeyMode::Auto { passphrase },
+            mode: VaultKeyMode::AutoKeyring,
         };
         key_file.write()?;
 
@@ -421,7 +499,56 @@ impl CredentialStore {
         // Harden the entire config directory
         let _ = harden_config_directory();
 
-        info!("Universal credential vault initialized (auto mode)");
+        info!("Universal credential vault initialized (system keyring mode)");
+        Ok(())
+    }
+
+    /// First run fallback when the system keyring is unavailable: bootstrap directly in master mode.
+    pub fn bootstrap_master_password(password: &str) -> Result<(), CredentialError> {
+        if password.len() < 8 {
+            return Err(CredentialError::PasswordTooShort);
+        }
+        if VaultKeyFile::exists() {
+            return Err(CredentialError::MasterAlreadySet);
+        }
+
+        let dir = config_dir()?;
+
+        let mut passphrase_bytes = crate::crypto::random_bytes(PASSPHRASE_LEN);
+        let mut passphrase = [0u8; PASSPHRASE_LEN];
+        passphrase.copy_from_slice(&passphrase_bytes);
+        passphrase_bytes.zeroize();
+
+        let salt = crate::crypto::random_bytes(32);
+        let mut salt_arr = [0u8; 32];
+        salt_arr.copy_from_slice(&salt);
+
+        let key = crate::crypto::derive_key_strong(password, &salt)
+            .map_err(CredentialError::Encryption)?;
+
+        let nonce_bytes = crate::crypto::random_bytes(12);
+        let mut nonce_arr = [0u8; 12];
+        nonce_arr.copy_from_slice(&nonce_bytes);
+
+        let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_arr, &passphrase)
+            .map_err(CredentialError::Encryption)?;
+
+        VaultKeyFile {
+            mode: VaultKeyMode::Master {
+                salt: salt_arr,
+                nonce: nonce_arr,
+                encrypted_passphrase,
+            },
+        }
+        .write()?;
+
+        let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
+        let vault_path = dir.join(VAULT_FILENAME);
+        Self::create_empty_vault(&vault_path, &vault_key)?;
+        passphrase.zeroize();
+        Self::open_and_cache(vault_path, vault_key)?;
+        let _ = harden_config_directory();
+        info!("Universal credential vault initialized (master password bootstrap mode)");
         Ok(())
     }
 
@@ -531,7 +658,8 @@ impl CredentialStore {
 
         let key_file = VaultKeyFile::read()?;
         let passphrase = match &key_file.mode {
-            VaultKeyMode::Auto { passphrase } => *passphrase,
+            VaultKeyMode::LegacyAuto { passphrase } => *passphrase,
+            VaultKeyMode::AutoKeyring => load_passphrase_from_keyring()?,
             VaultKeyMode::Master { .. } => return Err(CredentialError::MasterAlreadySet),
         };
 
@@ -558,6 +686,7 @@ impl CredentialStore {
             },
         };
         new_key_file.write()?;
+        delete_passphrase_from_keyring();
 
         info!("Master password enabled — vault.key encrypted");
         Ok(())
@@ -568,15 +697,19 @@ impl CredentialStore {
         let key_file = VaultKeyFile::read()?;
         let passphrase = match &key_file.mode {
             VaultKeyMode::Master { .. } => key_file.decrypt_passphrase(password)?,
-            VaultKeyMode::Auto { .. } => return Err(CredentialError::MasterNotSet),
+            VaultKeyMode::LegacyAuto { .. } | VaultKeyMode::AutoKeyring => {
+                return Err(CredentialError::MasterNotSet)
+            }
         };
 
+        store_passphrase_in_keyring(&passphrase)?;
+
         let new_key_file = VaultKeyFile {
-            mode: VaultKeyMode::Auto { passphrase },
+            mode: VaultKeyMode::AutoKeyring,
         };
         new_key_file.write()?;
 
-        info!("Master password disabled — vault.key in auto mode");
+        info!("Master password disabled — vault key moved back to system keyring");
         Ok(())
     }
 

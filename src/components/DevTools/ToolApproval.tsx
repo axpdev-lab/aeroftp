@@ -12,9 +12,9 @@ import { getToolLabel } from './aiChatToolLabels';
 
 interface ToolApprovalProps {
     toolCall: AgentToolCall;
-    onApprove: () => void;
+    onApprove: (rememberForSession?: boolean) => void;
     onReject: () => void;
-    onApproveSession?: (toolName: string) => void;
+    allowSessionApproval?: boolean;
     allTools?: AITool[];
     sessionId?: string;
 }
@@ -43,7 +43,7 @@ function getMainArg(_toolName: string, args: Record<string, unknown>): string {
     return '';
 }
 
-export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject, onApproveSession, allTools, sessionId }) => {
+export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove, onReject, allowSessionApproval, allTools, sessionId }) => {
     const [expanded, setExpanded] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [diffData, setDiffData] = useState<{ original: string; modified: string } | null>(null);
@@ -193,7 +193,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                             {/* Split button: Allow + dropdown for session approval */}
                             <div className="relative inline-flex" ref={menuRef}>
                                 <button
-                                    onClick={onApprove}
+                                    onClick={() => onApprove(false)}
                                     disabled={!!isDisabled}
                                     className={`flex items-center gap-1.5 px-3 py-1 rounded-l-md text-xs font-medium transition-colors ${
                                         isDisabled
@@ -207,7 +207,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                     <Check size={12} />
                                     {dangerLevel === 'high' ? (t('ai.toolApproval.confirm') || 'Confirm') : (t('ai.toolApproval.allow') || 'Allow')}
                                 </button>
-                                {onApproveSession && dangerLevel !== 'high' && !isDisabled && (
+                                {allowSessionApproval && dangerLevel !== 'high' && !isDisabled && (
                                     <button
                                         onClick={() => setMenuOpen(!menuOpen)}
                                         className="tool-approval-allow flex items-center px-1.5 py-1 rounded-r-md border-l border-white/20 text-xs transition-colors"
@@ -224,8 +224,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                         <button
                                             onClick={() => {
                                                 setMenuOpen(false);
-                                                if (onApproveSession) onApproveSession(toolCall.toolName);
-                                                onApprove();
+                                                onApprove(true);
                                             }}
                                             className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700 transition-colors"
                                         >

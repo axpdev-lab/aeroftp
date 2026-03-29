@@ -367,7 +367,7 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 | **Clearable History** | One-click clear for recent locations. No persistent browsing traces |
 | **Portable Deployment** | AppImage runs without installation. Remove it and the config directory - no traces remain |
 
-See [SECURITY.md](SECURITY.md) for the complete security architecture and privacy comparison, and [docs/security-evidence/README.md](docs/security-evidence/README.md) for release-by-release security evidence.
+See [SECURITY.md](SECURITY.md) for the security policy and architecture summary, and [docs.aeroftp.app/security](https://docs.aeroftp.app/security/overview) for the complete security documentation with encryption specs, AI security model, supply chain details, and audit history.
 
 ### Security Posture
 
@@ -376,8 +376,8 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture and privac
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
 | **Dependency Scanning** | 1,071 packages monitored (316 JS + 755 Rust), daily automated scans |
-| **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled |
-| **Sigstore** | All release artifacts signed with [Sigstore Cosign](https://sigstore.dev) via GitHub OIDC keyless signing. `.sigstore.json` verification bundles included in every release |
+| **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
+| **Security Audits** | 300+ findings resolved across [8 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |
 | **Security Audit** | [Download Official Report (Aikido)](https://app.aikido.dev/reports/audit-reports/XjkFN27VKYT2772IC79C4hmF/external/report/download?secret=TF9MK1qiVN6WFPYN5qH3iKgccbIyBwLXBY9g1wfC3rbVjzzUv3XJ61M7CFLk&group_id=68884) |
 
 ---

@@ -22,6 +22,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::{timeout, Duration};
 use tracing::{info, warn};
 
+use crate::ai_tools::{self, AiToolApprovalPreparation};
+
 const PLUGIN_TIMEOUT_SECS: u64 = 30;
 const MAX_OUTPUT_BYTES: usize = 1_048_576; // 1 MB
 
@@ -175,6 +177,8 @@ pub async fn execute_plugin_tool(
     plugin_id: String,
     tool_name: String,
     args_json: String,
+    session_id: Option<String>,
+    approval_grant_id: Option<String>,
 ) -> Result<Value, String> {
     // Validate plugin_id (alphanumeric + underscore only)
     if !plugin_id
@@ -205,6 +209,23 @@ pub async fn execute_plugin_tool(
         .iter()
         .find(|t| t.name == tool_name)
         .ok_or_else(|| format!("Tool '{}' not found in plugin '{}'", tool_name, plugin_id))?;
+
+    let args_value: Value = serde_json::from_str(&args_json)
+        .map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
+    let approval_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
+    let approval_scope_key = serde_json::to_string(&json!({
+        "plugin_id": plugin_id,
+        "tool_name": tool_name,
+        "args": args_value,
+    }))
+    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+    ai_tools::ensure_ai_tool_approval(
+        session_id.as_deref(),
+        &approval_tool_name,
+        &approval_scope_key,
+        approval_grant_id.as_deref(),
+    )
+    .await?;
 
     // SEC: Direct argv execution — no shell interpretation.
     // Reject shell metacharacters to prevent injection via crafted manifests.
@@ -343,6 +364,71 @@ pub async fn execute_plugin_tool(
         Ok(val) => Ok(val),
         Err(_) => Ok(json!({ "result": stdout_str.trim() })),
     }
+}
+
+#[tauri::command]
+pub async fn prepare_plugin_tool_approval(
+    app: tauri::AppHandle,
+    plugin_id: String,
+    tool_name: String,
+    args_json: String,
+    session_id: Option<String>,
+) -> Result<AiToolApprovalPreparation, String> {
+    if !plugin_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return Err("Invalid plugin ID".to_string());
+    }
+
+    let plugin_dir = plugins_dir(&app)?.join(&plugin_id);
+    let manifest_path = plugin_dir.join("plugin.json");
+
+    if !manifest_path.exists() {
+        return Err(format!("Plugin '{}' not found", plugin_id));
+    }
+
+    let manifest_content = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read plugin manifest: {}", e))?;
+    let manifest: PluginManifest = serde_json::from_str(&manifest_content)
+        .map_err(|e| format!("Invalid plugin manifest: {}", e))?;
+
+    if !manifest.enabled {
+        return Err(format!("Plugin '{}' is disabled", plugin_id));
+    }
+
+    let tool = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == tool_name)
+        .ok_or_else(|| format!("Tool '{}' not found in plugin '{}'", tool_name, plugin_id))?;
+
+    let args_value: Value = serde_json::from_str(&args_json)
+        .map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
+    let synthetic_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
+    let scope_key = serde_json::to_string(&json!({
+        "plugin_id": plugin_id,
+        "tool_name": tool_name,
+        "args": args_value,
+    }))
+    .map_err(|e| format!("Failed to build plugin approval scope: {}", e))?;
+
+    Ok(
+        ai_tools::prepare_backend_approval_request(
+            session_id.as_deref(),
+            &synthetic_tool_name,
+            scope_key,
+            tool.danger_level != "high",
+            format!("Approve AI plugin tool: {}", tool_name),
+            format!(
+                "AeroFTP AI is requesting permission to run a plugin tool in the desktop backend.\nThis confirmation happens in the desktop process, not in the webview.\n\nRequested operation:\n- plugin: {}\n- tool: {}\n- command: {}",
+                manifest.name,
+                tool_name,
+                tool.command,
+            ),
+        )
+        .await,
+    )
 }
 
 /// Install a plugin from a manifest JSON string.

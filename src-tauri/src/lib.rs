@@ -4,17 +4,22 @@
 // AeroFTP - Modern FTP Client with Tauri
 // Real-time transfer progress with event emission
 
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
 use tauri::{AppHandle, Emitter, State, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::Mutex;
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, info, warn, error};
 use semver::Version;
 use reqwest::Client as HttpClient;
 use secrecy::{ExposeSecret, SecretString};
+use url::Url;
 
 mod ftp;
 pub mod sync;
@@ -247,6 +252,7 @@ struct GitHubRelease {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct GitHubAsset {
     name: String,
     browser_download_url: String,
@@ -261,7 +267,304 @@ struct UpdateInfo {
     install_format: String,
 }
 
+#[derive(Clone, Debug)]
+struct ReleaseAssetSelection {
+    tag: String,
+    asset_name: String,
+    download_url: String,
+    bundle_url: String,
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateDownloadProgress {
+    downloaded: u64,
+    total: u64,
+    percentage: u8,
+    speed_bps: u64,
+    eta_seconds: u64,
+    filename: String,
+}
+
+const GITHUB_RELEASES_API_URL: &str =
+    "https://api.github.com/repos/axpdev-lab/aeroftp/releases/latest";
+const GITHUB_RELEASES_HOST: &str = "github.com";
+const GITHUB_RELEASES_OWNER: &str = "axpdev-lab";
+const GITHUB_RELEASES_REPO: &str = "aeroftp";
+const SIGSTORE_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
+const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
+    "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/";
+
 // ============ Updater Command ============
+
+fn update_download_supported(install_format: &str) -> bool {
+    matches!(install_format, "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg" | "snap")
+}
+
+fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    match install_format {
+        "appimage" => lower.ends_with(".appimage"),
+        "deb" => lower.ends_with(".deb"),
+        "rpm" => lower.ends_with(".rpm"),
+        "msi" => lower.ends_with(".msi"),
+        "exe" => lower.ends_with(".exe"),
+        "dmg" => lower.ends_with(".dmg"),
+        "snap" => lower.ends_with(".snap"),
+        _ => false,
+    }
+}
+
+fn asset_matches_current_arch(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if lower.contains("universal") {
+        return true;
+    }
+
+    let known_markers = [
+        "x86_64", "amd64", "x64", "aarch64", "arm64", "armv7", "armhf", "i386", "i686", "x86",
+    ];
+    let has_arch_marker = known_markers.iter().any(|marker| lower.contains(marker));
+    if !has_arch_marker {
+        return true;
+    }
+
+    let expected_markers: &[&str] = match std::env::consts::ARCH {
+        "x86_64" => &["x86_64", "amd64", "x64"],
+        "aarch64" => &["aarch64", "arm64", "universal"],
+        "x86" => &["x86", "i386", "i686"],
+        other => &[other],
+    };
+
+    expected_markers.iter().any(|marker| lower.contains(marker))
+}
+
+fn select_release_asset(release: &GitHubRelease, install_format: &str) -> Option<ReleaseAssetSelection> {
+    if !update_download_supported(install_format) {
+        return None;
+    }
+
+    let candidates: Vec<&GitHubAsset> = release
+        .assets
+        .iter()
+        .filter(|asset| !asset.name.ends_with(".sigstore.json") && asset_matches_install_format(&asset.name, install_format))
+        .collect();
+
+    let asset = candidates
+        .iter()
+        .copied()
+        .find(|asset| asset_matches_current_arch(&asset.name))
+        .or_else(|| candidates.first().copied())?;
+
+    let bundle_name = format!("{}.sigstore.json", asset.name);
+    let bundle_asset = release.assets.iter().find(|candidate| candidate.name == bundle_name)?;
+
+    Some(ReleaseAssetSelection {
+        tag: release.tag_name.clone(),
+        asset_name: asset.name.clone(),
+        download_url: asset.browser_download_url.clone(),
+        bundle_url: bundle_asset.browser_download_url.clone(),
+    })
+}
+
+fn unique_download_path(directory: &Path, file_name: &str) -> PathBuf {
+    let base_path = directory.join(file_name);
+    if !base_path.exists() {
+        return base_path;
+    }
+
+    let file_path = Path::new(file_name);
+    let stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("AeroFTP-update");
+    let extension = file_path.extension().and_then(|s| s.to_str());
+
+    for index in 1..1000 {
+        let candidate_name = match extension {
+            Some(ext) if !ext.is_empty() => format!("{}-{}.{}", stem, index, ext),
+            _ => format!("{}-{}", stem, index),
+        };
+        let candidate_path = directory.join(candidate_name);
+        if !candidate_path.exists() {
+            return candidate_path;
+        }
+    }
+
+    directory.join(format!("{}-{}", uuid::Uuid::new_v4(), file_name))
+}
+
+fn compute_update_download_progress(downloaded: u64, total: u64, completed: bool) -> u8 {
+    if completed {
+        return 100;
+    }
+    if total == 0 {
+        return 0;
+    }
+
+    let raw = ((downloaded as f64 / total as f64) * 100.0).floor() as u8;
+    raw.min(99)
+}
+
+fn emit_update_download_progress(app: &AppHandle, filename: &str, downloaded: u64, total: u64, started_at: Instant, completed: bool) {
+    let elapsed = started_at.elapsed().as_secs_f64();
+    let speed_bps = if elapsed > 0.0 {
+        (downloaded as f64 / elapsed) as u64
+    } else {
+        0
+    };
+    let eta_seconds = if completed || speed_bps == 0 || total <= downloaded {
+        0
+    } else {
+        (total - downloaded) / speed_bps
+    };
+
+    let _ = app.emit(
+        "update-download-progress",
+        UpdateDownloadProgress {
+            downloaded,
+            total,
+            percentage: compute_update_download_progress(downloaded, total, completed),
+            speed_bps,
+            eta_seconds,
+            filename: filename.to_string(),
+        },
+    );
+}
+
+fn parse_release_download_url(download_url: &str) -> Result<ReleaseAssetSelection, String> {
+    let parsed = Url::parse(download_url)
+        .map_err(|error| format!("Invalid update URL: {}", error))?;
+
+    if parsed.scheme() != "https" || parsed.host_str() != Some(GITHUB_RELEASES_HOST) {
+        return Err("Update URL rejected: expected an HTTPS GitHub Releases URL".to_string());
+    }
+
+    let segments: Vec<&str> = parsed
+        .path_segments()
+        .map(|parts| parts.collect())
+        .ok_or_else(|| "Update URL rejected: malformed GitHub path".to_string())?;
+
+    if segments.len() != 6
+        || segments[0] != GITHUB_RELEASES_OWNER
+        || segments[1] != GITHUB_RELEASES_REPO
+        || segments[2] != "releases"
+        || segments[3] != "download"
+    {
+        return Err("Update URL rejected: not an AeroFTP release artifact".to_string());
+    }
+
+    let tag = segments[4].to_string();
+    let asset_name = segments[5].to_string();
+    let file_name = Path::new(&asset_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Update URL rejected: invalid asset name".to_string())?;
+    if file_name != asset_name {
+        return Err("Update URL rejected: asset name traversal detected".to_string());
+    }
+
+    Ok(ReleaseAssetSelection {
+        tag,
+        asset_name: asset_name.clone(),
+        download_url: download_url.to_string(),
+        bundle_url: format!("{}.sigstore.json", download_url),
+    })
+}
+
+async fn download_file_to_path(
+    client: &HttpClient,
+    url: &str,
+    destination: &Path,
+    user_agent: &str,
+) -> Result<(), String> {
+    let response = client
+        .get(url)
+        .header("User-Agent", user_agent)
+        .send()
+        .await
+        .map_err(|error| format!("Failed to download {}: {}", url, error))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed for {}: HTTP {}", url, response.status()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("Failed to read {}: {}", url, error))?;
+
+    tokio::fs::write(destination, bytes)
+        .await
+        .map_err(|error| format!("Failed to write {}: {}", destination.display(), error))
+}
+
+async fn download_update_artifact(
+    app: &AppHandle,
+    client: &HttpClient,
+    url: &str,
+    destination: &Path,
+    filename: &str,
+) -> Result<(), String> {
+    let response = client
+        .get(url)
+        .header("User-Agent", "AeroFTP")
+        .send()
+        .await
+        .map_err(|error| format!("Failed to start update download: {}", error))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Update download failed: HTTP {}", response.status()));
+    }
+
+    let total = response.content_length().unwrap_or(0);
+    let mut stream = response.bytes_stream();
+    let mut file = tokio::fs::File::create(destination)
+        .await
+        .map_err(|error| format!("Failed to create update file: {}", error))?;
+
+    let started_at = Instant::now();
+    let mut last_emit = Instant::now();
+    let mut last_percentage = 0u8;
+    let mut downloaded = 0u64;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| format!("Failed while downloading update: {}", error))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| format!("Failed to write update file: {}", error))?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+
+        let percentage = compute_update_download_progress(downloaded, total, false);
+        let should_emit = last_emit.elapsed().as_millis() >= 150 || percentage.saturating_sub(last_percentage) >= 2;
+        if should_emit {
+            emit_update_download_progress(app, filename, downloaded, total, started_at, false);
+            last_emit = Instant::now();
+            last_percentage = percentage;
+        }
+    }
+
+    file.flush()
+        .await
+        .map_err(|error| format!("Failed to flush update file: {}", error))?;
+
+    Ok(())
+}
+
+fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -> Result<(), String> {
+    let bundle_file = std::fs::File::open(bundle_path)
+        .map_err(|error| format!("Failed to open Sigstore bundle: {}", error))?;
+    let bundle: sigstore::bundle::Bundle = serde_json::from_reader(bundle_file)
+        .map_err(|error| format!("Failed to parse Sigstore bundle: {}", error))?;
+
+    let mut artifact_file = std::fs::File::open(artifact_path)
+        .map_err(|error| format!("Failed to open downloaded artifact: {}", error))?;
+
+    let verifier = SigstoreVerifier::production()
+        .map_err(|error| format!("Failed to initialize Sigstore trust root: {}", error))?;
+    let identity = format!("{}{}", SIGSTORE_WORKFLOW_IDENTITY_PREFIX, tag);
+    let verification_policy = policy::Identity::new(identity, SIGSTORE_OIDC_ISSUER);
+
+    verifier
+        .verify(&mut artifact_file, bundle, &verification_policy, true)
+        .map_err(|error| format!("Sigstore verification failed: {}", error))
+}
 
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
 fn detect_install_format() -> String {
@@ -374,9 +677,8 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     info!("Checking for updates... Current: v{}, Format: {}", current_version, install_format);
     
     let client = HttpClient::new();
-    let url = "https://api.github.com/repos/axpdev-lab/aeroftp/releases/latest";
     
-    let response = client.get(url)
+    let response = client.get(GITHUB_RELEASES_API_URL)
         .header("User-Agent", "AeroFTP")
         .header("Accept", "application/vnd.github.v3+json")
         .send()
@@ -399,50 +701,41 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
         .map_err(|e| format!("Failed to parse latest version: {}", e))?;
     
     if latest > current {
-        // Find asset matching the installed format
-        let extension = match install_format.as_str() {
-            "deb" => ".deb",
-            "rpm" => ".rpm",
-            "appimage" => ".appimage",
-            "snap" => ".snap",
-            "flatpak" => ".flatpak",
-            "exe" => ".exe",
-            "msi" => ".msi",
-            "dmg" => ".dmg",
-            _ => "",
-        };
-        
-        let download_url = if !extension.is_empty() {
-            release.assets.iter()
-                .find(|a| a.name.to_lowercase().ends_with(extension))
-                .map(|a| a.browser_download_url.clone())
-        } else {
-            None
-        };
+        if let Some(asset) = select_release_asset(&release, &install_format) {
+            info!(
+                "Update v{} available with signed asset {} for format {}",
+                latest_tag,
+                asset.asset_name,
+                install_format
+            );
 
-        // Only notify when the downloadable asset is actually available.
-        // GitHub releases are created by the first CI job to finish (often macOS),
-        // but .deb/.rpm/.exe artifacts may not exist yet until their platform job completes.
-        // Never show the toast without a valid download URL.
-        if download_url.is_none() {
-            info!("Update v{} exists but {} asset not yet available, skipping notification",
-                  latest_tag, if extension.is_empty() { &install_format } else { extension });
             return Ok(UpdateInfo {
-                has_update: false,
+                has_update: true,
                 latest_version: Some(latest_tag.to_string()),
-                download_url: None,
-                current_version,
+                download_url: Some(asset.download_url),
+                current_version: current_version.clone(),
                 install_format,
             });
         }
 
-        info!("Update available: v{} -> v{} (format: {}, url: {:?})",
-              current_version, latest_tag, install_format, download_url);
+        if update_download_supported(&install_format) {
+            info!(
+                "Update v{} released, but no signed asset pair is ready for format {}",
+                latest_tag,
+                install_format
+            );
+        } else {
+            info!(
+                "Update v{} exists, but install format {} is not handled by the in-app updater",
+                latest_tag,
+                install_format
+            );
+        }
 
         return Ok(UpdateInfo {
-            has_update: true,
+            has_update: false,
             latest_version: Some(latest_tag.to_string()),
-            download_url,
+            download_url: None,
             current_version: current_version.clone(),
             install_format,
         });
@@ -465,6 +758,7 @@ fn log_update_detection(version: String) {
 }
 
 /// A8-03: Validate that update file path is in Downloads or temp directory (not arbitrary path)
+#[allow(dead_code)]
 fn validate_update_path(path: &str) -> Result<(), String> {
     let canonical = std::path::Path::new(path)
         .canonicalize()
@@ -480,7 +774,9 @@ fn validate_update_path(path: &str) -> Result<(), String> {
     let in_allowed = allowed_dirs.iter().any(|dir| {
         if dir.as_os_str().is_empty() { return false; }
         if let Ok(canon_dir) = dir.canonicalize() {
-            canonical_str.starts_with(canon_dir.to_string_lossy().as_ref())
+            let canon_dir_str = canon_dir.to_string_lossy();
+            let canon_dir_ref: &str = canon_dir_str.as_ref();
+            canonical_str.starts_with(canon_dir_ref)
         } else {
             false
         }
@@ -492,98 +788,58 @@ fn validate_update_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn sha256_file_hex(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path)
+        .map_err(|error| format!("Failed to read file for SHA-256: {}", error))?;
+    let digest = Sha256::digest(&bytes);
+    Ok(format!("{:x}", digest))
+}
+
 /// Download an update file with progress events
 #[tauri::command]
 async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
-    use tokio::io::AsyncWriteExt;
+    let asset = parse_release_download_url(&url)?;
 
-    // A8-03: Whitelist update URLs to prevent XSS → arbitrary download → root RCE chain
-    const ALLOWED_URL_PREFIXES: &[&str] = &[
-        "https://github.com/axpdev-lab/aeroftp/releases/",
-        "https://github.com/axpnet/aeroftp/releases/",  // legacy org redirect
-        "https://objects.githubusercontent.com/",
-    ];
-    if !ALLOWED_URL_PREFIXES.iter().any(|prefix| url.starts_with(prefix)) {
-        return Err("Update URL rejected: must be from official GitHub releases".to_string());
-    }
+    let download_directory = dirs::download_dir().unwrap_or_else(std::env::temp_dir);
+    tokio::fs::create_dir_all(&download_directory)
+        .await
+        .map_err(|error| format!("Failed to prepare download directory: {}", error))?;
 
-    info!("Downloading update from: {}", url);
-
+    let destination = unique_download_path(&download_directory, &asset.asset_name);
+    let bundle_path = destination.with_file_name(format!("{}.sigstore.json", asset.asset_name));
     let client = HttpClient::new();
-    let response = client.get(&url)
-        .header("User-Agent", "AeroFTP")
-        .send()
-        .await
-        .map_err(|e| format!("Download request failed: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("Download failed: HTTP {}", response.status()));
+    download_update_artifact(&app, &client, &asset.download_url, &destination, &asset.asset_name).await?;
+    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP").await?;
+
+    let verify_destination = destination.clone();
+    let verify_bundle = bundle_path.clone();
+    let verify_tag = asset.tag.clone();
+    let verification_result = tokio::task::spawn_blocking(move || {
+        verify_sigstore_bundle(&verify_destination, &verify_bundle, &verify_tag)
+    })
+    .await
+    .map_err(|error| format!("Sigstore verification task failed: {}", error))?;
+
+    if let Err(error) = verification_result {
+        let _ = tokio::fs::remove_file(&destination).await;
+        let _ = tokio::fs::remove_file(&bundle_path).await;
+        return Err(error);
     }
 
-    let total_size = response.content_length().unwrap_or(0);
-    let filename = url.rsplit('/').next().unwrap_or("aeroftp-update");
+    validate_update_path(destination.to_string_lossy().as_ref())?;
+    emit_update_download_progress(&app, &asset.asset_name, 1, 1, Instant::now(), true);
 
-    // Save to Downloads directory or temp
-    let download_dir = dirs::download_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
-        .unwrap_or_else(std::env::temp_dir);
-    let dest_path = download_dir.join(filename);
+    let _ = tokio::fs::remove_file(&bundle_path).await;
 
-    let mut file = tokio::fs::File::create(&dest_path)
-        .await
-        .map_err(|e| format!("Cannot create file: {}", e))?;
-
-    let mut stream = response.bytes_stream();
-    let mut downloaded: u64 = 0;
-    let start = std::time::Instant::now();
-    let mut last_emit = std::time::Instant::now();
-
-    use futures_util::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
-        file.write_all(&chunk).await.map_err(|e| format!("Write error: {}", e))?;
-        downloaded += chunk.len() as u64;
-
-        // Emit progress every 100ms to avoid flooding
-        if last_emit.elapsed().as_millis() >= 100 {
-            let elapsed = start.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { downloaded as f64 / elapsed } else { 0.0 };
-            let percentage = if total_size > 0 { (downloaded as f64 / total_size as f64 * 100.0) as u8 } else { 0 };
-            let eta = if speed > 0.0 && total_size > 0 { ((total_size - downloaded) as f64 / speed) as u64 } else { 0 };
-
-            let _ = app.emit("update-download-progress", serde_json::json!({
-                "downloaded": downloaded,
-                "total": total_size,
-                "percentage": percentage,
-                "speed_bps": speed as u64,
-                "eta_seconds": eta,
-                "filename": filename,
-            }));
-            last_emit = std::time::Instant::now();
-        }
-    }
-
-    file.flush().await.map_err(|e| format!("Flush error: {}", e))?;
-
-    // Final 100% emit
-    let _ = app.emit("update-download-progress", serde_json::json!({
-        "downloaded": total_size,
-        "total": total_size,
-        "percentage": 100,
-        "speed_bps": 0,
-        "eta_seconds": 0,
-        "filename": filename,
-    }));
-
-    let path_str = dest_path.to_string_lossy().to_string();
-    info!("Update downloaded to: {}", path_str);
-    Ok(path_str)
+    Ok(destination.to_string_lossy().to_string())
 }
 
 /// Spawn a fully detached relaunch process using setsid.
 /// The child runs in its own session so it survives when the parent exits.
 /// Uses direct exec (no shell) to prevent shell injection via exe_path.
 #[cfg(unix)]
+#[allow(dead_code)]
 fn spawn_detached_relaunch(exe_path: &str) {
     use std::os::unix::process::CommandExt;
 
@@ -612,57 +868,56 @@ fn spawn_detached_relaunch(exe_path: &str) {
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
 async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
-    // A8-03: Validate downloaded file is in expected directory
     validate_update_path(&downloaded_path)?;
 
-    let current_exe = std::env::current_exe()
-        .map_err(|e| format!("Cannot find current exe: {}", e))?;
-
-    let current_str = current_exe.to_string_lossy().to_lowercase();
-    if !current_str.contains("appimage") {
-        return Err("Not running as AppImage — manual install required".to_string());
-    }
-
-    let downloaded = std::path::Path::new(&downloaded_path);
+    let downloaded = PathBuf::from(&downloaded_path);
     if !downloaded.exists() {
-        return Err("Downloaded file not found".to_string());
+        return Err("Downloaded AppImage not found".to_string());
     }
 
-    info!("AppImage auto-update: {} -> {}", downloaded_path, current_exe.display());
-
-    // Backup current AppImage
-    let backup = current_exe.with_extension("bak");
-    std::fs::rename(&current_exe, &backup)
-        .map_err(|e| format!("Backup failed: {}", e))?;
-
-    // Move downloaded file to current exe path
-    if let Err(e) = std::fs::copy(downloaded, &current_exe) {
-        // Restore backup on failure
-        let _ = std::fs::rename(&backup, &current_exe);
-        return Err(format!("Replace failed: {}", e));
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve current AppImage path: {}", error))?;
+    let current_name = current_exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Failed to resolve current executable name".to_string())?;
+    if !current_name.to_ascii_lowercase().contains("appimage") {
+        return Err("Current executable is not an AppImage path".to_string());
     }
 
-    // Make executable
+    let current_parent = current_exe
+        .parent()
+        .ok_or_else(|| "Failed to resolve AppImage directory".to_string())?;
+    let staged_path = current_parent.join(format!(".{}.update", current_name));
+    let backup_path = current_parent.join(format!(".{}.backup", current_name));
+
+    if backup_path.exists() {
+        std::fs::remove_file(&backup_path)
+            .map_err(|error| format!("Failed to remove stale AppImage backup: {}", error))?;
+    }
+
+    std::fs::copy(&downloaded, &staged_path)
+        .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&current_exe, std::fs::Permissions::from_mode(0o755));
+        let permissions = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&staged_path, permissions)
+            .map_err(|error| format!("Failed to set AppImage permissions: {}", error))?;
     }
 
-    // Remove backup and downloaded file
-    let _ = std::fs::remove_file(&backup);
-    let _ = std::fs::remove_file(downloaded);
+    std::fs::rename(&current_exe, &backup_path)
+        .map_err(|error| format!("Failed to move current AppImage aside: {}", error))?;
 
-    info!("AppImage updated successfully, restarting...");
-
-    // Restart via setsid-detached process — survives parent exit
-    #[cfg(unix)]
-    {
-        let exe_path = current_exe.display().to_string();
-        spawn_detached_relaunch(&exe_path);
+    if let Err(error) = std::fs::rename(&staged_path, &current_exe) {
+        let _ = std::fs::rename(&backup_path, &current_exe);
+        return Err(format!("Failed to install new AppImage: {}", error));
     }
+
+    let _ = std::fs::remove_file(&backup_path);
+    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
-
     Ok(())
 }
 
@@ -671,49 +926,33 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 /// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
 async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
-    // A8-03: Validate downloaded file is in expected directory
     validate_update_path(&downloaded_path)?;
-
-    let downloaded = std::path::Path::new(&downloaded_path);
-    if !downloaded.exists() {
-        return Err("Downloaded file not found".to_string());
+    if !downloaded_path.to_ascii_lowercase().ends_with(".deb") {
+        return Err("Downloaded update is not a .deb package".to_string());
     }
 
-    // Capture exe path BEFORE dpkg replaces it — after dpkg, /proc/self/exe
-    // returns the path with " (deleted)" suffix because the old binary was unlinked.
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Cannot find current exe: {}", e))?
-        .display().to_string()
-        .trim_end_matches(" (deleted)").to_string();
-
-    let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
-    let status = if helper.exists() {
-        info!("Installing .deb update via branded Polkit helper: {}", downloaded_path);
-        std::process::Command::new("pkexec")
-            .args(["/usr/lib/aeroftp/aeroftp-update-helper", &downloaded_path])
-            .status()
-    } else {
-        info!("Installing .deb update via generic pkexec: {}", downloaded_path);
-        std::process::Command::new("pkexec")
-            .args(["dpkg", "-i", &downloaded_path])
-            .status()
+    let helper = Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
+    if !helper.exists() {
+        return Err("Secure update helper not found; aborting privileged install".to_string());
     }
-    .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+
+    let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    let status = tokio::process::Command::new("pkexec")
+        .arg(helper)
+        .arg(&downloaded_path)
+        .arg(&package_hash)
+        .status()
+        .await
+        .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
 
     if !status.success() {
-        return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo dpkg -i {}",
-            status.code(), downloaded_path));
+        return Err(format!(".deb installation failed with exit status {:?}", status.code()));
     }
 
-    info!(".deb installed successfully, restarting from: {}", exe_path);
-    let _ = std::fs::remove_file(downloaded);
-
-    // Restart via setsid-detached process — survives parent exit
-    #[cfg(unix)]
-    spawn_detached_relaunch(&exe_path);
-
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
-
     Ok(())
 }
 
@@ -721,48 +960,33 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
 /// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
 async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
-    // A8-03: Validate downloaded file is in expected directory
     validate_update_path(&downloaded_path)?;
-
-    let downloaded = std::path::Path::new(&downloaded_path);
-    if !downloaded.exists() {
-        return Err("Downloaded file not found".to_string());
+    if !downloaded_path.to_ascii_lowercase().ends_with(".rpm") {
+        return Err("Downloaded update is not an .rpm package".to_string());
     }
 
-    // Capture exe path BEFORE rpm replaces it (same /proc/self/exe issue as .deb)
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Cannot find current exe: {}", e))?
-        .display().to_string()
-        .trim_end_matches(" (deleted)").to_string();
-
-    let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
-    let status = if helper.exists() {
-        info!("Installing .rpm update via branded Polkit helper: {}", downloaded_path);
-        std::process::Command::new("pkexec")
-            .args(["/usr/lib/aeroftp/aeroftp-update-helper", &downloaded_path])
-            .status()
-    } else {
-        info!("Installing .rpm update via generic pkexec: {}", downloaded_path);
-        std::process::Command::new("pkexec")
-            .args(["rpm", "-U", &downloaded_path])
-            .status()
+    let helper = Path::new("/usr/lib/aeroftp/aeroftp-update-helper");
+    if !helper.exists() {
+        return Err("Secure update helper not found; aborting privileged install".to_string());
     }
-    .map_err(|e| format!("Failed to launch pkexec: {}", e))?;
+
+    let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    let status = tokio::process::Command::new("pkexec")
+        .arg(helper)
+        .arg(&downloaded_path)
+        .arg(&package_hash)
+        .status()
+        .await
+        .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
 
     if !status.success() {
-        return Err(format!("Installation failed (exit code: {:?}). You can install manually with: sudo rpm -U {}",
-            status.code(), downloaded_path));
+        return Err(format!(".rpm installation failed with exit status {:?}", status.code()));
     }
 
-    info!(".rpm installed successfully, restarting from: {}", exe_path);
-    let _ = std::fs::remove_file(downloaded);
-
-    // Restart via setsid-detached process — survives parent exit
-    #[cfg(unix)]
-    spawn_detached_relaunch(&exe_path);
-
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
-
     Ok(())
 }
 
@@ -7067,6 +7291,22 @@ async fn init_credential_store() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn bootstrap_master_credential_store(
+    password: String,
+    timeout_seconds: u32,
+    state: State<'_, master_password::MasterPasswordState>,
+) -> Result<(), String> {
+    credential_store::CredentialStore::bootstrap_master_password(&password)
+        .map_err(|e| e.to_string())?;
+    let secs = timeout_seconds as u64;
+    state.set_timeout(secs);
+    persist_auto_lock_timeout(secs).ok();
+    state.set_locked(false);
+    state.update_activity();
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_credential_store_status(
     state: State<'_, master_password::MasterPasswordState>,
 ) -> Result<CredentialStoreStatus, String> {
@@ -8018,6 +8258,7 @@ pub fn run() {
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
+            bootstrap_master_credential_store,
             get_credential_store_status,
             store_credential,
             get_credential,
@@ -8056,9 +8297,12 @@ pub fn run() {
             ai_list_models,
             ai_execute_tool,
             ai_tools::validate_tool_args,
+            ai_tools::prepare_ai_tool_approval,
+            ai_tools::grant_ai_tool_approval,
             ai_tools::execute_ai_tool,
             ai_tools::shell_execute,
             ai_tools::clipboard_read_image,
+            plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,

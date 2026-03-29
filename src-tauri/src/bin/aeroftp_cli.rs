@@ -4724,9 +4724,10 @@ async fn cmd_sync(
 
             // Check excludes (pre-compiled matchers)
             let fname = entry.file_name().to_string_lossy();
+            let fname_ref: &str = fname.as_ref();
             if exclude_matchers
                 .iter()
-                .any(|m| m.is_match(&relative) || m.is_match(fname.as_ref()))
+                .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
             {
                 continue;
             }

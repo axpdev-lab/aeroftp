@@ -1562,20 +1562,23 @@ pub fn export_sync_template(
 fn portable_path(path: &str) -> String {
     if let Some(home) = dirs::home_dir() {
         let home_str = home.to_string_lossy();
+        let home_ref: &str = home_str.as_ref();
         if let Some(docs) = dirs::document_dir() {
             let docs_str = docs.to_string_lossy();
-            if path.starts_with(docs_str.as_ref()) {
-                return path.replacen(docs_str.as_ref(), "$DOCUMENTS", 1);
+            let docs_ref: &str = docs_str.as_ref();
+            if path.starts_with(docs_ref) {
+                return path.replacen(docs_ref, "$DOCUMENTS", 1);
             }
         }
         if let Some(desktop) = dirs::desktop_dir() {
             let desk_str = desktop.to_string_lossy();
-            if path.starts_with(desk_str.as_ref()) {
-                return path.replacen(desk_str.as_ref(), "$DESKTOP", 1);
+            let desk_ref: &str = desk_str.as_ref();
+            if path.starts_with(desk_ref) {
+                return path.replacen(desk_ref, "$DESKTOP", 1);
             }
         }
-        if path.starts_with(home_str.as_ref()) {
-            return path.replacen(home_str.as_ref(), "$HOME", 1);
+        if path.starts_with(home_ref) {
+            return path.replacen(home_ref, "$HOME", 1);
         }
     }
     path.to_string()

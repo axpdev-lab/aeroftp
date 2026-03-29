@@ -11,454 +11,118 @@
 
 ## Security Architecture
 
+AeroFTP follows a defense-in-depth security model across six layers. For the complete architecture with trust boundary diagrams and protocol-level details, see the [Security Overview](https://docs.aeroftp.app/security/overview) on the documentation site.
+
 ### Credential Storage
 
-AeroFTP uses a **Universal Vault** — a single encrypted credential backend that works identically on all platforms, replacing the previous dual-mode OS Keyring + encrypted vault approach.
+All sensitive data (server passwords, OAuth tokens, API keys, application configuration) is stored in an encrypted vault (`vault.db`) using AES-256-GCM with per-entry random nonces. The vault key is derived via HKDF-SHA256 from a 512-bit CSPRNG passphrase.
 
-**Universal Vault (`vault.key` + `vault.db`)**
+| Mode | How the passphrase is protected |
+| ---- | ------------------------------- |
+| **Default** | Stored in the OS keyring (GNOME Keyring, macOS Keychain, Windows Credential Manager) |
+| **Master password** | Encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM |
+| **First launch without keyring** | Bootstraps directly into master password mode |
 
-| Component | Details |
-| --------- | ------- |
-| **Storage** | `vault.db` (AES-256-GCM encrypted entries) at `~/.config/aeroftp/` |
-| **Key file** | `vault.key` (76 bytes auto / 136 bytes master mode) with magic bytes and version |
-| **Auto mode** (default) | 64-byte CSPRNG passphrase in `vault.key`, protected by OS file permissions (Unix `0600`, Windows ACL) |
-| **Master mode** (optional) | Passphrase encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM. User enters master password on app start |
-| **Key derivation** | HKDF-SHA256 (RFC 5869): 512-bit passphrase → 256-bit vault key |
-| **Encryption** | AES-256-GCM with per-entry random 12-byte nonces |
-| **Write serialization** | `VAULT_WRITE_LOCK` Mutex prevents concurrent read-modify-write races (v1.8.9) |
-| **File permissions** | `0600` (owner read/write only) on Unix; `icacls` ACL-restricted on Windows |
+The vault never falls back to plaintext storage. File permissions are hardened to `0600` (Unix) / owner-only ACL (Windows).
 
-**Why Universal Vault (v1.8.6+)?**
+For the complete credential lifecycle, import/export, and OS keyring integration, see [Credential Management](https://docs.aeroftp.app/security/credentials).
 
-The previous dual-mode system (OS Keyring primary + encrypted vault fallback) suffered from platform-specific failures: Windows Credential Manager silently lost credentials, Linux keyring required desktop environment, macOS Keychain prompted for permissions. The Universal Vault eliminates all platform dependencies while maintaining equivalent or stronger security.
+### Encryption
+
+AeroFTP uses encryption at multiple layers:
+
+| Layer | Algorithm | Purpose |
+| ----- | --------- | ------- |
+| AeroVault v2 containers | AES-256-GCM-SIV (RFC 8452) + Argon2id + HMAC-SHA512 | Encrypted file containers with nonce misuse resistance |
+| Archive encryption | AES-256 (ZIP, 7z) | Password-protected archives |
+| Credential storage | AES-256-GCM + HKDF-SHA256 | Per-entry vault encryption |
+| Transport | TLS 1.2/1.3, SSH | Wire encryption for all protocols |
+
+Key derivation parameters exceed OWASP 2024 minimums (128 MiB vs 47 MiB, 4 iterations vs 1). AeroVault v2 is available as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io.
+
+For the full encryption architecture, cipher comparison tables, and AeroVault v2 format specification, see [Encryption](https://docs.aeroftp.app/security/encryption).
 
 ### Connection Protocols
 
-| Protocol | Encryption | Details |
-| -------- | ---------- | ------- |
-| FTP | None (configurable) | Plain-text by default; supports Explicit TLS, Implicit TLS, or opportunistic TLS upgrade |
-| FTPS | TLS/SSL | Explicit TLS (AUTH TLS, port 21) or Implicit TLS (port 990). Certificate verification configurable. |
-| SFTP | SSH | Hybrid: russh 0.57 (connection, listing, download) + ssh2/libssh2 SCP (uploads) |
-| WebDAV | HTTPS | TLS encrypted, HTTP Digest auth (RFC 2617) auto-detection |
-| S3 | HTTPS | SigV4 authentication with TLS |
-| Google Drive | HTTPS + OAuth2 | PKCE flow with token refresh |
-| Dropbox | HTTPS + OAuth2 | PKCE flow with token refresh |
-| OneDrive | HTTPS + OAuth2 | PKCE flow with token refresh |
-| MEGA.nz | Client-side AES | End-to-end encrypted, zero-knowledge |
-| Box | HTTPS + OAuth2 | PKCE flow with token refresh |
-| pCloud | HTTPS + OAuth2 | Token-based authentication |
-| Azure Blob | HTTPS | Shared Key HMAC-SHA256 or SAS token |
-| 4shared | HTTPS + OAuth 1.0 | HMAC-SHA1 signed requests (RFC 5849) |
-| Filen | Client-side AES-256-GCM | E2E encrypted, PBKDF2 key derivation |
-| Zoho WorkDrive | HTTPS + OAuth2 | PKCE flow with token refresh, 8 regional endpoints |
-| Internxt Drive | HTTPS + OAuth2 | E2E encrypted, zero-knowledge architecture |
-| kDrive | HTTPS + OAuth2 | Infomaniak API with Bearer token auth |
-| Koofr | HTTPS + OAuth2 | PKCE flow with token refresh, EU-based |
-| FileLu | HTTPS | API Key authentication (native REST) |
-| Jottacloud | HTTPS | Login Token Bearer authentication |
+AeroFTP supports 22 protocols with appropriate transport security:
 
-### FTPS Encryption Modes (v1.4.0)
+| Category | Protocols |
+| -------- | --------- |
+| **End-to-end encrypted** | MEGA.nz, Filen, Internxt (client-side AES, zero-knowledge) |
+| **OAuth2 with PKCE** | Google Drive, Dropbox, OneDrive, Box, Zoho WorkDrive, kDrive, Koofr, Internxt |
+| **TLS/HTTPS** | S3, WebDAV, Azure Blob, pCloud, FileLu, Jottacloud, OpenDrive, Yandex Disk |
+| **SSH** | SFTP with TOFU host key verification |
+| **Configurable TLS** | FTP/FTPS (Explicit, Implicit, opportunistic) |
 
-AeroFTP supports all standard FTPS encryption modes:
+Plain FTP connections display a prominent insecure warning badge. WebDAV supports RFC 2617 Digest Authentication with automatic detection. SFTP uses Trust On First Use host key verification with visual fingerprint dialog and MITM change detection.
 
-| Mode | Description | Default Port |
-| ---- | ----------- | ------------ |
-| **Explicit TLS** | Connects plain, sends AUTH TLS to upgrade before login | 21 |
-| **Implicit TLS** | Direct TLS connection from the start | 990 |
-| **Explicit if available** | Attempts AUTH TLS, falls back to plain FTP if server doesn't support it | 21 |
-| **None** | Plain FTP (insecure warning displayed) | 21 |
+### AI Tool Security
 
-Additional options:
-- **Certificate verification**: Enabled by default; can be disabled per-connection for self-signed certificates
-- **TLS backend**: `native-tls` (system TLS library: OpenSSL on Linux, Secure Transport on macOS, SChannel on Windows)
+AeroAgent (48 tools) operates under backend-enforced security controls:
 
-### WebDAV Digest Authentication (v2.0.5)
+- **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
+- **Native OS confirmation**: Grant approval triggers an operating system dialog that cannot be bypassed by web frontend compromise or prompt injection
+- **Credential isolation**: AI models never receive raw credentials; the backend authenticates internally
+- **Shell denylist**: 35 regex patterns block dangerous commands
+- **Path validation**: Null bytes, traversal, and system paths blocked at the backend level
 
-AeroFTP implements HTTP Digest Authentication (RFC 2617) with automatic detection for WebDAV servers that require it (e.g., CloudMe). When a WebDAV server responds with `401 Unauthorized` and a `WWW-Authenticate: Digest` challenge, AeroFTP transparently switches from Basic to Digest auth.
+For the complete AI security model with grant properties, tool classification, and agent modes, see [AI Security](https://docs.aeroftp.app/security/ai-security).
 
-| Aspect | Details |
-| ------ | ------- |
-| **Standard** | RFC 2617 (HTTP Digest Access Authentication) |
-| **Algorithm** | MD5 (server-negotiated) |
-| **Challenge-response** | Password is never transmitted — only MD5 hashes of username:realm:password |
-| **Replay protection** | Nonce counting (`nc`) incremented per request, random `cnonce` per request |
-| **Request integrity** | Hash includes HTTP method and URI path (prevents request tampering) |
-| **Auto-detection** | Transparent fallback — tries Basic first, switches to Digest on 401 challenge |
-| **Compatibility** | All existing WebDAV providers (Nextcloud, Koofr, etc.) continue to use Basic auth unaffected |
+### Supply Chain
 
-**Security advantage over Basic auth**: Even without TLS, Digest auth protects the password from eavesdropping. With TLS (HTTPS), it provides defense-in-depth — a compromised TLS proxy cannot extract the plaintext password from Digest auth headers.
+All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC keyless signing:
 
-### OAuth2 Security
+- **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates
+- **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
+- **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
 
-- **PKCE** (Proof Key for Code Exchange) with SHA-256 code challenge
-- **CSRF** protection via state token validation
-- **Token storage** in Universal Vault (AES-256-GCM encrypted)
-- **Automatic refresh** with 5-minute buffer before expiry
-- **Ephemeral callback port**: OS-assigned random port (not a fixed port)
-
-### Unified Encrypted Keystore (v1.9.0)
-
-In v1.9.0, AeroFTP consolidates **all sensitive data** from localStorage into the encrypted vault. Previously, only server passwords and OAuth tokens were vault-encrypted; AI API keys, server profiles, and application configuration remained in browser localStorage. The Unified Keystore eliminates this gap.
-
-| Aspect | Details |
-| ------ | ------- |
-| **Scope** | Server profiles, AI provider settings, OAuth credentials, application config — all moved to `vault.db` |
-| **Frontend utility** | `secureStorage.ts` provides a vault-first API with automatic localStorage fallback for non-sensitive data |
-| **Migration wizard** | Auto-triggers on first launch after upgrade; migrates all legacy localStorage entries to encrypted vault |
-| **Data categories** | Server credentials, connection profiles, AI API keys, OAuth access/refresh tokens, config entries |
-| **Encryption** | Same AES-256-GCM per-entry encryption as the Universal Vault (HKDF-SHA256 derived key) |
-| **Backward compatibility** | Falls back to localStorage reads if vault entry is not found (migration may be partial on first run) |
-
-**What changed**: Before v1.9.0, `localStorage` contained server profile metadata (host, port, username — not passwords), AI provider selection, model preferences, and UI settings. After v1.9.0, all of these are encrypted in `vault.db`. The only data remaining in localStorage is non-sensitive UI state (window size, panel layout).
-
-### Security Hardening Updates (v2.0.8)
-
-The v2.0.8 cycle closes key remediation items from the GPT-5.3 security review while preserving Linux/WebKit compatibility.
-
-| Area | Update |
-| ---- | ------ |
-| **Settings confidentiality** | Core app settings now use vault-first storage (`app_settings`) with one-way idempotent migration from legacy `aeroftp_settings` and plaintext cleanup on write |
-| **SFTP trust model** | Host-key verification follows fail-closed behavior — mismatch/verification errors abort connection instead of allowing insecure continuation |
-| **Plugin execution safety** | Plugin shell execution path hardened to reduce shell-injection surface and keep command execution constrained to validated plugin context |
-| **Terminal guardrails** | Destructive-command denylist enforced in terminal tool execution path to reduce accidental high-risk operations |
-| **CSP baseline** | Explicit `csp` and `devCsp` profiles with `dangerousDisableAssetCspModification: true` (required by Monaco/xterm). `connect-src` hardened to `'self' ipc: blob:` only — no wildcard `https:` (v2.8.7). `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'` |
-| **Release evidence** | Security change evidence tracked in `docs/security-evidence/` for auditable release-by-release verification |
-
-### Keystore Backup and Restore (v1.9.0)
-
-AeroFTP v1.9.0 introduces full vault export/import for disaster recovery and device migration.
-
-| Feature | Details |
-| ------- | ------- |
-| **Export format** | `.aeroftp-keystore` binary file |
-| **Encryption** | Argon2id (128 MiB, t=4, p=4) + AES-256-GCM with user-chosen backup password |
-| **Contents** | Complete vault snapshot: server credentials, connection profiles, AI API keys, OAuth tokens, config entries |
-| **Category tracking** | Export summary shows count per category (e.g., "12 server credentials, 3 AI keys, 5 OAuth tokens") |
-| **Import merge strategies** | **Skip existing**: only import entries not already in the vault. **Overwrite all**: replace all entries with backup data |
-| **Integrity verification** | HMAC-SHA256 over the encrypted payload; import fails gracefully if file is corrupted or password is wrong |
-| **UI** | Settings > Backup tab with progress indicator and category summary |
-
-### Client-Side Encryption (v1.8.0)
-
-**AeroVault v2 (.aerovault containers) — Military-Grade Encryption**
-
-AeroVault v2 is available as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io ([docs.rs](https://docs.rs/aerovault)), enabling any Rust project to create and read `.aerovault` containers. AeroFTP uses this crate as its encryption backend since v2.8.9.
-
-| Component | Algorithm | Notes |
-| --------- | --------- | ----- |
-| **Content encryption** | AES-256-GCM-SIV (RFC 8452) | Nonce misuse-resistant — even nonce reuse doesn't compromise confidentiality |
-| **Key wrapping** | AES-256-KW (RFC 3394) | Built-in integrity check on unwrap |
-| **Filename encryption** | AES-256-SIV | Deterministic, hides file names |
-| **Key derivation** | Argon2id | 128 MiB memory, 4 iterations, 4 parallelism |
-| **Header integrity** | HMAC-SHA512 | 512-bit MAC, quantum-resistance margin |
-| **Cascade mode** | ChaCha20-Poly1305 | Optional double encryption layer |
-| **Chunk size** | 64 KB | Per-chunk random nonce + auth tag |
-| **Container format** | Binary | 512-byte header, encrypted manifest, chunked data |
-| **Crate** | [`aerovault`](https://crates.io/crates/aerovault) v0.3+ | Standalone Rust crate, MIT/Apache-2.0 dual licensed |
-
-> For the complete binary format specification with implementation guides for 6 languages, see [AeroVault v2 Specification](docs/AEROVAULT-V2-SPEC.md).
-
-**AeroVault v1 (legacy)**
-
-| Parameter | Value |
-| --------- | ----- |
-| Algorithm | AES-256-GCM |
-| Key derivation | Argon2id (64 MB, 3 iterations, 4 threads) |
-| Nonce | 12 bytes random per file entry |
-
-**Cryptomator (format 8 vaults) — Legacy Support**
-
-Accessible via folder context menu "Open as Cryptomator Vault":
-
-| Component | Algorithm |
-| --------- | --------- |
-| Master key derivation | scrypt (N=2^15, r=8, p=1) |
-| Key wrapping | AES Key Wrap (RFC 3394) |
-| Filename encryption | AES-SIV (deterministic) |
-| Content encryption | AES-GCM (32KB chunks with chunk counter nonce) |
-| Directory ID hashing | SHA-256 truncated to Base32 |
-
-### Archive Encryption
-
-| Format | Encryption | Backend |
-| ------ | ---------- | ------- |
-| **ZIP** | AES-256 (read + write) | `zip` v7.2 |
-| **7z** | AES-256 (read + write) | `sevenz-rust` v0.6 + p7zip sidecar |
-| **RAR** | Password-protected extraction | p7zip CLI |
-
-Archive passwords are wrapped in `secrecy::SecretString` for automatic memory zeroization on drop (SEC-001).
+For Sigstore verification commands and CI/CD security controls, see [Supply Chain Security](https://docs.aeroftp.app/security/supply-chain).
 
 ### Memory Safety
 
-- `zeroize` crate clears passwords and keys from memory after use
-- `secrecy` crate provides zero-on-drop containers for secrets
-- Passwords are never logged or written to disk in plain text
+- `zeroize` and `secrecy` crates clear passwords, keys, and tokens from memory after use
+- All provider credentials wrapped in `SecretString` across all 22 providers
 - Rust ownership model prevents use-after-free and buffer overflows
-- Archive passwords (ZIP/7z/RAR) wrapped in SecretString (v1.5.2)
-- All provider credentials (access tokens, refresh tokens, API keys) wrapped in SecretString across all 20 providers (v2.4.0+)
+- Passwords are never logged or written to disk in plain text
 
-### Streaming Transfers (v2.4.0)
+### TOTP Two-Factor Authentication
 
-All file transfers use chunked streaming to prevent memory exhaustion:
+Optional RFC 6238 TOTP second factor for vault access with exponential rate limiting (5 failures to 15-minute lockout cap). Setup requires initial code verification before enforcement activates.
 
-| Provider | Download | Upload | Chunk Size |
-|----------|----------|--------|------------|
-| FTP/FTPS | Streaming (8KB) | Streaming | 8 KB |
-| SFTP | Streaming (32KB) | SCP via ssh2 (32KB) | 32 KB |
-| Filen | Streaming per-chunk | Streaming | Per-server chunk |
-| Dropbox | Streaming (bytes_stream) | Streaming session (128MB) | 128 MB |
-| Google Drive | Streaming | Streaming (10MB) | 10 MB |
-| OneDrive | Streaming | Resumable (>4MB) | 10 MB |
-| Box | Streaming | Chunked session | 20 MB |
-| S3 | Streaming | Multipart | 5 MB |
-| WebDAV | Streaming (GET) | Streaming (PUT) | Full |
+For the complete TOTP implementation, rate limiting table, and security properties, see [TOTP 2FA](https://docs.aeroftp.app/security/totp).
 
-**Resource bounds**:
-- Parallel transfer streams: max 8 (Semaphore-controlled)
-- Progress event throttling: 150ms or 2% delta (all transfer paths including parallel sync)
-- Frontend transfer ID tracking: capped at 500 entries with FIFO eviction
-- Cloud Service conflict list: capped at 10,000 entries
+## Privacy
 
-### File System Hardening
+AeroFTP collects no telemetry, sends no analytics, and makes no network requests beyond user-initiated connections. All credential storage is local. No cloud accounts or external services are involved in authentication or settings.
 
-- Config directory (`~/.config/aeroftp/`): permissions `0700`
-- Vault and token files: permissions `0600`
-- Applied recursively on startup
+For the complete privacy model, data storage locations, and deletion instructions, see [Privacy](https://docs.aeroftp.app/security/privacy).
 
-### SFTP Host Key Verification (v2.4.0+)
+## Security Audits
 
-AeroFTP implements Trust On First Use (TOFU) with visual fingerprint verification for SFTP connections:
+| Date | Auditors | Result |
+| ---- | -------- | ------ |
+| March 2026 | GPT 5.4 + Claude Opus 4.6 | Desktop security: 4 findings, all remediated |
+| February 2026 | Aikido Security | Top 5% benchmark, 0 open issues |
+| v2.9.5 | Claude Opus 4.6 + GPT 5.4 | 117 findings, grade A- |
+| v2.8.7 | Claude Opus 4.6 + GPT 5.4 | 45+ findings resolved, grade A- |
+| v2.4.0 | 12 auditors, 4 phases | Provider integration audit, grade A- |
 
-- **Pre-connection probe**: A lightweight SSH handshake probes the server's host key *before* the real connection is established
-- **Visual fingerprint dialog**: On first connection, a PuTTY-style dialog displays the server's SHA-256 fingerprint and algorithm, requiring explicit user approval (Accept/Reject)
-- **Key change detection**: If a known host's key changes, a red MITM warning dialog is shown — the user must explicitly accept the new key or abort
-- On subsequent connections with a trusted key, connection proceeds silently
-- **Key mismatch = connection rejected** (MITM protection)
-- Supports `[host]:port` format for non-standard ports
-- Creates `~/.ssh/` directory with `0700` and `known_hosts` with `0600` permissions automatically
-- Pending keys are held in memory with 5-minute TTL (never written to disk until accepted)
-- SSH Terminal sessions also require host key approval before opening
-
-### SFTP Hybrid Upload Architecture (v3.0.5+)
-
-AeroFTP uses a dual-backend architecture for SFTP to ensure reliable file transfers:
-
-- **Downloads, listing, navigation, metadata**: Handled by `russh` 0.57 + `russh-sftp` 2.1 (async Rust, integrated with the Tauri runtime)
-- **Uploads**: Handled by `ssh2` (libssh2) via SCP protocol, executed in a blocking thread (`tokio::task::spawn_blocking`)
-
-This design was adopted after the development team identified a critical data integrity bug in `russh-sftp`'s `AsyncWrite` implementation: the SFTP write commands were not reliably delivered to the server before the file handle was closed, resulting in 0-byte files on disk. The issue was confirmed across russh versions 0.57.0, 0.57.1, and 0.58.0, and affects certain SFTP server implementations (confirmed on WD MyCloud NAS with embedded OpenSSH).
-
-The SCP upload path preserves all security properties:
-
-- Host key verification via `~/.ssh/known_hosts` (same trust model)
-- Password and private key authentication (same credential flow)
-- File permissions and timestamps preserved via SCP protocol
-- Post-upload size verification via SFTP `stat()` to detect transfer corruption
-
-### FTP Insecure Connection Warning
-
-When the user selects plain FTP (no TLS), AeroFTP displays:
-
-- A red **"Insecure"** badge on the protocol selector
-- A warning banner recommending FTPS or SFTP
-- Fully localized (47 languages)
-
-### AI Tool Security (v1.6.0+)
-
-- **Tool name whitelist**: 48 allowed tool names accepted by the backend (47 built-in + `agent_memory_write`). Extreme Mode circuit breaker: 3 consecutive errors halt autonomous execution (v2.8.7). Shell denylist: 35 regex patterns blocking dangerous commands (sudo, systemctl, mount, fdisk, iptables, useradd, etc.) (v2.8.9). TOTP verification uses single `Mutex<TotpInner>` with rate limiting (5 attempts → exponential lockout 30s-15min)
-- **Path validation**: Null byte rejection, path traversal prevention (component-level `..` detection via `std::path::Component::ParentDir`), 4096-char length limit. Applied in both `ai_tools.rs` (`validate_path`) and `context_intelligence.rs` (`validate_context_path`)
-- **Tool argument validation** (v2.0.x): Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits before tool execution
-- **Content size limits**: Remote file reads capped at 5KB, directory listings at 100 entries, agent memory 50KB, config files 5MB
-- **Native function calling**: SEC-002 resolved — structured JSON tool calls replace regex parsing for OpenAI, Anthropic, Gemini
-- **Danger levels**: Safe (auto-execute), Medium (user confirmation), High (explicit approval for delete operations)
-- **Rate limiting**: 20 requests per minute per AI provider, frontend token bucket
-- **Context intelligence security** (v2.0.x): All 5 `context_intelligence.rs` commands use `validate_context_path()`. Agent memory writes protected by `MEMORY_WRITE_LOCK` Mutex (TOCTOU prevention). Category input sanitized (alphanumeric + underscore/hyphen, max 30 chars). Config file reads capped at 5MB. Git status output limited to 100 entries
-- **Plugin sandboxing** (v1.9.0): Custom tools run as isolated subprocesses with 30s timeout, 1MB output limit, and plugin ID validation (alphanumeric + underscore only). Plugin execution goes through a separate `execute_plugin_tool` command, not the built-in tool whitelist. Plugin processes killed on timeout via `kill_on_drop(true)` (v2.0.2)
-- **Provider-specific hardening** (v2.0.0): Anthropic prompt caching uses ephemeral cache control. OpenAI tools enforce `strict: true` with `additionalProperties: false` for schema validation (restricted to supporting providers only). Gemini requests use `systemInstruction` top-level field (not in-message). Ollama pull model streams are validated NDJSON. Tool argument pre-validation via `validate_tool_args` checks file existence, permissions, and dangerous paths before execution
-- **AI audit hardening** (v2.0.2): HTTP client singletons with connection pooling and timeouts (120s/15s). Gemini API key sanitized from error messages. Token counts in OpenAI-compatible streaming via `stream_options`. Plugin tool name hijacking prevention (built-in tools checked first). Fail-closed tool validation. Agent memory prompt injection defense (7-pattern sanitization + XML delimiters). Macro step danger level enforcement. Anthropic multi-block text collection. Expanded deny-list (~/.ssh, ~/.gnupg, ~/.aws, ~/.kube)
-
-### CLI Security (v2.9.1)
-
-The `aeroftp-cli` binary implements security hardening equivalent to the GUI:
-
-| Area | Details |
-| ---- | ------- |
-| **Path traversal** | `validate_relative_path()` blocks `..` components and null bytes in all remote paths |
-| **ANSI sanitization** | `sanitize_filename()` strips ANSI escape sequences and control characters from server-provided filenames |
-| **OOM protection** | `cat` capped at 256 MB (`MAX_CAT_SIZE`), `tree`/`find` limited to 500,000 entries (`MAX_SCAN_ENTRIES`) |
-| **BFS cycle detection** | `tree` and `find` use `HashSet<String>` visited-path tracking to prevent infinite loops |
-| **Password protection** | stdin limited to 4 KB, URL passwords trigger warning, `--token`/`--two-factor` use `hide_env_values` |
-| **Output hygiene** | Data on stdout, messages on stderr — safe for piping and scripting |
-| **Color standards** | Respects `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE` environment variables |
-| **Batch engine** | SET values capped at 64 KB, UTF-8-safe variable expansion via `char_indices()` |
-| **Security audit** | 45 findings (8 HIGH, 19 MEDIUM, 18 LOW) — all resolved. Grade: C+ to A- |
-
-### File System Hardening (v2.0.2)
-
-- **Path validation**: All filesystem commands in `lib.rs` validated via `validate_path()` — null bytes, `..` traversal, 4096 length limit. Applied to: `save_local_file`, `calculate_checksum`, `compress_files`, and all `filesystem.rs` commands
-- **Symlink safety**: `symlink_metadata()` used consistently in `copy_dir_recursive` and `delete_local_file` — symlinks not followed during recursive operations, preventing escape from target directory
-- **Resource exhaustion limits**: `copy_dir_recursive` max depth 50, `delete_local_file` max 1M entries, `calculate_folder_size` max depth 100 + 1M files, `calculate_disk_usage` max depth 50 + 500K entries, `find_duplicates` max 100K files
-- **Command injection prevention**: `eject_volume` validates device path against `/dev/[a-zA-Z0-9/_-]+` regex
-- **Trash item traversal guard**: `restore_trash_item` validates ID contains no `/`, `\`, `..`, or null bytes
-- **Preview size caps**: Images 20MB, video/audio 20MB, text 5MB, thumbnails 5MB — all enforced at Rust backend level
-- **iframe sandbox**: HTML preview uses blob URL isolation (sandbox attribute removed in v2.0.3 for CSS rendering compatibility with WebKitGTK; content is served via blob: URL which provides origin isolation)
-
-### OAuth Session Security (v1.5.3)
-
-- OAuth credentials resolved from OS keyring on session switch (no plaintext fallback)
-- Tokens refreshed automatically on tab switching with proper PKCE re-authentication
-- Stale quota/connection state cleared before reconnection
-
-### Auto-Update Security (v2.4.0+)
-
-AeroFTP's in-app update for .deb/.rpm uses a branded Polkit authentication dialog with defense-in-depth hardening:
-
-- **URL whitelist** (v2.8.7): `download_update()` only accepts URLs from `https://github.com/axpdev-lab/aeroftp/releases/` and `https://objects.githubusercontent.com/`. Blocks XSS-to-download-to-root-RCE attack chain
-- **Path validation** (v2.8.7): `validate_update_path()` canonicalizes the downloaded file path and verifies it resides in `~/Downloads/` or system temp directory before `pkexec` execution
-- **Custom Polkit policy** (`com.aeroftp.update.install`): Shows AeroFTP icon, vendor info, and localized description instead of generic "authenticate to run dpkg" prompt
-- **Helper script** (`/usr/lib/aeroftp/aeroftp-update-helper`): Path-validated wrapper that only accepts packages from `~/Downloads/`, `/tmp/`, or `/var/tmp/`. Rejects all other paths. Only `.deb` and `.rpm` extensions accepted
-- **Fallback**: If the Polkit helper is not installed (e.g., manual build), falls back to generic `pkexec dpkg -i`
-- **Restart isolation**: Post-install relaunch uses `setsid` via `pre_exec` to create an independent session surviving parent exit
-- **Snap/AppImage**: These formats do not use pkexec — Snap auto-updates via snapd, AppImage self-replaces user-owned file
-
----
-
-## Privacy Features
-
-AeroFTP is designed as a **privacy-enhanced** file manager. While no software can guarantee complete anonymity, AeroFTP incorporates meaningful privacy protections that go beyond what traditional file managers and FTP clients offer.
-
-### Data-at-Rest Protection
-
-| Feature | Details |
-| ------- | ------- |
-| **Master Password** | Optional Argon2id (128 MiB, t=4, p=4) encrypted vault. When enabled, all credentials are locked behind a single master password — without it, no server profiles, API keys, or tokens are accessible |
-| **Encrypted Vault** | All sensitive data (server profiles, AI config, OAuth tokens) stored in AES-256-GCM encrypted `vault.db` — zero plaintext credentials on disk |
-| **Memory Zeroization** | Passwords, keys, and tokens are cleared from RAM immediately after use via `zeroize` and `secrecy` crates. No credential residue in memory dumps |
-
-### Minimal Footprint
-
-| Feature | Details |
-| ------- | ------- |
-| **Zero Telemetry** | AeroFTP collects no usage data, sends no analytics, and makes no network requests beyond user-initiated connections. No phone-home behavior |
-| **Clearable History** | Recent locations list is user-controlled and one-click clearable. No persistent browsing history beyond what the user explicitly saves |
-| **No Cloud Dependency** | Credential storage is entirely local (`~/.config/aeroftp/`). No third-party cloud services involved in authentication or settings sync |
-| **Minimal localStorage** | Only non-sensitive UI state (window size, panel layout) remains in browser storage. All credentials migrated to encrypted vault (v1.9.0) |
-
-### Portable Deployment
-
-| Feature | Details |
-| ------- | ------- |
-| **AppImage** | Self-contained Linux binary that runs from any location without installation. When removed, no traces remain on the system beyond the user's config directory |
-| **Config Isolation** | All application data lives in `~/.config/aeroftp/`. Deleting this directory removes all AeroFTP data from the system |
-| **No Registry Entries** | Linux/macOS: no system-wide modifications. AppImage runs entirely in userspace |
-
-### Privacy Comparison
-
-| Feature | AeroFTP | FileZilla | WinSCP | Cyberduck |
-| ------- | ------- | --------- | ------ | --------- |
-| Encrypted credential vault | AES-256-GCM | Plaintext XML | AES-256 (master pw) | OS Keychain |
-| Master password protection | Argon2id 128 MiB | Not available | Available | OS-level |
-| Zero telemetry | Yes | Opt-out analytics | Yes | Opt-out analytics |
-| Memory zeroization | `zeroize` + `secrecy` | No | No | No |
-| Portable deployment | AppImage | Portable ZIP | Portable EXE | Not available |
-| Clearable browsing history | One-click clear | Manual deletion | Manual deletion | Manual deletion |
-| Client-side encryption | AeroVault (AES-256-GCM-SIV) | Not available | Not available | Cryptomator (plugin) |
-
-> **Note**: AeroFTP is privacy-enhanced, not anonymous. Network connections to servers are visible to network observers. For true anonymity, combine AeroFTP with network-level privacy tools (VPN, Tor). AeroFTP's privacy features protect local data at rest and minimize traces on the host system.
-
----
-
-## Security Audit Report
-
-An independent security audit report is available, generated by [Aikido Security](https://aikido.dev) based on real-time monitoring of the codebase:
-
-- **Security Audit Report — February 2026** — Aikido benchmark: Top 5%, OWASP Top 10 coverage, 0 open issues across all categories ([PDF](docs/Security%20Audit%20Report%20axpnet%20-%20February%202026.pdf))
-
----
-
-## Security Highlights
-
-| Feature | Description |
-| ------- | ----------- |
-| **AeroVault v2** | Military-grade containers via standalone [`aerovault`](https://crates.io/crates/aerovault) crate — AES-256-GCM-SIV (nonce misuse-resistant), AES-KW key wrapping, AES-SIV filename encryption, Argon2id 128 MiB, HMAC-SHA512 integrity, optional ChaCha20 cascade |
-| **Cryptomator Support** | Format 8 vault compatibility with scrypt + AES-SIV + AES-GCM (context menu) |
-| **Universal Vault** | Single AES-256-GCM vault with HKDF-SHA256, Argon2id master mode, no OS keyring dependency |
-| **Unified Keystore** | ALL sensitive data (server profiles, AI config, OAuth tokens) in encrypted vault — no credentials in browser storage |
-| **Keystore Backup/Restore** | Full vault export/import as `.aeroftp-keystore` with Argon2id + AES-256-GCM protection |
-| **Ephemeral OAuth Port** | OS-assigned random port for OAuth2 callback — prevents token interception |
-| **FTP Insecure Warning** | Visual red badge and warning banner on plaintext FTP selection |
-| **Memory Zeroization** | `zeroize` and `secrecy` crates clear passwords and keys from RAM on drop |
-| **Archive Password Zeroization** | ZIP/7z/RAR passwords wrapped in SecretString |
-| **AI Tool Sandboxing** | 47-tool whitelist + path validation + danger levels + rate limiting + plugin subprocess isolation + pre-execution validation + kill-on-timeout. Plugin ecosystem with GitHub registry and SHA-256 integrity verification. `server_exec` tool resolves credentials from vault internally — passwords never exposed to AI model |
-| **AI Tool Validation** | Pre-execution `validate_tool_args` + DAG pipeline ordering + diff preview for edits + 8-strategy error analysis + fail-closed validation |
-| **AeroFile Hardening** | Path validation on all commands + symlink safety + resource exhaustion limits + preview size caps + iframe sandbox + filename validation |
-| **CLI Security** | Path traversal prevention, ANSI sanitization, OOM protection (256 MB cat, 500K scan), BFS cycle detection, password stdin 4 KB limit, NO_COLOR compliance, 45-finding audit (A-) |
-| **TOTP 2FA for Vault** | Optional RFC 6238 TOTP second factor with rate limiting (exponential backoff), `setup_verified` gate, zeroized secret bytes, single Mutex atomic state |
-| **Remote Vault Security** | Null byte validation, path traversal rejection, symlink detection, `canonicalize()` verification, Unix 0o600 permissions, error propagation on all writes |
-| **Chat History SQLite** | SQLite WAL + FTS5 full-text search with XSS-safe snippet rendering, FTS query injection prevention, retention auto-apply, dedicated clear-all, in-memory fallback |
-| **Security Audit (v2.9.5)** | Dual-engine 8-area audit (Claude Opus 4.6: 103 findings + GPT-5.4: 14 findings). 9 cross-engine convergences confirmed. All P0-P2 remediated: DOMPurify on dangerouslySetInnerHTML, fsync crash durability with dir fsync, keystore import all-or-nothing rollback, shell denylist expansion (redirects, command substitution), TOTP-before-cache, pCloud POST body secrets, vault remote path confinement, file_tags validate_path, symlink prevention in archives. Grade: B → A- |
-| **Security Audit (v2.8.9)** | GPT-5.4 residual audit closure: 6 of 11 partial findings resolved. A5-06 journal signing key moved process-side (HMAC-SHA256 derived), A3-05 provider password zeroized after factory create, A7-07 Cryptomator SecretString, A3-03 WebDAV HTTP insecure detection, A1-07 shell denylist 18→35 patterns, A8-01 risk-accepted (file manager requires fs:read-all/write-all). Score: 34/39 fixed, 5 partial, 0 open |
-| **Security Audit (v2.8.7)** | Cross-audit reaching grade A- (Claude Opus 4.6 8-area audit + GPT-5.4 counter-audit). 45+ findings resolved: updater URL whitelist, CSP connect-src hardened, KDF upgrade (128 MiB), credential zeroization at all call sites, OAuth1 Drop+zeroize, atomic writes, Extreme Mode circuit breaker, GitHub Actions SHA pinning |
-| **Security Audit (v2.4.0)** | 12-auditor 4-phase provider integration audit (Capabilities, Security GPT-5.3, Integration Claude Opus, Bugs Terminator Counter-Audit). Grade: A-. Streaming upload OOM fix, SecretString for all 19 providers, quick-xml migration, FTP TLS downgrade detection |
-| **Security Audit (v2.3.0)** | 55+ findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — SQL injection prevention, XSS in FTS snippets, WAL mode hardening, retention enforcement |
-| **Security Audit (v2.2.4)** | 13 findings resolved from 5 independent auditors (4x Claude Opus 4.6 + GPT-5.3 Codex) — TOTP, Remote Vault, modals, provider configs |
-| **Security Audit (v2.0.2)** | 70 findings resolved across 3 independent audits by 4x Claude Opus 4.6 agents + GPT-5.2-Codex — AeroAgent (A-), AeroFile (A-) |
-| **WebDAV Digest Auth** | RFC 2617 Digest authentication with auto-detection — password never transmitted, nonce-based replay protection, request integrity verification |
-| **FTPS TLS Mode Selection** | Users choose Explicit, Implicit, or opportunistic TLS for full control over encryption level |
+Cumulative: 300+ findings identified across 8 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
 
 ## Known Issues
 
-| ID | Component | Severity | Status | Details |
-| -- | --------- | -------- | ------ | ------- |
-| [CVE-2025-54804](https://github.com/axpdev-lab/aeroftp/security/dependabot/3) | russh (SFTP) | Medium | **Resolved** | Fixed by upgrading to russh v0.57. |
-| SEC-001 | Archive passwords | Medium | **Resolved (v1.5.2)** | ZIP/7z/RAR passwords now wrapped in SecretString |
-| SEC-002 | AI tool parsing | Medium | **Resolved (v1.6.0)** | Native function calling replaces regex-based parsing |
-| SEC-003 | Keep-alive routing | Low | **Resolved (v1.5.1)** | Keep-alive now routes correctly per protocol |
-| SEC-004 | OAuth token exposure | Medium | **Resolved (v1.5.2)** | OAuth tokens wrapped in SecretString |
+| ID | Severity | Status | Details |
+| -- | -------- | ------ | ------- |
+| [CVE-2025-54804](https://github.com/axpdev-lab/aeroftp/security/dependabot/3) | Medium | **Resolved** | russh SFTP, fixed by upgrade to v0.57 |
 
 ## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+**Do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via [GitHub Security Advisories](https://github.com/axpdev-lab/aeroftp/security/advisories/new) or create a private issue.
+Report via [GitHub Security Advisories](https://github.com/axpdev-lab/aeroftp/security/advisories/new). We respond within 48 hours.
 
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see [Vulnerability Disclosure](https://docs.aeroftp.app/security/reporting).
 
-We will respond within 48 hours and work with you to address the issue.
+---
 
-## Bug Bounty
-
-AeroFTP welcomes responsible disclosure of security vulnerabilities. Researchers who report valid issues will be credited in our Security Hall of Fame.
-
-### Scope
-
-- AeroFTP desktop application (all platforms)
-- AeroVault encryption implementation
-- AI tool execution sandbox
-- OAuth2/credential storage
-
-### Out of Scope
-
-- Social engineering attacks
-- Denial of service (DoS)
-- Issues in third-party dependencies (report upstream)
-- Issues requiring physical access to the device
-
-### Rules
-
-- Report via [GitHub Security Advisories](https://github.com/axpdev-lab/aeroftp/security/advisories/new)
-- Allow 48 hours for initial response
-- Do not publicly disclose before a fix is released
-- One bounty per unique vulnerability
-
-### Security Hall of Fame
-
-We gratefully acknowledge security researchers who help improve AeroFTP:
-
-*No reports yet — be the first!*
-
-*AeroFTP v3.1.7 - 28 March 2026*
+*AeroFTP v3.1.7 - 29 March 2026*
