@@ -916,6 +916,7 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
     }
 
     let _ = std::fs::remove_file(&backup_path);
+    #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
     Ok(())
@@ -951,6 +952,7 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
 
     let current_exe = std::env::current_exe()
         .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+    #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
     Ok(())
@@ -985,6 +987,7 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
 
     let current_exe = std::env::current_exe()
         .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+    #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
     Ok(())

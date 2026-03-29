@@ -20,6 +20,7 @@
 
 use serde::Serialize;
 use std::path::{Path, PathBuf, Component};
+#[cfg(target_os = "linux")]
 use std::sync::{LazyLock, Mutex};
 #[cfg(target_os = "linux")]
 use tauri::Emitter;

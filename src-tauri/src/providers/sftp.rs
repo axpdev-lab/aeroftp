@@ -321,10 +321,10 @@ impl SftpProvider {
         Ok(session)
     }
 
-    fn local_file_mode(local_path: &str) -> i32 {
+    fn local_file_mode(_local_path: &str) -> i32 {
         #[cfg(unix)]
         {
-            if let Ok(metadata) = std::fs::metadata(local_path) {
+            if let Ok(metadata) = std::fs::metadata(_local_path) {
                 return (metadata.permissions().mode() & 0o777) as i32;
             }
         }
