@@ -25,7 +25,7 @@
     "@tauri-apps/plugin-log": "^2.8.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-shell": "^2.3.5",
-    "@types/dompurify": "^3.2.1",
+    "@types/dompurify": "^3.2.0",
     "@types/react-window": "^2.0.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",

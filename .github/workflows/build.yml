@@ -191,6 +191,7 @@ jobs:
             echo "Signing: $(basename "$artifact")"
             cosign sign-blob \
               --bundle "${artifact}.sigstore.json" \
+              --new-bundle-format \
               --yes \
               "$artifact"
             echo "Signed: $(basename "$artifact").sigstore.json"
