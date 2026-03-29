@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "3.1.8"
+version = "3.2.0"
 dependencies = [
  "aerovault",
  "aes",
@@ -63,6 +63,7 @@ dependencies = [
  "native-tls",
  "notify",
  "notify-debouncer-full",
+ "num-bigint-dig",
  "oauth2",
  "open",
  "pbkdf2",
@@ -74,6 +75,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rpassword",
+ "rsa 0.9.10",
  "rusqlite",
  "russh",
  "russh-sftp",

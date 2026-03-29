@@ -14,6 +14,7 @@ import { PROVIDER_LOGOS } from './ProviderLogos';
 import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
 
@@ -579,6 +580,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     </div>
                 )}
                 {filteredServers.map((server, idx) => {
+                    const gitHubBadge = server.protocol === 'github'
+                        ? getGitHubConnectionBadge(server.options)
+                        : null;
+                    const megaBadge = server.protocol === 'mega'
+                        ? getMegaConnectionBadge(server.options)
+                        : null;
                     // Disable drag-to-reorder when search is active (indices don't match full list)
                     const isDraggable = !searchQuery;
                     return (
@@ -632,15 +639,14 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
                                         {server.protocol || 'ftp'}
                                     </span>
-                                    {server.protocol === 'github' && server.options?.githubAuthMode && (
-                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                                            server.options.githubAuthMode === 'app'
-                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                                                : server.options.githubAuthMode === 'pat'
-                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
-                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                                        }`}>
-                                            {server.options.githubAuthMode === 'app' ? 'APP' : server.options.githubAuthMode === 'pat' ? 'PAT' : 'OAuth'}
+                                    {gitHubBadge && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gitHubBadge.className}`}>
+                                            {gitHubBadge.label}
+                                        </span>
+                                    )}
+                                    {megaBadge && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${megaBadge.className}`}>
+                                            {megaBadge.label}
                                         </span>
                                     )}
                                 </div>
@@ -654,7 +660,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                 : server.protocol === 'drime'
                                                 ? 'Drime Cloud'
                                                 : server.protocol === 'mega'
-                                                ? t('savedServers.e2eAes128', { username: server.username || '' })
+                                                ? `${t('savedServers.e2eAes128', { username: server.username || '' })} — ${megaBadge?.longLabel || 'MEGAcmd'}`
                                                 : server.protocol === 's3'
                                                     ? (() => {
                                                         const bucket = server.options?.bucket || '';
@@ -675,8 +681,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                     : server.protocol === 'github'
                                                         ? (() => {
                                                             const base = server.host;
-                                                            const mode = server.options?.githubAuthMode;
-                                                            const modeLabel = mode === 'pat' ? ' (PAT)' : mode === 'app' ? ' (App)' : mode === 'authorize' ? ' (OAuth)' : '';
+                                                            const modeLabel = gitHubBadge ? ` (${gitHubBadge.label})` : '';
                                                             return `${base}${modeLabel}`;
                                                         })()
                                                     : server.protocol === 'webdav'

@@ -2067,7 +2067,9 @@ const App: React.FC = () => {
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
       save_session: effectiveParams.options?.save_session,
+      mega_mode: effectiveParams.options?.mega_mode || null,
       session_expires_at: effectiveParams.options?.session_expires_at,
+      logout_on_disconnect: effectiveParams.options?.logout_on_disconnect || false,
       private_key_path: effectiveParams.options?.private_key_path || null,
       key_passphrase: effectiveParams.options?.key_passphrase || null,
       timeout: effectiveParams.options?.timeout || 30,
@@ -2485,19 +2487,14 @@ const App: React.FC = () => {
           await changeLocalDirectory(quickConnectDirs.localDir);
         }
 
-        // Create session with explicit S3 options preserved
+        // Create session with provider options preserved
         const sessionParams: ConnectionParams = {
           protocol: protocol,
           server: effectiveParams.server,
           port: effectiveParams.port,
           username: effectiveParams.username,
           password: effectiveParams.password,
-          options: {
-            bucket: effectiveParams.options?.bucket,
-            region: effectiveParams.options?.region || 'us-east-1',
-            endpoint: effectiveParams.options?.endpoint,
-            pathStyle: effectiveParams.options?.pathStyle,
-          },
+          options: effectiveParams.options,
         };
         createSession(
           providerName,

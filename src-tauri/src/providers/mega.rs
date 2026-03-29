@@ -13,6 +13,10 @@ use tokio::io::AsyncWriteExt;
 use secrecy::ExposeSecret;
 use std::path::Path;
 
+/// Windows: hide the console window that flashes when spawning .bat/.exe MEGAcmd commands.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, MegaConfig, StorageInfo,
 };
@@ -26,13 +30,13 @@ const MAX_RETRIES: usize = 2;
 /// Delay between retries (milliseconds).
 const RETRY_DELAY_MS: u64 = 2000;
 
-pub struct MegaProvider {
+pub struct MegaCmdProvider {
     config: MegaConfig,
     connected: bool,
     current_path: String,
 }
 
-impl MegaProvider {
+impl MegaCmdProvider {
     pub fn new(config: MegaConfig) -> Self {
         Self {
             config,
@@ -126,9 +130,14 @@ impl MegaProvider {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS)).await;
             }
 
-            let output_future = Command::new(&resolved_cmd)
-                .args(args)
-                .output();
+            let mut cmd_builder = Command::new(&resolved_cmd);
+            cmd_builder.args(args);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd_builder.creation_flags(CREATE_NO_WINDOW);
+            }
+            let output_future = cmd_builder.output();
 
             let output = match tokio::time::timeout(
                 std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
@@ -195,33 +204,57 @@ impl MegaProvider {
         }
     }
 
-    /// Internal login logic — used by connect() and re-auth (ARCH-03/AUTH-01: password via stdin).
+    /// Internal login logic — used by connect() and re-auth.
+    /// On Windows, .bat wrappers don't forward stdin so password must be passed as CLI argument.
+    /// On Unix, password is piped via stdin to avoid process-list exposure (AUTH-01).
     async fn do_login(&mut self) -> Result<(), ProviderError> {
         let password = self.config.password.expose_secret().to_string();
         let resolved_cmd = Self::resolve_mega_cmd("mega-login");
 
         let login_future = async {
-            let mut child = Command::new(&resolved_cmd)
-                .arg(&self.config.email)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|e| ProviderError::ConnectionFailed(
-                    format!("Failed to spawn mega-login: {}", e)
-                ))?;
+            #[cfg(windows)]
+            let output = {
+                // Windows: .bat wrappers don't forward stdin — pass as CLI argument
+                // CREATE_NO_WINDOW prevents cmd.exe console flash
+                use std::os::windows::process::CommandExt;
+                Command::new(&resolved_cmd)
+                    .arg(&self.config.email)
+                    .arg(&password)
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output()
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(
+                        format!("Failed to execute mega-login: {}", e)
+                    ))?
+            };
 
-            if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(password.as_bytes()).await.map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("Failed to write password to stdin: {}", e))
-                })?;
-                stdin.write_all(b"\n").await.ok();
-                drop(stdin);
-            }
+            #[cfg(not(windows))]
+            let output = {
+                // Unix: password via stdin pipe (AUTH-01 — not exposed in process list)
+                let mut child = Command::new(&resolved_cmd)
+                    .arg(&self.config.email)
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|e| ProviderError::ConnectionFailed(
+                        format!("Failed to spawn mega-login: {}", e)
+                    ))?;
 
-            let output = child.wait_with_output().await.map_err(|e| {
-                ProviderError::ConnectionFailed(format!("mega-login wait failed: {}", e))
-            })?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    stdin.write_all(password.as_bytes()).await.map_err(|e| {
+                        ProviderError::ConnectionFailed(format!("Failed to write password to stdin: {}", e))
+                    })?;
+                    stdin.write_all(b"\n").await.ok();
+                    drop(stdin);
+                }
+
+                child.wait_with_output().await.map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("mega-login wait failed: {}", e))
+                })?
+            };
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -258,11 +291,17 @@ impl MegaProvider {
                 // Daemon might not be running — try to start it
                 tracing::info!(target: "mega", "[DAEMON] Attempting to start MEGAcmd daemon...");
                 let server_cmd = Self::resolve_mega_cmd("mega-cmd-server");
-                let _ = Command::new(&server_cmd)
+                let mut daemon_cmd = Command::new(&server_cmd);
+                daemon_cmd
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
+                    .stderr(std::process::Stdio::null());
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    daemon_cmd.creation_flags(CREATE_NO_WINDOW);
+                }
+                let _ = daemon_cmd.spawn();
 
                 // Give daemon time to start
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -344,7 +383,7 @@ impl MegaProvider {
 }
 
 #[async_trait]
-impl StorageProvider for MegaProvider {
+impl StorageProvider for MegaCmdProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 
     fn provider_type(&self) -> ProviderType {
@@ -852,7 +891,7 @@ impl StorageProvider for MegaProvider {
 }
 
 /// MEGA-specific methods (trash management, etc.)
-impl MegaProvider {
+impl MegaCmdProvider {
     /// Move a file or directory to the MEGA rubbish bin (soft delete).
     /// Uses `mega-mv` to //bin instead of `mega-rm` which permanently deletes.
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -907,3 +946,5 @@ impl MegaProvider {
     // TODO: AUTH-07/QUOTA-01: Transfer quota tracking
     // TODO: QUOTA-02: Pro status detection
 }
+
+pub type MegaProvider = MegaCmdProvider;

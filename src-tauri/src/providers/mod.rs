@@ -32,6 +32,8 @@ pub mod google_drive;
 pub mod dropbox;
 pub mod onedrive;
 pub mod mega;
+pub mod mega_native;
+pub mod mega_crypto;
 pub mod box_provider;
 pub mod pcloud;
 pub mod azure;
@@ -63,7 +65,8 @@ pub use s3::S3Provider;
 pub use google_drive::GoogleDriveProvider;
 pub use dropbox::DropboxProvider;
 pub use onedrive::OneDriveProvider;
-pub use mega::MegaProvider;
+pub use mega::{MegaCmdProvider, MegaProvider};
+pub use mega_native::MegaNativeProvider;
 pub use box_provider::BoxProvider;
 pub use pcloud::PCloudProvider;
 pub use azure::AzureProvider;
@@ -577,7 +580,10 @@ impl ProviderFactory {
             }
             ProviderType::Mega => {
                 let mega_config = MegaConfig::from_provider_config(config)?;
-                Ok(Box::new(MegaProvider::new(mega_config)))
+                match mega_config.connection_mode {
+                    MegaConnectionMode::Native => Ok(Box::new(MegaNativeProvider::new(mega_config))),
+                    MegaConnectionMode::MegaCmd => Ok(Box::new(MegaCmdProvider::new(mega_config))),
+                }
             }
             ProviderType::Azure => {
                 let azure_config = AzureConfig::from_provider_config(config)?;

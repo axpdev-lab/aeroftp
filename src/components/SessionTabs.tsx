@@ -8,6 +8,7 @@ import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedP
 import type { LocalTab } from '../types/aerofile';
 import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
+import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 
 interface CloudTabState {
     enabled: boolean;
@@ -108,37 +109,37 @@ const ProviderIcon: React.FC<{
         case 's3':
             return <Database size={size} className={`${combinedClass} text-amber-600`} />;
         case 'mega':
-            return <MegaLogo size={size} />;
+            return <span className={opacityClass}><MegaLogo size={size} /></span>;
         case 'box':
-            return <BoxLogo size={size} />;
+            return <span className={opacityClass}><BoxLogo size={size} /></span>;
         case 'pcloud':
-            return <PCloudLogo size={size} />;
+            return <span className={opacityClass}><PCloudLogo size={size} /></span>;
         case 'azure':
-            return <AzureLogo size={size} />;
+            return <span className={opacityClass}><AzureLogo size={size} /></span>;
         case 'filen':
-            return <FilenLogo size={size} />;
+            return <span className={opacityClass}><FilenLogo size={size} /></span>;
         case 'fourshared':
-            return <FourSharedLogo size={size} />;
+            return <span className={opacityClass}><FourSharedLogo size={size} /></span>;
         case 'zohoworkdrive':
-            return <ZohoWorkDriveLogo size={size} />;
+            return <span className={opacityClass}><ZohoWorkDriveLogo size={size} /></span>;
         case 'internxt':
-            return <InternxtLogo size={size} />;
+            return <span className={opacityClass}><InternxtLogo size={size} /></span>;
         case 'kdrive':
-            return <KDriveLogo size={size} />;
+            return <span className={opacityClass}><KDriveLogo size={size} /></span>;
         case 'jottacloud':
-            return <JottacloudLogo size={size} />;
+            return <span className={opacityClass}><JottacloudLogo size={size} /></span>;
         case 'drime':
-            return <DrimeCloudLogo size={size} />;
+            return <span className={opacityClass}><DrimeCloudLogo size={size} /></span>;
         case 'filelu':
-            return <FileLuLogo size={size} />;
+            return <span className={opacityClass}><FileLuLogo size={size} /></span>;
         case 'koofr':
-            return <KoofrLogo size={size} />;
+            return <span className={opacityClass}><KoofrLogo size={size} /></span>;
         case 'opendrive':
-            return <OpenDriveLogo size={size} />;
+            return <span className={opacityClass}><OpenDriveLogo size={size} /></span>;
         case 'yandexdisk':
-            return <YandexDiskLogo size={size} />;
+            return <span className={opacityClass}><YandexDiskLogo size={size} /></span>;
         case 'github':
-            return <GitHubLogo size={size} />;
+            return <span className={opacityClass}><GitHubLogo size={size} /></span>;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -318,6 +319,13 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 const isOAuth = protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
                 const isConnected = session.status === 'connected';
                 const status = statusConfig[session.status];
+                // Badge computation kept for future colored-dot indicator
+                const _gitHubBadge = protocol === 'github'
+                    ? getGitHubConnectionBadge(session.connectionParams?.options)
+                    : null;
+                const _megaBadge = protocol === 'mega'
+                    ? getMegaConnectionBadge(session.connectionParams?.options)
+                    : null;
                 const isDragTarget = overIdx === idx && dragIdx !== null && dragIdx !== idx;
                 const isLocked = transferLocked && !isActive;
 
@@ -364,6 +372,8 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         <span className={`truncate text-sm ${isActive ? 'font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
                             {session.serverName}
                         </span>
+
+                        {/* Mode badges disabled in tabs — will be replaced by colored dot indicator */}
 
                         {/* Close button — hidden during transfer lock */}
                         {!isLocked && (

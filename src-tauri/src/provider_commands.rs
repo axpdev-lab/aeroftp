@@ -84,8 +84,12 @@ pub struct ProviderConnectionParams {
     pub sse_kms_key_id: Option<String>,
     /// Save session keys (MEGA)
     pub save_session: Option<bool>,
+    /// Backend selection for MEGA: "native" or "megacmd"
+    pub mega_mode: Option<String>,
     /// Session expiry timestamp (MEGA)
     pub session_expires_at: Option<i64>,
+    /// MEGA: whether to logout/clear session on disconnect
+    pub logout_on_disconnect: Option<bool>,
     /// SFTP: Path to private key file
     pub private_key_path: Option<String>,
     /// SFTP: Passphrase for encrypted private key
@@ -188,11 +192,19 @@ impl ProviderConnectionParams {
 
         // Add MEGA-specific options
         if provider_type == ProviderType::Mega {
-            if self.save_session.unwrap_or(false) {
+            if self.save_session.unwrap_or(true) {
                 extra.insert("save_session".to_string(), "true".to_string());
+            }
+            if let Some(ref mega_mode) = self.mega_mode {
+                if !mega_mode.is_empty() {
+                    extra.insert("mega_mode".to_string(), mega_mode.clone());
+                }
             }
             if let Some(ts) = self.session_expires_at {
                 extra.insert("session_expires_at".to_string(), ts.to_string());
+            }
+            if let Some(logout) = self.logout_on_disconnect {
+                extra.insert("logout_on_disconnect".to_string(), logout.to_string());
             }
         }
 
@@ -2968,8 +2980,17 @@ pub async fn mega_move_to_trash(
         return Err("This operation is only available for MEGA".to_string());
     }
 
+    // Try native provider first, then MEGAcmd
+    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+        for path in &paths {
+            native.move_to_trash(path).await
+                .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
+        }
+        return Ok(());
+    }
+
     let mega = provider.as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     for path in &paths {
@@ -2992,8 +3013,12 @@ pub async fn mega_list_trash(
         return Err("This operation is only available for MEGA".to_string());
     }
 
+    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+        return native.list_trash().await.map_err(|e| format!("Failed to list trash: {}", e));
+    }
+
     let mega = provider.as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     mega.list_trash().await
@@ -3014,11 +3039,19 @@ pub async fn mega_restore_from_trash(
         return Err("This operation is only available for MEGA".to_string());
     }
 
+    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+        let cwd = native.pwd().await.unwrap_or_else(|_| "/".to_string());
+        for filename in &filenames {
+            native.restore_from_trash(filename, &cwd).await
+                .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
+        }
+        return Ok(());
+    }
+
     let mega = provider.as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
-    // Restore to current working directory (MEGAcmd doesn't preserve original path in rubbish bin)
     let cwd = mega.pwd().await.unwrap_or_else(|_| "/".to_string());
     for filename in &filenames {
         mega.restore_from_trash(filename, &cwd).await
@@ -3041,8 +3074,16 @@ pub async fn mega_permanent_delete(
         return Err("This operation is only available for MEGA".to_string());
     }
 
+    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+        for filename in &filenames {
+            native.permanent_delete_from_trash(filename).await
+                .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
+        }
+        return Ok(());
+    }
+
     let mega = provider.as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaProvider>()
+        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     for filename in &filenames {

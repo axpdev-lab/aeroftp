@@ -95,6 +95,7 @@ export interface ProviderConfig {
         region?: string;        // S3 region
         basePath?: string;      // WebDAV base path
         save_session?: boolean; // MEGA save session
+        mega_mode?: 'native' | 'megacmd';
         /** S3 endpoint URL template with {region} placeholder, e.g. 'https://s3.{region}.wasabisys.com' */
         endpointTemplate?: string;
         /** Direct S3 endpoint URL */

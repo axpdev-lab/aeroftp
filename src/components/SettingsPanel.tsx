@@ -27,6 +27,7 @@ import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode } from '../utils/providerConnectionMeta';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -62,7 +63,12 @@ const getServerDisplayInfo = (server: ServerProfile) => {
     }
 
     if (protocol === 'mega') {
-        return `E2E AES-128 — ${server.username}`;
+        return `E2E AES-128 — ${server.username}${server.options ? ` — ${getMegaConnectionBadge(server.options).longLabel}` : ''}`;
+    }
+
+    if (protocol === 'github') {
+        const badge = getGitHubConnectionBadge(server.options);
+        return `${server.host}${badge ? ` (${badge.label})` : ''}`;
     }
 
     if (protocol === 's3') {
@@ -930,17 +936,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         {protocol}
                                                                     </span>
                                                                     {/* GitHub auth mode badge */}
-                                                                    {protocol === 'github' && server.options?.githubAuthMode && (
-                                                                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                                                                            server.options.githubAuthMode === 'app'
-                                                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
-                                                                                : server.options.githubAuthMode === 'pat'
-                                                                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
-                                                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
-                                                                        }`}>
-                                                                            {server.options.githubAuthMode === 'app' ? 'APP' : server.options.githubAuthMode === 'pat' ? 'PAT' : 'OAuth'}
-                                                                        </span>
-                                                                    )}
+                                                                    {protocol === 'github' && (() => {
+                                                                        const badge = getGitHubConnectionBadge(server.options);
+                                                                        if (!badge) return null;
+                                                                        return (
+                                                                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>
+                                                                                {badge.label}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
+                                                                    {protocol === 'mega' && (() => {
+                                                                        const badge = getMegaConnectionBadge(server.options);
+                                                                        return (
+                                                                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>
+                                                                                {badge.label}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                                                     {getServerDisplayInfo(server)}
@@ -1011,6 +1023,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         const isOpenDrive = protocol === 'opendrive';
                                         const isYandexDisk = protocol === 'yandexdisk';
                                         const isGitHub = protocol === 'github';
+                                        const megaMode = getMegaConnectionMode(editingServer.options);
                                         const githubAuthMode = editingServer.options?.githubAuthMode || 'authorize';
                                         const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk && !isGitHub;
                                         const needsPassword = !isOAuth && !isGitHub;
@@ -1054,10 +1067,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 // Clear fields that don't apply
                                                 host: newProtocol === 'opendrive'
                                                     ? 'dev.opendrive.com'
+                                                    : newProtocol === 'mega'
+                                                    ? 'mega.nz'
                                                     : (isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType)) ? '' : editingServer.host,
                                                 username: '',
                                                 password: '',
-                                                options: {}
+                                                options: newProtocol === 'mega'
+                                                    ? { mega_mode: 'megacmd', save_session: true, logout_on_disconnect: false }
+                                                    : {}
                                             });
                                         };
 
@@ -1203,7 +1220,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         )}
 
-                                                        {/* MEGA - email only */}
+                                                        {/* MEGA - email, password, backend mode and session options */}
                                                         {isMega && (
                                                             <>
                                                                 <div>
@@ -1212,9 +1229,106 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         type="email"
                                                                         placeholder={t('settings.megaEmailPlaceholder')}
                                                                         value={editingServer.username}
-                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
+                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'mega.nz', port: 443 })}
                                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                     />
+                                                                </div>
+
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type={showEditPassword ? 'text' : 'password'}
+                                                                            placeholder={t('connection.megaPasswordPlaceholder')}
+                                                                            value={editingServer.password || ''}
+                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'mega.nz', port: 443 })}
+                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.megaConnectionMode')}</label>
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        {(['native', 'megacmd'] as const).map((mode) => {
+                                                                            const isActive = megaMode === mode;
+                                                                            return (
+                                                                                <button
+                                                                                    key={mode}
+                                                                                    type="button"
+                                                                                    onClick={() => setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        host: 'mega.nz',
+                                                                                        port: 443,
+                                                                                        options: {
+                                                                                            ...editingServer.options,
+                                                                                            mega_mode: mode,
+                                                                                        },
+                                                                                    })}
+                                                                                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                                                                                        isActive
+                                                                                            ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
+                                                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
+                                                                                    }`}
+                                                                                >
+                                                                                    <div className="text-xs font-medium">
+                                                                                        {mode === 'native' ? t('connection.megaModeNative') : t('connection.megaModeCmd')}
+                                                                                    </div>
+                                                                                    <p className="mt-1 text-[11px] opacity-80 leading-snug">
+                                                                                        {mode === 'native' ? t('connection.megaModeNativeDesc') : t('connection.megaModeCmdDesc')}
+                                                                                    </p>
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="p-3 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 space-y-3">
+                                                                    <label className="flex items-center gap-3 cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={editingServer.options?.save_session !== false}
+                                                                            onChange={e => setEditingServer({
+                                                                                ...editingServer,
+                                                                                options: { ...editingServer.options, save_session: e.target.checked }
+                                                                            })}
+                                                                            className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                                                        />
+                                                                        <div>
+                                                                            <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
+                                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
+                                                                        </div>
+                                                                    </label>
+
+                                                                    {megaMode === 'megacmd' && (
+                                                                        <label className="flex items-center gap-3 cursor-pointer pt-3 border-t border-red-200 dark:border-red-900/30">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={!!editingServer.options?.logout_on_disconnect}
+                                                                                onChange={e => setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: { ...editingServer.options, logout_on_disconnect: e.target.checked }
+                                                                                })}
+                                                                                className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                                                            />
+                                                                            <div>
+                                                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
+                                                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
+                                                                            </div>
+                                                                        </label>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10 text-xs text-blue-800 dark:text-blue-200">
+                                                                    <p className="font-medium mb-1">
+                                                                        {megaMode === 'megacmd' ? t('connection.megaRequirement') : t('connection.megaNativeNotice')}
+                                                                    </p>
+                                                                    <p className="opacity-80 leading-relaxed">
+                                                                        {megaMode === 'megacmd' ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}
+                                                                    </p>
                                                                 </div>
                                                             </>
                                                         )}

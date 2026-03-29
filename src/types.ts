@@ -88,6 +88,7 @@ export interface ProviderOptions {
 
   // MEGA-specific
   save_session?: boolean;
+  mega_mode?: 'native' | 'megacmd';
   session_expires_at?: number; // Timestamp (ms)
   logout_on_disconnect?: boolean;
 

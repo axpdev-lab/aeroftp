@@ -44,7 +44,7 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 22 protocols with appropriate transport security:
+AeroFTP supports 23 protocols with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |
@@ -81,7 +81,7 @@ For Sigstore verification commands and CI/CD security controls, see [Supply Chai
 ### Memory Safety
 
 - `zeroize` and `secrecy` crates clear passwords, keys, and tokens from memory after use
-- All provider credentials wrapped in `SecretString` across all 22 providers
+- All provider credentials wrapped in `SecretString` across all 23 providers
 - Rust ownership model prevents use-after-free and buffer overflows
 - Passwords are never logged or written to disk in plain text
 

@@ -477,6 +477,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Provider selection state (for S3/WebDAV)
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
+    const megaMode = connectionParams.options?.mega_mode === 'native' ? 'native' : 'megacmd';
+    const isMegaCmdMode = megaMode === 'megacmd';
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
@@ -2764,18 +2766,62 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
 
+                                        <div className="space-y-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                                {t('connection.megaConnectionMode')}
+                                            </label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {(['native', 'megacmd'] as const).map((mode) => {
+                                                    const isActive = megaMode === mode;
+                                                    return (
+                                                        <button
+                                                            key={mode}
+                                                            type="button"
+                                                            onClick={() => onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                options: {
+                                                                    ...connectionParams.options,
+                                                                    mega_mode: mode,
+                                                                },
+                                                            })}
+                                                            className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                                                                isActive
+                                                                    ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
+                                                                    : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
+                                                            }`}
+                                                        >
+                                                            <div className="text-sm font-medium">
+                                                                {mode === 'native'
+                                                                    ? t('connection.megaModeNative')
+                                                                    : t('connection.megaModeCmd')}
+                                                            </div>
+                                                            <p className="mt-1 text-xs opacity-80">
+                                                                {mode === 'native'
+                                                                    ? t('connection.megaModeNativeDesc')
+                                                                    : t('connection.megaModeCmdDesc')}
+                                                            </p>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
                                         <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
-                                            <p className="font-medium mb-1">{t('connection.megaRequirement')}</p>
+                                            <p className="font-medium mb-1">
+                                                {isMegaCmdMode ? t('connection.megaRequirement') : t('connection.megaNativeNotice')}
+                                            </p>
                                             <p className="opacity-80">
-                                                {t('connection.megaRequirementDesc')}
-                                                <a
-                                                    href="https://mega.io/cmd"
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="block mt-1 underline hover:text-blue-600 dark:hover:text-blue-300"
-                                                >
-                                                    {t('connection.downloadMegacmd')}
-                                                </a>
+                                                {isMegaCmdMode ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}
+                                                {isMegaCmdMode && (
+                                                    <a
+                                                        href="https://mega.io/cmd"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block mt-1 underline hover:text-blue-600 dark:hover:text-blue-300"
+                                                    >
+                                                        {t('connection.downloadMegacmd')}
+                                                    </a>
+                                                )}
                                             </p>
                                         </div>
 
@@ -2798,23 +2844,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </div>
                                             </label>
 
-                                            <label className="flex items-center gap-3 cursor-pointer mt-3 pt-3 border-t border-red-200 dark:border-red-900/30">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!connectionParams.options?.logout_on_disconnect} // Default false
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        options: { ...connectionParams.options, logout_on_disconnect: e.target.checked }
-                                                    })}
-                                                    className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
-                                                />
-                                                <div>
-                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                        {t('connection.logoutOnDisconnectDesc')}
-                                                    </p>
-                                                </div>
-                                            </label>
+                                            {isMegaCmdMode && (
+                                                <label className="flex items-center gap-3 cursor-pointer mt-3 pt-3 border-t border-red-200 dark:border-red-900/30">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!connectionParams.options?.logout_on_disconnect} // Default false
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            options: { ...connectionParams.options, logout_on_disconnect: e.target.checked }
+                                                        })}
+                                                        className="w-5 h-5 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                                    />
+                                                    <div>
+                                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                            {t('connection.logoutOnDisconnectDesc')}
+                                                        </p>
+                                                    </div>
+                                                </label>
+                                            )}
                                         </div>
 
                                         {/* Optional Remote Path */}

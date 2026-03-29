@@ -29,7 +29,7 @@ const OPTIONAL_FEATURES = [
 ] as const;
 
 // Extra features (accorpated in single "Extra" column with tooltip)
-const EXTRA_FEATURES = ['star', 'comments', 'tags', 'collaborations', 'devTools'] as const;
+const EXTRA_FEATURES = ['star', 'comments', 'tags', 'collaborations', 'devTools', 'notes'] as const;
 
 // Premium features (accorpated in single "Premium" column with tooltip)
 const PREMIUM_FEATURES = ['watermark', 'folderLock', 'filePassword'] as const;
@@ -40,7 +40,7 @@ const ENTERPRISE_FEATURES = ['storageClass', 'objectTagging', 'sse', 'checksum',
 // Labels for tooltip display
 const FEATURE_LABELS: Record<string, string> = {
   star: 'Star', comments: 'Comments', tags: 'Tags',
-  collaborations: 'Collaborations', devTools: 'Dev Tools',
+  collaborations: 'Collaborations', devTools: 'Dev Tools', notes: 'Notes',
   watermark: 'Watermark', folderLock: 'Folder Lock', filePassword: 'Password',
   storageClass: 'Storage Class', objectTagging: 'Object Tagging',
   sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
@@ -53,7 +53,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['star', 'comments'] },
   { name: 'Dropbox', logoId: 'dropbox',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
   { name: 'OneDrive', logoId: 'onedrive',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
@@ -67,14 +67,17 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'pCloud', logoId: 'pcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['checksum'] },
-  { name: 'MEGA', logoId: 'mega',
+  { name: 'MEGA Native', logoId: 'mega',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
+    advanced: [] },
+  { name: 'MEGA CMD', logoId: 'mega',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'Filen', logoId: 'filen',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
-    advanced: [] },
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
+    advanced: ['notes'] },
   { name: 'Internxt', logoId: 'internxt',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'kDrive', logoId: 'kdrive',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
@@ -83,7 +86,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'FileLu', logoId: 'filelu',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: ['filePassword'] },
   { name: 'Koofr', logoId: 'koofr',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
@@ -92,14 +95,14 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'Yandex Disk', logoId: 'yandexdisk',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: '4shared', logoId: '4shared',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: [] },
   { name: 'GitHub', logoId: 'github',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
-    advanced: ['devTools'] },
+    advanced: ['devTools', 'checksum'] },
 
   // ── S3 Compatible ──
   { name: 'Amazon S3', logoId: 'amazon-s3', section: 'S3 Compatible',
@@ -161,8 +164,21 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Nextcloud', logoId: 'nextcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
+  { name: 'FeliCloud', logoId: 'felicloud',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [] },
   { name: 'Hetzner Storage Box', logoId: 'hetzner',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+
+  // ── OpenStack Swift ──
+  { name: 'Blomp', logoId: 'blomp', section: 'Swift',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+
+  // ── Other ──
+  { name: 'Drime Cloud', logoId: 'drime', section: 'Other',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
 ];
 

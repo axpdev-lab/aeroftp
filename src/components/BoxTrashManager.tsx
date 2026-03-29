@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { formatSize } from '../utils/formatters';
+import { formatSize, formatDate } from '../utils/formatters';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 
 interface TrashEntry {
@@ -258,7 +258,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
                         {item.is_dir ? '—' : formatSize(item.size)}
                       </td>
                       <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                        {item.metadata?.trashed_at || item.modified || '—'}
+                        {item.metadata?.trashed_at ? formatDate(item.metadata.trashed_at) : item.modified ? formatDate(item.modified) : '—'}
                       </td>
                     </tr>
                   );

@@ -18,6 +18,15 @@
 
 ## Recently Shipped
 
+### v3.2.0 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **MEGA Native API** | Full native MEGA protocol - connect without MEGAcmd. Client-side AES-128-CTR encryption, RSA session auth, encrypted node tree, share links, trash management. Zero external dependencies. |
+| **MEGA Dual-Backend** | Users choose Native API or MEGAcmd in connection form. Mode-specific badges, session persistence, backward compatibility with existing profiles. |
+| **Windows MEGA Fixes** | Console flash eliminated (CREATE_NO_WINDOW), login via CLI arg for .bat wrappers. |
+| **Trash Date Formatting** | All 11 trash managers now display human-readable dates. |
+
 ### v3.1.8 (March 2026)
 
 | Feature | Description |

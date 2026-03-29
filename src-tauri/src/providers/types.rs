@@ -472,6 +472,14 @@ impl SftpConfig {
 }
 
 /// MEGA configuration
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MegaConnectionMode {
+    Native,
+    #[default]
+    MegaCmd,
+}
+
 #[derive(Debug, Clone)]
 pub struct MegaConfig {
     pub email: String,
@@ -480,6 +488,7 @@ pub struct MegaConfig {
     #[allow(dead_code)]
     pub save_session: bool,
     pub logout_on_disconnect: Option<bool>,
+    pub connection_mode: MegaConnectionMode,
 }
 
 impl MegaConfig {
@@ -497,11 +506,31 @@ impl MegaConfig {
         let logout_on_disconnect = config.extra.get("logout_on_disconnect")
             .map(|v| v == "true");
 
+        // Compatibility fallback: profiles created before the MEGA backend selector
+        // should continue using MEGAcmd until the native path is fully implemented.
+        let connection_mode = match config
+            .extra
+            .get("mega_mode")
+            .or_else(|| config.extra.get("connection_mode"))
+            .map(String::as_str)
+        {
+            Some("native") => MegaConnectionMode::Native,
+            Some("megacmd") => MegaConnectionMode::MegaCmd,
+            Some(other) => {
+                return Err(ProviderError::InvalidConfig(format!(
+                    "Invalid MEGA connection mode: {}",
+                    other
+                )));
+            }
+            None => MegaConnectionMode::MegaCmd,
+        };
+
         Ok(Self {
             email,
             password: password.into(),
             save_session,
             logout_on_disconnect,
+            connection_mode,
         })
     }
 }
@@ -1046,6 +1075,7 @@ impl TransferProgressInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     
     #[test]
     fn test_provider_type_default_port() {
@@ -1066,5 +1096,42 @@ mod tests {
         
         let no_ext = RemoteEntry::file("Makefile".to_string(), "/path/Makefile".to_string(), 500);
         assert_eq!(no_ext.extension(), None);
+    }
+
+    #[test]
+    fn test_mega_config_defaults_to_megacmd_for_legacy_profiles() {
+        let config = ProviderConfig {
+            name: "MEGA".to_string(),
+            provider_type: ProviderType::Mega,
+            host: "mega.nz".to_string(),
+            port: None,
+            username: Some("user@example.com".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: HashMap::new(),
+        };
+
+        let mega_config = MegaConfig::from_provider_config(&config).unwrap();
+        assert_eq!(mega_config.connection_mode, MegaConnectionMode::MegaCmd);
+    }
+
+    #[test]
+    fn test_mega_config_parses_explicit_native_mode() {
+        let mut extra = HashMap::new();
+        extra.insert("mega_mode".to_string(), "native".to_string());
+
+        let config = ProviderConfig {
+            name: "MEGA".to_string(),
+            provider_type: ProviderType::Mega,
+            host: "mega.nz".to_string(),
+            port: None,
+            username: Some("user@example.com".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let mega_config = MegaConfig::from_provider_config(&config).unwrap();
+        assert_eq!(mega_config.connection_mode, MegaConnectionMode::Native);
     }
 }

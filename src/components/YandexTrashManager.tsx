@@ -8,7 +8,7 @@ import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, 
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { RemoteFile } from '../types';
-import { formatSize } from '../utils/formatters';
+import { formatSize, formatDate } from '../utils/formatters';
 
 interface YandexTrashManagerProps {
   onClose: () => void;
@@ -259,7 +259,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
                       {item.is_dir ? '-' : formatSize(item.size || 0)}
                     </td>
                     <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                      {item.modified || '-'}
+                      {item.modified ? formatDate(item.modified) : '—'}
                     </td>
                   </tr>
                 ))}

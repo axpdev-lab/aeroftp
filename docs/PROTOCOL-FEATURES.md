@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 28 March 2026
-> Version: v3.1.7
+> Version: v3.2.0
 >
 > **Note**: GitHub (23rd protocol) supports repository filesystem (list, upload/commit, download, delete/commit, tree, search), release asset management (up to 2 GiB), automatic branch workflow for protected branches, and PR creation. Feature matrix tables below will be updated in a future pass to include GitHub columns.
 
@@ -21,7 +21,7 @@
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Dropbox** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **OneDrive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
-| **MEGA.nz** | Client-side AES | Password (MEGAcmd) | secrecy (zero-on-drop) | E2E Encrypted |
+| **MEGA.nz** | Client-side AES | Password (Native API or MEGAcmd) | secrecy (zero-on-drop) | E2E Encrypted |
 | **Box** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **pCloud** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Azure Blob** | HTTPS | Shared Key HMAC / SAS | Universal Vault | TLS Certificate |
@@ -114,7 +114,7 @@
 | **Google Drive** | Native | `provider_create_share_link` | Permanent "anyone with link" |
 | **Dropbox** | Native | `provider_create_share_link` | Uses shared_links API |
 | **OneDrive** | Native | `provider_create_share_link` | "view" permission link |
-| **MEGA.nz** | Native | `provider_create_share_link` | `mega-export` via MEGAcmd |
+| **MEGA.nz** | Native | `provider_create_share_link` | Native API or `mega-export` via MEGAcmd |
 | **Box** | Native | `provider_create_share_link` | "open" access shared link |
 | **pCloud** | Native | `provider_create_share_link` | Public link via `getfilepublink` |
 | **4shared** | — | — | Not yet implemented |
@@ -420,7 +420,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 47 tools work identically across all 21 protocols via the `StorageProvider` trait:
+All 47 tools work identically across all 23 protocols via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|

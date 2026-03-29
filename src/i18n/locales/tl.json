@@ -226,7 +226,14 @@
             "saveAsNew": "I-save bilang bago",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
-            "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)"
+            "yandexdiskHelp": "oauth.yandex.com → Authorize → Copy OAuth token (1 year)",
+            "megaConnectionMode": "Connection backend",
+            "megaModeNative": "Native API",
+            "megaModeNativeDesc": "Direct integration in AeroFTP. Recommended target path for the new connector.",
+            "megaModeCmd": "MEGAcmd",
+            "megaModeCmdDesc": "Uses the existing MEGAcmd bridge. Best compatibility with the current implementation.",
+            "megaNativeNotice": "Native MEGA path in rollout",
+            "megaNativeNoticeDesc": "Native mode is being integrated incrementally. Use it for validation and switch back to MEGAcmd if a feature is not available yet."
         },
         "browser": {
             "remote": "Remote",

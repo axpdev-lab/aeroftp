@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-29
+
+### MEGA Native API - Zero-Dependency Cloud Encryption
+
+Full native MEGA protocol implementation eliminating the MEGAcmd external dependency. Users can now connect to MEGA directly from AeroFTP without installing any additional software.
+
+#### Added
+
+- **MEGA Native API provider**: Complete JSON-RPC implementation connecting directly to MEGA servers. No external software required
+- **MEGA dual-backend**: Users choose between Native API (recommended) or MEGAcmd (legacy) in the connection form, with mode-specific badges in session tabs and saved servers
+- **MEGA client-side encryption**: AES-128-CTR file encryption/decryption, PBKDF2-SHA512 key derivation (v2), AES-ECB master key management, RSA session authentication (csid path) - all performed locally
+- **MEGA v1 authentication**: Legacy account support via 65536-round AES-ECB key derivation
+- **MEGA native file operations**: list, upload, download, mkdir, delete, rename, move - all via encrypted API without subprocess overhead
+- **MEGA native trash management**: Soft delete (move to rubbish bin), list trash, restore from trash, permanent delete - all via native API
+- **MEGA native share links**: Export files/folders with encrypted key URL via MEGA `l` command
+- **MEGA native storage quota**: Real-time used/total/free display via `uq` command
+- **MEGA session persistence**: Encrypted session keys stored in OS keyring, automatic resume on reconnect (saves ~3s per connection)
+- **MEGA node tree caching**: Full filesystem tree fetched once and cached in memory with parent-children index for O(1) lookups
+
+#### Fixed
+
+- **MEGA Windows console flash**: MEGAcmd operations no longer flash a cmd.exe window on every command (CREATE_NO_WINDOW flag)
+- **MEGA Windows login**: Password passed as CLI argument on Windows where .bat wrappers don't forward stdin
+- **MEGA delete behavior**: Both providers now soft-delete to trash instead of permanent deletion, matching MEGA web client behavior
+- **Session options on quick-connect**: All provider options (mega_mode, save_session, GitHub auth mode, SFTP keys) now preserved in session state. Previously only S3 options were kept
+- **logout_on_disconnect pipeline**: Option now properly transmitted from frontend through backend to provider disconnect handler
+- **MegaConnectionMode enum default**: Rust derive default aligned with parsing default (MegaCmd for legacy profiles)
+- **save_session backend default**: Changed from false to true, matching the frontend UI default
+- **HTTP 402 handling**: MEGA API 402 responses now correctly classified as authentication failures for graceful session resume
+- **Trash date formatting**: All 11 trash managers now use `formatDate()` for consistent human-readable timestamps
+
+#### Changed
+
+- **MEGA badge colors**: Native API badge is blue, MEGAcmd badge is red (MEGA brand color)
+
+#### Documentation
+
+- **APPENDIX-N complete**: 7 documents (N1-N7) covering architecture, protocol, execution plan, audit, implementation handoff, end-to-end review, and remediation certification
+- **21 unit tests**: Crypto primitives, base64, KDF, AES-ECB/CBC/CTR roundtrips, chunk boundaries, MPI encoding, node attributes
+- **Live integration tests**: Full CRUD cycle verified against real MEGA account via CLI
+
 ## [3.1.8] - 2026-03-29
 
 ### Desktop Security Hardening

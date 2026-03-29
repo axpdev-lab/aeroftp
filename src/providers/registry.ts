@@ -1149,6 +1149,7 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
         defaults: {
             save_session: true,
+            mega_mode: 'megacmd',
         },
         features: {
             shareLink: true, // Assuming MEGA supports it
