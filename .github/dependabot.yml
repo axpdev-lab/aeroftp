@@ -32,6 +32,22 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rusqlite"
         update-types: ["version-update:semver-major"]
+      # ── RustCrypto digest 0.11 migration block ──────────────────────
+      # sha1/sha2/md-5/ripemd 0.11+ require digest 0.11, but hmac 0.12
+      # and hkdf 0.12 still depend on digest 0.10. Unblock when hmac 0.13
+      # and hkdf 0.13 reach stable release.
+      - dependency-name: "sha1"
+        versions: [">=0.11.0"]
+      - dependency-name: "sha2"
+        versions: [">=0.11.0"]
+      - dependency-name: "md-5"
+        versions: [">=0.11.0"]
+      - dependency-name: "ripemd"
+        versions: [">=0.2.0"]
+      # num-bigint-dig 0.9 requires rand 0.9, incompatible with rsa 0.9
+      # which depends on num-bigint-dig 0.8. Unblock when rsa 0.10 stable.
+      - dependency-name: "num-bigint-dig"
+        versions: [">=0.9.0"]
 
   # npm dependencies
   - package-ecosystem: "npm"
