@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB 무료 클라우드 스토리지)",
       "blompTooltip": "Blomp — OpenStack Swift 기반 40GB 무료 클라우드 스토리지",
       "swiftDesc": "OpenStack Swift 오브젝트 스토리지",
-      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace 클라우드 스토리지와 호환"
+      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace 클라우드 스토리지와 호환",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "단축키",

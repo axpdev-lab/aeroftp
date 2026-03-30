@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB o storfa cwmwl am ddim)",
       "blompTooltip": "Blomp — 40GB o storfa cwmwl am ddim wedi'i bweru gan OpenStack Swift",
       "swiftDesc": "OpenStack Swift storfa gwrthrychau",
-      "swiftTooltip": "OpenStack Swift — yn gydnaws â Blomp, OVH, Rackspace storfa cwmwl"
+      "swiftTooltip": "OpenStack Swift — yn gydnaws â Blomp, OVH, Rackspace storfa cwmwl",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",

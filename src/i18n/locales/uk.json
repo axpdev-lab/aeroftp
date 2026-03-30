@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 ГБ безкоштовного хмарного сховища)",
       "blompTooltip": "Blomp — 40ГБ безкоштовного хмарного сховища на базі OpenStack Swift",
       "swiftDesc": "OpenStack Swift об'єктне сховище",
-      "swiftTooltip": "OpenStack Swift — сумісне з Blomp, OVH, Rackspace хмарним сховищем"
+      "swiftTooltip": "OpenStack Swift — сумісне з Blomp, OVH, Rackspace хмарним сховищем",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Грячі клавіші",

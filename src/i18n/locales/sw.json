@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB hifadhi ya wingu bure)",
       "blompTooltip": "Blomp — 40GB hifadhi ya wingu bure inayoendeshwa na OpenStack Swift",
       "swiftDesc": "OpenStack Swift hifadhi ya vitu",
-      "swiftTooltip": "OpenStack Swift — inayolingana na Blomp, OVH, Rackspace hifadhi ya wingu"
+      "swiftTooltip": "OpenStack Swift — inayolingana na Blomp, OVH, Rackspace hifadhi ya wingu",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Njia za Mkato",

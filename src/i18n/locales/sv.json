@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB gratis molnlagring)",
       "blompTooltip": "Blomp — 40GB gratis molnlagring drivet av OpenStack Swift",
       "swiftDesc": "OpenStack Swift objektlagring",
-      "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace molnlagring"
+      "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace molnlagring",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Kortkommandon",

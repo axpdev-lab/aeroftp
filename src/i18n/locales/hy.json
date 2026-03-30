@@ -1292,7 +1292,9 @@
       "blompDesc": "Blomp (40 GB անվճար ամպային պահոց)",
       "blompTooltip": "Blomp — 40GB անվճար ամպային պահոց OpenStack Swift-ի վրա",
       "swiftDesc": "OpenStack Swift օբյեկտային պահոց",
-      "swiftTooltip": "OpenStack Swift — համատեղ Blomp, OVH, Rackspace ամպային պահոցի հետ"
+      "swiftTooltip": "OpenStack Swift — համատեղ Blomp, OVH, Rackspace ամպային պահոցի հետ",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",

@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB besplatne pohrane u oblaku)",
       "blompTooltip": "Blomp — 40GB besplatne pohrane u oblaku pokretano s OpenStack Swift",
       "swiftDesc": "OpenStack Swift pohrana objekata",
-      "swiftTooltip": "OpenStack Swift — kompatibilno s Blomp, OVH, Rackspace pohranom u oblaku"
+      "swiftTooltip": "OpenStack Swift — kompatibilno s Blomp, OVH, Rackspace pohranom u oblaku",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Tipkovnički prečaci",

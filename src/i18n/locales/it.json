@@ -395,7 +395,9 @@
       "blompDesc": "Blomp (40 GB di archiviazione cloud gratuita)",
       "blompTooltip": "Blomp — 40GB di archiviazione cloud gratuita alimentata da OpenStack Swift",
       "swiftDesc": "OpenStack Swift archiviazione oggetti",
-      "swiftTooltip": "OpenStack Swift — compatibile con Blomp, OVH, Rackspace archiviazione cloud"
+      "swiftTooltip": "OpenStack Swift — compatibile con Blomp, OVH, Rackspace archiviazione cloud",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "browser": {
       "remote": "Remoto",

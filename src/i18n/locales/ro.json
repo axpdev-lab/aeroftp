@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB stocare cloud gratuită)",
       "blompTooltip": "Blomp — 40GB stocare cloud gratuită alimentată de OpenStack Swift",
       "swiftDesc": "OpenStack Swift stocare de obiecte",
-      "swiftTooltip": "OpenStack Swift — compatibil cu Blomp, OVH, Rackspace stocare cloud"
+      "swiftTooltip": "OpenStack Swift — compatibil cu Blomp, OVH, Rackspace stocare cloud",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Scurtături tastatură",

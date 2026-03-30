@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB უფასო ღრუბლოვანი საცავი)",
       "blompTooltip": "Blomp — 40GB უფასო ღრუბლოვანი საცავი OpenStack Swift-ის ბაზაზე",
       "swiftDesc": "OpenStack Swift ობიექტური საცავი",
-      "swiftTooltip": "OpenStack Swift — თავსებადია Blomp, OVH, Rackspace ღრუბლოვან საცავთან"
+      "swiftTooltip": "OpenStack Swift — თავსებადია Blomp, OVH, Rackspace ღრუბლოვან საცავთან",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "კლავიატურის მალსახმობები",

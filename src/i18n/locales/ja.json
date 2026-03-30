@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB無料クラウドストレージ)",
       "blompTooltip": "Blomp — OpenStack Swiftで動作する40GB無料クラウドストレージ",
       "swiftDesc": "OpenStack Swiftオブジェクトストレージ",
-      "swiftTooltip": "OpenStack Swift — Blomp、OVH、Rackspaceクラウドストレージと互換"
+      "swiftTooltip": "OpenStack Swift — Blomp、OVH、Rackspaceクラウドストレージと互換",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "キーボードショートカット",

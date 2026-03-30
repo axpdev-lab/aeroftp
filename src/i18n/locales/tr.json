@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB ücretsiz bulut depolama)",
       "blompTooltip": "Blomp — OpenStack Swift ile çalışan 40GB ücretsiz bulut depolama",
       "swiftDesc": "OpenStack Swift nesne depolama",
-      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace bulut depolama ile uyumlu"
+      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace bulut depolama ile uyumlu",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",

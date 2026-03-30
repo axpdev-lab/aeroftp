@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB พื้นที่เก็บข้อมูลคลาวด์ฟรี)",
       "blompTooltip": "Blomp — 40GB พื้นที่เก็บข้อมูลคลาวด์ฟรีขับเคลื่อนโดย OpenStack Swift",
       "swiftDesc": "OpenStack Swift พื้นที่เก็บข้อมูลออบเจกต์",
-      "swiftTooltip": "OpenStack Swift — เข้ากันได้กับ Blomp, OVH, Rackspace พื้นที่เก็บข้อมูลคลาวด์"
+      "swiftTooltip": "OpenStack Swift — เข้ากันได้กับ Blomp, OVH, Rackspace พื้นที่เก็บข้อมูลคลาวด์",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "แป้นพิมพ์ลัด",

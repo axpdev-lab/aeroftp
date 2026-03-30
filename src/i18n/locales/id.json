@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB penyimpanan cloud gratis)",
       "blompTooltip": "Blomp — 40GB penyimpanan cloud gratis didukung oleh OpenStack Swift",
       "swiftDesc": "OpenStack Swift penyimpanan objek",
-      "swiftTooltip": "OpenStack Swift — kompatibel dengan Blomp, OVH, Rackspace penyimpanan cloud"
+      "swiftTooltip": "OpenStack Swift — kompatibel dengan Blomp, OVH, Rackspace penyimpanan cloud",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Pintasan Keyboard",

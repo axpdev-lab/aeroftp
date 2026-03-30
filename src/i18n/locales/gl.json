@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB de almacenamento na nube de balde)",
       "blompTooltip": "Blomp — 40GB de almacenamento na nube de balde impulsado por OpenStack Swift",
       "swiftDesc": "OpenStack Swift almacenamento de obxectos",
-      "swiftTooltip": "OpenStack Swift — compatible con Blomp, OVH, Rackspace almacenamento na nube"
+      "swiftTooltip": "OpenStack Swift — compatible con Blomp, OVH, Rackspace almacenamento na nube",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Atallos de teclado",

@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB lưu trữ đám mây miễn phí)",
       "blompTooltip": "Blomp — 40GB lưu trữ đám mây miễn phí được cung cấp bởi OpenStack Swift",
       "swiftDesc": "OpenStack Swift lưu trữ đối tượng",
-      "swiftTooltip": "OpenStack Swift — tương thích với Blomp, OVH, Rackspace lưu trữ đám mây"
+      "swiftTooltip": "OpenStack Swift — tương thích với Blomp, OVH, Rackspace lưu trữ đám mây",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Phím tắt",

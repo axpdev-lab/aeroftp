@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB gratis skylagring)",
       "blompTooltip": "Blomp — 40GB gratis skylagring drevet av OpenStack Swift",
       "swiftDesc": "OpenStack Swift objektlagring",
-      "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace skylagring"
+      "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace skylagring",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Tastatursnarveier",

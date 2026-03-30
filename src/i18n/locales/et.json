@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB tasuta pilvemälu)",
       "blompTooltip": "Blomp — 40GB tasuta pilvemälu, töötab OpenStack Swift baasil",
       "swiftDesc": "OpenStack Swift objektimälu",
-      "swiftTooltip": "OpenStack Swift — ühilduv Blomp, OVH, Rackspace pilvemäluga"
+      "swiftTooltip": "OpenStack Swift — ühilduv Blomp, OVH, Rackspace pilvemäluga",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Kiirklahvid",

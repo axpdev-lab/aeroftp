@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB brezplačne shrambe v oblaku)",
       "blompTooltip": "Blomp — 40GB brezplačne shrambe v oblaku, ki jo poganja OpenStack Swift",
       "swiftDesc": "OpenStack Swift objektna shramba",
-      "swiftTooltip": "OpenStack Swift — združljivo z Blomp, OVH, Rackspace shrambo v oblaku"
+      "swiftTooltip": "OpenStack Swift — združljivo z Blomp, OVH, Rackspace shrambo v oblaku",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Bližnjice na tipkovnici",

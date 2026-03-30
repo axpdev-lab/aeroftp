@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB бесплатно складирање во облак)",
       "blompTooltip": "Blomp — 40GB бесплатно складирање во облак напојувано од OpenStack Swift",
       "swiftDesc": "OpenStack Swift складирање на објекти",
-      "swiftTooltip": "OpenStack Swift — компатибилно со Blomp, OVH, Rackspace складирање во облак"
+      "swiftTooltip": "OpenStack Swift — компатибилно со Blomp, OVH, Rackspace складирање во облак",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Кратенки на тастатура",

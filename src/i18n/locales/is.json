@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB ókeypis skýjageymsla)",
       "blompTooltip": "Blomp — 40GB ókeypis skýjageymsla knúin af OpenStack Swift",
       "swiftDesc": "OpenStack Swift hlutgeymsla",
-      "swiftTooltip": "OpenStack Swift — samhæft við Blomp, OVH, Rackspace skýjageymslu"
+      "swiftTooltip": "OpenStack Swift — samhæft við Blomp, OVH, Rackspace skýjageymslu",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",

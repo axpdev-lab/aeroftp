@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB বিনামূল্যে ক্লাউড স্টোরেজ)",
       "blompTooltip": "Blomp — 40GB বিনামূল্যে ক্লাউড স্টোরেজ OpenStack Swift দ্বারা চালিত",
       "swiftDesc": "OpenStack Swift অবজেক্ট স্টোরেজ",
-      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace ক্লাউড স্টোরেজের সাথে সামঞ্জস্যপূর্ণ"
+      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace ক্লাউড স্টোরেজের সাথে সামঞ্জস্যপূর্ণ",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "কীবোর্ড শর্টকাট",

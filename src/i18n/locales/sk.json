@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB cloudového úložiska zadarmo)",
       "blompTooltip": "Blomp — 40GB cloudového úložiska zadarmo poháňané OpenStack Swift",
       "swiftDesc": "OpenStack Swift objektové úložisko",
-      "swiftTooltip": "OpenStack Swift — kompatibilné s Blomp, OVH, Rackspace cloudovým úložiskom"
+      "swiftTooltip": "OpenStack Swift — kompatibilné s Blomp, OVH, Rackspace cloudovým úložiskom",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Klávesové skratky",

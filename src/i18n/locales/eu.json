@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB doako hodei biltegia)",
       "blompTooltip": "Blomp — 40GB doako hodei biltegia OpenStack Swift-ek bultzatua",
       "swiftDesc": "OpenStack Swift objektu biltegia",
-      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace hodei biltegiekin bateragarria"
+      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace hodei biltegiekin bateragarria",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Teklatu lasterbideak",

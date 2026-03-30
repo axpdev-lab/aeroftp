@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB kostenloser Cloudspeicher)",
       "blompTooltip": "Blomp — 40GB kostenloser Cloudspeicher betrieben mit OpenStack Swift",
       "swiftDesc": "OpenStack Swift Objektspeicher",
-      "swiftTooltip": "OpenStack Swift — kompatibel mit Blomp, OVH, Rackspace Cloudspeicher"
+      "swiftTooltip": "OpenStack Swift — kompatibel mit Blomp, OVH, Rackspace Cloudspeicher",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "Tastenkombinationen",

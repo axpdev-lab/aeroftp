@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB मुफ़्त क्लाउड स्टोरेज)",
       "blompTooltip": "Blomp — 40GB मुफ़्त क्लाउड स्टोरेज OpenStack Swift द्वारा संचालित",
       "swiftDesc": "OpenStack Swift ऑब्जेक्ट स्टोरेज",
-      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace क्लाउड स्टोरेज के साथ संगत"
+      "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace क्लाउड स्टोरेज के साथ संगत",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",

@@ -1299,7 +1299,9 @@
       "blompDesc": "Blomp (40 GB ការផ្ទុកពពកឥតគិតថ្លៃ)",
       "blompTooltip": "Blomp — 40GB ការផ្ទុកពពកឥតគិតថ្លៃដែលដំណើរការដោយ OpenStack Swift",
       "swiftDesc": "OpenStack Swift ការផ្ទុកវត្ថុ",
-      "swiftTooltip": "OpenStack Swift — ឆបគ្នាជាមួយ Blomp, OVH, Rackspace ការផ្ទុកពពក"
+      "swiftTooltip": "OpenStack Swift — ឆបគ្នាជាមួយ Blomp, OVH, Rackspace ការផ្ទុកពពក",
+      "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
     },
     "shortcuts": {
       "title": "ផ្លូវកាត់ក្តារចុច",
