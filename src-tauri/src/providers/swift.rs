@@ -307,7 +307,7 @@ impl SwiftProvider {
 
     /// Ensure we have a valid token, re-auth if expired
     async fn ensure_auth(&mut self) -> Result<(), ProviderError> {
-        if self.auth.as_ref().map_or(true, |a| !a.is_valid()) {
+        if self.auth.as_ref().is_none_or(|a| !a.is_valid()) {
             self.authenticate().await?;
         }
         Ok(())

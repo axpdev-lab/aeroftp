@@ -507,7 +507,7 @@ impl FileLuProvider {
                 let result = Self::parse_api::<FileListResult>(resp).await?;
                 let count = result.files.len();
                 all_files.extend(result.files.into_iter().filter(|f| {
-                    f.fld_id.map_or(true, |id| id == fld_id)
+                    f.fld_id.is_none_or(|id| id == fld_id)
                 }));
                 if count < 100 {
                     break;
@@ -561,7 +561,7 @@ impl FileLuProvider {
             let result = Self::parse_api::<FileListResult>(resp).await?;
             let count = result.files.len();
             all_files.extend(result.files.into_iter().filter(|f| {
-                f.fld_id.map_or(true, |id| id == fld_id)
+                f.fld_id.is_none_or(|id| id == fld_id)
             }));
             if count < 100 { break; }
         }

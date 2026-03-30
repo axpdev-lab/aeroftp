@@ -8732,9 +8732,17 @@ const App: React.FC = () => {
                   return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
                 } catch { return 'S3'; }
               }
-              // For FTP/FTPS/SFTP/etc, show username@server or session name
               const server = connectionParams.server || activeSession?.connectionParams?.server;
               const username = connectionParams.username || activeSession?.connectionParams?.username;
+              // For WebDAV-based protocols, extract hostname from full URL
+              if (protocol === 'webdav' && server) {
+                try {
+                  const url = new URL(server.startsWith('http') ? server : `https://${server}`);
+                  const host = url.hostname;
+                  const portStr = url.port && !['80', '443'].includes(url.port) ? `:${url.port}` : '';
+                  return `${username}@${host}${portStr}`;
+                } catch { /* fall through */ }
+              }
               return server ? `${username}@${server}` : activeSession?.serverName;
             })() : undefined}
             remotePath={currentRemotePath}

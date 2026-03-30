@@ -331,7 +331,7 @@ pub fn encrypt_node_attrs(name: &str, key: &[u8]) -> MegaCryptoResult<Vec<u8>> {
 
     // Pad to 16-byte boundary with null bytes
     let pad_len = (16 - (data.len() % 16)) % 16;
-    data.extend(std::iter::repeat(0u8).take(pad_len));
+    data.extend(std::iter::repeat_n(0u8, pad_len));
 
     aes_cbc_encrypt(&data, &attr_key)
 }

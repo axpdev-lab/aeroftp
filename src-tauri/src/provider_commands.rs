@@ -379,7 +379,7 @@ pub async fn provider_connect(
     // PAT and Device Flow provide their own password — never overwrite.
     // Uses clone() instead of take() so the token survives connection retries.
     if config.provider_type == ProviderType::GitHub {
-        let password_empty = config.password.as_ref().map_or(true, |p| p.is_empty());
+        let password_empty = config.password.as_ref().is_none_or(|p| p.is_empty());
         if password_empty {
             let held = state.held_github_app_token.lock().await;
             if let Some(ref token) = *held {

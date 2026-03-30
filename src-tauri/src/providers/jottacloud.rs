@@ -117,13 +117,13 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::AuthenticationFailed(
                 format!("Invalid login token (JSON parse failed): {}", e)
             ))?;
-        if token.username.as_ref().map_or(true, |u| u.is_empty()) {
+        if token.username.as_ref().is_none_or(|u| u.is_empty()) {
             return Err(ProviderError::AuthenticationFailed("Login token missing username".to_string()));
         }
-        if token.auth_token.as_ref().map_or(true, |t| t.is_empty()) {
+        if token.auth_token.as_ref().is_none_or(|t| t.is_empty()) {
             return Err(ProviderError::AuthenticationFailed("Login token missing auth_token".to_string()));
         }
-        if token.well_known_link.as_ref().map_or(true, |l| l.is_empty()) {
+        if token.well_known_link.as_ref().is_none_or(|l| l.is_empty()) {
             return Err(ProviderError::AuthenticationFailed("Login token missing wellKnownLink".to_string()));
         }
         Ok(token)
