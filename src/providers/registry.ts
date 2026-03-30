@@ -341,8 +341,8 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
-        helpUrl: 'https://mega.io/objectstorage',
-        signupUrl: 'https://mega.nz/fm/s4',
+        helpUrl: 'https://help.mega.io/megas4/setup-guides/s3-browser-setup-guide-for-mega-s4',
+        signupUrl: 'https://mega.nz/register',
     },
     {
         id: 'cloudflare-r2',
