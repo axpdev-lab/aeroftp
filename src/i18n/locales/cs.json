@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB cloudového úložiště zdarma",
       "aerocloudTooltip": "Proměňte jakýkoli server ve svůj osobní cloud s automatickou synchronizací",
       "azureTooltip": "Azure Blob Storage — ověření sdíleným klíčem nebo SAS tokenem",
+      "sourceforgeDesc": "Systém vydávání souborů SourceForge",
+      "sourceforgeTooltip": "Nahrát vydání na SourceForge přes SFTP",
       "boxTooltip": "Box — 10GB bezplatného úložiště, ověření OAuth2",
       "dropboxTooltip": "Dropbox — 2GB bezplatného úložiště, ověření OAuth2",
       "filenTooltip": "Filen — E2E šifrování s nulovým přístupem, 10GB zdarma",

@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB พื้นที่จัดเก็บคลาวด์ฟรี",
       "aerocloudTooltip": "เปลี่ยนเซิร์ฟเวอร์ใดๆ ให้เป็นคลาวด์ส่วนตัวพร้อมการซิงค์อัตโนมัติ",
       "azureTooltip": "Azure Blob Storage - ยืนยันตัวตนด้วย Shared Key หรือ SAS token",
+      "sourceforgeDesc": "ระบบเผยแพร่ไฟล์ SourceForge",
+      "sourceforgeTooltip": "อัปโหลดรีลีสไปยัง SourceForge ผ่าน SFTP",
       "boxTooltip": "Box - พื้นที่เก็บข้อมูลฟรี 10GB, ยืนยันตัวตน OAuth2",
       "dropboxTooltip": "Dropbox - พื้นที่เก็บข้อมูลฟรี 2GB, ยืนยันตัวตน OAuth2",
       "filenTooltip": "Filen - เข้ารหัส E2E แบบไม่มีความรู้, ฟรี 10GB",

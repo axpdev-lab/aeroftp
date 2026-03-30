@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB lưu trữ đám mây miễn phí",
       "aerocloudTooltip": "Biến bất kỳ máy chủ nào thành đám mây cá nhân với đồng bộ tự động",
       "azureTooltip": "Azure Blob Storage - Xác thực bằng Shared Key hoặc SAS token",
+      "sourceforgeDesc": "Hệ thống phát hành tệp SourceForge",
+      "sourceforgeTooltip": "Tải lên bản phát hành lên SourceForge qua SFTP",
       "boxTooltip": "Box - 10GB lưu trữ miễn phí, xác thực OAuth2",
       "dropboxTooltip": "Dropbox - 2GB lưu trữ miễn phí, xác thực OAuth2",
       "filenTooltip": "Filen - Mã hóa E2E không cần tin cậy, 10GB miễn phí",

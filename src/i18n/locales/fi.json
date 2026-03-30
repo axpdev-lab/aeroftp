@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 Gt ilmaista pilvitallennustilaa",
       "aerocloudTooltip": "Muuta mikä tahansa palvelin henkilökohtaiseksi pilveksi automaattisella synkronoinnilla",
       "azureTooltip": "Azure Blob Storage - Shared Key- tai SAS-tunnistautuminen",
+      "sourceforgeDesc": "SourceForge-julkaisujärjestelmä",
+      "sourceforgeTooltip": "Lataa julkaisut SourceForgeen SFTP:n kautta",
       "boxTooltip": "Box - 10GB ilmaiseksi, OAuth2-tunnistautuminen",
       "dropboxTooltip": "Dropbox - 2GB ilmaiseksi, OAuth2-tunnistautuminen",
       "filenTooltip": "Filen - Zero-knowledge E2E-salaus, 10GB ilmaiseksi",

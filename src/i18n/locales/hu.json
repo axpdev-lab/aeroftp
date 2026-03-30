@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB ingyenes felhőtárhely",
       "aerocloudTooltip": "Alakítson bármely szervert személyes felhővé automatikus szinkronizálással",
       "azureTooltip": "Azure Blob Storage - megosztott kulcs vagy SAS token hitelesítés",
+      "sourceforgeDesc": "SourceForge fájlkiadási rendszer",
+      "sourceforgeTooltip": "Kiadások feltöltése a SourceForge-ra SFTP-n keresztül",
       "boxTooltip": "Box - 10 GB ingyenes tárhely, OAuth2 hitelesítés",
       "dropboxTooltip": "Dropbox - 2 GB ingyenes tárhely, OAuth2 hitelesítés",
       "filenTooltip": "Filen - zéró ismeretű E2E titkosítás, 10 GB ingyenes",

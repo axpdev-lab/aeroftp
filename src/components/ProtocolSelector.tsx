@@ -51,6 +51,14 @@ const OneDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 
     </svg>
 );
 
+const SourceForgeLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+    <svg width={size} height={size} viewBox="0 0 117 103" className={className}>
+        <path fill="#ff6600" d="M46.2 94.8c-.4 0-.9-.2-1.2-.5L.5 49.8c-.6-.6-.6-1.7 0-2.4l47-47C47.8.2 48.2 0 48.6 0h13.5c.8 0 1.3.5 1.5 1s.2 1.2-.4 1.8L19.1 47c-.9.9-.9 2.3 0 3.2l34.9 35c.6.6.6 1.7 0 2.4l-6.7 6.8c-.3.2-.7.4-1.1.4z" />
+        <path fill="#ff6600" d="M55.1 102.6c-.8 0-1.3-.5-1.5-1s-.2-1.2.4-1.8L98.2 55.6c.4-.4.7-1 .7-1.6s-.2-1.2-.7-1.6l-35-35c-.6-.6-.6-1.7 0-2.4L70 8.2c.3-.3.7-.5 1.2-.5s.8.3 1.1.6l44.4 44.5c.3.3.5.7.5 1.2s-.2.9-.5 1.2l-47 47c-.3.3-.7.5-1.2.5H55.1z" />
+        <path fill="#ff6600" d="M67 54.2c0-5-1.8-7.4-2.8-8.2-.2-.2-.5 0-.4.2.2 2.9-3.4 3.6-3.4 8v.1c0 2.7 2 4.9 4.6 4.9s4.6-2.2 4.6-4.9v-.1c0-1.3-.5-2.5-1-3.4-.1-.2-.4-.1-.3.1.8 3.8-1.3 6.2-1.3 3.3z" />
+    </svg>
+);
+
 const AwsS3Logo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className}>
         <path fill="#e25444" d="M12 2L3 7v10l9 5 9-5V7l-9-5z" />
@@ -69,7 +77,7 @@ const MegaLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, 
 
 interface ProtocolSelectorProps {
     value: ProviderType | '' | undefined;
-    onChange: (protocol: ProviderType) => void;
+    onChange: (protocol: ProviderType, providerId?: string) => void;
     disabled?: boolean;
     className?: string;
     showLabel?: boolean;
@@ -90,6 +98,7 @@ interface ProtocolInfo {
     category?: 'aerocloud' | 'protocol' | 'service';  // Section grouping
     tooltip?: string;  // Tooltip on hover
     disabled?: boolean;  // If true, show as coming soon
+    providerId?: string;  // Auto-select this provider preset on click
 }
 
 // Helper to get protocols with translations
@@ -145,6 +154,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         badge: 'HMAC',
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
+    },
+    {
+        type: 'sftp',
+        name: 'SourceForge',
+        icon: <SourceForgeLogo size={18} />,
+        description: t('protocol.sourceforgeDesc'),
+        defaultPort: 22,
+        badge: 'SFTP',
+        color: 'text-orange-500',
+        tooltip: t('protocol.sourceforgeTooltip'),
+        providerId: 'sourceforge',
     },
     // Service Providers (GitHub first, then cloud services)
     {
@@ -380,6 +400,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
     { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
+    { type: 'sftp', name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
     { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
@@ -486,7 +507,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             type="button"
                             onClick={() => {
                                 if (!protocol.disabled) {
-                                    onChange(protocol.type);
+                                    onChange(protocol.type, protocol.providerId);
                                     handleOpenChange(false);
                                 }
                             }}
@@ -532,7 +553,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                             type="button"
                             onClick={() => {
                                 if (!protocol.disabled) {
-                                    onChange(protocol.type);
+                                    onChange(protocol.type, protocol.providerId);
                                     handleOpenChange(false);
                                 }
                             }}

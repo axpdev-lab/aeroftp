@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB besplatne pohrane u oblaku",
       "aerocloudTooltip": "Pretvorite bilo koji poslužitelj u svoj osobni oblak s automatskom sinkronizacijom",
       "azureTooltip": "Azure Blob Storage - autentifikacija dijeljenim ključem ili SAS tokenom",
+      "sourceforgeDesc": "SourceForge sustav za objavljivanje datoteka",
+      "sourceforgeTooltip": "Prijenos izdanja na SourceForge putem SFTP-a",
       "boxTooltip": "Box - 10 GB besplatnog prostora, OAuth2 autentifikacija",
       "dropboxTooltip": "Dropbox - 2 GB besplatnog prostora, OAuth2 autentifikacija",
       "filenTooltip": "Filen - E2E enkripcija bez znanja, 10 GB besplatno",

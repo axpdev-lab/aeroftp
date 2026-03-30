@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB δωρεάν αποθηκευτικός χώρος cloud",
       "aerocloudTooltip": "Μετατρέψτε οποιονδήποτε διακομιστή σε προσωπικό cloud με αυτόματο συγχρονισμό",
       "azureTooltip": "Azure Blob Storage - Πιστοποίηση με Shared Key ή SAS token",
+      "sourceforgeDesc": "Σύστημα Δημοσίευσης Αρχείων SourceForge",
+      "sourceforgeTooltip": "Μεταφόρτωση εκδόσεων στο SourceForge μέσω SFTP",
       "boxTooltip": "Box - 10 GB δωρεάν αποθηκευτικός χώρος, πιστοποίηση OAuth2",
       "dropboxTooltip": "Dropbox - 2 GB δωρεάν αποθηκευτικός χώρος, πιστοποίηση OAuth2",
       "filenTooltip": "Filen - Zero-knowledge E2E κρυπτογράφηση, 10 GB δωρεάν",

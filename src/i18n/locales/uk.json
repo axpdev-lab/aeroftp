@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 ГБ безкоштовного хмарного сховища",
       "aerocloudTooltip": "Перетворіть будь-який сервер на персональну хмару з автоматичною синхронізацією",
       "azureTooltip": "Azure Blob Storage - автентифікація Shared Key або SAS-токеном",
+      "sourceforgeDesc": "Система публікації файлів SourceForge",
+      "sourceforgeTooltip": "Завантажити релізи на SourceForge через SFTP",
       "boxTooltip": "Box - 10 ГБ безкоштовного сховища, автентифікація OAuth2",
       "dropboxTooltip": "Dropbox - 2 ГБ безкоштовного сховища, автентифікація OAuth2",
       "filenTooltip": "Filen - наскрізне E2E шифрування без знання ключа, 10 ГБ безкоштовно",

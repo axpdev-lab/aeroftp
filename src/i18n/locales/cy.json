@@ -1233,6 +1233,8 @@
       "foursharedDesc": "Storfa Cwmwl Am Ddim 15 GB",
       "aerocloudTooltip": "Trowch unrhyw weinydd yn eich cwmwl personol gyda chydamseru awtomatig",
       "azureTooltip": "Azure Blob Storage — dilysu trwy allwedd a rennir neu docyn SAS",
+      "sourceforgeDesc": "System Rhyddhau Ffeiliau SourceForge",
+      "sourceforgeTooltip": "Uwchlwytho fersiynau i SourceForge trwy SFTP",
       "boxTooltip": "Box — 10GB o storfa am ddim, dilysu OAuth2",
       "dropboxTooltip": "Dropbox — 2GB o storfa am ddim, dilysu OAuth2",
       "filenTooltip": "Filen — amgryptio E2E dim-gwybodaeth, 10GB am ddim",

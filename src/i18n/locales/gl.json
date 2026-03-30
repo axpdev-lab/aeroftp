@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB de almacenamento na nube gratuíto",
       "aerocloudTooltip": "Converta calquera servidor na súa nube persoal con sincronización automática",
       "azureTooltip": "Azure Blob Storage - Autenticación con Shared Key ou token SAS",
+      "sourceforgeDesc": "Sistema de publicación de ficheiros de SourceForge",
+      "sourceforgeTooltip": "Subir versións a SourceForge vía SFTP",
       "boxTooltip": "Box - 10GB gratis, autenticación OAuth2",
       "dropboxTooltip": "Dropbox - 2GB gratis, autenticación OAuth2",
       "filenTooltip": "Filen - Cifrado E2E de coñecemento cero, 10GB gratis",

@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15GB 무료 클라우드 스토리지",
       "aerocloudTooltip": "모든 서버를 자동 동기화로 개인 클라우드로 전환",
       "azureTooltip": "Azure Blob Storage - 공유 키 또는 SAS 토큰 인증",
+      "sourceforgeDesc": "SourceForge 파일 릴리스 시스템",
+      "sourceforgeTooltip": "SFTP를 통해 SourceForge에 릴리스 업로드",
       "boxTooltip": "Box - 10GB 무료 저장공간, OAuth2 인증",
       "dropboxTooltip": "Dropbox - 2GB 무료 저장공간, OAuth2 인증",
       "filenTooltip": "Filen - 제로 지식 E2E 암호화, 10GB 무료",

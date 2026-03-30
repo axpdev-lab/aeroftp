@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB gratis cloud-lagring",
       "aerocloudTooltip": "Forvandl enhver server til din personlige sky med automatisk synkronisering",
       "azureTooltip": "Azure Blob Storage - Shared Key eller SAS-token-godkendelse",
+      "sourceforgeDesc": "SourceForge filudgivelsessystem",
+      "sourceforgeTooltip": "Upload udgivelser til SourceForge via SFTP",
       "boxTooltip": "Box - 10 GB gratis lagerplads, OAuth2-godkendelse",
       "dropboxTooltip": "Dropbox - 2 GB gratis lagerplads, OAuth2-godkendelse",
       "filenTooltip": "Filen - Zero-knowledge E2E-kryptering, 10 GB gratis",

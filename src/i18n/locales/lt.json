@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB nemokamos debesų saugyklos",
       "aerocloudTooltip": "Paverskite bet kurį serverį savo asmeniniu debesiu su automatiniu sinchronizavimu",
       "azureTooltip": "Azure Blob Storage – bendrinamo rakto arba SAS žetono autentifikavimas",
+      "sourceforgeDesc": "SourceForge failų leidimų sistema",
+      "sourceforgeTooltip": "Įkelti leidimus į SourceForge per SFTP",
       "boxTooltip": "Box – 10GB nemokamos saugyklos, OAuth2 autentifikavimas",
       "dropboxTooltip": "Dropbox – 2GB nemokamos saugyklos, OAuth2 autentifikavimas",
       "filenTooltip": "Filen – nulinio žinojimo E2E šifravimas, 10GB nemokama",

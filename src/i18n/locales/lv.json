@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB bezmaksas mākoņkrātuves",
       "aerocloudTooltip": "Pārveidojiet jebkuru serveri par savu personīgo mākoni ar automātisku sinhronizāciju",
       "azureTooltip": "Azure Blob Storage — Shared Key vai SAS token autentifikācija",
+      "sourceforgeDesc": "SourceForge failu publicēšanas sistēma",
+      "sourceforgeTooltip": "Augšupielādēt laidienus uz SourceForge caur SFTP",
       "boxTooltip": "Box — 10 GB bezmaksas krātuve, OAuth2 autentifikācija",
       "dropboxTooltip": "Dropbox — 2 GB bezmaksas krātuve, OAuth2 autentifikācija",
       "filenTooltip": "Filen — pilnīga E2E šifrēšana, 10 GB bezmaksas",

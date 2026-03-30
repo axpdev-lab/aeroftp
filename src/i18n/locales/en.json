@@ -1922,6 +1922,8 @@
       "azureContainerPlaceholder": "my-container",
       "azureDesc": "Microsoft Azure Storage",
       "azureTooltip": "Azure Blob Storage - Shared Key or SAS token authentication",
+      "sourceforgeDesc": "SourceForge File Release System",
+      "sourceforgeTooltip": "Upload releases to SourceForge via SFTP",
       "blompDesc": "Blomp (40 GB free cloud storage)",
       "blompTooltip": "Blomp — 40GB free cloud storage powered by OpenStack Swift",
       "boxDesc": "Box (10 GB free)",

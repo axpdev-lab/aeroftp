@@ -998,6 +998,37 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://www.hetzner.com/storage/storage-box',
     },
     {
+        id: 'sourceforge',
+        name: 'SourceForge',
+        description: 'Upload releases to SourceForge File Release System via SFTP',
+        protocol: 'sftp',
+        category: 'ftp',
+        icon: 'Package',
+        color: '#FF6600',
+        stable: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'your-sf-username',
+                helpText: 'Your SourceForge username',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                helpText: 'Password or use SSH key authentication',
+            },
+        ],
+        defaults: {
+            server: 'frs.sourceforge.net',
+            port: 22,
+            basePath: '/home/frs/project/',
+        },
+        features: {
+            sync: false,
+        },
+        helpUrl: 'https://sourceforge.net/p/forge/documentation/Release%20Files%20for%20Download/',
+        signupUrl: 'https://sourceforge.net/user/registration',
+    },
+    {
         id: 'filelu-webdav',
         name: 'FileLu WebDAV',
         description: 'FileLu via WebDAV (enable in Account Settings)',

@@ -1226,6 +1226,8 @@
       "foursharedDesc": "15 ԳԲ անվճար ամպային պահեստավորում",
       "aerocloudTooltip": "Մասնավորեք ցանկացած սերվեր ձեր անձնական ամպամինին։ ինքնահամաժամանակ համաժամանեքման հետ",
       "azureTooltip": "Azure Blob Storage — ընդհանուր բանալի կամ SAS թոկենի նույնականացում",
+      "sourceforgeDesc": "SourceForge Ֆայլերի հրապարակման համակարգ",
+      "sourceforgeTooltip": "Տարբերակներ վերբեռնել SourceForge SFTP-ի միջոցով",
       "boxTooltip": "Box — 10 ԳԲ անվճար տարածք, OAuth2 նույնականացում",
       "dropboxTooltip": "Dropbox — 2 ԳԲ անվճար տարածք, OAuth2 նույնականացում",
       "filenTooltip": "Filen — զրո գիտելիքներով E2E գաղտնագրում, 10 ԳԲ անվճար",

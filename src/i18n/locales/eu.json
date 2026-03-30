@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB hodeiko biltegiratze doakoa",
       "aerocloudTooltip": "Bihurtu edozein zerbitzari zure hodei pertsonalean sinkronizazio automatikoarekin",
       "azureTooltip": "Azure Blob Storage - Shared Key edo SAS token autentifikazioa",
+      "sourceforgeDesc": "SourceForge fitxategien argitalpen sistema",
+      "sourceforgeTooltip": "Bertsioak SourceForge-ra igo SFTP bidez",
       "boxTooltip": "Box - 10GB doan, OAuth2 autentifikazioa",
       "dropboxTooltip": "Dropbox - 2GB doan, OAuth2 autentifikazioa",
       "filenTooltip": "Filen - E2E enkriptatze zero-knowledge, 10GB doan",

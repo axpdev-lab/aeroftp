@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB ücretsiz bulut depolama",
       "aerocloudTooltip": "Herhangi bir sunucuyu otomatik senkronizasyon ile kişisel bulutunuza dönüştürün",
       "azureTooltip": "Azure Blob Storage - Shared Key veya SAS token kimlik doğrulaması",
+      "sourceforgeDesc": "SourceForge Dosya Yayınlama Sistemi",
+      "sourceforgeTooltip": "SFTP üzerinden SourceForge'a sürüm yükle",
       "boxTooltip": "Box - 10GB ücretsiz depolama, OAuth2 kimlik doğrulaması",
       "dropboxTooltip": "Dropbox - 2GB ücretsiz depolama, OAuth2 kimlik doğrulaması",
       "filenTooltip": "Filen - Sıfır bilgi E2E şifreleme, 10GB ücretsiz",

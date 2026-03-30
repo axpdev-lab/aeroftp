@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB бесплатно облак складирање",
       "aerocloudTooltip": "Претворете го било кој сервер во ваш личен облак со автоматска синхронизација",
       "azureTooltip": "Azure Blob Storage — Shared Key или SAS token автентикација",
+      "sourceforgeDesc": "Систем за објавување датотеки на SourceForge",
+      "sourceforgeTooltip": "Поставете изданија на SourceForge преку SFTP",
       "boxTooltip": "Box — 10 GB бесплатно складирање, OAuth2 автентикација",
       "dropboxTooltip": "Dropbox — 2 GB бесплатно складирање, OAuth2 автентикација",
       "filenTooltip": "Filen — целосна E2E енкрипција, 10 GB бесплатно",

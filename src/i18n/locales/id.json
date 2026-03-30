@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB penyimpanan cloud gratis",
       "aerocloudTooltip": "Ubah server mana pun menjadi cloud pribadi dengan sinkronisasi otomatis",
       "azureTooltip": "Azure Blob Storage - autentikasi Shared Key atau token SAS",
+      "sourceforgeDesc": "Sistem Rilis File SourceForge",
+      "sourceforgeTooltip": "Unggah rilis ke SourceForge melalui SFTP",
       "boxTooltip": "Box - 10GB penyimpanan gratis, autentikasi OAuth2",
       "dropboxTooltip": "Dropbox - 2GB penyimpanan gratis, autentikasi OAuth2",
       "filenTooltip": "Filen - Enkripsi E2E tanpa pengetahuan, 10GB gratis",

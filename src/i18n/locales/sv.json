@@ -1234,6 +1234,8 @@
       "foursharedDesc": "15 GB gratis molnlagring",
       "aerocloudTooltip": "Gör vilken server som helst till ditt personliga moln med automatisk synkronisering",
       "azureTooltip": "Azure Blob Storage - autentisering med delad nyckel eller SAS-token",
+      "sourceforgeDesc": "SourceForge filpubliceringssystem",
+      "sourceforgeTooltip": "Ladda upp versioner till SourceForge via SFTP",
       "boxTooltip": "Box - 10 GB gratis lagring, OAuth2-autentisering",
       "dropboxTooltip": "Dropbox - 2 GB gratis lagring, OAuth2-autentisering",
       "filenTooltip": "Filen - E2E-kryptering utan kunskapsdelning, 10 GB gratis",

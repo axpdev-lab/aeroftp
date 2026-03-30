@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB ókeypis skýgeymsla",
       "aerocloudTooltip": "Breyttu hvaða þjóni sem er í persónulega skýinu þína með sjálfvirkri samstillingu",
       "azureTooltip": "Azure Blob Storage - auðkenning með sameiginlegum lykli eða SAS tóka",
+      "sourceforgeDesc": "SourceForge skráarbirgingarkerfi",
+      "sourceforgeTooltip": "Hlaða upp útgáfum á SourceForge með SFTP",
       "boxTooltip": "Box - 10GB ókeypis geymsla, OAuth2 auðkenning",
       "dropboxTooltip": "Dropbox - 2GB ókeypis geymsla, OAuth2 auðkenning",
       "filenTooltip": "Filen - E2E dulkóðun án þekkingar, 10GB ókeypis",

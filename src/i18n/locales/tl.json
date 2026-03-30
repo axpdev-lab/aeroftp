@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB libreng cloud storage",
       "aerocloudTooltip": "Gawing personal na cloud ang anumang server na may awtomatikong pag-sync",
       "azureTooltip": "Azure Blob Storage - Shared Key o SAS token authentication",
+      "sourceforgeDesc": "Sistema ng Paglabas ng File ng SourceForge",
+      "sourceforgeTooltip": "Mag-upload ng mga release sa SourceForge sa pamamagitan ng SFTP",
       "boxTooltip": "Box - 10GB libreng storage, OAuth2 authentication",
       "dropboxTooltip": "Dropbox - 2GB libreng storage, OAuth2 authentication",
       "filenTooltip": "Filen - Zero-knowledge E2E encryption, 10GB libre",

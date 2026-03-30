@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB darmowej pamięci w chmurze",
       "aerocloudTooltip": "Zamień dowolny serwer w osobistą chmurę z automatyczną synchronizacją",
       "azureTooltip": "Azure Blob Storage - uwierzytelnianie kluczem wspoldzielonym lub tokenem SAS",
+      "sourceforgeDesc": "System publikacji plików SourceForge",
+      "sourceforgeTooltip": "Prześlij wydania do SourceForge przez SFTP",
       "boxTooltip": "Box - 10 GB darmowej przestrzeni, uwierzytelnianie OAuth2",
       "dropboxTooltip": "Dropbox - 2 GB darmowej przestrzeni, uwierzytelnianie OAuth2",
       "filenTooltip": "Filen - szyfrowanie E2E zero-knowledge, 10 GB za darmo",

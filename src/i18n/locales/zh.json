@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB 免费云存储",
       "aerocloudTooltip": "将任何服务器转变为带自动同步的个人云盘",
       "azureTooltip": "Azure Blob Storage - 共享密钥或 SAS 令牌认证",
+      "sourceforgeDesc": "SourceForge文件发布系统",
+      "sourceforgeTooltip": "通过SFTP上传发行版到SourceForge",
       "boxTooltip": "Box - 10GB 免费存储，OAuth2 认证",
       "dropboxTooltip": "Dropbox - 2GB 免费存储，OAuth2 认证",
       "filenTooltip": "Filen - 零知识 E2E 加密，10GB 免费",

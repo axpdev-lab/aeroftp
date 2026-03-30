@@ -1234,6 +1234,8 @@
       "foursharedDesc": "15 GB stocare cloud gratuită",
       "aerocloudTooltip": "Transformă orice server în cloudul tău personal cu sincronizare automată",
       "azureTooltip": "Azure Blob Storage - Autentificare cu cheie partajata sau token SAS",
+      "sourceforgeDesc": "Sistemul de publicare fișiere SourceForge",
+      "sourceforgeTooltip": "Încărcați versiuni pe SourceForge prin SFTP",
       "boxTooltip": "Box - 10 GB stocare gratuita, autentificare OAuth2",
       "dropboxTooltip": "Dropbox - 2 GB stocare gratuita, autentificare OAuth2",
       "filenTooltip": "Filen - Criptare E2E zero-knowledge, 10 GB gratuit",

@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB বিনামূল্যে ক্লাউড স্টোরেজ",
       "aerocloudTooltip": "যেকোনো সার্ভারকে স্বয়ংক্রিয় সিঙ্কের মাধ্যমে আপনার নিজস্ব ক্লাউডে পরিণত করুন",
       "azureTooltip": "Azure Blob Storage — শেয়ার্ড কী বা SAS টোকেন প্রমাণীকরণ",
+      "sourceforgeDesc": "SourceForge ফাইল রিলিজ সিস্টেম",
+      "sourceforgeTooltip": "SFTP দ্বারা SourceForge-এ রিলিজ আপলোড করুন",
       "boxTooltip": "Box — 10GB বিনামূল্যে স্টোরেজ, OAuth2 প্রমাণীকরণ",
       "dropboxTooltip": "Dropbox — 2GB বিনামূল্যে স্টোরেজ, OAuth2 প্রমাণীকরণ",
       "filenTooltip": "Filen — জিরো-নলেজ E2E এনক্রিপশন, 10GB বিনামূল্যে",

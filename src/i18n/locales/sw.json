@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB ya hifadhi ya wingu bure",
       "aerocloudTooltip": "Geuza seva yoyote kuwa wingu lako binafsi na usawazishaji wa kiotomatiki",
       "azureTooltip": "Azure Blob Storage - uthibitishaji wa ufunguo ulioshirikiwa au tokeni ya SAS",
+      "sourceforgeDesc": "Mfumo wa Kutoa Faili wa SourceForge",
+      "sourceforgeTooltip": "Pakia matoleo kwenye SourceForge kupitia SFTP",
       "boxTooltip": "Box - hifadhi ya bure ya 10GB, uthibitishaji wa OAuth2",
       "dropboxTooltip": "Dropbox - hifadhi ya bure ya 2GB, uthibitishaji wa OAuth2",
       "filenTooltip": "Filen - usimbaji fiche wa E2E bila maarifa, 10GB bure",

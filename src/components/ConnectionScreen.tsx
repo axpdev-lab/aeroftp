@@ -1006,7 +1006,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    const handleProtocolChange = (newProtocol: ProviderType) => {
+    const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
         // Exit edit mode when changing protocol (user wants to create new connection)
         if (editingProfileId) {
             setEditingProfileId(null);
@@ -1018,6 +1018,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Reset provider selection when protocol changes
         setSelectedProviderId(null);
         setPresetUnlocked({});
+
+        // If a providerId was passed (e.g. SourceForge), auto-apply the preset
+        if (providerId) {
+            const provider = getProviderById(providerId);
+            if (provider) {
+                setSelectedProviderId(providerId);
+                onConnectionParamsChange({
+                    server: provider.defaults?.server || '',
+                    username: '',
+                    password: '',
+                    protocol: newProtocol,
+                    port: provider.defaults?.port || getDefaultPort(newProtocol),
+                    providerId: provider.id,
+                    options: {},
+                });
+                onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
+                return;
+            }
+        }
 
         const protocolDefaults: Partial<ConnectionParams> = newProtocol === 'filelu'
             ? { server: 'filelu.com', username: 'api-key', port: 443 }

@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB tasuta pilvesalvestust",
       "aerocloudTooltip": "Muutke iga server oma isiklikuks pilveks automaatse sünkroonimisega",
       "azureTooltip": "Azure Blob Storage - Shared Key või SAS-tokeni autentimine",
+      "sourceforgeDesc": "SourceForge'i failide avaldamise süsteem",
+      "sourceforgeTooltip": "Laadi väljalasked SourceForge'i üles SFTP kaudu",
       "boxTooltip": "Box - 10 GB tasuta salvestusruumi, OAuth2 autentimine",
       "dropboxTooltip": "Dropbox - 2 GB tasuta salvestusruumi, OAuth2 autentimine",
       "filenTooltip": "Filen - Zero-knowledge E2E krüpteering, 10 GB tasuta",

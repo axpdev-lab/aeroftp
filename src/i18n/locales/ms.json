@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB storan awan percuma",
       "aerocloudTooltip": "Tukar mana-mana pelayan menjadi awan peribadi dengan penyegerakan automatik",
       "azureTooltip": "Azure Blob Storage — pengesahan Shared Key atau token SAS",
+      "sourceforgeDesc": "Sistem Keluaran Fail SourceForge",
+      "sourceforgeTooltip": "Muat naik keluaran ke SourceForge melalui SFTP",
       "boxTooltip": "Box — 10GB storan percuma, pengesahan OAuth2",
       "dropboxTooltip": "Dropbox — 2GB storan percuma, pengesahan OAuth2",
       "filenTooltip": "Filen — penyulitan E2E penuh, 10GB percuma",

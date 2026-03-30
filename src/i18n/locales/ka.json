@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB უფასო ღრუბლოვანი საცავი",
       "aerocloudTooltip": "გააქციეთ ნებისმიერი სერვერი პირად ღრუბელად ავტომატური სინქრონიზაციით",
       "azureTooltip": "Azure Blob Storage - გაზიარებული გასაღებით ან SAS ტოკენით ავტორიზაცია",
+      "sourceforgeDesc": "SourceForge ფაილების გამოშვების სისტემა",
+      "sourceforgeTooltip": "რელიზების ატვირთვა SourceForge-ზე SFTP-ის საშუალებით",
       "boxTooltip": "Box - 10GB უფასო სივრცე, OAuth2 ავტორიზაცია",
       "dropboxTooltip": "Dropbox - 2GB უფასო სივრცე, OAuth2 ავტორიზაცია",
       "filenTooltip": "Filen - ნულოვანი ცოდნის E2E დაშიფვრა, 10GB უფასო",

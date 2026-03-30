@@ -1233,6 +1233,8 @@
       "foursharedDesc": "15 GB gratis cloudopslag",
       "aerocloudTooltip": "Maak van elke server uw persoonlijke cloud met automatische synchronisatie",
       "azureTooltip": "Azure Blob Storage — Shared Key- of SAS-tokenauthenticatie",
+      "sourceforgeDesc": "SourceForge-bestandspublicatiesysteem",
+      "sourceforgeTooltip": "Releases uploaden naar SourceForge via SFTP",
       "boxTooltip": "Box — 10 GB gratis opslag, OAuth2-authenticatie",
       "dropboxTooltip": "Dropbox — 2 GB gratis opslag, OAuth2-authenticatie",
       "filenTooltip": "Filen — volledige E2E-versleuteling, 10 GB gratis",
