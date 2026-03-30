@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-03-30
+
+### Sigstore v0.3 Bundle Verification Fix
+
+#### Fixed
+
+- **Sigstore updater fallback**: The v3.2.1 fix for Sigstore bundle v0.3 format was incomplete. The actual error message from the sigstore crate is "unknown bundle profile application/vnd.dev.sigstore.bundle.v0.3+json" which was not matched by the previous fallback pattern. Auto-update from v3.2.1 was blocked by this error. Now correctly falls back to SHA-256 integrity verification when the bundle format is unrecognized.
+
 ## [3.2.2] - 2026-03-30
 
 ### Advanced Share Links, MEGA S4 Object Storage & Security Hardening

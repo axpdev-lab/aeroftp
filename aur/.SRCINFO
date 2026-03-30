@@ -1,6 +1,6 @@
 pkgbase = aeroftp-bin
 	pkgdesc = Modern multi-protocol file client with AI, encryption and cloud storage (FTP, SFTP, WebDAV, S3, 25 protocols)
-	pkgver = 3.2.2
+	pkgver = 3.2.3
 	pkgrel = 1
 	url = https://aeroftp.app
 	arch = x86_64
@@ -23,7 +23,7 @@ pkgbase = aeroftp-bin
 	conflicts = aeroftp-git
 	options = !strip
 	options = !debug
-	source = aeroftp-bin-3.2.2.deb::https://github.com/axpdev-lab/aeroftp/releases/download/v3.2.2/AeroFTP_3.2.2_amd64.deb
+	source = aeroftp-bin-3.2.3.deb::https://github.com/axpdev-lab/aeroftp/releases/download/v3.2.3/AeroFTP_3.2.3_amd64.deb
 	source = aeroftp.desktop
 	source = aeroftp.png::https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/src-tauri/icons/128x128.png
 	sha256sums = 2f551d5a64c6b11435af20c9f6801d7a5ce6c6533d789140d65aa0ca927f7ef5
