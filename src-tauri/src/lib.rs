@@ -7723,7 +7723,7 @@ pub fn run() {
     //   - Traffic is loopback-only (127.0.0.1), not exposed on network interfaces
     //   - Exploitation requires same-machine access (local privilege escalation prerequisite)
     //   - All sensitive data (credentials, tokens) flows through Tauri IPC commands, NOT HTTP
-    //   - tauri-plugin-localhost binds exclusively to 127.0.0.1
+    //   - tauri-plugin-localhost is explicitly bound to 127.0.0.1
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
     //
@@ -7738,7 +7738,11 @@ pub fn run() {
 
     #[cfg(target_os = "linux")]
     {
-        builder = builder.plugin(tauri_plugin_localhost::Builder::new(port).build());
+        builder = builder.plugin(
+            tauri_plugin_localhost::Builder::new(port)
+                .host("127.0.0.1")
+                .build(),
+        );
     }
 
     builder = builder

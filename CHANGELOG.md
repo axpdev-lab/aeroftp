@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.5] - 2026-03-30
+
+### Hotfix: Linux localhost bind regression
+
+#### Fixed
+
+- **Linux connection refused on startup**: v3.2.4 changed the navigation URL from `localhost` to `127.0.0.1` but `tauri-plugin-localhost` defaults to binding on `localhost` (which may resolve to `::1` IPv6 on some systems). The plugin now explicitly binds to `127.0.0.1` via `.host("127.0.0.1")`, matching the navigation URL. Fixes the "Could not connect to 127.0.0.1: Connection refused" error on Linux.
+
 ## [3.2.4] - 2026-03-30
 
 ### macOS Frozen UI Fix & UI Polish
