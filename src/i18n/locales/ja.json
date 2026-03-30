@@ -135,7 +135,7 @@
       "initialRemotePathMega": "初期リモートフォルダ（例: /Backup）",
       "initialLocalPath": "初期ローカルフォルダ",
       "saveToServers": "保存済みサーバーに保存",
-      "connectionNamePlaceholder": "接続名（例: My Filen Cloud）",
+      "connectionNamePlaceholder": "接続名（例: My Cloud）",
       "secureLogin": "安全なログイン",
       "endToEndAes": "AES-256-GCMによるエンドツーエンド暗号化",
       "megaRequirement": "要件: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "検出",
       "notFound": "見つかりません",
       "copyToClipboard": "クリップボードにコピー",
-      "license": "ライセンス"
+      "license": "ライセンス",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "AeroFTPを支援",

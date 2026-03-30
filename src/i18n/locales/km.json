@@ -135,7 +135,7 @@
       "initialRemotePathMega": "ផ្លូវពីចម្ងាយចាប់ផ្តើម (ឧ. /Backup)",
       "initialLocalPath": "ថតមូលដ្ឋានចាប់ផ្តើម",
       "saveToServers": "បន្ថែមទៅម៉ាស៊ីនបម្រើដែលបានរក្សាទុក",
-      "connectionNamePlaceholder": "ឈ្មោះការតភ្ជាប់ (ឧ. My Filen Cloud)",
+      "connectionNamePlaceholder": "ឈ្មោះការតភ្ជាប់ (ឧ. My Cloud)",
       "secureLogin": "ចូលដោយសុវត្ថិភាព",
       "endToEndAes": "អ៊ិនគ្រីបពីចុងដល់ចុងជាមួយ AES-256-GCM",
       "megaRequirement": "តម្រូវការ: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "បានរកឃើញ",
       "notFound": "រកមិនឃើញ",
       "copyToClipboard": "ចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
-      "license": "អាជ្ញាប័ណ្ណ"
+      "license": "អាជ្ញាប័ណ្ណ",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "គាំទ្រ AeroFTP",

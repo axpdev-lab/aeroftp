@@ -1070,7 +1070,10 @@
       "found": "Funnet",
       "notFound": "Ikke funnet",
       "copyToClipboard": "Kopier til utklippstavle",
-      "license": "Lisens"
+      "license": "Lisens",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Støtt AeroFTP",

@@ -1070,7 +1070,10 @@
       "found": "Hittad",
       "notFound": "Hittades inte",
       "copyToClipboard": "Kopiera till urklipp",
-      "license": "Licens"
+      "license": "Licens",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Stöd AeroFTP",

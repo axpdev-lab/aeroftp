@@ -1070,7 +1070,10 @@
       "supportDev": "Podrži razvoj",
       "donateWith": "Doniraj kriptovalutama",
       "github": "GitHub",
-      "contact": "Kontakt"
+      "contact": "Kontakt",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Podrži AeroFTP",

@@ -1070,7 +1070,10 @@
       "found": "已找到",
       "notFound": "未找到",
       "copyToClipboard": "复制到剪贴板",
-      "license": "许可证"
+      "license": "许可证",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "支持 AeroFTP",

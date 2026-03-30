@@ -38,6 +38,9 @@
       "madeWith": "Made with",
       "notFound": "Not found",
       "operatingSystem": "Operating System",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist.",
       "supportDev": "Support Development",
       "systemDetails": "System Details",
       "tabs": {
@@ -1027,7 +1030,7 @@
       "connecting": "Connecting...",
       "connectionFailed": "Connection failed",
       "connectionNameOptional": "Connection name (optional)",
-      "connectionNamePlaceholder": "Connection Name (e.g. My Filen Cloud)",
+      "connectionNamePlaceholder": "Connection Name (e.g. My Cloud)",
       "custom": "Custom",
       "deleteServer": "Delete Server",
       "disconnected": "Disconnected",

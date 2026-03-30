@@ -135,7 +135,7 @@
       "initialRemotePathMega": "प्रारंभिक रिमोट फ़ोल्डर (जैसे /Backup)",
       "initialLocalPath": "प्रारंभिक स्थानीय फ़ोल्डर",
       "saveToServers": "सहेजे गए सर्वर में सहेजें",
-      "connectionNamePlaceholder": "कनेक्शन का नाम (जैसे My Filen Cloud)",
+      "connectionNamePlaceholder": "कनेक्शन का नाम (जैसे My Cloud)",
       "secureLogin": "सुरक्षित लॉगिन",
       "endToEndAes": "AES-256-GCM के साथ एंड-टू-एंड एन्क्रिप्टेड",
       "megaRequirement": "आवश्यकता: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "supportDev": "विकास का समर्थन करें",
       "donateWith": "Crypto के साथ दान करें",
       "github": "GitHub",
-      "contact": "संपर्क"
+      "contact": "संपर्क",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "AeroFTP का समर्थन करें",

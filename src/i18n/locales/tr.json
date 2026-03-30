@@ -1070,7 +1070,10 @@
       "found": "Bulundu",
       "notFound": "Bulunamadı",
       "copyToClipboard": "Panoya Kopyala",
-      "license": "Lisans"
+      "license": "Lisans",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "AeroFTP'yi Destekle",

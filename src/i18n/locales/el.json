@@ -1070,7 +1070,10 @@
       "found": "Βρέθηκε",
       "notFound": "Δεν βρέθηκε",
       "copyToClipboard": "Αντιγραφή στο Πρόχειρο",
-      "license": "Άδεια"
+      "license": "Άδεια",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Υποστηρίξτε το AeroFTP",

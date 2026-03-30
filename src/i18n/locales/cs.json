@@ -1070,7 +1070,10 @@
       "found": "Nalezeno",
       "notFound": "Nenalezeno",
       "copyToClipboard": "Kopirovat do schranky",
-      "license": "Licence"
+      "license": "Licence",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Podpořte AeroFTP",

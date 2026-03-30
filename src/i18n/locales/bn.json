@@ -135,7 +135,7 @@
       "initialRemotePathMega": "প্রাথমিক রিমোট পাথ (উদাঃ /Backup)",
       "initialLocalPath": "প্রাথমিক লোকাল ফোল্ডার",
       "saveToServers": "সংরক্ষিত সার্ভারে যোগ করুন",
-      "connectionNamePlaceholder": "সংযোগের নাম (উদাঃ My Filen Cloud)",
+      "connectionNamePlaceholder": "সংযোগের নাম (উদাঃ My Cloud)",
       "secureLogin": "নিরাপদ লগইন",
       "endToEndAes": "AES-256-GCM দিয়ে এন্ড-টু-এন্ড এনক্রিপ্ট করা",
       "megaRequirement": "প্রয়োজনীয়তা: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "পাওয়া গেছে",
       "notFound": "পাওয়া যায়নি",
       "copyToClipboard": "ক্লিপবোর্ডে কপি করুন",
-      "license": "লাইসেন্স"
+      "license": "লাইসেন্স",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "AeroFTP সমর্থন করুন",

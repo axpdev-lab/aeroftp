@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { X, Mail, Copy, Check, ChevronDown, ChevronUp, Wallet, Heart, ExternalLink } from 'lucide-react';
+import { X, Mail, Copy, Check, ExternalLink, Heart } from 'lucide-react';
 
 const Github = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -36,73 +36,6 @@ interface SystemInfo {
 
 type TabId = 'info' | 'technical' | 'support';
 
-// Official Crypto SVG Icons (matching SupportDialog)
-const BitcoinIcon = () => (
-    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
-        <path fill="#f7931a" d="M16 0c8.837 0 16 7.163 16 16s-7.163 16-16 16S0 24.837 0 16 7.163 0 16 0z"/>
-        <path fill="#fff" d="M22.5 14.1c.3-2.1-1.3-3.2-3.4-3.9l.7-2.8-1.7-.4-.7 2.7c-.4-.1-.9-.2-1.4-.3l.7-2.7-1.7-.4-.7 2.8c-.3-.1-.7-.2-1-.3l-2.4-.6-.5 1.8s1.3.3 1.2.3c.7.2.8.6.8 1l-.8 3.3s.1 0 .2.1l-.2-.1-1.1 4.5c-.1.2-.3.5-.8.4 0 0-1.2-.3-1.2-.3l-.8 2 2.2.6 1.2.3-.7 2.8 1.7.4.7-2.8c.5.1 .9.2 1.4.3l-.7 2.8 1.7.4.7-2.8c2.9.5 5.1.3 6-2.3.7-2.1-.1-3.3-1.5-4.1 1.1-.2 1.9-.9 2.1-2.4zm-3.8 5.3c-.5 2.1-4 1-5.1.7l.9-3.7c1.2.3 4.7.8 4.2 3zm.5-5.4c-.5 1.9-3.4 1-4.3.7l.8-3.3c1 .2 4 .7 3.5 2.6z"/>
-    </svg>
-);
-const EthereumIcon = () => (
-    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
-        <path fill="#627eea" d="M16 0c8.837 0 16 7.163 16 16s-7.163 16-16 16S0 24.837 0 16 7.163 0 16 0z"/>
-        <path fill="#fff" fillOpacity=".6" d="M16.5 4v8.87l7.5 3.35z"/>
-        <path fill="#fff" d="M16.5 4L9 16.22l7.5-3.35z"/>
-        <path fill="#fff" fillOpacity=".6" d="M16.5 21.97v6.03L24 17.62z"/>
-        <path fill="#fff" d="M16.5 28V21.97L9 17.62z"/>
-        <path fill="#fff" fillOpacity=".2" d="M16.5 20.57l7.5-4.35-7.5-3.35z"/>
-        <path fill="#fff" fillOpacity=".6" d="M9 16.22l7.5 4.35v-7.7z"/>
-    </svg>
-);
-const SolanaIcon = () => (
-    <svg viewBox="0 0 32 32" className="w-5 h-5" fill="currentColor">
-        <defs>
-            <linearGradient id="about-sol-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#9945ff"/>
-                <stop offset="100%" stopColor="#14f195"/>
-            </linearGradient>
-        </defs>
-        <circle cx="16" cy="16" r="16" fill="url(#about-sol-grad)"/>
-        <path fill="#fff" d="M10.5 19.5c.2-.2.4-.3.7-.3h12.1c.4 0 .7.5.3.8l-2.4 2.4c-.2.2-.4.3-.7.3H8.4c-.4 0-.7-.5-.3-.8l2.4-2.4z"/>
-        <path fill="#fff" d="M10.5 9.3c.2-.2.4-.3.7-.3h12.1c.4 0 .7.5.3.8l-2.4 2.4c-.2.2-.4.3-.7.3H8.4c-.4 0-.7-.5-.3-.8l2.4-2.4z"/>
-        <path fill="#fff" d="M21.5 14.4c-.2-.2-.4-.3-.7-.3H8.7c-.4 0-.7.5-.3.8l2.4 2.4c.2.2.4.3.7.3h12.1c.4 0 .7-.5.3-.8l-2.4-2.4z"/>
-    </svg>
-);
-const LitecoinIcon = () => (
-    <svg viewBox="0 0 508.96 508.96" className="w-5 h-5">
-        <circle fill="#fff" cx="254.48" cy="254.48" r="226.94"/>
-        <path fill="#345d9d" d="M256.38,2C115.84,2,1.9,116,1.9,256.52S115.84,511,256.38,511,510.87,397.07,510.87,256.52h0C511.27,116.38,398,2.45,257.87,2h-1.49Zm4.32,263.11-26.5,89.34H375.92a7.15,7.15,0,0,1,7.4,6.89h0v2.34L371,406.25a9.18,9.18,0,0,1-9.24,6.78H144.86l36.35-123.85L140.54,301.5l9.25-28.34,40.66-12.33L241.6,87.07a9.3,9.3,0,0,1,9.24-6.78h54.84a7.15,7.15,0,0,1,7.39,6.9h0v2.35L269.94,236.19l40.67-12.33L302,253.44Z" transform="translate(-1.9 -2.04)"/>
-    </svg>
-);
-
-// Crypto addresses for donations
-const CRYPTO_ADDRESSES = {
-    btc: {
-        name: 'Bitcoin',
-        symbol: 'BTC',
-        address: 'bc1qdxur90s5j4s55rwe9rc9n95fau4rg3tfatfhkn',
-        Icon: BitcoinIcon,
-    },
-    eth: {
-        name: 'Ethereum / EVM',
-        symbol: 'ETH',
-        address: '0x08F9D9C41E833539Fd733e19119A89f0664c3AeE',
-        Icon: EthereumIcon,
-    },
-    sol: {
-        name: 'Solana',
-        symbol: 'SOL',
-        address: '25A8sBNqzbR9rvrd3qyYwBkwirEh1pUiegUG6CrswHrd',
-        Icon: SolanaIcon,
-    },
-    ltc: {
-        name: 'Litecoin',
-        symbol: 'LTC',
-        address: 'LTk8iRvUqAtYyer8SPAkEAakpPXxfFY1D1',
-        Icon: LitecoinIcon,
-    },
-};
-
 // Key dependencies to display in technical tab (versions come from backend)
 const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'russh', description: 'SSH/SFTP' },
@@ -129,76 +62,6 @@ const FRONTEND_DEPS = [
     { name: 'Vite', version: _fv.vite },
 ];
 
-// Crypto Donate Panel Component
-const CryptoDonatePanel: React.FC = () => {
-    const t = useTranslation();
-    const [copiedChain, setCopiedChain] = useState<string | null>(null);
-    const [expandedChain, setExpandedChain] = useState<string | null>(null);
-
-    const copyAddress = (chain: string, address: string) => {
-        navigator.clipboard.writeText(address);
-        setCopiedChain(chain);
-        setTimeout(() => setCopiedChain(null), 2000);
-    };
-
-    return (
-        <div className="space-y-2">
-            {Object.entries(CRYPTO_ADDRESSES).map(([key, chain]) => (
-                <div
-                    key={key}
-                    className={`rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-200 ${expandedChain === key ? 'bg-gray-100 dark:bg-gray-800/80' : 'bg-gray-50 dark:bg-gray-800/40 hover:bg-gray-100 dark:hover:bg-gray-800/60'}`}
-                >
-                    <button
-                        onClick={() => setExpandedChain(expandedChain === key ? null : key)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-left"
-                    >
-                        <div className="flex items-center gap-3">
-                            <span className="w-8 h-8 rounded-lg flex items-center justify-center">
-                                <chain.Icon />
-                            </span>
-                            <div>
-                                <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{chain.name}</div>
-                                <div className="text-xs text-gray-500">{chain.symbol}</div>
-                            </div>
-                        </div>
-                        {expandedChain === key ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
-                    </button>
-
-                    {expandedChain === key && (
-                        <div className="px-3 pb-3 space-y-2">
-                            <div className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                                <code className="flex-1 text-xs text-green-600 dark:text-green-400 font-mono break-all select-all">
-                                    {chain.address}
-                                </code>
-                                <button
-                                    onClick={() => copyAddress(key, chain.address)}
-                                    className={`p-1.5 rounded transition-colors ${copiedChain === key
-                                        ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400'
-                                        : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400'
-                                        }`}
-                                    title={t('common.copy')}
-                                >
-                                    {copiedChain === key ? <Check size={14} /> : <Copy size={14} />}
-                                </button>
-                            </div>
-                            {copiedChain === key && (
-                                <div className="text-xs text-green-400 text-center animate-pulse">
-                                    {t('toast.clipboardCopied')}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            ))}
-
-            <div className="text-center pt-2">
-                <p className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">
-                    {t('support.footer')}
-                </p>
-            </div>
-        </div>
-    );
-};
 
 // Info row helper
 const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?: boolean }> = ({ label, value, mono = true }) => (
@@ -213,7 +76,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     const [activeTab, setActiveTab] = useState<TabId>('info');
     const [appVersion, setAppVersion] = useState('0.0.0');
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
-    const [showDonatePanel, setShowDonatePanel] = useState(false);
     const [copied, setCopied] = useState(false);
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
@@ -230,7 +92,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
         invoke<SystemInfo>('get_system_info').then(setSystemInfo).catch(() => {});
         // Reset state on open
         setActiveTab('info');
-        setShowDonatePanel(false);
         setCopied(false);
     }, [isOpen]);
 
@@ -470,27 +331,27 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 </button>
                             </div>
 
-                            {/* Crypto Donations */}
-                            <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
-                                <button
-                                    onClick={() => setShowDonatePanel(!showDonatePanel)}
-                                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-300 ${showDonatePanel
-                                        ? 'bg-blue-500 dark:bg-gradient-to-r dark:from-cyan-600 dark:to-purple-600 text-white'
-                                        : 'bg-gray-100 dark:bg-gradient-to-r dark:from-gray-800 dark:to-gray-700 hover:bg-gray-200 dark:hover:from-cyan-900 dark:hover:to-purple-900 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-700'
-                                        }`}
-                                >
-                                    <Wallet size={18} />
-                                    <span className="font-mono text-sm">
-                                        {t(showDonatePanel ? 'about.donateWith' : 'about.supportDev')}
-                                    </span>
-                                    {showDonatePanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                </button>
-
-                                {showDonatePanel && (
-                                    <div className="mt-3 animate-slide-down">
-                                        <CryptoDonatePanel />
-                                    </div>
-                                )}
+                            {/* Support & Report */}
+                            <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-2">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                                    {t('about.supportDesc')}
+                                </p>
+                                <div className="flex justify-center gap-3">
+                                    <button
+                                        onClick={() => openUrl('https://www.aeroftp.app/page/report-issue')}
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition-colors text-xs text-gray-600 dark:text-gray-300"
+                                    >
+                                        <ExternalLink size={12} />
+                                        {t('about.reportIssue')}
+                                    </button>
+                                    <button
+                                        onClick={() => openUrl('https://docs.aeroftp.app')}
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-lg transition-colors text-xs text-gray-600 dark:text-gray-300"
+                                    >
+                                        <ExternalLink size={12} />
+                                        {t('about.documentation')}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

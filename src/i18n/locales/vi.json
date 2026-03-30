@@ -1070,7 +1070,10 @@
       "found": "Đã tìm thấy",
       "notFound": "Không tìm thấy",
       "copyToClipboard": "Sao chép vào bộ nhớ tạm",
-      "license": "Giấy phép"
+      "license": "Giấy phép",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Hỗ trợ AeroFTP",

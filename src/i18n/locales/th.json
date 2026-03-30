@@ -1070,7 +1070,10 @@
       "found": "พบ",
       "notFound": "ไม่พบ",
       "copyToClipboard": "คัดลอกไปยังคลิปบอร์ด",
-      "license": "สัญญาอนุญาต"
+      "license": "สัญญาอนุญาต",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "สนับสนุน AeroFTP",

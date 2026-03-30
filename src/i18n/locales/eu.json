@@ -1070,7 +1070,10 @@
       "supportDev": "Lagundu garapena",
       "donateWith": "Dohaintza kriptoarekin",
       "github": "GitHub",
-      "contact": "Kontaktua"
+      "contact": "Kontaktua",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Lagundu AeroFTP",

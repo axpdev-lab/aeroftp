@@ -1070,7 +1070,10 @@
       "found": "Ditemui",
       "notFound": "Tidak ditemui",
       "copyToClipboard": "Salin ke Papan Keratan",
-      "license": "Lesen"
+      "license": "Lesen",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Sokong AeroFTP",

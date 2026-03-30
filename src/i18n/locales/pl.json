@@ -1070,7 +1070,10 @@
       "found": "Znaleziono",
       "notFound": "Nie znaleziono",
       "copyToClipboard": "Kopiuj do schowka",
-      "license": "Licencja"
+      "license": "Licencja",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Wesprzyj AeroFTP",

@@ -1070,7 +1070,10 @@
       "found": "Najdene",
       "notFound": "Nenajdene",
       "copyToClipboard": "Kopirovat do schranky",
-      "license": "Licencia"
+      "license": "Licencia",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Podporte AeroFTP",

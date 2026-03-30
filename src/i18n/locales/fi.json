@@ -1070,7 +1070,10 @@
       "found": "Löydetty",
       "notFound": "Ei löytynyt",
       "copyToClipboard": "Kopioi leikepöydälle",
-      "license": "Lisenssi"
+      "license": "Lisenssi",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Tue AeroFTP:tä",

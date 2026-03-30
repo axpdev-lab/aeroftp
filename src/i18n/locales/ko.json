@@ -1070,7 +1070,10 @@
       "found": "발견됨",
       "notFound": "찾을 수 없음",
       "copyToClipboard": "클립보드에 복사",
-      "license": "라이선스"
+      "license": "라이선스",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "AeroFTP 지원",

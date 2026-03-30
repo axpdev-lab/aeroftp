@@ -1070,7 +1070,10 @@
       "found": "Található",
       "notFound": "Nem található",
       "copyToClipboard": "Másolás vágólapra",
-      "license": "Licenc"
+      "license": "Licenc",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Támogasd az AeroFTP-t",

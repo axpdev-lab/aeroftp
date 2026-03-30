@@ -135,7 +135,7 @@
       "initialRemotePathMega": "საწყისი დისტანციური საქაღალდე (მაგ. /Backup)",
       "initialLocalPath": "საწყისი ლოკალური საქაღალდე",
       "saveToServers": "შენახვა შენახულ სერვერებში",
-      "connectionNamePlaceholder": "კავშირის სახელი (მაგ. My Filen Cloud)",
+      "connectionNamePlaceholder": "კავშირის სახელი (მაგ. My Cloud)",
       "secureLogin": "უსაფრთხო შესვლა",
       "endToEndAes": "ბოლო-ბოლომდე დაშიფრული AES-256-GCM-ით",
       "megaRequirement": "მოთხოვნა: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "მოიძებნა",
       "notFound": "ვერ მოიძებნა",
       "copyToClipboard": "ბუფერში კოპირება",
-      "license": "ლიცენზია"
+      "license": "ლიცენზია",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "მხარი დაუჭირეთ AeroFTP-ს",

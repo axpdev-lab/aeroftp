@@ -1070,7 +1070,10 @@
       "found": "Пронајден",
       "notFound": "Не е пронајден",
       "copyToClipboard": "Копирај во меморија",
-      "license": "Лиценца"
+      "license": "Лиценца",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Поддржи AeroFTP",

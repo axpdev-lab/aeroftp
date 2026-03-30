@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Unang remote folder (hal. /Backup)",
       "initialLocalPath": "Unang lokal na folder",
       "saveToServers": "I-save sa Mga Naka-save na Server",
-      "connectionNamePlaceholder": "Pangalan ng Koneksyon (hal. My Filen Cloud)",
+      "connectionNamePlaceholder": "Pangalan ng Koneksyon (hal. My Cloud)",
       "secureLogin": "Secure na Pag-login",
       "endToEndAes": "End-to-end na naka-encrypt gamit ang AES-256-GCM",
       "megaRequirement": "Kinakailangan: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Nahanap",
       "notFound": "Hindi nahanap",
       "copyToClipboard": "Kopyahin sa Clipboard",
-      "license": "Lisensya"
+      "license": "Lisensya",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Suportahan ang AeroFTP",

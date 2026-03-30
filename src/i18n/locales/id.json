@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Folder jarak jauh awal (mis. /Backup)",
       "initialLocalPath": "Folder lokal awal",
       "saveToServers": "Simpan ke Server Tersimpan",
-      "connectionNamePlaceholder": "Nama koneksi (mis. My Filen Cloud)",
+      "connectionNamePlaceholder": "Nama koneksi (mis. My Cloud)",
       "secureLogin": "Login Aman",
       "endToEndAes": "Dienkripsi End-to-end dengan AES-256-GCM",
       "megaRequirement": "Persyaratan: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Ditemukan",
       "notFound": "Tidak Ditemukan",
       "copyToClipboard": "Salin ke Papan Klip",
-      "license": "Lisensi"
+      "license": "Lisensi",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Dukung AeroFTP",

@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Sākotnējā attālā mape (piem., /Backup)",
       "initialLocalPath": "Sākotnējā lokālā mape",
       "saveToServers": "Saglabāt saglabātajos serveros",
-      "connectionNamePlaceholder": "Savienojuma nosaukums (piem., My Filen Cloud)",
+      "connectionNamePlaceholder": "Savienojuma nosaukums (piem., My Cloud)",
       "secureLogin": "Droša pierakstīšanās",
       "endToEndAes": "Pilna šifrēšana ar AES-256-GCM",
       "megaRequirement": "Prasība: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Atrasts",
       "notFound": "Nav atrasts",
       "copyToClipboard": "Kopēt starpliktuvei",
-      "license": "Licence"
+      "license": "Licence",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Atbalstīt AeroFTP",

@@ -1070,7 +1070,10 @@
       "found": "Găsit",
       "notFound": "Negăsit",
       "copyToClipboard": "Copiază în clipboard",
-      "license": "Licență"
+      "license": "Licență",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Susține AeroFTP",

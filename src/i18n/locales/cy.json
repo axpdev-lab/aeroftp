@@ -1070,7 +1070,10 @@
       "found": "Canfuwyd",
       "notFound": "Heb ei ganfod",
       "copyToClipboard": "Copïo i'r Clipfwrdd",
-      "license": "Trwydded"
+      "license": "Trwydded",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Cefnogi AeroFTP",

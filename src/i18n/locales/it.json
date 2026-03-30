@@ -1303,7 +1303,10 @@
       "supportDev": "Supporta lo Sviluppo",
       "donateWith": "Dona con Crypto",
       "github": "GitHub",
-      "contact": "Contatti"
+      "contact": "Contatti",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Supporta AeroFTP",

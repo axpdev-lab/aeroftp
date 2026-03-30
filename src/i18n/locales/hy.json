@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Սկզբնական հեռավոր թղթապանակ (օր.՝ /Backup)",
       "initialLocalPath": "Սկզբնական տեղական թղթապանակ",
       "saveToServers": "Պահպանել պահպանված սերվերներում",
-      "connectionNamePlaceholder": "Կապի անուն (օր.՝ My Filen Cloud)",
+      "connectionNamePlaceholder": "Կապի անուն (օր.՝ My Cloud)",
       "secureLogin": "Անվտանգ մուտք",
       "endToEndAes": "Ծայրից ծայր գաղտնագրված AES-256-GCM-ով",
       "megaRequirement": "Պահանջ՝ MEGAcmd",
@@ -1063,7 +1063,10 @@
       "supportDev": "Աջակցել զարգացմանը",
       "donateWith": "Նվիրաբերել կրիպտոյով",
       "github": "GitHub",
-      "contact": "Կապ"
+      "contact": "Կապ",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Աջակցել AeroFTP-ին",

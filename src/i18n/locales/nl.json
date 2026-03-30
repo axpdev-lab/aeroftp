@@ -1070,7 +1070,10 @@
       "found": "Gevonden",
       "notFound": "Niet gevonden",
       "copyToClipboard": "Kopiëren naar klembord",
-      "license": "Licentie"
+      "license": "Licentie",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Steun AeroFTP",

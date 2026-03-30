@@ -1070,7 +1070,10 @@
       "found": "Знайдено",
       "notFound": "Не знайдено",
       "copyToClipboard": "Копіювати до буфера обміну",
-      "license": "Ліцензія"
+      "license": "Ліцензія",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Підтримати AeroFTP",

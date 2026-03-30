@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Algne kaugkaust (nt /Backup)",
       "initialLocalPath": "Algne kohalik kaust",
       "saveToServers": "Salvesta salvestatud serveritesse",
-      "connectionNamePlaceholder": "Ühenduse nimi (nt My Filen Cloud)",
+      "connectionNamePlaceholder": "Ühenduse nimi (nt My Cloud)",
       "secureLogin": "Turvaline sisselogimine",
       "endToEndAes": "Läbiv krüptimine AES-256-GCM-iga",
       "megaRequirement": "Nõue: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Leitud",
       "notFound": "Ei leitud",
       "copyToClipboard": "Kopeeri lõikepuhvrisse",
-      "license": "Litsents"
+      "license": "Litsents",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Toeta AeroFTP-d",

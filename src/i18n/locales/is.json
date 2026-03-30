@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Upphafleg fjarmappa (t.d. /Backup)",
       "initialLocalPath": "Upphafleg staðbundin mappa",
       "saveToServers": "Vista í vistaða netþjóna",
-      "connectionNamePlaceholder": "Nafn tengingar (t.d. My Filen Cloud)",
+      "connectionNamePlaceholder": "Nafn tengingar (t.d. My Cloud)",
       "secureLogin": "Örugg innskráning",
       "endToEndAes": "End-to-end dulkóðað með AES-256-GCM",
       "megaRequirement": "Krafa: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Fannst",
       "notFound": "Fannst ekki",
       "copyToClipboard": "Afrita á klemmuspjald",
-      "license": "Leyfi"
+      "license": "Leyfi",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Styðja AeroFTP",

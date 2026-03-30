@@ -135,7 +135,7 @@
       "initialRemotePathMega": "Pradinis nuotolinis aplankas (pvz., /Backup)",
       "initialLocalPath": "Pradinis vietinis aplankas",
       "saveToServers": "Išsaugoti į išsaugotus serverius",
-      "connectionNamePlaceholder": "Ryšio pavadinimas (pvz., My Filen Cloud)",
+      "connectionNamePlaceholder": "Ryšio pavadinimas (pvz., My Cloud)",
       "secureLogin": "Saugus prisijungimas",
       "endToEndAes": "Ištisinis šifravimas su AES-256-GCM",
       "megaRequirement": "Reikalavimas: MEGAcmd",
@@ -1070,7 +1070,10 @@
       "found": "Rastas",
       "notFound": "Nerastas",
       "copyToClipboard": "Kopijuoti į iškarpinę",
-      "license": "Licencija"
+      "license": "Licencija",
+      "reportIssue": "Report Issue",
+      "documentation": "Documentation",
+      "supportDesc": "Need help or want to report a bug? We are here to assist."
     },
     "support": {
       "title": "Palaikykite AeroFTP",
