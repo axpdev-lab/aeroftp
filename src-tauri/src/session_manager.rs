@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::providers::{StorageProvider, ProviderConfig, ProviderError, RemoteEntry};
+use crate::providers::{StorageProvider, ProviderConfig, ProviderError, RemoteEntry, ShareLinkOptions, ShareLinkResult};
 
 /// Session information stored alongside the provider
 #[derive(Debug, Clone)]
@@ -375,21 +375,22 @@ impl MultiProviderState {
         &self,
         session_id: Option<&str>,
         path: &str,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&sid)
             .ok_or(ProviderError::NotConnected)?;
-        
+
         if !session.provider.supports_share_links() {
             return Err(ProviderError::Other(format!(
                 "{} does not support share links",
                 session.info.protocol
             )));
         }
-        
-        session.provider.create_share_link(path, None).await
+
+        session.provider.create_share_link(path, options).await
     }
 }
 

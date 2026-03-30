@@ -453,13 +453,22 @@ pub async fn session_create_share_link(
     state: State<'_, MultiProviderState>,
     session_id: Option<String>,
     path: String,
-) -> Result<String, String> {
+    expires_in_secs: Option<u64>,
+    password: Option<String>,
+    permissions: Option<String>,
+) -> Result<crate::providers::ShareLinkResult, String> {
     let sid = state.resolve_session_id(session_id.as_deref()).await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    let share_url = state.create_share_link(Some(&sid), &path).await
+
+    let options = crate::providers::ShareLinkOptions {
+        expires_in_secs,
+        password,
+        permissions,
+    };
+
+    let result = state.create_share_link(Some(&sid), &path, options).await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
-    
-    info!("Created share link for {} in session {}: {}", path, sid, share_url);
-    Ok(share_url)
+
+    info!("Created share link for {} in session {}: {}", path, sid, result.url);
+    Ok(result)
 }

@@ -16,6 +16,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
     sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// Microsoft Graph API base URL
@@ -858,11 +859,20 @@ impl StorageProvider for OneDriveProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let full_path = if path.starts_with('/') {
             path.to_string()
         } else {
@@ -876,16 +886,23 @@ impl StorageProvider for OneDriveProvider {
         // POST /me/drive/items/{item-id}/createLink
         let url = format!("{}/createLink", self.api_item(&item_id));
         
-        // GAP-A12: Support expires_in_secs via OneDrive expirationDateTime (ISO 8601)
+        // OneDrive Graph API: type "view"/"edit", password (Personal only), expirationDateTime
+        let link_type = match options.permissions.as_deref() {
+            Some("edit") => "edit",
+            _ => "view",
+        };
         let mut body = serde_json::json!({
-            "type": "view",
+            "type": link_type,
             "scope": "anonymous"
         });
-        if let Some(secs) = _expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
             body["expirationDateTime"] = serde_json::Value::String(
                 expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
             );
+        }
+        if let Some(ref pw) = options.password {
+            body["password"] = serde_json::json!(pw);
         }
 
         let response = self.client
@@ -921,7 +938,11 @@ impl StorageProvider for OneDriveProvider {
             .ok_or_else(|| ProviderError::Other("No share URL in response".to_string()))?;
 
         info!("Created share link for {}: {}", path, url);
-        Ok(url)
+        Ok(ShareLinkResult {
+            url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     fn supports_server_copy(&self) -> bool {

@@ -16,6 +16,7 @@ use crate::providers::{
     StorageProvider, ProviderFactory, ProviderType,
     ProviderConfig, RemoteEntry, StorageInfo,
     FileVersion, LockInfo, SharePermission,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// Global flag: when true, filesystem watcher should suppress sync triggers.
@@ -1664,13 +1665,14 @@ pub async fn oauth2_logout(
 }
 
 /// Create a shareable link for a file using the OAuth provider's native sharing API
-/// Works with Google Drive, Dropbox, and OneDrive
 #[tauri::command]
 pub async fn provider_create_share_link(
     state: State<'_, ProviderState>,
     path: String,
     expires_in_secs: Option<u64>,
-) -> Result<String, String> {
+    password: Option<String>,
+    permissions: Option<String>,
+) -> Result<ShareLinkResult, String> {
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard.as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -1682,11 +1684,29 @@ pub async fn provider_create_share_link(
         ));
     }
 
-    let share_url = provider.create_share_link(&path, expires_in_secs).await
+    let options = ShareLinkOptions {
+        expires_in_secs,
+        password,
+        permissions,
+    };
+
+    let result = provider.create_share_link(&path, options).await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
 
-    info!("Created share link for {}: {}", path, share_url);
-    Ok(share_url)
+    info!("Created share link for {}: {}", path, result.url);
+    Ok(result)
+}
+
+/// Query share link capabilities for the current provider
+#[tauri::command]
+pub async fn provider_share_link_capabilities(
+    state: State<'_, ProviderState>,
+) -> Result<ShareLinkCapabilities, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    Ok(provider.share_link_capabilities())
 }
 
 /// Remove a share/export link for a file or folder

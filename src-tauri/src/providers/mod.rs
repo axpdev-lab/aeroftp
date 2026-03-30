@@ -200,6 +200,38 @@ impl Default for TransferOptimizationHints {
     }
 }
 
+/// Options for creating a share link - provider-specific fields are optional.
+/// Providers that don't support a given option simply ignore it.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct ShareLinkOptions {
+    /// Link expiration in seconds from now (None = permanent/provider default)
+    pub expires_in_secs: Option<u64>,
+    /// Password protection (None = no password)
+    pub password: Option<String>,
+    /// Permission level: "view", "edit", "comment" (None = provider default)
+    pub permissions: Option<String>,
+}
+
+/// Result of creating a share link - contains the URL and optional metadata
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ShareLinkResult {
+    /// The share link URL
+    pub url: String,
+    /// Password set on the link (for auto-generated passwords, e.g. Nextcloud)
+    pub password: Option<String>,
+    /// When the link expires (ISO 8601), if applicable
+    pub expires_at: Option<String>,
+}
+
+/// Advertised capabilities for share link advanced options
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ShareLinkCapabilities {
+    pub supports_expiration: bool,
+    pub supports_password: bool,
+    pub supports_permissions: bool,
+    pub available_permissions: Vec<String>,
+}
+
 /// Unified storage provider trait
 ///
 /// All storage backends must implement this trait to be used with AeroFTP.
@@ -324,13 +356,18 @@ pub trait StorageProvider: Send + Sync {
     fn supports_share_links(&self) -> bool {
         false
     }
-    
+
+    /// Advertise which share link options this provider supports
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities::default()
+    }
+
     /// Generate a share link for a file
     async fn create_share_link(
         &mut self,
         _path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        _options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         Err(ProviderError::NotSupported("share_link".to_string()))
     }
 
@@ -658,6 +695,7 @@ impl ProviderFactory {
             ProviderType::FourShared,
             ProviderType::ZohoWorkdrive,
             ProviderType::Internxt,
+            ProviderType::Jottacloud,
             ProviderType::KDrive,
             ProviderType::DrimeCloud,
             ProviderType::FileLu,

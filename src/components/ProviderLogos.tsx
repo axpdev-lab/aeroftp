@@ -372,6 +372,7 @@ export const MinIOLogo: React.FC<LogoProps> = ({ size = 24 }) => (
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
     'mega': MegaLogo,
+    'mega-s4': MegaLogo,
     'cloudflare-r2': CloudflareLogo,
     'backblaze': BackblazeLogo,
     'wasabi': WasabiLogo,

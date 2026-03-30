@@ -4,24 +4,130 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw } from 'lucide-react';
+import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import type { ProviderType } from '../types';
+
+/** Backend response from provider_create_share_link */
+interface ShareLinkResult {
+  url: string;
+  password: string | null;
+  expires_at: string | null;
+}
+
+/** Per-provider capability flags */
+interface ShareLinkCapabilities {
+  expiration: boolean;
+  password: boolean;
+  permissions: boolean;
+  availablePermissions: string[];
+  hasAdvancedOptions: boolean;
+}
+
+/** Map of provider capabilities for share link advanced options */
+function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCapabilities {
+  const caps: ShareLinkCapabilities = {
+    expiration: false,
+    password: false,
+    permissions: false,
+    availablePermissions: [],
+    hasAdvancedOptions: false,
+  };
+
+  switch (provider) {
+    case 'googledrive':
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'comment', 'edit'];
+      break;
+    case 'dropbox':
+      caps.expiration = true;
+      caps.password = true; // Pro+ only
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'onedrive':
+      caps.expiration = true;
+      caps.password = true; // Personal only
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'box':
+      caps.expiration = true; // Paid only
+      caps.password = true; // Paid only
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'pcloud':
+      caps.expiration = true; // Premium only
+      caps.password = true; // Premium only
+      break;
+    case 'filen':
+      caps.expiration = true;
+      caps.password = true;
+      break;
+    case 'zohoworkdrive':
+      caps.expiration = true;
+      caps.password = true;
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'kdrive':
+      caps.expiration = true;
+      caps.password = true;
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'drime':
+      caps.expiration = true;
+      caps.password = true;
+      caps.permissions = true;
+      caps.availablePermissions = ['view', 'edit'];
+      break;
+    case 'webdav':
+      caps.expiration = true;
+      caps.password = true;
+      break;
+    case 's3':
+      caps.expiration = true;
+      break;
+    case 'azure':
+      caps.expiration = true;
+      break;
+    case 'opendrive':
+      caps.expiration = true;
+      break;
+    // No advanced options: mega, jottacloud, koofr, yandexdisk, github, filelu
+  }
+
+  caps.hasAdvancedOptions = caps.expiration || caps.password || caps.permissions;
+  return caps;
+}
 
 interface ShareLinkModalProps {
   path: string;
   fileName: string;
   providerName: string;
+  providerType?: ProviderType | string;
   providerIcon?: React.ReactNode;
   onClose: () => void;
 }
 
-type ModalState = 'loading' | 'success' | 'error';
+type ModalState = 'options' | 'loading' | 'success' | 'error';
 
-export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
+const EXPIRATION_PRESETS = [
+  { label: '1 hour', value: 3600 },
+  { label: '24 hours', value: 86400 },
+  { label: '7 days', value: 604800 },
+  { label: '30 days', value: 2592000 },
+] as const;
+
+export function ShareLinkModal({ path, fileName, providerName, providerType, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
   const humanLog = useHumanizedLog();
-  const [state, setState] = useState<ModalState>('loading');
+  const caps = React.useMemo(() => getShareLinkCapabilities(providerType || ''), [providerType]);
+
+  const [state, setState] = useState<ModalState>(caps.hasAdvancedOptions ? 'options' : 'loading');
   const [shareUrl, setShareUrl] = useState('');
   const [sharePassword, setSharePassword] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -29,10 +135,16 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   const [passwordCopied, setPasswordCopied] = useState(false);
   const [allCopied, setAllCopied] = useState(false);
 
+  // Options form state
+  const [optPassword, setOptPassword] = useState('');
+  const [optExpiration, setOptExpiration] = useState<number | null>(null);
+  const [optPermissions, setOptPermissions] = useState<string>('view');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const humanLogRef = React.useRef(humanLog);
   humanLogRef.current = humanLog;
 
-  const generateLink = useCallback(async () => {
+  const generateLink = useCallback(async (opts?: { password?: string; expiresInSecs?: number | null; permissions?: string }) => {
     setState('loading');
     setError('');
     setLinkCopied(false);
@@ -43,22 +155,22 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     const logId = log.logRaw('activity.share_link_creating', 'INFO', { provider: providerName, filename: fileName }, 'running');
 
     try {
-      const result = await invoke<string>('provider_create_share_link', { path });
-      // Backend may return "url\npassword" when server enforces passwords
-      const parts = result.split('\n');
-      const url = parts[0];
-      const pwd = parts.length > 1 ? parts[1] : null;
+      const params: Record<string, unknown> = { path };
+      if (opts?.expiresInSecs) params.expiresInSecs = opts.expiresInSecs;
+      if (opts?.password) params.password = opts.password;
+      if (opts?.permissions && opts.permissions !== 'view') params.permissions = opts.permissions;
 
-      setShareUrl(url);
-      setSharePassword(pwd);
+      const result = await invoke<ShareLinkResult>('provider_create_share_link', params);
+      setShareUrl(result.url);
+      setSharePassword(result.password || null);
       setState('success');
 
       // Auto-copy link to clipboard
-      await invoke('copy_to_clipboard', { text: url }).catch(() => {});
+      await invoke('copy_to_clipboard', { text: result.url }).catch(() => {});
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
 
-      log.updateEntry(logId, { status: 'success', message: `[${providerName}] Share link created: ${url}` });
+      log.updateEntry(logId, { status: 'success', message: `[${providerName}] Share link created: ${result.url}` });
     } catch (err) {
       setError(String(err));
       setState('error');
@@ -66,9 +178,10 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     }
   }, [path, providerName, fileName]);
 
+  // Auto-generate for providers without advanced options
   const didRun = React.useRef(false);
   useEffect(() => {
-    if (didRun.current) return;
+    if (didRun.current || caps.hasAdvancedOptions) return;
     didRun.current = true;
     generateLink();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +194,14 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  const handleGenerate = () => {
+    generateLink({
+      password: optPassword || undefined,
+      expiresInSecs: optExpiration,
+      permissions: optPermissions,
+    });
+  };
 
   const copyToClipboard = async (text: string, type: 'link' | 'password' | 'all') => {
     try {
@@ -133,6 +254,122 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
             {fileName}
           </div>
 
+          {/* OPTIONS phase */}
+          {state === 'options' && (
+            <div className="space-y-3">
+              {/* Quick generate button */}
+              <button
+                onClick={() => generateLink()}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Link2 size={14} />
+                {t('shareLinkModal.generateDefault')}
+              </button>
+
+              {/* Advanced toggle */}
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="w-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 py-1"
+              >
+                <Shield size={11} />
+                {showAdvanced ? t('shareLinkModal.hideAdvanced') : t('shareLinkModal.showAdvanced')}
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-3 pt-1 border-t border-gray-200 dark:border-gray-700">
+                  {/* Expiration */}
+                  {caps.expiration && (
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <Clock size={12} />
+                        {t('shareLinkModal.expiration')}
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          onClick={() => setOptExpiration(null)}
+                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            optExpiration === null
+                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {t('shareLinkModal.expirationNever')}
+                        </button>
+                        {EXPIRATION_PRESETS.map(preset => (
+                          <button
+                            key={preset.value}
+                            onClick={() => setOptExpiration(preset.value)}
+                            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                              optExpiration === preset.value
+                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Password */}
+                  {caps.password && (
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <Key size={12} />
+                        {t('shareLinkModal.setPassword')}
+                      </label>
+                      <input
+                        type="text"
+                        value={optPassword}
+                        onChange={e => setOptPassword(e.target.value)}
+                        placeholder={t('shareLinkModal.passwordPlaceholder')}
+                        className="w-full text-xs px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
+                      />
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                        {t('shareLinkModal.passwordHint')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Permissions */}
+                  {caps.permissions && caps.availablePermissions.length > 1 && (
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <Eye size={12} />
+                        {t('shareLinkModal.permissions')}
+                      </label>
+                      <div className="flex gap-1.5">
+                        {caps.availablePermissions.map(perm => (
+                          <button
+                            key={perm}
+                            onClick={() => setOptPermissions(perm)}
+                            className={`px-2.5 py-1 text-xs rounded-md capitalize transition-colors ${
+                              optPermissions === perm
+                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            {t(`shareLinkModal.perm_${perm}`)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generate with options */}
+                  <button
+                    onClick={handleGenerate}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Link2 size={12} />
+                    {t('shareLinkModal.generateWithOptions')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {state === 'loading' && (
             <div className="flex flex-col items-center justify-center py-8 text-gray-600 dark:text-gray-400">
               <Loader2 size={28} className="animate-spin mb-3 text-blue-500" />
@@ -158,7 +395,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                   {t('shareLinkModal.close')}
                 </button>
                 <button
-                  onClick={generateLink}
+                  onClick={() => caps.hasAdvancedOptions ? setState('options') : generateLink()}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   <RefreshCw size={12} />
@@ -197,7 +434,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                 </div>
               </div>
 
-              {/* Password field (if server required it) */}
+              {/* Password field (if server returned one) */}
               {sharePassword && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">

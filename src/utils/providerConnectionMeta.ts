@@ -10,7 +10,7 @@ export interface ProviderModeBadge {
 }
 
 export const getMegaConnectionMode = (options?: ProviderOptions): 'native' | 'megacmd' => {
-    return options?.mega_mode === 'native' ? 'native' : 'megacmd';
+    return options?.mega_mode === 'megacmd' ? 'megacmd' : 'native';
 };
 
 export const getMegaConnectionBadge = (options?: ProviderOptions): ProviderModeBadge => {

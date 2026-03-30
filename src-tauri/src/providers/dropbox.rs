@@ -16,6 +16,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo, LockInfo,
     sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// Dropbox API endpoints
@@ -1064,11 +1065,20 @@ impl StorageProvider for DropboxProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
@@ -1076,18 +1086,26 @@ impl StorageProvider for DropboxProvider {
         };
 
         // Try to create a shared link
-        // GAP-A12: Support expires_in_secs via Dropbox expires field (ISO 8601)
+        // Dropbox API: access "viewer"/"editor", password (Pro+ only), expires (Pro+ only)
+        let access = match options.permissions.as_deref() {
+            Some("edit") => "editor",
+            _ => "viewer",
+        };
         let mut settings = serde_json::json!({
-            "access": "viewer",
+            "access": access,
             "allow_download": true,
             "audience": "public",
             "requested_visibility": "public"
         });
-        if let Some(secs) = _expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
             settings["expires"] = serde_json::Value::String(
                 expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
             );
+        }
+        if let Some(ref pw) = options.password {
+            settings["link_password"] = serde_json::json!(pw);
+            settings["requested_visibility"] = serde_json::json!("password");
         }
         let body = serde_json::json!({
             "path": full_path,
@@ -1146,7 +1164,11 @@ impl StorageProvider for DropboxProvider {
 
             if let Some(link) = result.links.first() {
                 info!("Retrieved existing share link for {}: {}", path, link.url);
-                return Ok(link.url.clone());
+                return Ok(ShareLinkResult {
+                    url: link.url.clone(),
+                    password: None,
+                    expires_at: None,
+                });
             }
 
             return Err(ProviderError::Other("No existing share link found".to_string()));
@@ -1170,7 +1192,11 @@ impl StorageProvider for DropboxProvider {
             .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
         info!("Created share link for {}: {}", path, result.url);
-        Ok(result.url)
+        Ok(ShareLinkResult {
+            url: result.url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(

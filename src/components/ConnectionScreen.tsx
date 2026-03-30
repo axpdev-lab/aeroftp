@@ -477,7 +477,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Provider selection state (for S3/WebDAV)
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
-    const megaMode = connectionParams.options?.mega_mode === 'native' ? 'native' : 'megacmd';
+    const megaMode = connectionParams.options?.mega_mode === 'megacmd' ? 'megacmd' : 'native';
     const isMegaCmdMode = megaMode === 'megacmd';
 
     // Protocol selector open state (to hide form when selector is open)

@@ -27,6 +27,7 @@ use tracing::{info, debug};
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry,
     sanitize_api_error, HttpRetryConfig, send_with_retry,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 use super::types::AzureConfig;
 
@@ -962,13 +963,22 @@ impl StorageProvider for AzureProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let blob_path = path.trim_start_matches('/');
-        let expiry_secs = expires_in_secs.unwrap_or(7 * 24 * 3600); // default 7 days
+        let expiry_secs = options.expires_in_secs.unwrap_or(7 * 24 * 3600); // default 7 days
         let now = chrono::Utc::now();
         let start = (now - chrono::Duration::minutes(5)).format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let expiry = (now + chrono::Duration::seconds(expiry_secs as i64)).format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -1014,7 +1024,11 @@ impl StorageProvider for AzureProvider {
         let share_url = format!("{}?{}", blob_url, sas_token);
 
         info!("Created SAS share link for {} (expires: {})", path, expiry);
-        Ok(share_url)
+        Ok(ShareLinkResult {
+            url: share_url,
+            password: None,
+            expires_at: Some(expiry),
+        })
     }
 }
 

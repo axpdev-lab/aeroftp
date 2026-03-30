@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.2.2" date="2026-03-30">
+      <description>
+        <p>Advanced Share Links with password, expiration, and permissions for 13 providers. MEGA S4 Object Storage (S3-compatible, 4 regions). CLI link command with --password/--expires/--permissions. Google Drive commenter role. MEGAcmd re-export fix, trash path sanitization, S4 capability gating. MEGA default tab set to Native API.</p>
+      </description>
+    </release>
     <release version="3.2.0" date="2026-03-29">
       <description>
         <p>MEGA Native API: full client-side encryption without MEGAcmd. Dual-backend (Native API or MEGAcmd), RSA session auth, AES-128-CTR file encryption, trash management, share links. Windows console flash fix. Trash date formatting across all 11 providers.</p>

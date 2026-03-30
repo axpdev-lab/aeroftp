@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
+use chrono;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,6 +17,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
     sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 use super::types::BoxConfig;
 
@@ -1470,13 +1472,39 @@ impl StorageProvider for BoxProvider {
     // Share links
     fn supports_share_links(&self) -> bool { true }
 
-    async fn create_share_link(&mut self, path: &str, _expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
+    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let body = serde_json::json!({
-            "shared_link": {"access": "open"}
-        });
+        // Box API: shared_link with access, password, unshared_at, permissions
+        // password and unshared_at require paid Box account
+        let mut shared_link = serde_json::json!({"access": "open"});
+        if let Some(ref pw) = options.password {
+            shared_link["password"] = serde_json::json!(pw);
+        }
+        if let Some(secs) = options.expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            shared_link["unshared_at"] = serde_json::json!(
+                expires_at.format("%Y-%m-%dT%H:%M:%S-00:00").to_string()
+            );
+        }
+        if let Some(ref perms) = options.permissions {
+            let can_edit = perms == "edit";
+            shared_link["permissions"] = serde_json::json!({
+                "can_download": true,
+                "can_edit": can_edit
+            });
+        }
+        let body = serde_json::json!({"shared_link": shared_link});
 
         let resp = self.client.put(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
@@ -1487,9 +1515,15 @@ impl StorageProvider for BoxProvider {
         let item: BoxItemWithLink = resp.json().await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        item.shared_link
+        let url = item.shared_link
             .map(|l| l.url)
-            .ok_or_else(|| ProviderError::Other("Failed to create share link".to_string()))
+            .ok_or_else(|| ProviderError::Other("Failed to create share link".to_string()))?;
+
+        Ok(ShareLinkResult {
+            url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

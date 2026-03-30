@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 28 March 2026
-> Version: v3.2.0
+> Last Updated: 30 March 2026
+> Version: v3.2.2
 >
 > **Note**: GitHub (23rd protocol) supports repository filesystem (list, upload/commit, download, delete/commit, tree, search), release asset management (up to 2 GiB), automatic branch workflow for protected branches, and PR creation. Feature matrix tables below will be updated in a future pass to include GitHub columns.
 
@@ -106,26 +106,31 @@
 
 ## Share Link Support
 
-| Protocol | Share Link Support | Implementation | Notes |
-|----------|-------------------|----------------|-------|
-| **FTP/FTPS/SFTP** | Via AeroCloud | `generate_share_link` | Requires `public_url_base` config |
-| **WebDAV** | Via AeroCloud | `generate_share_link` | No native support |
-| **S3** | Native (Pre-signed URLs) | `provider_create_share_link` | 7-day expiry default |
-| **Google Drive** | Native | `provider_create_share_link` | Permanent "anyone with link" |
-| **Dropbox** | Native | `provider_create_share_link` | Uses shared_links API |
-| **OneDrive** | Native | `provider_create_share_link` | "view" permission link |
-| **MEGA.nz** | Native | `provider_create_share_link` | Native API or `mega-export` via MEGAcmd |
-| **Box** | Native | `provider_create_share_link` | "open" access shared link |
-| **pCloud** | Native | `provider_create_share_link` | Public link via `getfilepublink` |
-| **4shared** | — | — | Not yet implemented |
-| **Filen** | Native | `provider_create_share_link` | E2E encrypted share link |
-| **Zoho WorkDrive** | Native | `provider_create_share_link` | Team share link |
-| **Internxt Drive** | Native | `provider_create_share_link` | E2E encrypted share link |
-| **kDrive** | — | — | Not yet implemented |
-| **Koofr** | Native | `provider_create_share_link` | Share link via Koofr API |
-| **FileLu** | Native | `provider_create_share_link` | Public share link via FileLu API |
-| **Yandex Disk** | Native | `provider_create_share_link` | Publish/unpublish via REST API |
-| **OpenDrive** | Native | `provider_create_share_link` | Expiring share links |
+| Protocol | Link | Password | Expiry | Permissions | Notes |
+|----------|------|----------|--------|-------------|-------|
+| **FTP/FTPS/SFTP** | AeroCloud | - | - | - | Requires `public_url_base` config |
+| **WebDAV/Nextcloud** | Native | Auto-gen | Days | - | OCS API, password auto-generated if server enforces it |
+| **S3** | Presigned | - | Yes (default 1h, max 7d) | - | AWS Signature V4 |
+| **Google Drive** | Native | - | - | view/comment/edit | Permanent "anyone with link" |
+| **Dropbox** | Native | Pro+ | Pro+ | view/edit | Password and expiry require Professional plan or higher |
+| **OneDrive** | Native | Personal | Yes | view/edit | Password only on Personal accounts, not Business |
+| **MEGA.nz** | Native | - | - | - | Native API (recommended) or MEGAcmd bridge |
+| **Box** | Native | Paid | Paid | view/edit | Password and expiry require paid Box plan |
+| **pCloud** | Native | Premium | Premium | - | Password and expiry require pCloud Premium |
+| **Filen** | Native | Yes (Argon2id) | Presets (1h-30d) | - | E2E encrypted, password hashed client-side |
+| **Zoho WorkDrive** | Native | Yes | Yes | view/edit | Full advanced options on all plans |
+| **kDrive** | Native | Paid | Paid | view/edit | Password and expiry require paid Infomaniak plan |
+| **Jottacloud** | Native | - | - | - | Basic share only (API limitation) |
+| **Drime Cloud** | Native | Yes | Yes | view/edit | Full advanced options |
+| **Koofr** | Native | - | - | - | Basic share link |
+| **FileLu** | Native | - | - | - | Makes file public, returns share URL |
+| **Yandex Disk** | Native | - | - | - | Publish/unpublish via REST API |
+| **OpenDrive** | Native | - | Yes (default 1 year) | - | Expiring share links |
+| **MEGA S4** | Presigned | - | Yes (max 7d) | - | S3-compatible presigned URLs, 4 regions (EU/CA) |
+| **Azure Blob** | SAS | - | Yes (default 7d) | - | Service SAS with HMAC-SHA256 |
+| **GitHub** | URL | - | - | - | Permanent blob/release URL |
+
+**CLI**: `aeroftp-cli link --profile "name" /path [--password pw] [--expires 7d] [--permissions edit]`
 
 ---
 

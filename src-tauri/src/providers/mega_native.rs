@@ -25,6 +25,7 @@ use super::{
         unpack_node_key, username_hash_v1,
     },
     MegaConfig, ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 const MEGA_API_BASE_URL: &str = "https://g.api.mega.co.nz/cs";
@@ -1151,8 +1152,8 @@ impl StorageProvider for MegaNativeProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         self.ensure_nodes_loaded().await?;
         let handle = self.resolve_path(path)?;
         let node = self.nodes.get(&handle)
@@ -1181,7 +1182,8 @@ impl StorageProvider for MegaNativeProvider {
         };
 
         let link_type = if node.is_file() { "file" } else { "folder" };
-        Ok(format!("https://mega.nz/{}/{}#{}", link_type, handle, export_key))
+        let _ = &options; // acknowledge usage
+        Ok(ShareLinkResult { url: format!("https://mega.nz/{}/{}#{}", link_type, handle, export_key), password: None, expires_at: None })
     }
 }
 

@@ -22,6 +22,7 @@ use tracing::{info, warn};
 use super::{
     FileVersion, ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
     sanitize_api_error, DrimeCloudConfig,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 const API_BASE: &str = "https://app.drime.cloud/api/v1";
@@ -1486,11 +1487,20 @@ impl StorageProvider for DrimeCloudProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
@@ -1500,14 +1510,18 @@ impl StorageProvider for DrimeCloudProvider {
 
         drime_log(&format!("Creating share link for {} (id={})", filename, file_id));
 
+        let allow_edit = options.permissions.as_deref() == Some("edit");
         let mut body = serde_json::json!({
             "allow_download": true,
-            "allow_edit": false
+            "allow_edit": allow_edit
         });
 
-        if let Some(secs) = expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
             body["expires_at"] = serde_json::json!(expires_at.to_rfc3339());
+        }
+        if let Some(ref pw) = options.password {
+            body["password"] = serde_json::json!(pw);
         }
 
         let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
@@ -1537,7 +1551,11 @@ impl StorageProvider for DrimeCloudProvider {
 
         let share_url = format!("https://app.drime.cloud/drive/shares/{}", hash);
         drime_log(&format!("Share link created: {}", share_url));
-        Ok(share_url)
+        Ok(ShareLinkResult {
+            url: share_url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, WebDavConfig,
     sanitize_api_error,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// A trash item from a Nextcloud trashbin PROPFIND response.
@@ -271,14 +272,14 @@ impl WebDavProvider {
     /// OCS: Create a public share link for a file/folder.
     /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
     /// retries automatically with a generated password and returns "url\npassword".
-    pub async fn nextcloud_create_share(&mut self, path: &str, expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+    pub async fn nextcloud_create_share(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
         let base = self.nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares", base);
 
         let mut form_body = format!("path={}&shareType=3&permissions=1",
             urlencoding::encode(path));
-        if let Some(secs) = expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             let days = (secs / 86400).max(1);
             let expire = chrono::Utc::now() + chrono::Duration::days(days as i64);
             form_body.push_str(&format!("&expireDate={}", expire.format("%Y-%m-%d")));
@@ -326,8 +327,11 @@ impl WebDavProvider {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))?;
 
-            // Return URL + password separated by newline so frontend can display both
-            return Ok(format!("{}\n{}", share_url, password));
+            return Ok(ShareLinkResult {
+                url: share_url.to_string(),
+                password: Some(password),
+                expires_at: None,
+            });
         }
 
         if !status.is_success() {
@@ -336,10 +340,15 @@ impl WebDavProvider {
         let json: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
 
-        json.pointer("/ocs/data/url")
+        let share_url = json.pointer("/ocs/data/url")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))
+            .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))?;
+
+        Ok(ShareLinkResult {
+            url: share_url.to_string(),
+            password: None,
+            expires_at: None,
+        })
     }
 
     /// Generate a random 16-char password for share links.
@@ -1630,12 +1639,21 @@ impl StorageProvider for WebDavProvider {
         self.is_nextcloud()
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
-        self.nextcloud_create_share(path, expires_in_secs).await
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
+        self.nextcloud_create_share(path, options).await
     }
 
     fn supports_server_copy(&self) -> bool {

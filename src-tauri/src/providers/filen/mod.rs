@@ -29,6 +29,7 @@ fn filen_log(msg: &str) {
 
 use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 use super::types::FilenConfig;
 use super::http_retry::{HttpRetryConfig, send_with_retry};
@@ -1471,7 +1472,16 @@ impl StorageProvider for FilenProvider {
 
     fn supports_share_links(&self) -> bool { true }
 
-    async fn create_share_link(&mut self, path: &str, _expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
+    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
         // Find file/folder UUID from path
         let normalized = Self::normalize_path(path);
         let (parent_path, name) = match normalized.rfind('/') {
@@ -1498,18 +1508,62 @@ impl StorageProvider for FilenProvider {
             .map(|k| k.expose_secret().to_string())
             .unwrap_or_default();
 
+        // Map expires_in_secs to Filen preset: "never","1h","6h","1d","3d","7d","14d","30d"
+        let expiration = match options.expires_in_secs {
+            None => "never".to_string(),
+            Some(secs) => {
+                if secs <= 3600 { "1h" }
+                else if secs <= 21600 { "6h" }
+                else if secs <= 86400 { "1d" }
+                else if secs <= 259200 { "3d" }
+                else if secs <= 604800 { "7d" }
+                else if secs <= 1209600 { "14d" }
+                else { "30d" }
+                .to_string()
+            }
+        };
+
+        // Filen password hashing: Argon2id v3 (client-side, zero-knowledge)
+        let (password_raw, password_hashed, salt_hex) = if let Some(ref pw) = options.password {
+            let salt_bytes: [u8; 128] = {
+                let mut buf = [0u8; 128];
+                use rand::RngCore;
+                rand::thread_rng().fill_bytes(&mut buf);
+                buf
+            };
+            let salt_hex_str: String = salt_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            let params = argon2::Params::new(65536, 3, 4, Some(64))
+                .map_err(|e| ProviderError::Other(format!("Argon2 params: {}", e)))?;
+            let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+            let mut hash_out = [0u8; 64];
+            argon2.hash_password_into(pw.as_bytes(), &salt_bytes, &mut hash_out)
+                .map_err(|e| ProviderError::Other(format!("Argon2 hash: {}", e)))?;
+            let hash_hex: String = hash_out.iter().map(|b| format!("{:02x}", b)).collect();
+            (pw.clone(), hash_hex, salt_hex_str)
+        } else {
+            ("empty".to_string(), "empty".to_string(), String::new())
+        };
+
+        let mut link_body = serde_json::json!({
+            "uuid": uuid,
+            "linkUUID": link_uuid,
+            "expiration": expiration,
+            "password": password_raw,
+            "passwordHashed": password_hashed,
+            "salt": salt_hex,
+            "downloadBtn": true,
+            "type": "enable",
+        });
+        // fileUUID required by API for file links
+        if !entry.is_dir {
+            link_body["fileUUID"] = serde_json::json!(uuid);
+        }
+
         let request = self.client
             .post(format!("{}/{}", GATEWAY, endpoint))
             .header("Authorization", HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
                 .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?)
-            .json(&serde_json::json!({
-                "uuid": uuid,
-                "linkUUID": link_uuid,
-                "expiration": "never",
-                "password": "empty",
-                "downloadBtn": true,
-                "type": "enable",
-            }))
+            .json(&link_body)
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: LinkEditResponse = self.send_retry(request).await?
@@ -1523,18 +1577,13 @@ impl StorageProvider for FilenProvider {
         }
 
         // F-SHARE-01: Append #<linkKey> fragment so recipients can decrypt shared content.
-        // Filen's web app requires the encryption key in the URL fragment (never sent to server).
-        //
-        // M8 SECURITY WARNING: The link key IS the user's first master key. Anyone with this URL
-        // can decrypt the shared file metadata. This is by Filen's design (zero-knowledge sharing),
-        // but users should be aware that sharing this link is equivalent to sharing their master key
-        // for the purpose of decrypting the linked content. The fragment is not sent to the server
-        // in HTTP requests, but it IS visible in the URL bar and in browser history.
-        if link_key.is_empty() {
-            Ok(format!("https://filen.io/d/{}", link_uuid))
+        // M8 SECURITY WARNING: The link key IS the user's first master key.
+        let url = if link_key.is_empty() {
+            format!("https://filen.io/d/{}", link_uuid)
         } else {
-            Ok(format!("https://filen.io/d/{}#{}", link_uuid, link_key))
-        }
+            format!("https://filen.io/d/{}#{}", link_uuid, link_key)
+        };
+        Ok(ShareLinkResult { url, password: None, expires_at: None })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

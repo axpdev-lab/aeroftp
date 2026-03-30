@@ -16,6 +16,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo,
     sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// Google Workspace MIME type → export format mapping
@@ -1319,11 +1320,20 @@ impl StorageProvider for GoogleDriveProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: false,
+            supports_password: false,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "comment".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         // Resolve path to file ID
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -1341,18 +1351,18 @@ impl StorageProvider for GoogleDriveProvider {
         let file = self.find_by_name(file_name, &parent_id).await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
-        // Create "anyone with link can view" permission
-        // GAP-A12: Support expires_in_secs via Google Drive expirationTime
-        let mut permission = serde_json::json!({
-            "role": "reader",
+        // Create "anyone with link" permission
+        // Google Drive roles: "reader", "commenter", "writer"
+        // NOTE: expirationTime only works for type "user"/"group", NOT "anyone" - omitted
+        let role = match options.permissions.as_deref() {
+            Some("comment") | Some("commenter") => "commenter",
+            Some("edit") | Some("writer") => "writer",
+            _ => "reader",
+        };
+        let permission = serde_json::json!({
+            "role": role,
             "type": "anyone"
         });
-        if let Some(secs) = _expires_in_secs {
-            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
-            permission["expirationTime"] = serde_json::Value::String(
-                expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
-            );
-        }
 
         let perm_url = format!("{}/files/{}/permissions", DRIVE_API_BASE, file.id);
         
@@ -1383,7 +1393,11 @@ impl StorageProvider for GoogleDriveProvider {
 
         if !response.status().is_success() {
             // Fallback to direct link
-            return Ok(format!("https://drive.google.com/file/d/{}/view?usp=sharing", file.id));
+            return Ok(ShareLinkResult {
+                url: format!("https://drive.google.com/file/d/{}/view?usp=sharing", file.id),
+                password: None,
+                expires_at: None,
+            });
         }
 
         #[derive(Deserialize)]
@@ -1399,7 +1413,11 @@ impl StorageProvider for GoogleDriveProvider {
             .unwrap_or_else(|| format!("https://drive.google.com/file/d/{}/view?usp=sharing", file.id));
 
         info!("Created share link for {}: {}", path, url);
-        Ok(url)
+        Ok(ShareLinkResult {
+            url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     fn supports_server_copy(&self) -> bool {

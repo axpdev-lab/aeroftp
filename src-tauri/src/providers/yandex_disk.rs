@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use super::{
     sanitize_api_error, response_bytes_with_limit, MAX_DOWNLOAD_TO_BYTES,
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
@@ -924,8 +925,8 @@ impl StorageProvider for YandexDiskProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -948,9 +949,16 @@ impl StorageProvider for YandexDiskProvider {
 
         // Fetch updated metadata to get public_url
         let resource = self.get_resource(&resolved).await?;
-        resource
+        let share_url = resource
             .public_url
-            .ok_or_else(|| ProviderError::ServerError("No public URL returned after publish".into()))
+            .ok_or_else(|| ProviderError::ServerError("No public URL returned after publish".into()))?;
+
+        let _ = &options; // acknowledge options
+        Ok(ShareLinkResult {
+            url: share_url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

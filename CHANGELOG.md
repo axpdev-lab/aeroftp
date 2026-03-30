@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-03-30
+
+### Advanced Share Links, MEGA S4 Object Storage & Security Hardening
+
+#### New Features
+
+- **Advanced Share Link Options**: Password protection, expiration, and permission controls for 13 providers. ShareLinkModal with capability-driven form (expiration presets, password field, view/edit/comment permissions). Backend `ShareLinkOptions` + `ShareLinkResult` structs with `ShareLinkCapabilities` trait method.
+  - Password support: Dropbox (Pro+), OneDrive (Personal), Box (paid), pCloud (Premium), Filen (Argon2id v3), Zoho WorkDrive, kDrive (paid), Drime Cloud, Nextcloud (auto-gen)
+  - Expiration support: 13 providers with provider-specific formats (ISO 8601, Unix timestamp, day count, Filen presets)
+  - Permission support: Google Drive (view/comment/edit), Dropbox, OneDrive, Box, Zoho, kDrive, Drime Cloud (view/edit)
+- **MEGA S4 Object Storage** (new S3-compatible provider): Pre-configured preset with 4 regions (Amsterdam, Luxembourg, Montreal, Vancouver), virtual-hosted endpoints, presigned URLs. Full CRUD, multipart upload, share links verified via CLI stress test.
+- **CLI `link` command enhanced**: `--password`, `--expires` (human-friendly: 1h/24h/7d/30d), `--permissions` flags. JSON output includes password and expires_at fields.
+- **Provider capability query**: New Tauri command `provider_share_link_capabilities` exposes per-provider feature flags to frontend.
+
+#### Fixed
+
+- **Google Drive share link**: Removed `expirationTime` parameter for `type: "anyone"` permissions (silently ignored by Google API). Added `commenter` and `writer` role support.
+- **MEGAcmd "already exported" error**: Auto-removes existing export and re-creates when share link already exists.
+- **MEGAcmd trash path traversal**: Sanitized with `Path::file_name()` to prevent `../../` injection in restore and permanent delete operations.
+- **MEGA S4 capability gating**: `supports_versions()` returns false, tagging operations return `NotSupported`, SSE/storage-class headers skipped, presigned URLs capped at 7 days.
+- **MEGA default connection tab**: Now defaults to Native API (recommended) instead of MEGAcmd.
+- **MEGA connection texts**: Updated from developer-facing ("path in rollout", "target path for the new connector") to user-facing language. Translated in 47 languages.
+- **Import MEGA Link dialog**: Replaced browser `window.prompt` with themed `InputDialog` component.
+- **Nextcloud share link**: Eliminated `"url\npassword"` string hack, now returns structured `ShareLinkResult` with separate `password` field.
+- **Session share link API**: `session_create_share_link` now forwards password/expiration/permissions options.
+- **FileLu invoke type**: Fixed incomplete type annotation for `provider_create_share_link` response.
+- **Share link icon resolution**: Refactored from hardcoded switch to dynamic `PROVIDER_LOGOS` lookup with registry fallback, supporting all S3/WebDAV sub-providers.
+
+#### i18n
+
+- 13 new share link keys translated in 47 languages (generateDefault, showAdvanced, hideAdvanced, expiration, expirationNever, setPassword, passwordPlaceholder, passwordHint, permissions, perm_view, perm_comment, perm_edit, generateWithOptions)
+- MEGA S4 provider keys (megaS4Desc, megaS4Tooltip)
+- Updated S3 protocol description: "AWS S3, MEGA S4, R2, B2"
+- Updated MEGA connection texts in 47 languages
+
 ## [3.2.0] - 2026-03-29
 
 ### MEGA Native API - Zero-Dependency Cloud Encryption

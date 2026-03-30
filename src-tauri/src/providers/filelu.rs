@@ -24,6 +24,7 @@ use tracing::info;
 use super::{
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
     FileLuConfig, HttpRetryConfig, send_with_retry,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 const API_BASE: &str = "https://filelu.com/api";
@@ -1559,8 +1560,9 @@ impl StorageProvider for FileLuProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
+        let _ = &options;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1570,7 +1572,11 @@ impl StorageProvider for FileLuProvider {
         // Make file public (only_me=0) and return the canonical FileLu link
         let url = self.api_url_with("file/only_me", &[("file_code", &file_code), ("only_me", "0")]);
         self.get_with_retry(&url).await?;
-        Ok(format!("https://filelu.com/{}", file_code))
+        Ok(ShareLinkResult {
+            url: format!("https://filelu.com/{}", file_code),
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {

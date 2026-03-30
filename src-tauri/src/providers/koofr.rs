@@ -22,6 +22,7 @@ use super::{
     FileVersion, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
     StorageInfo, StorageProvider, TransferOptimizationHints,
     HttpRetryConfig, send_with_retry,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 const API_BASE: &str = "https://app.koofr.net/api/v2.1";
@@ -1130,8 +1131,8 @@ impl StorageProvider for KoofrProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1160,7 +1161,12 @@ impl StorageProvider for KoofrProvider {
             ProviderError::ServerError(format!("Failed to parse link: {}", e))
         })?;
 
-        Ok(link.short_url.unwrap_or(link.url))
+        let _ = &options; // acknowledge options
+        Ok(ShareLinkResult {
+            url: link.short_url.unwrap_or(link.url),
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

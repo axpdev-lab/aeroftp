@@ -19,6 +19,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, MegaConfig, StorageInfo,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 /// Timeout for all MEGAcmd commands (seconds).
@@ -191,13 +192,14 @@ impl MegaCmdProvider {
 
     /// Run a mega command with automatic re-auth on session expiry (ERR-04).
     /// Use this for operational commands (not for login/logout themselves).
+    /// Re-auth is attempted exactly once; if the retry also fails, the error propagates.
     async fn run_mega_cmd_with_reauth(&mut self, cmd: &str, args: &[&str]) -> Result<String, ProviderError> {
         match self.run_mega_cmd(cmd, args).await {
             Ok(out) => Ok(out),
-            Err(ProviderError::AuthenticationFailed(_)) => {
-                tracing::info!(target: "mega", "[REAUTH] Session expired, re-authenticating...");
+            Err(ProviderError::AuthenticationFailed(ref msg)) => {
+                tracing::info!(target: "mega", "[REAUTH] Session expired ({}), re-authenticating...", msg);
                 self.do_login().await?;
-                // Retry the original command once after re-auth
+                // Single retry after re-auth (no recursion - calls run_mega_cmd, not self)
                 self.run_mega_cmd(cmd, args).await
             }
             Err(e) => Err(e),
@@ -713,21 +715,34 @@ impl StorageProvider for MegaCmdProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let abs_path = self.resolve_path(path);
 
         // SHARE-01: MEGAcmd's mega-export does not support link expiry.
-        if let Some(secs) = expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             tracing::warn!(target: "mega", "Link expiry requested ({}s) but MEGAcmd mega-export does not support expiry. Creating permanent link.", secs);
         }
 
-        let output = self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path]).await?;
+        let output = match self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path]).await {
+            Ok(out) => out,
+            Err(e) => {
+                let err_msg = e.to_string();
+                // If already exported, remove old link and re-export
+                if err_msg.contains("already exported") {
+                    tracing::info!(target: "mega", "Link already exported, re-exporting: {}", abs_path);
+                    let _ = self.run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path]).await;
+                    self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path]).await?
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
         // mega-export output format: "Exported /path: https://mega.nz/..."
         for line in output.lines() {
             if let Some(url_start) = line.find("https://mega.nz/") {
-                return Ok(line[url_start..].trim().to_string());
+                return Ok(ShareLinkResult { url: line[url_start..].trim().to_string(), password: None, expires_at: None });
             }
         }
 
@@ -928,7 +943,12 @@ impl MegaCmdProvider {
 
     /// TRASH-03: Restore an item from rubbish bin to a destination path.
     pub async fn restore_from_trash(&mut self, filename: &str, dest: &str) -> Result<(), ProviderError> {
-        let rubbish_path = format!("//bin/{}", filename.trim_start_matches('/'));
+        // Sanitize: extract basename only to prevent path traversal (e.g. "../../secret")
+        let clean_name = std::path::Path::new(filename)
+            .file_name()
+            .ok_or_else(|| ProviderError::InvalidPath("Invalid trash item name".to_string()))?
+            .to_string_lossy();
+        let rubbish_path = format!("//bin/{}", clean_name);
         let abs_dest = self.resolve_path(dest);
         self.run_mega_cmd_with_reauth("mega-mv", &[&rubbish_path, &abs_dest]).await?;
         Ok(())
@@ -936,7 +956,12 @@ impl MegaCmdProvider {
 
     /// TRASH-04: Permanently delete an item from the rubbish bin.
     pub async fn permanent_delete_from_trash(&mut self, filename: &str) -> Result<(), ProviderError> {
-        let rubbish_path = format!("//bin/{}", filename.trim_start_matches('/'));
+        // Sanitize: extract basename only to prevent path traversal
+        let clean_name = std::path::Path::new(filename)
+            .file_name()
+            .ok_or_else(|| ProviderError::InvalidPath("Invalid trash item name".to_string()))?
+            .to_string_lossy();
+        let rubbish_path = format!("//bin/{}", clean_name);
         // Use -f flag for permanent deletion
         self.run_mega_cmd_with_reauth("mega-rm", &["-f", &rubbish_path]).await?;
         Ok(())

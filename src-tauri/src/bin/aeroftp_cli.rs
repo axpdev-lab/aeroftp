@@ -49,6 +49,7 @@ use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
+    ShareLinkOptions,
 };
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -332,6 +333,15 @@ enum Commands {
         /// Remote path
         #[arg(default_value = "")]
         path: String,
+        /// Link expiration (e.g. 1h, 24h, 7d, 30d, or seconds)
+        #[arg(long)]
+        expires: Option<String>,
+        /// Password-protect the link (provider support required)
+        #[arg(long)]
+        password: Option<String>,
+        /// Permission level: view, edit, comment (provider support required)
+        #[arg(long, default_value = "view")]
+        permissions: String,
     },
     /// Find and replace text in a remote UTF-8 file
     Edit {
@@ -4102,7 +4112,20 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     }
 }
 
-async fn cmd_link(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+/// Parse a human-friendly duration string into seconds.
+/// Accepts: "1h", "24h", "7d", "30d", or raw seconds like "3600".
+fn parse_expires(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if let Some(h) = s.strip_suffix('h') {
+        h.parse::<u64>().ok().map(|v| v * 3600)
+    } else if let Some(d) = s.strip_suffix('d') {
+        d.parse::<u64>().ok().map(|v| v * 86400)
+    } else {
+        s.parse::<u64>().ok()
+    }
+}
+
+async fn cmd_link(url: &str, path: &str, expires: Option<&str>, password: Option<&str>, permissions: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -4114,15 +4137,38 @@ async fn cmd_link(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
         return 7;
     }
 
-    match provider.create_share_link(path, None).await {
-        Ok(link) => {
+    let expires_in_secs = expires.and_then(parse_expires);
+    if expires.is_some() && expires_in_secs.is_none() {
+        print_error(format, "Invalid --expires format. Use: 1h, 24h, 7d, 30d, or seconds", 1);
+        let _ = provider.disconnect().await;
+        return 1;
+    }
+
+    let options = ShareLinkOptions {
+        expires_in_secs,
+        password: password.map(|s| s.to_string()),
+        permissions: if permissions == "view" { None } else { Some(permissions.to_string()) },
+    };
+
+    match provider.create_share_link(path, options).await {
+        Ok(result) => {
             match format {
-                OutputFormat::Text => println!("{}", link),
+                OutputFormat::Text => {
+                    println!("{}", result.url);
+                    if let Some(ref pw) = result.password {
+                        eprintln!("Password: {}", pw);
+                    }
+                    if let Some(ref exp) = result.expires_at {
+                        eprintln!("Expires: {}", exp);
+                    }
+                }
                 OutputFormat::Json => {
                     print_json(&serde_json::json!({
                         "status": "ok",
                         "path": path,
-                        "url": link,
+                        "url": result.url,
+                        "password": result.password,
+                        "expires_at": result.expires_at,
                     }));
                 }
             }
@@ -9121,13 +9167,13 @@ async fn main() {
             };
             cmd_cp(u, f, t, &cli, format).await
         }
-        Commands::Link { url, path } => {
+        Commands::Link { url, path, expires, password, permissions } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_link(u, p, &cli, format).await
+            cmd_link(u, p, expires.as_deref(), password.as_deref(), permissions.as_str(), &cli, format).await
         }
         Commands::Edit {
             url,

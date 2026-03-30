@@ -25,6 +25,7 @@ use tracing::info;
 use super::{
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
     sanitize_api_error, JottacloudConfig, HttpRetryConfig, send_with_retry,
+    ShareLinkOptions, ShareLinkResult,
 };
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
@@ -1276,7 +1277,7 @@ impl StorageProvider for JottacloudProvider {
         })
     }
 
-    async fn create_share_link(&mut self, path: &str, _expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
         let url = format!("{}?mode=enableShare", self.jfs_url(&resolved));
 
@@ -1296,7 +1297,12 @@ impl StorageProvider for JottacloudProvider {
         if let Some(start) = xml.find("<publicURI>") {
             if let Some(end) = xml[start..].find("</publicURI>") {
                 let uri = &xml[start + 11..start + end];
-                return Ok(format!("https://www.jottacloud.com{}", uri));
+                let _ = &options; // acknowledge options
+                return Ok(ShareLinkResult {
+                    url: format!("https://www.jottacloud.com{}", uri),
+                    password: None,
+                    expires_at: None,
+                });
             }
         }
 

@@ -18,6 +18,15 @@
 
 ## Recently Shipped
 
+### v3.2.2 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Advanced Share Links** | Password protection, expiry dates, and granular permissions for share links across 13 providers. |
+| **MEGA S4 Object Storage** | S3-compatible object storage via MEGA's S4 infrastructure. |
+| **CLI link enhancements** | New `--password`, `--expires`, and `--permissions` flags for the `link` command. |
+| **Security Hardening** | Additional security improvements across the application. |
+
 ### v3.2.0 (March 2026)
 
 | Feature | Description |

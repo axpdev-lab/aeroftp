@@ -21,6 +21,7 @@ use tracing::info;
 use super::{
     FileVersion, ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
     sanitize_api_error, KDriveConfig, HttpRetryConfig, send_with_retry,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 const API_BASE: &str = "https://api.infomaniak.com";
@@ -1103,11 +1104,20 @@ impl StorageProvider for KDriveProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
@@ -1115,18 +1125,23 @@ impl StorageProvider for KDriveProvider {
         let (file_id, _) = self.find_file_in_folder(parent_id, filename).await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        // Build share link request body with optional expiry
+        // Build share link request body with optional expiry and password
+        let right = if options.password.is_some() { "password" } else { "public" };
+        let can_edit = options.permissions.as_deref() == Some("edit");
         let mut body_obj = serde_json::json!({
-            "right": "public",
+            "right": right,
             "can_download": true,
-            "can_edit": false
+            "can_edit": can_edit
         });
-        if let Some(secs) = _expires_in_secs {
+        if let Some(secs) = options.expires_in_secs {
             let expires_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() + secs;
             body_obj["valid_until"] = serde_json::json!(expires_at);
+        }
+        if let Some(ref pw) = options.password {
+            body_obj["password"] = serde_json::json!(pw);
         }
 
         let url = self.api_url_v2(&format!("/files/{}/link", file_id));
@@ -1149,9 +1164,11 @@ impl StorageProvider for KDriveProvider {
             ProviderError::ServerError("No share link data in response".to_string())
         })?;
 
-        link_data.url.ok_or_else(|| {
+        let link_url = link_data.url.ok_or_else(|| {
             ProviderError::ServerError("No URL in share link response".to_string())
-        })
+        })?;
+
+        Ok(ShareLinkResult { url: link_url, password: None, expires_at: None })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

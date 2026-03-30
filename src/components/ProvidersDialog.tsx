@@ -46,6 +46,29 @@ const FEATURE_LABELS: Record<string, string> = {
   sse: 'Server-Side Encryption', checksum: 'Checksum', tierManagement: 'Tier Management',
 };
 
+// Share link capability details for tooltip
+const SHARE_LINK_DETAILS: Record<string, string> = {
+  googledrive: 'Permissions: view, comment, edit',
+  dropbox: 'Password + expiry (Pro+ plan required)',
+  onedrive: 'Password (Personal only), expiry, permissions',
+  box: 'Password + expiry (paid plan required)',
+  pcloud: 'Password + expiry (Premium plan required)',
+  filen: 'Password (Argon2id) + expiry presets',
+  zohoworkdrive: 'Password, expiry, permissions',
+  kdrive: 'Password + expiry (paid plan required)',
+  jottacloud: 'Basic share link only',
+  filelu: 'Public link (toggle privacy)',
+  koofr: 'Basic share link',
+  opendrive: 'Expiring links (default 1 year)',
+  yandexdisk: 'Publish/unpublish',
+  github: 'Permanent URL',
+  mega: 'Share link / Pre-signed URL (max 7 days for S4)',
+  nextcloud: 'Password (auto-gen) + expiry',
+  felicloud: 'Password (auto-gen) + expiry',
+  drime: 'Password, expiry, permissions',
+  'amazon-s3': 'Pre-signed URL (max 7 days)',
+};
+
 // All providers in a single flat list with section markers
 const ALL_PROVIDERS: ProviderFeatures[] = [
   // ── OAuth / API ──
@@ -67,10 +90,10 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'pCloud', logoId: 'pcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['checksum'] },
-  { name: 'MEGA Native', logoId: 'mega',
+  { name: 'MEGA (API)', logoId: 'mega',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
-  { name: 'MEGA CMD', logoId: 'mega',
+  { name: 'MEGA (MEGAcmd)', logoId: 'mega',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'Filen', logoId: 'filen',
@@ -134,6 +157,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
   { name: 'Tencent COS', logoId: 'tencent-cos',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+  { name: 'MEGA S4 Object Storage', logoId: 'mega',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: [] },
   { name: 'MinIO', logoId: 'minio',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
@@ -315,7 +341,10 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                       {OPTIONAL_FEATURES.map(f => (
                         <td key={f} className="text-center py-1.5 px-2">
                           {provider.base.includes(f) ? (
-                            <span title={f === 'shareLink' && provider.logoId === 'github' ? 'Raw URL' : ''} className={f === 'shareLink' && provider.logoId === 'github' ? 'cursor-help' : ''}>
+                            <span
+                              title={f === 'shareLink' ? (SHARE_LINK_DETAILS[provider.logoId] || '') : ''}
+                              className={f === 'shareLink' && SHARE_LINK_DETAILS[provider.logoId] ? 'cursor-help' : ''}
+                            >
                               <Check size={13} className="inline-block text-emerald-500" />
                             </span>
                           ) : (

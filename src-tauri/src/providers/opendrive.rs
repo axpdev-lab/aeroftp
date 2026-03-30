@@ -20,6 +20,7 @@ use url::form_urlencoded;
 use super::{
     response_bytes_with_limit, sanitize_api_error, MAX_DOWNLOAD_TO_BYTES, ProviderConfig,
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 #[derive(Debug, Clone)]
@@ -1497,19 +1498,29 @@ impl StorageProvider for OpenDriveProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
         let resolved = self.resolve_path(path)?;
         let expiry = chrono::Utc::now()
-            + chrono::Duration::seconds(expires_in_secs.unwrap_or(365 * 24 * 60 * 60) as i64);
+            + chrono::Duration::seconds(options.expires_in_secs.unwrap_or(365 * 24 * 60 * 60) as i64);
         let expiry_date = expiry.format("%Y-%m-%d").to_string();
+        let expires_at_str = expiry.to_rfc3339();
 
         if let Ok(folder_id) = self.folder_id_by_path(&resolved).await {
             let response: ExpiringFolderLinkResponse = self
@@ -1518,9 +1529,14 @@ impl StorageProvider for OpenDriveProvider {
                     self.session_id, expiry_date, folder_id
                 )))
                 .await?;
-            return response
+            let url = response
                 .link
-                .ok_or_else(|| ProviderError::ParseError("Missing folder expiring link".into()));
+                .ok_or_else(|| ProviderError::ParseError("Missing folder expiring link".into()))?;
+            return Ok(ShareLinkResult {
+                url,
+                password: None,
+                expires_at: Some(expires_at_str),
+            });
         }
 
         let file_id = self.resolve_file_id(&resolved).await?;
@@ -1531,11 +1547,17 @@ impl StorageProvider for OpenDriveProvider {
             )))
             .await?;
 
-        response
+        let url = response
             .download_link
             .or(response.link)
             .or(response.streaming_link)
-            .ok_or_else(|| ProviderError::ParseError("Missing file expiring link".into()))
+            .ok_or_else(|| ProviderError::ParseError("Missing file expiring link".into()))?;
+
+        Ok(ShareLinkResult {
+            url,
+            password: None,
+            expires_at: Some(expires_at_str),
+        })
     }
 
     fn supports_thumbnails(&self) -> bool {

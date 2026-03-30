@@ -31,7 +31,7 @@ use self::releases_mode::{
     release_to_entry, upload_release_asset, CreateReleaseParams, VIRTUAL_RELEASES_DIR,
 };
 
-use super::{ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider};
+use super::{ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider, ShareLinkOptions, ShareLinkResult};
 use async_trait::async_trait;
 use secrecy::SecretString;
 use std::collections::HashMap;
@@ -1695,20 +1695,29 @@ impl StorageProvider for GitHubProvider {
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
+        let _ = &options;
         let resolved = self.resolve_path(path);
         if let Some(GitHubVirtualPath::ReleaseAsset { .. }) = self.parse_virtual_path(&resolved) {
             let entry = self.stat(path).await?;
             if let Some(download_url) = entry.metadata.get("browser_download_url") {
-                return Ok(download_url.clone());
+                return Ok(ShareLinkResult {
+                    url: download_url.clone(),
+                    password: None,
+                    expires_at: None,
+                });
             }
         }
         // Return the html_url for the file on GitHub.
-        Ok(format!(
-            "https://github.com/{}/{}/blob/{}/{}",
-            self.owner, self.repo, self.content_branch(), resolved,
-        ))
+        Ok(ShareLinkResult {
+            url: format!(
+                "https://github.com/{}/{}/blob/{}/{}",
+                self.owner, self.repo, self.content_branch(), resolved,
+            ),
+            password: None,
+            expires_at: None,
+        })
     }
 
     fn supports_checksum(&self) -> bool {

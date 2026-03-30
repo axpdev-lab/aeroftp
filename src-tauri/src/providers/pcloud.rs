@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
+use chrono;
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::info;
@@ -16,6 +17,7 @@ use super::{
     sanitize_api_error,
     http_retry::{HttpRetryConfig, send_with_retry},
     oauth2::{OAuth2Manager, OAuthConfig},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 use super::types::PCloudConfig;
 
@@ -754,11 +756,30 @@ impl StorageProvider for PCloudProvider {
 
     fn supports_share_links(&self) -> bool { true }
 
-    async fn create_share_link(&mut self, path: &str, _expires_in_secs: Option<u64>) -> Result<String, ProviderError> {
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
+    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
         let resolved = self.resolve_path(path);
-        let url = format!("{}/getfilepublink?path={}",
+        // pCloud API: getfilepublink with optional expire, linkpassword, shortlink (Premium)
+        let mut url = format!("{}/getfilepublink?path={}",
             self.config.api_base(),
             urlencoding::encode(&resolved));
+        if let Some(secs) = options.expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            url.push_str(&format!("&expire={}", urlencoding::encode(
+                &expires_at.format("%Y-%m-%dT%H:%M:%S+0000").to_string()
+            )));
+        }
+        if let Some(ref pw) = options.password {
+            url.push_str(&format!("&linkpassword={}", urlencoding::encode(pw)));
+        }
 
         let auth = self.auth_header().await?;
         let resp: PCloudPubLink = self.get_with_retry(&url, &auth).await?
@@ -771,7 +792,13 @@ impl StorageProvider for PCloudProvider {
             ));
         }
 
-        resp.link.ok_or_else(|| ProviderError::Other("No link in response".to_string()))
+        let link_url = resp.link.ok_or_else(|| ProviderError::Other("No link in response".to_string()))?;
+
+        Ok(ShareLinkResult {
+            url: link_url,
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

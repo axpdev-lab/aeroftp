@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use super::{
     StorageProvider, ProviderError, ProviderType, RemoteEntry, S3Config, FileVersion,
     sanitize_api_error,
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// S3 Storage Provider
@@ -92,6 +93,17 @@ impl S3Provider {
                 let lower = ep.to_ascii_lowercase();
                 lower.contains("s5lu.com") || lower.contains("filelu")
             })
+            .unwrap_or(false)
+    }
+
+    /// Detect MEGA S4 Object Storage endpoints.
+    /// S4 deviates from standard S3 in several ways: no versioning, no tagging,
+    /// no SSE headers, no storage classes, presigned URL max 7 days.
+    fn is_mega_s4_endpoint(&self) -> bool {
+        self.config
+            .endpoint
+            .as_deref()
+            .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
             .unwrap_or(false)
     }
 
@@ -639,7 +651,11 @@ impl S3Provider {
     }
 
     /// Append S3 enterprise headers (storage class, SSE) to a headers map.
+    /// Skipped entirely for MEGA S4 which does not support storage classes or SSE.
     fn append_upload_headers(&self, headers: &mut HashMap<String, String>) {
+        if self.is_mega_s4_endpoint() {
+            return;
+        }
         if let Some(ref sc) = self.config.storage_class {
             headers.insert("x-amz-storage-class".to_string(), sc.clone());
         }
@@ -1586,12 +1602,21 @@ impl StorageProvider for S3Provider {
     fn supports_share_links(&self) -> bool {
         true
     }
-    
+
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: vec![],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         // Generate a presigned URL
         use sha2::{Sha256, Digest};
         use hmac::{Hmac, Mac};
@@ -1599,7 +1624,9 @@ impl StorageProvider for S3Provider {
         type HmacSha256 = Hmac<Sha256>;
 
         let key = path.trim_start_matches('/');
-        let expires = expires_in_secs.unwrap_or(3600); // Default 1 hour
+        // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
+        let max_expires = if self.is_mega_s4_endpoint() { 604800_u64 } else { u64::MAX };
+        let expires = options.expires_in_secs.unwrap_or(3600).min(max_expires);
 
         let now: DateTime<Utc> = Utc::now();
         let date_stamp = now.format("%Y%m%d").to_string();
@@ -1681,7 +1708,11 @@ impl StorageProvider for S3Provider {
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
 
-        Ok(format!("{}?{}&X-Amz-Signature={}", url, query_params, signature))
+        Ok(ShareLinkResult {
+            url: format!("{}?{}&X-Amz-Signature={}", url, query_params, signature),
+            password: None,
+            expires_at: None,
+        })
     }
 
     fn supports_find(&self) -> bool {
@@ -1921,7 +1952,8 @@ impl StorageProvider for S3Provider {
     }
 
     fn supports_versions(&self) -> bool {
-        true
+        // MEGA S4 does not support object versioning
+        !self.is_mega_s4_endpoint()
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
@@ -2317,6 +2349,11 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        if self.is_mega_s4_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "MEGA S4 does not support object tagging".to_string()
+            ));
+        }
         let key = path.trim_start_matches('/');
         let response = self.s3_request(Method::GET, key, Some(&[("tagging", "")]), None).await?;
 
@@ -2378,6 +2415,11 @@ impl S3Provider {
     pub async fn set_object_tags(&self, path: &str, tags: &HashMap<String, String>) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+        if self.is_mega_s4_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "MEGA S4 does not support object tagging".to_string()
+            ));
         }
         let key = path.trim_start_matches('/');
 

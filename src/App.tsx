@@ -87,7 +87,7 @@ import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
-import { resolveS3Endpoint } from './providers/registry';
+import { resolveS3Endpoint, getProviderById } from './providers/registry';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
 import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToast';
@@ -140,7 +140,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -368,7 +368,7 @@ const App: React.FC = () => {
   const [showPCloudTrash, setShowPCloudTrash] = useState(false);
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
-  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
+  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerType?: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -5459,28 +5459,19 @@ const App: React.FC = () => {
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
     const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
     if (hasNativeShareLink) {
+      // Resolve share link icon from provider logo map (supports S3/WebDAV sub-providers)
+      const shareProviderId = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
       const shareIcon = (() => {
-        switch (currentProtocol) {
-          case 'googledrive': return <GoogleDriveLogo size={14} />;
-          case 'dropbox': return <DropboxLogo size={14} />;
-          case 'onedrive': return <OneDriveLogo size={14} />;
-          case 'mega': return <MegaLogo size={14} />;
-          case 'box': return <BoxLogo size={14} />;
-          case 'pcloud': return <PCloudLogo size={14} />;
-          case 'filen': return <FilenLogo size={14} />;
-          case 'opendrive': return <OpenDriveLogo size={14} />;
-          case 'github': return <GitHubLogo size={14} />;
-          case 'webdav': return <FeliCloudLogo size={14} />;
-          case 'filelu': return <FileLuLogo size={14} />;
-          case 'kdrive': return <KDriveLogo size={14} />;
-          case 'drime': return <DrimeCloudLogo size={14} />;
-          case 'yandexdisk': return <YandexDiskLogo size={14} />;
-          case 'koofr': return <KoofrLogo size={14} />;
-          case 'jottacloud': return <JottacloudLogo size={14} />;
-          case 'zohoworkdrive': return <ZohoWorkDriveLogo size={14} />;
-          case 'azure': return <AzureLogo size={14} />;
-          default: return <Share2 size={14} />;
+        // Try sub-provider first (e.g. mega-s4, felicloud, backblaze)
+        if (shareProviderId) {
+          const SubLogo = PROVIDER_LOGOS[shareProviderId];
+          if (SubLogo) return <SubLogo size={14} />;
         }
+        // Fall back to protocol-level logo
+        const protoKey = currentProtocol || '';
+        const ProtoLogo = PROVIDER_LOGOS[protoKey];
+        if (ProtoLogo) return <ProtoLogo size={14} />;
+        return <Share2 size={14} />;
       })();
 
       if (currentProtocol === 'filelu' && isFileLuPrivate) {
@@ -5501,9 +5492,9 @@ const App: React.FC = () => {
                 await invoke('filelu_set_file_privacy', { path: file.path, onlyMe: false });
                 setRemoteFiles(prev => prev.map(r => r.path === file.path ? { ...r, permissions: 'public' } : r));
                 notify.info(t('contextMenu.creatingShareLink'), t('contextMenu.shareLinkMoment'));
-                const shareUrl = await invoke<string>('provider_create_share_link', { path: file.path });
-                await invoke('copy_to_clipboard', { text: shareUrl });
-                notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+                const result = await invoke<{ url: string; password: string | null }>('provider_create_share_link', { path: file.path });
+                await invoke('copy_to_clipboard', { text: result.url });
+                notify.success(t('contextMenu.shareLinkCopied'), result.url);
                 humanLog.updateEntry(logId, { status: 'success', message: '[FileLu] Made file public + shared' });
               } catch (err: unknown) {
                 notify.error(t('contextMenu.shareLinkFailed'), String(err));
@@ -5517,7 +5508,12 @@ const App: React.FC = () => {
         label: t('contextMenu.createShareLink'),
         icon: shareIcon,
         action: () => {
+          // Resolve provider display name (supports S3/WebDAV sub-providers via registry)
           const providerLabel = (() => {
+            if (shareProviderId) {
+              const reg = getProviderById(shareProviderId);
+              if (reg) return reg.name;
+            }
             switch (currentProtocol) {
               case 'googledrive': return 'Google Drive';
               case 'dropbox': return 'Dropbox';
@@ -5529,15 +5525,15 @@ const App: React.FC = () => {
               case 'opendrive': return 'OpenDrive';
               case 'github': return 'GitHub';
               case 'filelu': return 'FileLu';
-              case 'webdav': return (connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'FeliCloud' : 'Nextcloud';
+              case 'webdav': return 'Nextcloud';
               case 'kdrive': return 'kDrive';
               case 'drime': return 'Drime Cloud';
-              case 'azure': return 'Azure';
+              case 'azure': return 'Azure Blob';
               case 's3': return 'S3';
               default: return currentProtocol?.toUpperCase() || 'Provider';
             }
           })();
-          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerIcon: shareIcon });
+          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerType: currentProtocol || undefined, providerIcon: shareIcon });
         }
       });
       }
@@ -5569,18 +5565,24 @@ const App: React.FC = () => {
       items.push({
         label: t('contextMenu.importMegaLink'),
         icon: <MegaLogo size={14} />,
-        action: async () => {
-          const link = window.prompt(t('contextMenu.importMegaPrompt'));
-          if (!link || !link.trim()) return;
-          try {
-            notify.info(t('contextMenu.importingLink'), t('contextMenu.shareLinkMoment'));
-            const dest = currentRemotePath || '/';
-            await invoke('provider_import_link', { link: link.trim(), dest });
-            notify.success(t('contextMenu.linkImported'), t('contextMenu.importedTo', { path: dest }));
-            loadRemoteFiles(undefined, true);
-          } catch (err) {
-            notify.error(t('contextMenu.importLinkFailed'), String(err));
-          }
+        action: () => {
+          setInputDialog({
+            title: t('contextMenu.importMegaPrompt'),
+            defaultValue: '',
+            placeholder: 'https://mega.nz/file/...',
+            onConfirm: async (link: string) => {
+              if (!link.trim()) return;
+              try {
+                notify.info(t('contextMenu.importingLink'), t('contextMenu.shareLinkMoment'));
+                const dest = currentRemotePath || '/';
+                await invoke('provider_import_link', { link: link.trim(), dest });
+                notify.success(t('contextMenu.linkImported'), t('contextMenu.importedTo', { path: dest }));
+                loadRemoteFiles(undefined, true);
+              } catch (err) {
+                notify.error(t('contextMenu.importLinkFailed'), String(err));
+              }
+            }
+          });
         }
       });
     }
@@ -7162,6 +7164,7 @@ const App: React.FC = () => {
             path={shareLinkDialog.path}
             fileName={shareLinkDialog.fileName}
             providerName={shareLinkDialog.providerName}
+            providerType={shareLinkDialog.providerType}
             providerIcon={shareLinkDialog.providerIcon}
             onClose={() => setShareLinkDialog(null)}
           />

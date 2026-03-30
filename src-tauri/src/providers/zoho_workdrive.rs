@@ -21,6 +21,7 @@ use super::{
     StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
     sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
+    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
 };
 
 /// Zoho WorkDrive provider configuration
@@ -2117,11 +2118,20 @@ impl StorageProvider for ZohoWorkdriveProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: true,
+            supports_password: true,
+            supports_permissions: true,
+            available_permissions: vec!["view".into(), "edit".into()],
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
-        _expires_in_secs: Option<u64>,
-    ) -> Result<String, ProviderError> {
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         // Resolve path to file/folder ID
         let path = path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -2141,16 +2151,30 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         // Create a download link via Zoho WorkDrive Links API
         // POST /api/v1/links
+        // role_id: "34" = download, "33" = view only, "32" = edit
+        let role_id = match options.permissions.as_deref() {
+            Some("edit") => "32",
+            Some("view") => "33",
+            _ => "34", // download (default)
+        };
+        let mut attrs = serde_json::json!({
+            "resource_id": file.id,
+            "link_name": file_name,
+            "request_user_data": false,
+            "allow_download": true,
+            "role_id": role_id,
+            "link_type": "download"
+        });
+        if let Some(ref pw) = options.password {
+            attrs["password_text"] = serde_json::json!(pw);
+        }
+        if let Some(secs) = options.expires_in_secs {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+            attrs["expiration_date"] = serde_json::json!(expires_at.format("%Y-%m-%d").to_string());
+        }
         let body = serde_json::json!({
             "data": {
-                "attributes": {
-                    "resource_id": file.id,
-                    "link_name": file_name,
-                    "request_user_data": false,
-                    "allow_download": true,
-                    "role_id": "34",
-                    "link_type": "download"
-                },
+                "attributes": attrs,
                 "type": "links"
             }
         });
@@ -2190,7 +2214,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )))?;
 
         info!("Zoho WorkDrive share link created: {}", link);
-        Ok(link.to_string())
+        Ok(ShareLinkResult { url: link.to_string(), password: None, expires_at: None })
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
