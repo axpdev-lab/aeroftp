@@ -60,7 +60,7 @@ hmac = "0.12"
 sha1 = "0.11"
 sha2 = "0.11"
 ripemd = "0.1"
-md-5 = "0.10"
+md-5 = "0.11"
 zip = { version = "8", default-features = false, features = ["deflate", "aes-crypto"] }
 walkdir = "2"
 quick-xml = "0.39"
