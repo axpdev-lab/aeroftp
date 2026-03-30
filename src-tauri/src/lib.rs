@@ -4628,8 +4628,10 @@ async fn app_ready(app: AppHandle) {
         info!("Splash screen closed");
     }
 
-    // 2. Wait for GTK to fully destroy the splash window.
+    // 2. Wait for GTK to fully destroy the splash window (Linux only).
     // During this wait, rebuild_menu still sees APP_READY_DONE==false and defers.
+    // macOS/Windows do not use GTK and do not need this delay.
+    #[cfg(target_os = "linux")]
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
     // 3. Splash is dead — safe to set the global app menu
@@ -7724,10 +7726,22 @@ pub fn run() {
     //   - tauri-plugin-localhost binds exclusively to 127.0.0.1
     // This cannot be changed to HTTPS without a local TLS certificate infrastructure that
     // would add complexity with minimal security benefit for localhost-only traffic.
+    //
+    // NOTE: This workaround is Linux-only. macOS (WKWebView) and Windows (WebView2) use
+    // Tauri's default asset protocol. Applying localhost to macOS caused a frozen/unresponsive
+    // UI due to ATS (App Transport Security) blocking plain HTTP in WKWebView.
+    // See docs/dev/platform/MACOS-UNIFIED-AUDIT-2026-03-30.md
+    #[cfg(target_os = "linux")]
     let port: u16 = 14321;
 
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_localhost::Builder::new(port).build())
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(target_os = "linux")]
+    {
+        builder = builder.plugin(tauri_plugin_localhost::Builder::new(port).build());
+    }
+
+    builder = builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -7845,10 +7859,11 @@ pub fn run() {
 
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
+            // Linux-only — macOS/Windows use Tauri's default asset protocol.
             // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
-            #[cfg(not(dev))]
+            #[cfg(all(not(dev), target_os = "linux"))]
             if let Some(window) = app.get_webview_window("main") {
-                let url = url::Url::parse(&format!("http://localhost:{}", port))
+                let url = url::Url::parse(&format!("http://127.0.0.1:{}", port))
                     .expect("valid localhost URL");
                 let _ = window.navigate(url);
             }
@@ -7962,8 +7977,10 @@ pub fn run() {
             let splash_url = {
                 #[cfg(dev)]
                 { WebviewUrl::External(url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap()) }
-                #[cfg(not(dev))]
-                { WebviewUrl::External(url::Url::parse(&format!("http://localhost:{}/splash.html", port)).unwrap()) }
+                #[cfg(all(not(dev), target_os = "linux"))]
+                { WebviewUrl::External(url::Url::parse(&format!("http://127.0.0.1:{}/splash.html", port)).unwrap()) }
+                #[cfg(all(not(dev), not(target_os = "linux")))]
+                { WebviewUrl::App("splash.html".into()) }
             };
 
             let _splash = WebviewWindowBuilder::new(app, "splashscreen", splash_url)

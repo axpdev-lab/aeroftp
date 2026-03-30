@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.4] - 2026-03-30
+
+### macOS Frozen UI Fix & UI Polish
+
+#### Fixed
+
+- **macOS frozen/unresponsive UI** (critical): The app window rendered but was completely non-interactive on macOS Apple Silicon (M2, M3) across macOS 15.7 and 26.4 (Tahoe). Root cause: `tauri-plugin-localhost` was serving the frontend over `http://localhost:14321` on ALL platforms, but this workaround is only needed for Linux WebKitGTK. On macOS, WKWebView's App Transport Security (ATS) silently blocked plain HTTP content loading, producing a visible but event-dead UI. Fix: localhost transport is now Linux-only; macOS and Windows use Tauri's native asset protocol (`tauri://`). Dual audit (internal + external) confirmed the root cause and fix strategy. See `docs/dev/platform/MACOS-UNIFIED-AUDIT-2026-03-30.md`
+- **macOS 800ms startup delay removed**: An unconditional 800ms sleep designed for GTK splash window destruction was running on all platforms including macOS. Now gated behind `#[cfg(target_os = "linux")]`
+- **Linux localhost origin alignment**: Production navigation and capabilities switched from `localhost` to `127.0.0.1` to avoid DNS resolver ambiguity. Capability remote URL updated to match
+- **`tauri-plugin-localhost` moved to Linux-only dependency**: No longer compiled or linked on macOS/Windows builds, reducing binary size and eliminating unused code paths
+- **MEGA S4 signup URL**: Corrected to `mega.nz/register`, help URL now points to S4 setup guide on docs.aeroftp.app
+- **Saved Servers scroll area**: Increased visible height from `calc(100vh-130px)` to `calc(100vh-80px)`, showing more servers without scrolling
+- **About dialog cleanup**: Removed crypto diagnostics from Support tab, added Report Issue and Documentation links
+
+#### Changed
+
+- **Jottacloud in `supported_types()`**: Was missing from `ProviderFactory::supported_types()` despite being fully implemented and in the factory `create()` match. Now included
+- **FileLu S5 in ProvidersDialog**: Added FileLu S5 Object Storage to provider feature matrix
+- **About dialog i18n**: 3 new keys (reportIssue, documentation, openGithubIssue) translated in 47 languages
+
 ## [3.2.3] - 2026-03-30
 
 ### Sigstore v0.3 Bundle Verification Fix

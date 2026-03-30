@@ -555,7 +555,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 </div>
             )}
 
-            <div ref={listRef} className="space-y-2 max-h-[calc(100vh-130px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+            <div ref={listRef} className="space-y-2 max-h-[calc(100vh-80px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
                 {/* Search bar inside scrollable container — sticky at top, same width as servers */}
                 {showSearch && (
                     <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pb-1">

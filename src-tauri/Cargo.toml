@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.2.3"
+version = "3.2.4"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -48,7 +48,6 @@ reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
 notify = { version = "8", default-features = true }                          # Filesystem watcher (v8 required by debouncer-full 0.6)
 notify-debouncer-full = "0.6"                                               # Debouncer with rename tracking, event dedup, quiet-period batching
 tauri-plugin-single-instance = "2.3.6"
-tauri-plugin-localhost = "2"                                               # Serve frontend via real HTTP to fix WebKitGTK rendering
 tauri-plugin-autostart = "2"                                               # Launch on system startup
 
 # Multi-protocol providers (Sprint 1)
@@ -158,6 +157,11 @@ windows = { version = "0.58", features = [
     "Win32_Security",
     "Win32_UI_Shell",
 ] }
+
+# Linux-only: localhost HTTP server to work around WebKitGTK limitations
+# (Monaco ESM, xterm.js, canvas, iframe CSS). Not needed on macOS/Windows.
+[target.'cfg(target_os = "linux")'.dependencies]
+tauri-plugin-localhost = "2"
 
 [dev-dependencies]
 
