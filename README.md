@@ -111,7 +111,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 | **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
 | **4shared** | OAuth 1.0 (HMAC-SHA1) | 15GB free, native REST API, folder/file management |
 | **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, share links (password + expiry presets) |
-| **Internxt Drive** | Client-side AES-256-CTR | 10GB free, E2E encrypted, BIP39 mnemonic, optional 2FA |
+| **Internxt Drive** | Client-side AES-256-CTR | 1GB free, E2E encrypted, BIP39 mnemonic, optional 2FA |
 | **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, share links (password + expiry on paid plans) |
 | **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, share links (password + expiry), team drive management |
 | **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, share links, unlimited storage plans |
