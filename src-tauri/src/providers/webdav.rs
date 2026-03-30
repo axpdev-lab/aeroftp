@@ -130,7 +130,7 @@ impl DigestState {
 /// Compute MD5 hex digest of a string
 fn md5_hex(input: &str) -> String {
     let digest = Md5::digest(input.as_bytes());
-    format!("{:x}", digest)
+    hex::encode(digest)
 }
 
 /// Extract the path component from a full URL, preserving trailing slash

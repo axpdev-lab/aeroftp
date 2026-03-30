@@ -4881,7 +4881,7 @@ async fn cmd_dedupe(
             match provider.download_to_bytes(p).await {
                 Ok(data) => {
                     use sha2::Digest;
-                    let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                    let hash = hex::encode(sha2::Sha256::digest(&data));
                     hash_map.entry(hash).or_default().push(p.clone());
                 }
                 Err(_) => continue,
@@ -5181,7 +5181,7 @@ async fn cmd_sync(
             let local_file = std::path::Path::new(local).join(up_path);
             if let Ok(data) = std::fs::read(&local_file) {
                 use sha2::Digest;
-                let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                let hash = hex::encode(sha2::Sha256::digest(&data));
                 upload_hashes.entry(hash).or_default().push(up_path.to_string());
             }
         }
@@ -5196,7 +5196,7 @@ async fn cmd_sync(
             };
             if let Ok(data) = provider.download_to_bytes(&remote_full).await {
                 use sha2::Digest;
-                let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                let hash = hex::encode(sha2::Sha256::digest(&data));
                 if let Some(upload_paths) = upload_hashes.get(&hash) {
                     if let Some(up) = upload_paths.first() {
                         if !matched_uploads.contains(up) {
@@ -5966,19 +5966,19 @@ async fn cmd_hashsum(
             let hash = match algorithm {
                 HashAlgorithm::Md5 => {
                     use md5::Digest;
-                    format!("{:x}", md5::Md5::digest(&data))
+                    hex::encode(md5::Md5::digest(&data))
                 }
                 HashAlgorithm::Sha1 => {
                     use sha1::Digest;
-                    format!("{:x}", sha1::Sha1::digest(&data))
+                    hex::encode(sha1::Sha1::digest(&data))
                 }
                 HashAlgorithm::Sha256 => {
                     use sha2::Digest;
-                    format!("{:x}", sha2::Sha256::digest(&data))
+                    hex::encode(sha2::Sha256::digest(&data))
                 }
                 HashAlgorithm::Sha512 => {
                     use sha2::Digest;
-                    format!("{:x}", sha2::Sha512::digest(&data))
+                    hex::encode(sha2::Sha512::digest(&data))
                 }
                 HashAlgorithm::Blake3 => {
                     blake3::hash(&data).to_hex().to_string()
@@ -6049,7 +6049,7 @@ async fn cmd_check(
                 let hash = if checksum {
                     use sha2::Digest;
                     match std::fs::read(entry.path()) {
-                        Ok(data) => Some(format!("{:x}", sha2::Sha256::digest(&data))),
+                        Ok(data) => Some(hex::encode(sha2::Sha256::digest(&data))),
                         Err(_) => None,
                     }
                 } else {
@@ -7440,7 +7440,7 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                                         use md5::Digest;
                                         let mut hasher = md5::Md5::new();
                                         hasher.update(&data);
-                                        format!("{:x}", hasher.finalize())
+                                        hex::encode(hasher.finalize())
                                     };
                         hash_map.entry(digest).or_default().push(p.clone());
                     }
@@ -7628,15 +7628,15 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                                         use md5::Digest;
                                         let mut hasher = md5::Md5::new();
                                         hasher.update(&data);
-                                        format!("{:x}", hasher.finalize())
+                                        hex::encode(hasher.finalize())
                                     },
                 "sha256" => {
                     use sha2::Digest;
-                    format!("{:x}", sha2::Sha256::digest(&data))
+                    hex::encode(sha2::Sha256::digest(&data))
                 }
                 "sha512" => {
                     use sha2::Digest;
-                    format!("{:x}", sha2::Sha512::digest(&data))
+                    hex::encode(sha2::Sha512::digest(&data))
                 }
                 "blake3" => blake3::hash(&data).to_hex().to_string(),
                 other => return Err(format!("Unsupported algorithm: {}", other)),

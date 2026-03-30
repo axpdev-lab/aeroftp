@@ -101,7 +101,7 @@ struct SloSegment {
 fn md5_hex(data: &[u8]) -> String {
     use md5::{Md5, Digest};
     let hash = Md5::digest(data);
-    format!("{:x}", hash)
+    hex::encode(hash)
 }
 
 // ─── Provider ──────────────────────────────────────────────────────

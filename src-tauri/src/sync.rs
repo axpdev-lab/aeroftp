@@ -873,7 +873,7 @@ fn compute_sha256_sync(path: &std::path::Path) -> Option<String> {
         if n == 0 { break; }
         hasher.update(&buf[..n]);
     }
-    Some(format!("{:x}", hasher.finalize()))
+    Some(hex::encode(hasher.finalize()))
 }
 
 /// Verify a local file after download.

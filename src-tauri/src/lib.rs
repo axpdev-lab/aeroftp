@@ -792,7 +792,7 @@ fn sha256_file_hex(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path)
         .map_err(|error| format!("Failed to read file for SHA-256: {}", error))?;
     let digest = Sha256::digest(&bytes);
-    Ok(format!("{:x}", digest))
+    Ok(hex::encode(digest))
 }
 
 /// Download an update file with progress events
@@ -4902,7 +4902,7 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
         if n == 0 { break; }
         hasher.update(&buf[..n]);
     }
-    Some(format!("{:x}", hasher.finalize()))
+    Some(hex::encode(hasher.finalize()))
 }
 
 /// Scan local directory iteratively and build file info map.

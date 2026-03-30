@@ -124,7 +124,7 @@ fn read_wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn transcribe_pcm_with_model(

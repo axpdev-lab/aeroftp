@@ -60,7 +60,7 @@ fn compute_file_sha256(path: &std::path::Path) -> Result<String, String> {
     let data =
         std::fs::read(path).map_err(|e| format!("Failed to read file for integrity hash: {}", e))?;
     let hash = Sha256::digest(&data);
-    Ok(format!("{:x}", hash))
+    Ok(hex::encode(hash))
 }
 
 /// SEC-AUDIT-07: Validate that a hash string is exactly 64 lowercase hex characters

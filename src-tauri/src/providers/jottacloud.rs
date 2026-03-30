@@ -1056,7 +1056,7 @@ impl StorageProvider for JottacloudProvider {
         use md5::{Md5, Digest};
         let mut hasher = Md5::new();
         hasher.update(&data);
-        let md5_hash = format!("{:x}", hasher.finalize());
+        let md5_hash = hex::encode(hasher.finalize());
 
         // Get file modification time in Jottacloud format: "2006-01-02-T15:04:05Z" (extra dash before T)
         let modified_time = tokio::fs::metadata(local_path).await

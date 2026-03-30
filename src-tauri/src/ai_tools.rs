@@ -2547,7 +2547,7 @@ pub async fn execute_ai_tool(
                                 Err(_) => break,
                             }
                         }
-                        let hash = format!("{:x}", hasher.finalize());
+                        let hash = hex::encode(hasher.finalize());
                         let entry = hash_groups.entry(hash).or_insert_with(|| (*size, Vec::new()));
                         entry.1.push(file_path.to_string_lossy().to_string());
                     }

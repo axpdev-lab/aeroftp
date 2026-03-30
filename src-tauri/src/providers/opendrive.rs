@@ -743,7 +743,7 @@ impl OpenDriveProvider {
             hasher.update(&buffer[..read]);
         }
 
-        Ok(format!("{:x}", hasher.finalize()))
+        Ok(hex::encode(hasher.finalize()))
     }
 
     async fn upload_chunk(
