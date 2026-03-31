@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cargo dependency update: 116 crate bumps including openssl, rustls, tao, wry
 - SourceForge provider preset hidden until provider confirmation (dev-only)
 - **FeliCloud direct access**: Clicking FeliCloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list
+- **FeliCloud badge**: Uses Nextcloud blue (#0083ce) for API OCS badge in protocol selector and saved servers
+- **Saved servers WebDAV URL**: Shortened to hostname only instead of full URL path
 - **Status bar panel consistency**: File count indicators (remote/local) now match the visual panel order when panels are swapped
 
 #### Security
