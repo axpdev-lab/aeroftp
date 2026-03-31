@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Credential masking in activity log**: Usernames, emails, and S3 access keys are now masked at the source before being written to the activity log (e.g. `ale***@proton.me`, `AKIAD...ICIYF`). Prevents accidental credential exposure when users copy logs for bug reports
+- **Credential masking in saved servers**: Server list subtitles in both the connection sidebar and Settings panel now mask credentials by default, with an eye toggle to reveal them. Prevents credential exposure in screenshots
+- **Backend log masking**: Rust provider debug logs (Jottacloud, Koofr) now mask usernames and emails in authentication messages
+
+### Changed
+
+- Replaced em-dash with regular hyphen in saved server subtitles (OAuth, E2E, S3 provider labels) per UI style rules
+
 ## [3.2.6] - 2026-03-31
 
 ### macOS static linking fix & security hardening

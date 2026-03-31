@@ -35,6 +35,22 @@ fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
 }
 
+fn mask_credential(value: &str) -> String {
+    if value.is_empty() {
+        return value.to_string();
+    }
+    if let Some(at) = value.find('@') {
+        let local = &value[..at];
+        let domain = &value[at..];
+        let visible = local.len().min(3);
+        format!("{}***{}", &local[..visible], domain)
+    } else if value.len() <= 3 {
+        "***".to_string()
+    } else {
+        format!("{}***", &value[..3])
+    }
+}
+
 // ─── Auth Types ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -881,10 +897,10 @@ impl StorageProvider for JottacloudProvider {
         // Use customer info username for JFS paths (may differ from login token username)
         if let Some(ref u) = customer.username {
             if !u.is_empty() && *u != self.username {
-                jotta_log(&format!("JFS username from customer info: {} (token had: {})", u, self.username));
+                jotta_log(&format!("JFS username from customer info: {} (token had: {})", mask_credential(u), mask_credential(&self.username)));
                 self.username = u.clone();
             } else {
-                jotta_log(&format!("Authenticated as: {}", u));
+                jotta_log(&format!("Authenticated as: {}", mask_credential(u)));
             }
         }
 

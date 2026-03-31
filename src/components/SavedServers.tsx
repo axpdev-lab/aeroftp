@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2 } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2, Eye, EyeOff } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
@@ -15,6 +15,7 @@ import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
+import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
 
@@ -136,6 +137,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthError, setOauthError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
@@ -511,6 +513,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 <div className="flex items-center gap-1.5">
                     {servers.length > 0 && (
                         <button
+                            onClick={() => setCredentialsMasked(v => !v)}
+                            className="p-1.5 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-600/50 text-gray-500 dark:text-gray-400 rounded-lg transition-colors"
+                            title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}
+                        >
+                            {credentialsMasked ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    )}
+                    {servers.length > 0 && (
+                        <button
                             onClick={() => setHealthCheckTarget('all')}
                             className="p-1.5 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-800/40 text-emerald-600 dark:text-emerald-400 rounded-lg transition-colors"
                             title={t('healthCheck.title')}
@@ -654,46 +665,42 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     )}
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    {(isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp'))
-                                        ? t('savedServers.oauthError', { username: server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '' })
-                                        : server.protocol === 'filen' || server.protocol === 'internxt'
-                                            ? t('savedServers.e2eAes256', { username: server.username || '' })
-                                            : server.protocol === 'kdrive'
-                                                ? `kDrive ${server.options?.bucket || ''}`
-                                                : server.protocol === 'drime'
-                                                ? 'Drime Cloud'
-                                                : server.protocol === 'mega'
-                                                ? `${t('savedServers.e2eAes128', { username: server.username || '' })} — ${megaBadge?.longLabel || 'MEGAcmd'}`
-                                                : server.protocol === 's3'
-                                                    ? (() => {
-                                                        const bucket = server.options?.bucket || '';
-                                                        const registryProvider = server.providerId ? getProviderById(server.providerId) : null;
-                                                        const host = server.host?.replace(/^https?:\/\//, '') || '';
-                                                        const providerName = registryProvider?.name
-                                                            || (host.includes('cloudflarestorage') ? 'Cloudflare R2'
-                                                            : host.includes('backblazeb2') ? 'Backblaze B2'
-                                                            : host.includes('amazonaws') ? 'AWS S3'
-                                                            : host.includes('wasabisys') ? 'Wasabi'
-                                                            : host.includes('digitaloceanspaces') ? 'DigitalOcean'
-                                                            : host.includes('storjshare') ? 'Storj'
-                                                            : host.includes('idrivee2') ? 'iDrive e2'
-                                                            : (host.includes('minio') || host.includes(':9000')) ? 'MinIO'
-                                                            : 'S3');
-                                                        return bucket ? `${bucket} — ${providerName}` : providerName;
-                                                    })()
-                                                    : server.protocol === 'github'
-                                                        ? (() => {
-                                                            const base = server.host;
-                                                            const modeLabel = gitHubBadge ? ` (${gitHubBadge.label})` : '';
-                                                            return `${base}${modeLabel}`;
-                                                        })()
-                                                    : server.protocol === 'webdav'
-                                                        ? (() => {
-                                                            const raw = server.host?.replace(/^https?:\/\//, '') || server.host || '';
-                                                            try { const h = new URL(server.host?.startsWith('http') ? server.host : `https://${server.host}`).hostname; return `${server.username}@${h}`; } catch { return `${server.username}@${raw}`; }
-                                                        })()
-                                                        : `${server.username}@${server.host}:${server.port}`
-                                    }
+                                    {(() => {
+                                        const mu = (v: string) => credentialsMasked ? maskCredential(v) : v;
+                                        if (isOAuthProvider(server.protocol || 'ftp') || isFourSharedProvider(server.protocol || 'ftp')) {
+                                            return t('savedServers.oauthError', { username: mu(server.username || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' } as Record<string, string>)[server.protocol || ''] || server.protocol || '') });
+                                        }
+                                        if (server.protocol === 'filen' || server.protocol === 'internxt') return t('savedServers.e2eAes256', { username: mu(server.username || '') });
+                                        if (server.protocol === 'kdrive') return `kDrive ${server.options?.bucket || ''}`;
+                                        if (server.protocol === 'drime') return 'Drime Cloud';
+                                        if (server.protocol === 'mega') return `${t('savedServers.e2eAes128', { username: mu(server.username || '') })} - ${megaBadge?.longLabel || 'MEGAcmd'}`;
+                                        if (server.protocol === 's3') {
+                                            const bucket = server.options?.bucket || '';
+                                            const registryProvider = server.providerId ? getProviderById(server.providerId) : null;
+                                            const host = server.host?.replace(/^https?:\/\//, '') || '';
+                                            const providerName = registryProvider?.name
+                                                || (host.includes('cloudflarestorage') ? 'Cloudflare R2'
+                                                : host.includes('backblazeb2') ? 'Backblaze B2'
+                                                : host.includes('amazonaws') ? 'AWS S3'
+                                                : host.includes('wasabisys') ? 'Wasabi'
+                                                : host.includes('digitaloceanspaces') ? 'DigitalOcean'
+                                                : host.includes('storjshare') ? 'Storj'
+                                                : host.includes('idrivee2') ? 'iDrive e2'
+                                                : (host.includes('minio') || host.includes(':9000')) ? 'MinIO'
+                                                : 'S3');
+                                            return bucket ? `${bucket} - ${providerName}` : providerName;
+                                        }
+                                        if (server.protocol === 'github') {
+                                            const base = server.host;
+                                            const modeLabel = gitHubBadge ? ` (${gitHubBadge.label})` : '';
+                                            return `${base}${modeLabel}`;
+                                        }
+                                        if (server.protocol === 'webdav') {
+                                            const raw = server.host?.replace(/^https?:\/\//, '') || server.host || '';
+                                            try { const h = new URL(server.host?.startsWith('http') ? server.host : `https://${server.host}`).hostname; return `${mu(server.username || '')}@${h}`; } catch { return `${mu(server.username || '')}@${raw}`; }
+                                        }
+                                        return `${mu(server.username || '')}@${server.host}:${server.port}`;
+                                    })()}
                                 </div>
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

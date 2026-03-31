@@ -28,6 +28,7 @@ import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode } from '../utils/providerConnectionMeta';
+import { maskCredential } from '../utils/maskCredential';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -49,21 +50,22 @@ const PROTOCOL_COLORS: Record<string, string> = {
 };
 
 // Get display info for a server (matches SavedServers sidebar schema)
-const getServerDisplayInfo = (server: ServerProfile) => {
+const getServerDisplayInfo = (server: ServerProfile, masked = false) => {
     const protocol = server.protocol || 'ftp';
     const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
+    const mu = (v: string) => masked ? maskCredential(v) : v;
 
     if (isOAuth) {
         const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' };
-        return `OAuth — ${server.username || providerNames[protocol] || protocol}`;
+        return `OAuth - ${mu(server.username || providerNames[protocol] || protocol)}`;
     }
 
     if (protocol === 'filen') {
-        return `E2E AES-256 — ${server.username}`;
+        return `E2E AES-256 - ${mu(server.username || '')}`;
     }
 
     if (protocol === 'mega') {
-        return `E2E AES-128 — ${server.username}${server.options ? ` — ${getMegaConnectionBadge(server.options).longLabel}` : ''}`;
+        return `E2E AES-128 - ${mu(server.username || '')}${server.options ? ` - ${getMegaConnectionBadge(server.options).longLabel}` : ''}`;
     }
 
     if (protocol === 'github') {
@@ -80,14 +82,14 @@ const getServerDisplayInfo = (server: ServerProfile) => {
                     : host.includes('wasabisys') ? 'Wasabi'
                         : host.includes('digitaloceanspaces') ? 'DigitalOcean'
                             : host.split('.')[0];
-        return `${bucket} — ${provider}`;
+        return `${bucket} - ${provider}`;
     }
 
     if (protocol === 'webdav') {
-        return `${server.username}@${server.host?.replace(/^https?:\/\//, '')}`;
+        return `${mu(server.username || '')}@${server.host?.replace(/^https?:\/\//, '')}`;
     }
 
-    return `${server.username}@${server.host}:${server.port}`;
+    return `${mu(server.username || '')}@${server.host}:${server.port}`;
 };
 
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
@@ -307,6 +309,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
     const [showEditPassword, setShowEditPassword] = useState(false);
     const [showExportImport, setShowExportImport] = useState(false);
+    const [credentialsMasked, setCredentialsMasked] = useState(true);
 
     // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
     // Resolve S3 endpoint and accountId when editing a server
@@ -877,6 +880,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.savedServers')}</h3>
                                         <div className="flex items-center gap-2">
                                             <button
+                                                onClick={() => setCredentialsMasked(v => !v)}
+                                                className="p-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
+                                                title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}
+                                            >
+                                                {credentialsMasked ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
+                                            <button
                                                 onClick={() => setShowExportImport(true)}
                                                 className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5"
                                                 title={t('settings.exportImport')}
@@ -955,7 +965,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     })()}
                                                                 </div>
                                                                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                                    {getServerDisplayInfo(server)}
+                                                                    {getServerDisplayInfo(server, credentialsMasked)}
                                                                 </div>
                                                                 {(server.initialPath || server.localInitialPath) && (
                                                                     <p className="text-xs text-gray-400 mt-1">

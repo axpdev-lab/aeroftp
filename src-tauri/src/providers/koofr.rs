@@ -38,6 +38,22 @@ fn koofr_log(msg: &str) {
 #[cfg(not(debug_assertions))]
 fn koofr_log(_msg: &str) {}
 
+fn mask_credential(value: &str) -> String {
+    if value.is_empty() {
+        return value.to_string();
+    }
+    if let Some(at) = value.find('@') {
+        let local = &value[..at];
+        let domain = &value[at..];
+        let visible = local.len().min(3);
+        format!("{}***{}", &local[..visible], domain)
+    } else if value.len() <= 3 {
+        "***".to_string()
+    } else {
+        format!("{}***", &value[..3])
+    }
+}
+
 // ─── Configuration ───
 
 pub struct KoofrConfig {
@@ -558,8 +574,8 @@ impl StorageProvider for KoofrProvider {
         self.account_email = user.email.clone();
         koofr_log(&format!(
             "Authenticated as {} {}",
-            user.first_name.as_deref().unwrap_or(""),
-            user.last_name.as_deref().unwrap_or("")
+            mask_credential(user.first_name.as_deref().unwrap_or("")),
+            mask_credential(user.last_name.as_deref().unwrap_or(""))
         ));
 
         // 2. Get mounts and find primary

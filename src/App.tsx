@@ -127,6 +127,7 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { maskCredential } from './utils/maskCredential';
 import { useTranslation } from './i18n';
 
 // Components
@@ -2274,9 +2275,9 @@ const App: React.FC = () => {
       humanLog.logRaw('activity.https_established', 'CONNECT', {}, 'success');
     }
     if (protocol === 'sftp' && options?.private_key_path) {
-      humanLog.logRaw('activity.auth_method_key', 'CONNECT', { username }, 'success');
+      humanLog.logRaw('activity.auth_method_key', 'CONNECT', { username: maskCredential(username) }, 'success');
     } else if (username) {
-      humanLog.logRaw('activity.auth_success', 'CONNECT', { username }, 'success');
+      humanLog.logRaw('activity.auth_success', 'CONNECT', { username: maskCredential(username) }, 'success');
     }
   };
 
@@ -2416,7 +2417,11 @@ const App: React.FC = () => {
                     ? `Felicloud ${effectiveParams.username}`
                     : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
-      const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
+      // SEC: mask credentials in log-only provider name to prevent data leakage
+      const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
+        ? providerName.replace(effectiveParams.username, maskCredential(effectiveParams.username))
+        : providerName;
+      const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
         // Disconnect any existing provider first
@@ -2453,7 +2458,7 @@ const App: React.FC = () => {
           private_key_path: effectiveParams.options?.private_key_path || undefined,
         });
         setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-        humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
+        humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
         // Load files using provider API
@@ -2505,7 +2510,7 @@ const App: React.FC = () => {
         );
         fetchStorageQuota(protocol);
       } catch (error) {
-        humanLog.logError('CONNECT', { server: providerName }, logId);
+        humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         notify.error(t('connection.connectionFailed'), String(error));
       }
       finally { setLoading(false); }
@@ -7428,7 +7433,11 @@ const App: React.FC = () => {
                           ? normalizedParams.username
                           : normalizedParams.server.split(':')[0]);
                   const protocolLabel = (normalizedParams.protocol || 'FTP').toUpperCase();
-                  const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
+                  // SEC: mask credentials in log-only provider name to prevent data leakage
+                  const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
+                    ? providerName.replace(normalizedParams.username, maskCredential(normalizedParams.username))
+                    : providerName;
+                  const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
                   try {
                     // Disconnect any existing connections
@@ -7457,7 +7466,7 @@ const App: React.FC = () => {
                     setConnectionParams(connectedParams);
 
                     setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
-                    humanLog.logSuccess('CONNECT', { server: providerName, protocol: protocolLabel }, logId);
+                    humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
                     notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
                     // Load files using provider API
@@ -7495,7 +7504,7 @@ const App: React.FC = () => {
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
                   } catch (error) {
-                    humanLog.logError('CONNECT', { server: providerName }, logId);
+                    humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
                     notify.error(t('connection.connectionFailed'), String(error));
                   } finally {
                     setLoading(false);

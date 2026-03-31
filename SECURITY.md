@@ -89,6 +89,7 @@ For Sigstore verification commands and CI/CD security controls, see [Supply Chai
 - All provider credentials wrapped in `SecretString` across all 23 providers
 - Rust ownership model prevents use-after-free and buffer overflows
 - Passwords are never logged or written to disk in plain text
+- Activity log and UI credential masking: usernames, emails, and access keys are masked at the source (`maskCredential`) before reaching log entries or display subtitles, preventing accidental exposure in bug reports and screenshots
 
 ### TOTP Two-Factor Authentication
 
@@ -131,4 +132,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.2.2 - 30 March 2026*
+*AeroFTP v3.2.6 - 31 March 2026*
