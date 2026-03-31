@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded `indicatif` 0.17 to 0.18, removing unmaintained `number_prefix` dependency
 - Cargo dependency update: 116 crate bumps including openssl, rustls, tao, wry
 - SourceForge provider preset hidden until provider confirmation (dev-only)
+- **FeliCloud direct access**: Clicking FeliCloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list
+- **Status bar panel consistency**: File count indicators (remote/local) now match the visual panel order when panels are swapped
 
 #### Security
 

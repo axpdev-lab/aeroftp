@@ -39,6 +39,7 @@ interface StatusBarProps {
     storageQuota?: StorageQuota | null;
     connectionSecurity?: 'secure' | 'warning' | 'insecure';
     secureProtocol?: string;
+    swapPanels?: boolean;
     onToggleAeroFile?: () => void;
     onToggleAeroAgent?: () => void;
     onToggleDebug?: () => void;
@@ -82,6 +83,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onShowUpdateToast,
     connectionSecurity,
     secureProtocol,
+    swapPanels = false,
 }) => {
     const t = useTranslation();
     const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
@@ -201,16 +203,33 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     </div>
                 )}
 
-                {isConnected && (
-                    <div className="flex items-center gap-1.5">
-                        <Globe size={12} className="text-blue-500" />
-                        <span>{remoteFileCount} {t('browser.files')}</span>
-                    </div>
+                {swapPanels ? (
+                    <>
+                        <div className="flex items-center gap-1.5">
+                            <HardDrive size={12} className="text-amber-500" />
+                            <span>{localFileCount} {t('browser.files')}</span>
+                        </div>
+                        {isConnected && (
+                            <div className="flex items-center gap-1.5">
+                                <Globe size={12} className="text-blue-500" />
+                                <span>{remoteFileCount} {t('browser.files')}</span>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        {isConnected && (
+                            <div className="flex items-center gap-1.5">
+                                <Globe size={12} className="text-blue-500" />
+                                <span>{remoteFileCount} {t('browser.files')}</span>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                            <HardDrive size={12} className="text-amber-500" />
+                            <span>{localFileCount} {t('browser.files')}</span>
+                        </div>
+                    </>
                 )}
-                <div className="flex items-center gap-1.5">
-                    <HardDrive size={12} className="text-amber-500" />
-                    <span>{localFileCount} {t('browser.files')}</span>
-                </div>
 
                 {/* Separator */}
                 <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />

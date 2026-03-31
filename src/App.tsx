@@ -8750,6 +8750,7 @@ const App: React.FC = () => {
             remoteFileCount={remoteFiles.length}
             localFileCount={localFiles.length}
             activePanel={activePanel}
+            swapPanels={swapPanels}
             devToolsOpen={devToolsOpen}
             aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
             onToggleAeroFile={async () => {
