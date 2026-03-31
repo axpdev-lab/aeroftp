@@ -85,3 +85,7 @@ src-tauri/check_output*.txt
 
 # Package manager lock files (bun)
 bun.lock
+
+# Generated/cached files
+.cache/
+.claude/worktrees/
