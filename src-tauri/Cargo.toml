@@ -106,7 +106,7 @@ unrar = "0.5"                                                          # RAR ext
 trash = "5"                                                            # Cross-platform trash/recycle bin
 tar = "0.4.45"                                                        # TAR archives (CVE symlink chmod + PAX size fix)
 flate2 = "1.0"                                                        # Gzip compression
-xz2 = "0.1"                                                           # XZ/LZMA compression
+xz2 = { version = "0.1", features = ["static"] }                       # XZ/LZMA compression (static: no system liblzma needed)
 bzip2 = "0.6"                                                         # Bzip2 compression
 arboard = "3"                                                         # Native clipboard access
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff"] }  # Image editing + tray badge
