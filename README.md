@@ -121,6 +121,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, share links (expiry) |
 | **GitHub** | PAT / Device Flow | Repository as filesystem, single-file commits plus atomic batch upload/delete flows, release assets (2 GiB), branch workflow for protected branches, auto PR creation |
+| **SourceForge** | SSH (SFTP) | *Coming soon* - SFTP preset with SourceForge project paths, file release management |
 
 **Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) with maturity badges shown in the setup wizard. 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display where the provider exposes it, share links, and Dropbox-style conflict naming.
 
