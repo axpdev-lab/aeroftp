@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift storan objek",
       "swiftTooltip": "OpenStack Swift — serasi dengan Blomp, OVH, Rackspace storan awan",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Sambung menggunakan protokol pemindahan fail standard. Menyokong FTP, FTPS (disulitkan), SFTP (berasaskan SSH) dan Azure Blob Storage.",
+      "protocolsInfoLine2": "Masukkan alamat pelayan, port dan kelayakan anda untuk bermula.",
+      "cloudInfoLine1": "Log masuk dengan akaun awan anda. Sesetengah perkhidmatan menggunakan OAuth (log masuk satu klik), yang lain memerlukan API key atau kata laluan aplikasi daripada tetapan akaun anda.",
+      "cloudInfoLine2": "Storan percuma berbeza mengikut pembekal - semak setiap perkhidmatan untuk butiran.",
+      "developerInfoLine1": "Integrasi untuk aliran kerja pembangunan. Layari repositori, urus keluaran dan muat naik fail terus ke platform pengehosan.",
+      "developerInfoLine2": "Memerlukan personal access token (PAT) atau SSH key untuk pengesahan."
     },
     "shortcuts": {
       "title": "Pintasan Papan Kekunci",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesi tamat tempoh (24j)",
       "clickToRenew": "Klik untuk memperbaharui sesi dan menyambung",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Sembunyikan kelayakan",
+      "showCredentials": "Tunjukkan kelayakan"
     },
     "cyberTools": {
       "title": "Alatan Keselamatan",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komen",
       "perm_edit": "Sunting",
       "generateWithOptions": "Jana dengan pilihan"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Pelayan Saya",
+        "discover": "Terokai Perkhidmatan"
+      },
+      "quickConnect": "Sambungan Pantas",
+      "search": "Cari...",
+      "searchServers": "Cari pelayan...",
+      "viewGrid": "Paparan grid",
+      "viewList": "Paparan senarai",
+      "filter": {
+        "all": "Semua",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Awan",
+        "favorites": "Kegemaran"
+      },
+      "noServers": "Tiada pelayan yang disimpan",
+      "noServersHint": "Mulakan dengan sambungan pantas atau terokai katalog perkhidmatan.",
+      "noResults": "Tiada pelayan ditemui",
+      "noResultsHint": "Tiada pelayan sepadan dengan \"{query}\"",
+      "backToServers": "Kembali ke pelayan",
+      "addFavorite": "Tambah ke kegemaran",
+      "removeFavorite": "Buang dari kegemaran",
+      "discoverTitle": "Terokai Perkhidmatan",
+      "discoverDescription": "Layari 29+ perkhidmatan awan bersepadu, storan serasi S3, pembekal WebDAV dan banyak lagi. Setiap perkhidmatan dilengkapi tetapan pra-konfigurasi untuk persediaan pantas.",
+      "searchServices": "Cari perkhidmatan...",
+      "discoverHint": "Klik perkhidmatan untuk menyediakan sambungan pra-konfigurasi dengan input minimum.",
+      "category": {
+        "protocols": "Protokol",
+        "objectStorage": "S3 / Storan Objek",
+        "webdav": "WebDAV & Self-hosted",
+        "cloudStorage": "Storan Awan",
+        "developer": "Pembangun"
+      }
     }
   }
 }

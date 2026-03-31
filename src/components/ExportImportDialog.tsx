@@ -8,6 +8,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, Server } from 'lucide-react';
 import { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
+import { Checkbox } from './ui/Checkbox';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -195,7 +196,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && onClose()}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[440px] overflow-hidden animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[440px] overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -258,15 +259,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 </div>
                                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
                                     {servers.map((server) => (
-                                        <label
+                                        <div
                                             key={server.id}
                                             className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0"
                                         >
-                                            <input
-                                                type="checkbox"
+                                            <Checkbox
                                                 checked={selectedServerIds.has(server.id)}
                                                 onChange={() => toggleServer(server.id)}
-                                                className="w-4 h-4 rounded text-blue-500"
                                             />
                                             <div
                                                 className="w-2 h-2 rounded-full flex-shrink-0"
@@ -281,7 +280,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">
                                                 {server.protocol || 'ftp'}
                                             </span>
-                                        </label>
+                                        </div>
                                     ))}
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -290,23 +289,23 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             </div>
 
                             {/* Include credentials toggle */}
-                            <label className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer">
-                                <input
-                                    type="checkbox"
+                            <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                                <Checkbox
                                     checked={includeCredentials}
-                                    onChange={(e) => setIncludeCredentials(e.target.checked)}
-                                    className="w-4 h-4 rounded"
+                                    onChange={setIncludeCredentials}
+                                    label={
+                                        <div>
+                                            <div className="text-sm font-medium flex items-center gap-1">
+                                                <Lock size={14} />
+                                                {t('settings.includeCredentials')}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                {t('settings.includeCredentialsHint')}
+                                            </div>
+                                        </div>
+                                    }
                                 />
-                                <div>
-                                    <div className="text-sm font-medium flex items-center gap-1">
-                                        <Lock size={14} />
-                                        {t('settings.includeCredentials')}
-                                    </div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                                        {t('settings.includeCredentialsHint')}
-                                    </div>
-                                </div>
-                            </label>
+                            </div>
 
                             {/* Password fields */}
                             <div className="relative">

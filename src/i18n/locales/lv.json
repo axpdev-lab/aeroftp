@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektu krātuve",
       "swiftTooltip": "OpenStack Swift — saderīga ar Blomp, OVH, Rackspace mākoņkrātuvi",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Izveidojiet savienojumu, izmantojot standarta failu pārsūtīšanas protokolus. Atbalsta FTP, FTPS (šifrēts), SFTP (SSH bāzēts) un Azure Blob Storage.",
+      "protocolsInfoLine2": "Ievadiet servera adresi, portu un akreditācijas datus, lai sāktu.",
+      "cloudInfoLine1": "Piesakieties ar savu mākoņkontu. Daži pakalpojumi izmanto OAuth (pieteikšanās ar vienu klikšķi), citi pieprasa API atslēgu vai lietotnes paroli no jūsu konta iestatījumiem.",
+      "cloudInfoLine2": "Bezmaksas krātuves apjoms atšķiras atkarībā no nodrošinātāja - pārbaudiet katra pakalpojuma informāciju.",
+      "developerInfoLine1": "Integrācijas izstrādes darbplūsmām. Pārlūkojiet repozitorijus, pārvaldiet laidienus un augšupielādējiet failus tieši mitināšanas platformās.",
+      "developerInfoLine2": "Autentifikācijai nepieciešams personīgais piekļuves tokens (PAT) vai SSH atslēga."
     },
     "shortcuts": {
       "title": "Tastatūras saīsnes",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesija beigusies (24h)",
       "clickToRenew": "Noklikšķiniet, lai atjaunotu sesiju un izveidotu savienojumu",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Slēpt akreditācijas datus",
+      "showCredentials": "Rādīt akreditācijas datus"
     },
     "cyberTools": {
       "title": "Drošības rīki",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komentēt",
       "perm_edit": "Rediģēt",
       "generateWithOptions": "Ģenerēt ar opcijām"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mani serveri",
+        "discover": "Atklāt pakalpojumus"
+      },
+      "quickConnect": "Ātrais savienojums",
+      "search": "Meklēt...",
+      "searchServers": "Meklēt serverus...",
+      "viewGrid": "Režģa skats",
+      "viewList": "Saraksta skats",
+      "filter": {
+        "all": "Visi",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Mākoņi",
+        "favorites": "Izlase"
+      },
+      "noServers": "Nav saglabātu serveru",
+      "noServersHint": "Sāciet ar ātro savienojumu vai pārlūkojiet pakalpojumu katalogu.",
+      "noResults": "Serveri nav atrasti",
+      "noResultsHint": "Neviens serveris neatbilst \"{query}\"",
+      "backToServers": "Atpakaļ pie serveriem",
+      "addFavorite": "Pievienot izlasei",
+      "removeFavorite": "Noņemt no izlases",
+      "discoverTitle": "Atklāt pakalpojumus",
+      "discoverDescription": "Pārlūkojiet 29+ integrētos mākoņpakalpojumus, S3-saderīgas krātuves, WebDAV nodrošinātājus un citus. Katrs pakalpojums ir aprīkots ar iepriekš konfigurētiem iestatījumiem ātrai iestatīšanai.",
+      "searchServices": "Meklēt pakalpojumus...",
+      "discoverHint": "Noklikšķiniet uz pakalpojuma, lai iestatītu iepriekš konfigurētu savienojumu ar minimālu ievadi.",
+      "category": {
+        "protocols": "Protokoli",
+        "objectStorage": "S3 / Objektu krātuve",
+        "webdav": "WebDAV un pašmitināti",
+        "cloudStorage": "Mākoņkrātuve",
+        "developer": "Izstrādātājiem"
+      }
     }
   }
 }

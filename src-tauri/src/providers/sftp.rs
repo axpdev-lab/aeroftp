@@ -15,15 +15,10 @@ use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
 use russh::client::AuthResult;
 use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
-use secrecy::ExposeSecret;
-use ssh2::{CheckResult, KnownHostFileKind, Session as Ssh2Session};
-use std::net::{TcpStream, ToSocketAddrs};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 
 /// SSH Client Handler for server key verification
 struct SshHandler {
@@ -143,207 +138,6 @@ impl SftpProvider {
         }
 
         path.to_string()
-    }
-
-    fn ssh_known_hosts_path() -> Option<PathBuf> {
-        dirs::home_dir().map(|home| home.join(".ssh/known_hosts"))
-    }
-
-    fn ssh_known_host_entry(host: &str, port: u16) -> String {
-        if port == 22 {
-            host.to_string()
-        } else {
-            format!("[{}]:{}", host, port)
-        }
-    }
-
-    fn verify_ssh2_host_key(session: &Ssh2Session, config: &SftpConfig) -> Result<(), ProviderError> {
-        let (host_key, host_key_type) = session.host_key().ok_or_else(|| {
-            ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback could not read host key for {}",
-                config.host
-            ))
-        })?;
-
-        let known_hosts_path = Self::ssh_known_hosts_path().ok_or_else(|| {
-            ProviderError::ConnectionFailed("Unable to resolve home directory for known_hosts".to_string())
-        })?;
-
-        let mut known_hosts = session.known_hosts().map_err(|error| {
-            ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback could not initialize known_hosts: {}",
-                error
-            ))
-        })?;
-
-        if known_hosts_path.exists() {
-            known_hosts
-                .read_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
-                .map_err(|error| {
-                    ProviderError::ConnectionFailed(format!(
-                        "SSH2 fallback could not read known_hosts: {}",
-                        error
-                    ))
-                })?;
-        }
-
-        match known_hosts.check_port(&config.host, config.port, host_key) {
-            CheckResult::Match => Ok(()),
-            CheckResult::Mismatch => Err(ProviderError::AuthenticationFailed(format!(
-                "SSH2 fallback rejected {}:{} because the host key changed",
-                config.host, config.port
-            ))),
-            CheckResult::Failure => Err(ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback failed to validate host key for {}:{}",
-                config.host, config.port
-            ))),
-            CheckResult::NotFound => {
-                if !config.trust_unknown_hosts {
-                    return Err(ProviderError::AuthenticationFailed(format!(
-                        "SSH2 fallback rejected {}:{} because the host key is not trusted yet",
-                        config.host, config.port
-                    )));
-                }
-
-                if let Some(parent) = known_hosts_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|error| {
-                        ProviderError::ConnectionFailed(format!(
-                            "SSH2 fallback could not prepare ~/.ssh: {}",
-                            error
-                        ))
-                    })?;
-                }
-
-                let host_entry = Self::ssh_known_host_entry(&config.host, config.port);
-                known_hosts
-                    .add(&host_entry, host_key, &config.host, host_key_type.into())
-                    .map_err(|error| {
-                        ProviderError::ConnectionFailed(format!(
-                            "SSH2 fallback could not save trusted host key: {}",
-                            error
-                        ))
-                    })?;
-                known_hosts
-                    .write_file(&known_hosts_path, KnownHostFileKind::OpenSSH)
-                    .map_err(|error| {
-                        ProviderError::ConnectionFailed(format!(
-                            "SSH2 fallback could not write known_hosts: {}",
-                            error
-                        ))
-                    })?;
-
-                Ok(())
-            }
-        }
-    }
-
-    fn connect_ssh2_session(config: &SftpConfig) -> Result<Ssh2Session, ProviderError> {
-        let mut socket_addrs = (config.host.as_str(), config.port)
-            .to_socket_addrs()
-            .map_err(|error| {
-                ProviderError::ConnectionFailed(format!(
-                    "SSH2 fallback could not resolve {}:{}: {}",
-                    config.host, config.port, error
-                ))
-            })?;
-
-        let socket_addr = socket_addrs.next().ok_or_else(|| {
-            ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback found no socket address for {}:{}",
-                config.host, config.port
-            ))
-        })?;
-
-        let tcp_stream = TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_secs(config.timeout_secs))
-            .map_err(|error| {
-                ProviderError::ConnectionFailed(format!(
-                    "SSH2 fallback TCP connect failed to {}:{}: {}",
-                    config.host, config.port, error
-                ))
-            })?;
-        let timeout = Some(std::time::Duration::from_secs(config.timeout_secs));
-        let _ = tcp_stream.set_read_timeout(timeout);
-        let _ = tcp_stream.set_write_timeout(timeout);
-
-        let mut session = Ssh2Session::new().map_err(|error| {
-            ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback session init failed: {}",
-                error
-            ))
-        })?;
-        session.set_timeout(config.timeout_secs.saturating_mul(1000).min(u32::MAX as u64) as u32);
-        session.set_tcp_stream(tcp_stream);
-        session.handshake().map_err(|error| {
-            ProviderError::ConnectionFailed(format!(
-                "SSH2 fallback handshake failed: {}",
-                error
-            ))
-        })?;
-
-        Self::verify_ssh2_host_key(&session, config)?;
-
-        if let Some(private_key_path) = &config.private_key_path {
-            let expanded_path = Self::expand_home_path(private_key_path);
-            session
-                .userauth_pubkey_file(
-                    &config.username,
-                    None,
-                    Path::new(&expanded_path),
-                    config.key_passphrase.as_ref().map(|passphrase| passphrase.expose_secret()),
-                )
-                .map_err(|error| {
-                    ProviderError::AuthenticationFailed(format!(
-                        "SSH2 fallback key authentication failed: {}",
-                        error
-                    ))
-                })?;
-        } else if let Some(password) = &config.password {
-            session
-                .userauth_password(&config.username, password.expose_secret())
-                .map_err(|error| {
-                    ProviderError::AuthenticationFailed(format!(
-                        "SSH2 fallback password authentication failed: {}",
-                        error
-                    ))
-                })?;
-        } else {
-            return Err(ProviderError::AuthenticationFailed(
-                "SSH2 fallback has no authentication method available".to_string(),
-            ));
-        }
-
-        if !session.authenticated() {
-            return Err(ProviderError::AuthenticationFailed(
-                "SSH2 fallback authentication was rejected by the server".to_string(),
-            ));
-        }
-
-        Ok(session)
-    }
-
-    fn local_file_mode(_local_path: &str) -> i32 {
-        #[cfg(unix)]
-        {
-            if let Ok(metadata) = std::fs::metadata(_local_path) {
-                return (metadata.permissions().mode() & 0o777) as i32;
-            }
-        }
-
-        0o644
-    }
-
-    fn local_file_times(local_path: &str) -> Option<(u64, u64)> {
-        let metadata = std::fs::metadata(local_path).ok()?;
-        let modified = metadata.modified().ok()?;
-        let mtime = modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-        let atime = metadata
-            .accessed()
-            .ok()
-            .and_then(|accessed| accessed.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs())
-            .unwrap_or(mtime);
-
-        Some((mtime, atime))
     }
 
     /// Normalize path (ensure absolute)
@@ -473,127 +267,6 @@ impl SftpProvider {
         }
     }
 
-    async fn upload_via_ssh2_fallback(
-        &self,
-        local_path: &str,
-        remote_path: &str,
-        total_size: u64,
-        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-    ) -> Result<(), ProviderError> {
-        let config = self.config.clone();
-        let local_path = local_path.to_string();
-        let remote_path = remote_path.to_string();
-
-        tokio::task::spawn_blocking(move || -> Result<(), ProviderError> {
-            use std::io::{Read, Write};
-
-            let session = Self::connect_ssh2_session(&config)?;
-            let mut local_file = std::fs::File::open(&local_path).map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback could not open local file: {}",
-                    error
-                ))
-            })?;
-
-            let mut remote_channel = session
-                .scp_send(
-                    Path::new(&remote_path),
-                    Self::local_file_mode(&local_path),
-                    total_size,
-                    Self::local_file_times(&local_path),
-                )
-                .map_err(|error| {
-                    ProviderError::TransferFailed(format!(
-                        "SSH2 fallback could not start SCP upload: {}",
-                        error
-                    ))
-                })?;
-
-            let mut buffer = [0u8; 32768];
-            let mut transferred = 0u64;
-
-            loop {
-                let bytes_read = local_file.read(&mut buffer).map_err(|error| {
-                    ProviderError::TransferFailed(format!(
-                        "SSH2 fallback local read error: {}",
-                        error
-                    ))
-                })?;
-
-                if bytes_read == 0 {
-                    break;
-                }
-
-                remote_channel.write_all(&buffer[..bytes_read]).map_err(|error| {
-                    ProviderError::TransferFailed(format!(
-                        "SSH2 fallback remote write error: {}",
-                        error
-                    ))
-                })?;
-
-                transferred += bytes_read as u64;
-
-                if let Some(ref progress) = on_progress {
-                    progress(transferred, total_size);
-                }
-            }
-
-            remote_channel.flush().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback flush error: {}",
-                    error
-                ))
-            })?;
-            remote_channel.send_eof().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback send_eof error: {}",
-                    error
-                ))
-            })?;
-            remote_channel.wait_eof().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback wait_eof error: {}",
-                    error
-                ))
-            })?;
-            remote_channel.close().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback close error: {}",
-                    error
-                ))
-            })?;
-            remote_channel.wait_close().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback wait_close error: {}",
-                    error
-                ))
-            })?;
-
-            let sftp = session.sftp().map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback could not open SFTP session for verification: {}",
-                    error
-                ))
-            })?;
-            let remote_stat = sftp.stat(Path::new(&remote_path)).map_err(|error| {
-                ProviderError::TransferFailed(format!(
-                    "SSH2 fallback could not stat remote file after upload: {}",
-                    error
-                ))
-            })?;
-            let actual_size = remote_stat.size.unwrap_or(0);
-            if actual_size != total_size {
-                return Err(ProviderError::TransferFailed(format!(
-                    "SSH2/SCP upload verification failed for {}: expected {} bytes, got {} bytes",
-                    remote_path, total_size, actual_size
-                )));
-            }
-
-            Ok(())
-        })
-        .await
-        .map_err(|error| ProviderError::TransferFailed(format!("SSH2 fallback task join error: {}", error)))?
-    }
 }
 
 /// Format Unix permissions as rwx string
@@ -668,11 +341,31 @@ impl StorageProvider for SftpProvider {
             // Try key-based authentication
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
-            // Password authentication
+            // Try password authentication first, then keyboard-interactive as fallback
             use secrecy::ExposeSecret;
-            let result = handle.authenticate_password(&self.config.username, password.expose_secret()).await
+            use russh::client::KeyboardInteractiveAuthResponse;
+            let pw = password.expose_secret().to_string();
+            let result = handle.authenticate_password(&self.config.username, &pw).await
                 .map_err(|e| ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e)))?;
-            matches!(result, AuthResult::Success)
+            if matches!(result, AuthResult::Success) {
+                true
+            } else {
+                // Fallback: keyboard-interactive (many servers like SourceForge require this)
+                tracing::info!("SFTP: Password auth not accepted, trying keyboard-interactive...");
+                let ki_result = handle.authenticate_keyboard_interactive_start(&self.config.username, None::<String>).await
+                    .map_err(|e| ProviderError::AuthenticationFailed(format!("Keyboard-interactive auth failed: {}", e)))?;
+                match ki_result {
+                    KeyboardInteractiveAuthResponse::Success => true,
+                    KeyboardInteractiveAuthResponse::Failure { .. } => false,
+                    KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+                        // Server asks for responses - send password for each prompt
+                        let responses: Vec<String> = prompts.iter().map(|_| pw.clone()).collect();
+                        let resp = handle.authenticate_keyboard_interactive_respond(responses).await
+                            .map_err(|e| ProviderError::AuthenticationFailed(format!("Keyboard-interactive respond failed: {}", e)))?;
+                        matches!(resp, KeyboardInteractiveAuthResponse::Success)
+                    }
+                }
+            }
         } else {
             return Err(ProviderError::AuthenticationFailed(
                 "No authentication method provided (need password or private key)".to_string()
@@ -936,6 +629,9 @@ impl StorageProvider for SftpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        use tokio::io::AsyncWriteExt;
+
+        let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
         tracing::info!("SFTP: Uploading {} to {}", local_path, full_path);
@@ -947,17 +643,56 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
 
-        self.upload_via_ssh2_fallback(local_path, &full_path, total_size, on_progress).await?;
+        // Open local file
+        let mut local_file = tokio::fs::File::open(local_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to open local file: {}", e)))?;
 
-        if let Err(error) = self.verify_remote_upload_size(self.get_sftp()?, &full_path, total_size).await {
-            tracing::warn!(
-                "SFTP: russh session did not observe the SCP-written size immediately for {}: {}",
-                full_path,
-                error
-            );
+        // Create remote file via russh_sftp (uses existing SSH session, no second connection)
+        let mut remote_file = sftp.create(&full_path).await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to create remote file: {}", e)))?;
+
+        // Read and write in chunks with optional rate limiting
+        let mut buffer = vec![0u8; 32768]; // 32KB chunks
+        let mut transferred: u64 = 0;
+        let start = std::time::Instant::now();
+
+        loop {
+            let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Local read error: {}", e)))?;
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            remote_file.write_all(&buffer[..bytes_read]).await
+                .map_err(|e| ProviderError::TransferFailed(format!("Remote write error: {}", e)))?;
+
+            transferred += bytes_read as u64;
+
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+
+            // Apply bandwidth throttling
+            if self.upload_limit_bps > 0 {
+                let expected = std::time::Duration::from_secs_f64(transferred as f64 / self.upload_limit_bps as f64);
+                let elapsed = start.elapsed();
+                if expected > elapsed {
+                    tokio::time::sleep(expected - elapsed).await;
+                }
+            }
         }
 
-        tracing::info!("SFTP: Upload complete via SSH2/SCP backend: {} bytes", total_size);
+        // Ensure all data is flushed to remote
+        remote_file.shutdown().await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to flush remote file: {}", e)))?;
+
+        // Verify upload size
+        if let Err(error) = self.verify_remote_upload_size(sftp, &full_path, total_size).await {
+            tracing::warn!("SFTP: Upload size verification warning for {}: {}", full_path, error);
+        }
+
+        tracing::info!("SFTP: Upload complete via russh_sftp: {} bytes", transferred);
         Ok(())
     }
 

@@ -28,6 +28,7 @@ import { getToolLabel } from './aiChatToolLabels';
 import { computeTokenInfo } from './aiChatTokenInfo';
 import { useAIChatImages } from './useAIChatImages';
 import { useAIChatConversations } from './useAIChatConversations';
+import { Checkbox } from '../ui/Checkbox';
 import { useAgentMemory } from './useAgentMemory';
 import { buildContextBlock, buildSystemPrompt } from './aiChatSystemPrompt';
 import { getParameterPreset } from './aiProviderProfiles';
@@ -305,7 +306,7 @@ const TransferPlanReview: React.FC<{
     const selectedCount = selectedOperationIds.size;
 
     return (
-        <div className="mt-3 rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3">
+        <div className="mt-3 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <div className="flex items-center gap-2 text-sm font-semibold text-cyan-300">
@@ -322,7 +323,7 @@ const TransferPlanReview: React.FC<{
                 <button
                     onClick={() => void onExecute(Array.from(selectedOperationIds))}
                     disabled={isExecuting || selectedCount === 0}
-                    className="rounded-md bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {isExecuting ? 'Executing...' : `Execute ${selectedCount} operation(s)`}
                 </button>
@@ -347,16 +348,14 @@ const TransferPlanReview: React.FC<{
                     const isPrepare = operation.category === 'prepare';
                     const isSelected = isPrepare || selectedOperationIds.has(operation.id);
                     return (
-                        <label
+                        <div
                             key={operation.id}
                             className={`flex items-start gap-3 rounded-lg border p-2 text-xs ${isSelected ? 'border-cyan-400/40 bg-cyan-400/10' : 'border-white/10 bg-white/5'}`}
                         >
-                            <input
-                                type="checkbox"
+                            <Checkbox
                                 checked={isSelected}
                                 disabled={isPrepare || isExecuting}
                                 onChange={() => toggleOperation(operation.id)}
-                                className="mt-0.5"
                             />
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
@@ -372,7 +371,7 @@ const TransferPlanReview: React.FC<{
                                     </p>
                                 )}
                             </div>
-                        </label>
+                        </div>
                     );
                 })}
             </div>
@@ -2450,7 +2449,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             {showExtremeWarning && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowExtremeWarning(false)} role="dialog" aria-modal="true" aria-label="Extreme Mode Warning">
                     <div
-                        className="w-[380px] rounded-xl border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5 animate-scale-in"
+                        className="w-[380px] rounded-lg border border-red-500/50 bg-[#0a0e17] shadow-2xl shadow-red-500/10 p-5 animate-scale-in"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center gap-3 mb-4">

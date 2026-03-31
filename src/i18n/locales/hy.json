@@ -1299,7 +1299,13 @@
       "swiftDesc": "OpenStack Swift օբյեկտային պահոց",
       "swiftTooltip": "OpenStack Swift — համատեղ Blomp, OVH, Rackspace ամպային պահոցի հետ",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Միացեք ստանդարտ ֆայլերի փոխանցման պրոտոկոլներով։ Աջակցում է FTP, FTPS (գաղտնագրված), SFTP (SSH-հիմնված) և Azure Blob Storage։",
+      "protocolsInfoLine2": "Մուտքագրեք սերվերի հասցեն, պորտը և հավատարակները՝ սկսելու համար։",
+      "cloudInfoLine1": "Մուտք գործեք ձեր ամպային հաշվով։ Որոշ ծառայություններ օգտագործում են OAuth (մեկ սեղմամով մուտք), մյուսները պահանջում են API բանալի կամ հավելվածի գաղտնաբառ ձեր հաշվի կարգավորումներից։",
+      "cloudInfoLine2": "Անվճար պահոցը տարբերվում է մատակարարից կախված - ստուգեք յուրաքանչյուր ծառայությունը մանրամասների համար։",
+      "developerInfoLine1": "Ինտեգրացիաներ ծրագրավորման աշխատանքերի համար։ Բացահայտեք պահոցարաններ, կառավարեք թողարկումները և վերբեռնեք ֆայլեր անմիջապես հոսթինգի հարթակներին։",
+      "developerInfoLine2": "Պահանջում է անձնական մուտքի նշան (PAT) կամ SSH բանալի նույնականացման համար։"
     },
     "shortcuts": {
       "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3056,7 +3062,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Նիստը լրացել է (24ժ)",
       "clickToRenew": "Սեղմեք նիստը նորոգելու և միանալու համար",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Թաքցնել հավատարագրերը",
+      "showCredentials": "Ցույց տալ հավատարագրերը"
     },
     "cyberTools": {
       "title": "Անվտանգության գործիքներ",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Մեկնաբանություն",
       "perm_edit": "Խմբագրել",
       "generateWithOptions": "Ստեղծել ընտրանքներով"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Իմ սերվերները",
+        "discover": "Հայտնաբերել ծառայություններ"
+      },
+      "quickConnect": "Արագ միացում",
+      "search": "Օրոնել...",
+      "searchServers": "Օրոնել սերվերներ...",
+      "viewGrid": "Ցանցային տեսք",
+      "viewList": "Ցուցակի տեսք",
+      "filter": {
+        "all": "Բոլորը",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Ամպ",
+        "favorites": "Նախընտրածներ"
+      },
+      "noServers": "Պահպանված սերվերներ չկան",
+      "noServersHint": "Սկսեք արագ միացումով կամ բացահայտեք ծառայությունների գրացուցը։",
+      "noResults": "Սերվերներ չեն գտնվել",
+      "noResultsHint": "Ոչ մի սերվեր չի համապատասխանում «{query}»-ին",
+      "backToServers": "Վերադառնալ սերվերներին",
+      "addFavorite": "Ավելացնել նախընտրածներին",
+      "removeFavorite": "Հեռացնել նախընտրածներից",
+      "discoverTitle": "Հայտնաբերել ծառայություններ",
+      "discoverDescription": "Բացահայտեք 29+ ինտեգրված ամպային ծառայություններ, S3-համատեղելի պահոցներ, WebDAV մատակարարներ և ավելին։ Յուրաքանչյուր ծառայություն գալիս է նախապես կարգավորված կարգավորումներով։",
+      "searchServices": "Օրոնել ծառայություններ...",
+      "discoverHint": "Սեղմեք ծառայության վրա՝ նախապես կարգավորված կապակցություն ստեղծելու նվազագույն մուտքագրով։",
+      "category": {
+        "protocols": "Պրոտոկոլներ",
+        "objectStorage": "S3 / Օբյեկտային պահոց",
+        "webdav": "WebDAV և ինքնապահպանված",
+        "cloudStorage": "Ամպային պահոց",
+        "developer": "Ծրագրավորող"
+      }
     }
   }
 }

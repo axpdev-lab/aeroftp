@@ -349,7 +349,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           </div>
         ) : (
           <>
-            <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${(!isPathCoherent || isSyncPathMismatch) ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
+            <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-lg border ${(!isPathCoherent || isSyncPathMismatch) ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
               <div
                 className="flex-shrink-0 pl-2.5 pr-1 flex items-center"
                 title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isPathCoherent ? "Local Disk" : "Local path doesn't match the connected server"}

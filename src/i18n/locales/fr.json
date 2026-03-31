@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift stockage objet",
       "swiftTooltip": "OpenStack Swift — compatible avec Blomp, OVH, Rackspace stockage cloud",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Connectez-vous en utilisant les protocoles standard de transfert de fichiers. Prend en charge FTP, FTPS (chiffré), SFTP (basé sur SSH) et Azure Blob Storage.",
+      "protocolsInfoLine2": "Entrez l'adresse de votre serveur, le port et les identifiants pour commencer.",
+      "cloudInfoLine1": "Connectez-vous avec votre compte cloud. Certains services utilisent OAuth (connexion en un clic), d'autres nécessitent une clé API ou un mot de passe d'application depuis les paramètres de votre compte.",
+      "cloudInfoLine2": "Le stockage gratuit varie selon le fournisseur - consultez chaque service pour plus de détails.",
+      "developerInfoLine1": "Intégrations pour les flux de travail de développement. Parcourez les dépôts, gérez les versions et téléchargez des fichiers directement sur les plateformes d'hébergement.",
+      "developerInfoLine2": "Nécessite un jeton d'accès personnel (PAT) ou une clé SSH pour l'authentification."
     },
     "shortcuts": {
       "title": "Raccourcis clavier",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Session expirée (24h)",
       "clickToRenew": "Cliquez pour renouveler la session et vous connecter",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Masquer les identifiants",
+      "showCredentials": "Afficher les identifiants"
     },
     "cyberTools": {
       "title": "Outils de sécurité",
@@ -3582,6 +3590,43 @@
       "perm_comment": "Commenter",
       "perm_edit": "Modifier",
       "generateWithOptions": "Générer avec options"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mes serveurs",
+        "discover": "Découvrir les services"
+      },
+      "quickConnect": "Connexion rapide",
+      "search": "Rechercher...",
+      "searchServers": "Rechercher des serveurs...",
+      "viewGrid": "Vue grille",
+      "viewList": "Vue liste",
+      "filter": {
+        "all": "Tous",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favoris"
+      },
+      "noServers": "Aucun serveur enregistré",
+      "noServersHint": "Commencez par une connexion rapide ou explorez le catalogue de services.",
+      "noResults": "Aucun serveur trouvé",
+      "noResultsHint": "Aucun serveur ne correspond à \"{query}\"",
+      "backToServers": "Retour aux serveurs",
+      "addFavorite": "Ajouter aux favoris",
+      "removeFavorite": "Retirer des favoris",
+      "discoverTitle": "Découvrir les services",
+      "discoverDescription": "Parcourez plus de 29 services cloud intégrés, le stockage compatible S3, les fournisseurs WebDAV et plus encore. Chaque service est livré avec des paramètres préconfigurés pour une mise en place rapide.",
+      "searchServices": "Rechercher des services...",
+      "discoverHint": "Cliquez sur un service pour configurer une connexion préconfigurée avec un minimum de saisie.",
+      "category": {
+        "protocols": "Protocoles",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Auto-hébergé",
+        "cloudStorage": "Stockage cloud",
+        "developer": "Développeur"
+      }
     }
   }
 }

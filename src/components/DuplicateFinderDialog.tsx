@@ -17,6 +17,7 @@ import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX } fro
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DuplicateGroup } from '../types/aerofile';
+import { Checkbox } from './ui/Checkbox';
 
 interface DuplicateFinderDialogProps {
   isOpen: boolean;
@@ -315,7 +316,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                       const dirPath = getDirectory(filePath);
 
                       return (
-                        <label
+                        <div
                           key={filePath}
                           className={`flex items-start gap-3 px-3 py-2 cursor-pointer transition-colors ${
                             isFirst
@@ -326,13 +327,13 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                           }`}
                         >
                           {/* Checkbox — disabled for the first (kept) file */}
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            disabled={isFirst}
-                            onChange={() => toggleFile(filePath)}
-                            className="mt-1 w-3.5 h-3.5 rounded shrink-0 accent-red-500 disabled:opacity-30"
-                          />
+                          <div className="mt-1 shrink-0">
+                            <Checkbox
+                              checked={isChecked}
+                              disabled={isFirst}
+                              onChange={() => toggleFile(filePath)}
+                            />
+                          </div>
 
                           {/* File info */}
                           <div className="flex-1 min-w-0">
@@ -360,7 +361,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                                 ? t('duplicates.delete')
                                 : t('duplicates.skip')}
                           </span>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
@@ -417,7 +418,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       {/* Styled confirmation dialog (replaces window.confirm) */}
       {pendingDeleteConfirm && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
             <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('duplicates.confirmDelete', { count: selectedPaths.size })}
             </p>

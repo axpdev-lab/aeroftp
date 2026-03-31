@@ -248,7 +248,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       <div
-        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[700px] overflow-hidden flex flex-col animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[700px] overflow-hidden flex flex-col animate-scale-in"
         style={{ maxHeight: '90vh' }}
         role="dialog"
         aria-modal="true"

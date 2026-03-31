@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift ការផ្ទុកវត្ថុ",
       "swiftTooltip": "OpenStack Swift — ឆបគ្នាជាមួយ Blomp, OVH, Rackspace ការផ្ទុកពពក",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "តភ្ជាប់ដោយប្រើពិធីការផ្ទេរឯកសារស្តង់ដារ។ គាំទ្រ FTP, FTPS (អ៊ិនគ្រីប), SFTP (ផ្អែកលើ SSH) និង Azure Blob Storage។",
+      "protocolsInfoLine2": "បញ្ចូលអាសយដ្ឋានម៉ាស៊ីនមេ ច្រក និងព័ត៌មានសម្គាល់ដើម្បីចាប់ផ្តើម។",
+      "cloudInfoLine1": "ចូលដោយប្រើគណនីពពករបស់អ្នក។ សេវាកម្មមួយចំនួនប្រើ OAuth (ចូលដោយចុចម្តង) ខ្លះទៀតត្រូវការ API key ឬពាក្យសម្ងាត់កម្មវិធីពីការកំណត់គណនីរបស់អ្នក។",
+      "cloudInfoLine2": "កន្លែងផ្ទុកឥតគិតថ្លៃខុសគ្នាតាមអ្នកផ្តល់សេវា - ពិនិត្យសេវាកម្មនីមួយៗសម្រាប់ព័ត៌មានលម្អិត។",
+      "developerInfoLine1": "ការរួមបញ្ចូលសម្រាប់លំហូរការងារអភិវឌ្ឍន៍។ រុករកឃ្លាំងផ្ទុក គ្រប់គ្រងការចេញផ្សាយ និងផ្ទុកឡើងឯកសារដោយផ្ទាល់ទៅវេទិកាបង្ហោះ។",
+      "developerInfoLine2": "ត្រូវការ personal access token (PAT) ឬ SSH key សម្រាប់ការផ្ទៀងផ្ទាត់។"
     },
     "shortcuts": {
       "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "វគ្គផុតកំណត់ (24ម៉ោង)",
       "clickToRenew": "ក្លិកដើម្បីបន្តសេសិន និងតត្លភ្ជាប់",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "លាក់ព័ត៌មានសម្ងាត់",
+      "showCredentials": "បង្ហាញព័ត៌មានសម្ងាត់"
     },
     "cyberTools": {
       "title": "ឧបករណ៍សុវត្ថិភាព",
@@ -3611,6 +3619,43 @@
       "perm_comment": "មតិយោបល់",
       "perm_edit": "កែសម្រួល",
       "generateWithOptions": "បង្កើតជាមួយជម្រើស"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "ម៉ាស៊ីនមេរបស់ខ្ញុំ",
+        "discover": "ស្វែងរកសេវាកម្ម"
+      },
+      "quickConnect": "តភ្ជាប់រហ័ស",
+      "search": "ស្វែងរក...",
+      "searchServers": "ស្វែងរកម៉ាស៊ីនមេ...",
+      "viewGrid": "ទិដ្ឋភាពក្រឡា",
+      "viewList": "ទិដ្ឋភាពបញ្ជី",
+      "filter": {
+        "all": "ទាំងអស់",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "ចំណូលចិត្ត"
+      },
+      "noServers": "មិនមានម៉ាស៊ីនមេដែលបានរក្សាទុក",
+      "noServersHint": "ចាប់ផ្តើមដោយការតភ្ជាប់រហ័ស ឬរុករកកាតាឡុកសេវាកម្ម។",
+      "noResults": "រកមិនឃើញម៉ាស៊ីនមេ",
+      "noResultsHint": "គ្មានម៉ាស៊ីនមេត្រូវនឹង \"{query}\"",
+      "backToServers": "ត្រឡប់ទៅម៉ាស៊ីនមេ",
+      "addFavorite": "បន្ថែមទៅចំណូលចិត្ត",
+      "removeFavorite": "ដកចេញពីចំណូលចិត្ត",
+      "discoverTitle": "ស្វែងរកសេវាកម្ម",
+      "discoverDescription": "រុករក 29+ សេវាកម្មពពកដែលបានរួមបញ្ចូល កន្លែងផ្ទុកដែលត្រូវគ្នានឹង S3 អ្នកផ្តល់សេវា WebDAV និងច្រើនទៀត។ សេវាកម្មនីមួយៗមកជាមួយការកំណត់ដែលបានកំណត់រួចមុនសម្រាប់ការដំឡើងរហ័ស។",
+      "searchServices": "ស្វែងរកសេវាកម្ម...",
+      "discoverHint": "ចុចលើសេវាកម្មមួយដើម្បីដំឡើងការតភ្ជាប់ដែលបានកំណត់រួចមុនជាមួយការបញ្ចូលអប្បបរមា។",
+      "category": {
+        "protocols": "ពិធីការ",
+        "objectStorage": "S3 / កន្លែងផ្ទុកវត្ថុ",
+        "webdav": "WebDAV និង Self-hosted",
+        "cloudStorage": "កន្លែងផ្ទុកពពក",
+        "developer": "អ្នកអភិវឌ្ឍន៍"
+      }
     }
   }
 }

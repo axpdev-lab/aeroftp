@@ -113,7 +113,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in">
+      <div className="relative w-full max-w-xl mx-4 rounded-lg shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">

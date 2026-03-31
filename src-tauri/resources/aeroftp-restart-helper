@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# AeroFTP Restart Helper (Linux)
+# This script outlives the parent process to perform a clean restart after an update.
+
+set -e
+
+BINARY="$1"
+PARENT_PID="$2"
+
+# Security: Validate arguments
+if [ -z "$BINARY" ] || [ -z "$PARENT_PID" ]; then
+    echo "ERROR: Missing arguments. Usage: $0 <binary> <parent_pid>" >&2
+    exit 1
+fi
+
+# Security: Validate binary path (restrict to safe execution paths)
+if [[ "$BINARY" != /usr/bin/* && "$BINARY" != /opt/* && "$BINARY" != /tmp/.mount_* ]]; then
+    # AppImages run from /tmp/.mount_*, DEB runs from /usr/bin, RPM runs from /usr/bin or /opt
+    echo "ERROR: Unsafe binary path -> $BINARY" >&2
+    exit 1
+fi
+
+# Security: Validate PID is a number
+if ! [[ "$PARENT_PID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Invalid PID -> $PARENT_PID" >&2
+    exit 1
+fi
+
+# Wait for parent PID to exit (max 30 seconds)
+MAX_WAIT=30
+SECONDS_WAITED=0
+
+# Redirect outputs to null while waiting (quiet mode)
+exec 3>&1 4>&2 >/dev/null 2>&1
+
+while kill -0 "$PARENT_PID" 2>/dev/null; do
+    if [ "$SECONDS_WAITED" -ge "$MAX_WAIT" ]; then
+        # Timeout reached, restore outputs and log error
+        exec 1>&3 2>&4
+        echo "ERROR: Timed out waiting for parent process $PARENT_PID to exit." >&2
+        exit 1
+    fi
+    sleep 1
+    SECONDS_WAITED=$((SECONDS_WAITED + 1))
+done
+
+# Parent process exited. Grace period for any postinst hooks (e.g. dpkg completing).
+sleep 1
+
+# Relaunch the application via exec (replaces current process)
+exec "$BINARY"

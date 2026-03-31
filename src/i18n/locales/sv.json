@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektlagring",
       "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace molnlagring",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Anslut med standardprotokoll för filöverföring. Stödjer FTP, FTPS (krypterad), SFTP (SSH-baserad) och Azure Blob Storage.",
+      "protocolsInfoLine2": "Ange serveradress, port och autentiseringsuppgifter för att komma igång.",
+      "cloudInfoLine1": "Logga in med ditt molnkonto. Vissa tjänster använder OAuth (inloggning med ett klick), andra kräver en API-nyckel eller applösenord från dina kontoinställningar.",
+      "cloudInfoLine2": "Gratis lagring varierar beroende på leverantör - kontrollera varje tjänst för detaljer.",
+      "developerInfoLine1": "Integrationer för utvecklingsarbetsflöden. Bläddra bland repositorier, hantera utgivningar och ladda upp filer direkt till värdplattformar.",
+      "developerInfoLine2": "Kräver en personlig åtkomsttoken (PAT) eller SSH-nyckel för autentisering."
     },
     "shortcuts": {
       "title": "Kortkommandon",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Session utgången (24t)",
       "clickToRenew": "Klicka för att förnya sessionen och ansluta",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Dölj inloggningsuppgifter",
+      "showCredentials": "Visa inloggningsuppgifter"
     },
     "cyberTools": {
       "title": "Säkerhetsverktyg",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Kommentera",
       "perm_edit": "Redigera",
       "generateWithOptions": "Generera med alternativ"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mina servrar",
+        "discover": "Utforska tjänster"
+      },
+      "quickConnect": "Snabbanslutning",
+      "search": "Sök...",
+      "searchServers": "Sök servrar...",
+      "viewGrid": "Rutnätsvy",
+      "viewList": "Listvy",
+      "filter": {
+        "all": "Alla",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Objekt",
+        "webdav": "WebDAV",
+        "cloud": "Moln",
+        "favorites": "Favoriter"
+      },
+      "noServers": "Inga sparade servrar",
+      "noServersHint": "Börja med en snabbanslutning eller utforska tjänstekatalogen.",
+      "noResults": "Inga servrar hittades",
+      "noResultsHint": "Inga servrar matchar \"{query}\"",
+      "backToServers": "Tillbaka till servrar",
+      "addFavorite": "Lägg till i favoriter",
+      "removeFavorite": "Ta bort från favoriter",
+      "discoverTitle": "Utforska tjänster",
+      "discoverDescription": "Bläddra bland över 29 integrerade molntjänster, S3-kompatibel lagring, WebDAV-leverantörer och mer. Varje tjänst levereras med förkonfigurerade inställningar för snabb installation.",
+      "searchServices": "Sök tjänster...",
+      "discoverHint": "Klicka på en tjänst för att konfigurera en förkonfigurerad anslutning med minimal insats.",
+      "category": {
+        "protocols": "Protokoll",
+        "objectStorage": "S3 / Objektlagring",
+        "webdav": "WebDAV och självhostad",
+        "cloudStorage": "Molnlagring",
+        "developer": "Utvecklare"
+      }
     }
   }
 }

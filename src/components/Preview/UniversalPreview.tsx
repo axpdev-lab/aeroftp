@@ -142,7 +142,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
             {/* Modal Container */}
-            <div className="relative w-[90vw] h-[90vh] max-w-7xl bg-gray-900 rounded-xl border border-gray-700 shadow-2xl flex flex-col overflow-hidden animate-scale-in">
+            <div className="relative w-[90vw] h-[90vh] max-w-7xl bg-gray-900 rounded-lg border border-gray-700 shadow-2xl flex flex-col overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
                     {/* File info */}

@@ -159,7 +159,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
     }
 
     return (
-        <div className={`bg-gray-800 border border-gray-700 rounded-xl p-4 ${className}`}>
+        <div className={`bg-gray-800 border border-gray-700 rounded-lg p-4 ${className}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">

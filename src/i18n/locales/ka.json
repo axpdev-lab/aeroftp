@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift ობიექტური საცავი",
       "swiftTooltip": "OpenStack Swift — თავსებადია Blomp, OVH, Rackspace ღრუბლოვან საცავთან",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "დაკავშირდით სტანდარტული ფაილების გადაცემის პროტოკოლების გამოყენებით. მხარს უჭერს FTP, FTPS (დაშიფრული), SFTP (SSH-ზე დაფუძნებული) და Azure Blob Storage.",
+      "protocolsInfoLine2": "შეიყვანეთ სერვერის მისამართი, პორტი და სერთიფიკატები დასაწყებად.",
+      "cloudInfoLine1": "შედით თქვენი ღრუბლოვანი ანგარიშით. ზოგიერთი სერვისი იყენებს OAuth-ს (ერთი დაწკაპუნებით შესვლა), სხვები საჭიროებენ API გასაღებს ან აპლიკაციის პაროლს თქვენი ანგარიშის პარამეტრებიდან.",
+      "cloudInfoLine2": "უფასო საცავი განსხვავდება პროვაიდერის მიხედვით - შეამოწმეთ თითოეული სერვისი დეტალებისთვის.",
+      "developerInfoLine1": "ინტეგრაციები განვითარების სამუშაო პროცესებისთვის. დაათვალიერეთ რეპოზიტორიები, მართეთ გამოშვებები და ატვირთეთ ფაილები პირდაპირ ჰოსტინგის პლატფორმებზე.",
+      "developerInfoLine2": "საჭიროებს პერსონალურ წვდომის ტოკენს (PAT) ან SSH გასაღებს ავთენტიფიკაციისთვის."
     },
     "shortcuts": {
       "title": "კლავიატურის მალსახმობები",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "სესია ამოიწურა (24სთ)",
       "clickToRenew": "დააწკაპუნეთ სესიის განახლებისა და დაკავშირებისთვის",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "სერთიფიკატების დამალვა",
+      "showCredentials": "სერთიფიკატების ჩვენება"
     },
     "cyberTools": {
       "title": "უსაფრთხოების ხელსაწყოები",
@@ -3592,6 +3600,43 @@
       "perm_comment": "კომენტარი",
       "perm_edit": "რედაქტირება",
       "generateWithOptions": "შექმნა პარამეტრებით"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "ჩემი სერვერები",
+        "discover": "სერვისების აღმოჩენა"
+      },
+      "quickConnect": "სწრაფი დაკავშირება",
+      "search": "ძიება...",
+      "searchServers": "სერვერების ძიება...",
+      "viewGrid": "ბადის ხედი",
+      "viewList": "სიის ხედი",
+      "filter": {
+        "all": "ყველა",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "ღრუბელი",
+        "favorites": "რჩეულები"
+      },
+      "noServers": "შენახული სერვერები არ არის",
+      "noServersHint": "დაიწყეთ სწრაფი დაკავშირებით ან დაათვალიერეთ სერვისების კატალოგი.",
+      "noResults": "სერვერები ვერ მოიძებნა",
+      "noResultsHint": "არცერთი სერვერი არ შეესაბამება \"{query}\"-ს",
+      "backToServers": "სერვერებზე დაბრუნება",
+      "addFavorite": "რჩეულებში დამატება",
+      "removeFavorite": "რჩეულებიდან ამოშლა",
+      "discoverTitle": "სერვისების აღმოჩენა",
+      "discoverDescription": "დაათვალიერეთ 29+ ინტეგრირებული ღრუბლოვანი სერვისი, S3-თავსებადი საცავები, WebDAV პროვაიდერები და სხვა. თითოეული სერვისი მოიცავს წინასწარ კონფიგურირებულ პარამეტრებს სწრაფი ინსტალაციისთვის.",
+      "searchServices": "სერვისების ძიება...",
+      "discoverHint": "დააწკაპუნეთ სერვისზე წინასწარ კონფიგურირებული კავშირის დასაყენებლად მინიმალური შეყვანით.",
+      "category": {
+        "protocols": "პროტოკოლები",
+        "objectStorage": "S3 / ობიექტების საცავი",
+        "webdav": "WebDAV და თვითჰოსტინგი",
+        "cloudStorage": "ღრუბლოვანი საცავი",
+        "developer": "დეველოპერი"
+      }
     }
   }
 }

@@ -36,7 +36,7 @@ interface UseAutoUpdateProps {
 
 const THIRTY_MINUTES = 30 * 60 * 1000;
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'dmg', 'snap']);
+const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'dmg']);
 
 export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
@@ -57,6 +57,21 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
   const checkForUpdate = useCallback(async (manual = false) => {
     try {
       const info: UpdateInfo = await invoke('check_update');
+
+      if (info.has_update && info.install_format === 'snap') {
+        if (manual) {
+          await sendSystemNotification(
+            'Updates managed by Snap Store',
+            'Run: sudo snap refresh aeroftp'
+          );
+          activityLogRef.current.log('INFO',
+            `[Manual] v${info.latest_version} available. Updates managed by Snap Store. Run: sudo snap refresh aeroftp`,
+            'success'
+          );
+        }
+        return; // Early return prevents setting updateAvailable which shows the banner
+      }
+
       setUpdateAvailable(info);
 
       if (info.has_update) {

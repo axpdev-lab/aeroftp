@@ -100,7 +100,7 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClos
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center">
                 <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-                <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-4">
+                <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-4">
                     <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-200"><X size={16} /></button>
                     <VersionBrowserContent filePath={filePath} diskUsage={diskUsage} versions={versions} loading={loading} cleanupResult={cleanupResult} onRestore={handleRestore} onCleanup={handleCleanup} loadVersions={loadVersions} />
                 </div>

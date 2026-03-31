@@ -18,6 +18,19 @@
 
 ## Recently Shipped
 
+### v3.3.0 (April 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **IntroHub redesign** | New tabbed interface replaces the 50/50 split layout. My Servers grid with favorites, Discover Services catalog (49 providers in 5 categories), Command Palette (Ctrl+K), and dynamic form tabs. |
+| **SourceForge integration** | Native SFTP provider for SourceForge File Release System. Pre-configured connection with Project (Unixname) field and SSH key authentication. |
+| **Custom Checkbox component** | All ~75 native HTML checkboxes replaced with animated SVG checkmark component. Focus-visible ring, aria-label support, keyboard navigation. |
+| **SFTP upload fix (#73)** | Removed SSH2/SCP fallback that caused "host key changed" errors during upload. Uploads now use native russh_sftp through the same SSH session. |
+| **Auto-update Trust UI** | Sigstore verification badges (green/amber/red). Linux restart reliability fix. Snap users redirected to store. Post-restart confirmation with actual verification status. |
+| **Cloud provider descriptions** | All 17 cloud services in Discover show storage info and signup links. Info banners for all 5 categories translated in 47 languages. |
+| **Collapsible SSH Auth** | SFTP SSH authentication fields collapse by default, saving form space. |
+| **Badge accuracy** | Fixed kDrive, Yandex Disk, Koofr badges. Added OCS badge for Felicloud/Nextcloud, Swift for Blomp. |
+
 ### v3.2.6 (March 2026)
 
 | Feature | Description |
@@ -124,6 +137,7 @@ Every new cloud provider integration is a milestone. Here's the full history:
 
 | # | Provider | Version | Protocol |
 |---|----------|---------|----------|
+| 21 | **SourceForge** | v3.3.0 | SFTP |
 | 20 | **Felicloud** | v3.1.6 | WebDAV + OCS API |
 | 19 | **FileLu** | v2.7.0 | REST API |
 | 18 | **Zoho WorkDrive** | v3.1.2 | OAuth2 |
@@ -153,7 +167,7 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **SourceForge** (21st provider) | Awaiting confirmation | SFTP preset for SourceForge File Release System. Backend ready, hidden until provider testing complete. |
+| **Blomp** (22nd provider) | Awaiting Blomp proxy fix | OpenStack Swift integration fully built. Keystone v2 auth works, storage proxy returns 403. Blomp support actively investigating. |
 | **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. |
 | **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. |
 
@@ -174,11 +188,10 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
 ### Provider Pipeline
 
-| Provider | Protocol | Status |
-|----------|----------|--------|
-| **SourceForge** | SFTP | Awaiting confirmation |
-| **Blomp** | OpenStack Swift | Awaiting API access |
-| **Nextcloud** (generic) | WebDAV + OCS | Planned (Felicloud paved the way) |
+| Provider                | Protocol        | Status                                              |
+|-------------------------|-----------------|-----------------------------------------------------|
+| **Blomp**               | OpenStack Swift | Awaiting Blomp proxy fix (auth works, storage 403)  |
+| **Nextcloud** (generic) | WebDAV + OCS    | Planned (Felicloud paved the way)                   |
 
 ---
 
@@ -214,4 +227,4 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 
 ---
 
-*Last updated: March 31, 2026*
+*Last updated: April 1, 2026*

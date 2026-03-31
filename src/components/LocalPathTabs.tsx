@@ -129,7 +129,7 @@ export const LocalPathTabs: React.FC<LocalPathTabsProps> = ({
             onDragOver={(e) => handleDragOver(e, idx)}
             onDrop={(e) => handleDrop(e, idx)}
             onDragEnd={handleDragEnd}
-            className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md cursor-pointer transition-all min-w-0 max-w-[180px] ${
+            className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg cursor-pointer transition-all min-w-0 max-w-[180px] ${
               isActive
                 ? 'bg-white dark:bg-gray-700 shadow-sm border border-gray-200 dark:border-gray-600'
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'

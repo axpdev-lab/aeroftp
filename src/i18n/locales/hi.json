@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift ऑब्जेक्ट स्टोरेज",
       "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace क्लाउड स्टोरेज के साथ संगत",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "मानक फ़ाइल ट्रांसफर प्रोटोकॉल का उपयोग करके कनेक्ट करें। FTP, FTPS (एन्क्रिप्टेड), SFTP (SSH-आधारित), और Azure Blob Storage का समर्थन करता है।",
+      "protocolsInfoLine2": "शुरू करने के लिए अपना सर्वर पता, पोर्ट और क्रेडेंशियल दर्ज करें।",
+      "cloudInfoLine1": "अपने क्लाउड खाते से साइन इन करें। कुछ सेवाएं OAuth (एक-क्लिक लॉगिन) का उपयोग करती हैं, अन्य को आपके खाते की सेटिंग्स से API कुंजी या ऐप पासवर्ड की आवश्यकता होती है।",
+      "cloudInfoLine2": "मुफ्त स्टोरेज प्रदाता के अनुसार भिन्न होता है - विवरण के लिए प्रत्येक सेवा देखें।",
+      "developerInfoLine1": "विकास वर्कफ़्लो के लिए एकीकरण। रिपॉजिटरी ब्राउज़ करें, रिलीज़ प्रबंधित करें और होस्टिंग प्लेटफ़ॉर्म पर सीधे फ़ाइलें अपलोड करें।",
+      "developerInfoLine2": "प्रमाणीकरण के लिए एक व्यक्तिगत एक्सेस टोकन (PAT) या SSH कुंजी की आवश्यकता है।"
     },
     "shortcuts": {
       "title": "कीबोर्ड शॉर्टकट",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "सत्र समाप्त (24 घंटे)",
       "clickToRenew": "सेशन नवीनीकरण और कनेक्ट करने के लिए क्लिक करें",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "क्रेडेंशियल छुपाएं",
+      "showCredentials": "क्रेडेंशियल दिखाएं"
     },
     "cyberTools": {
       "title": "सुरक्षा उपकरण",
@@ -3592,6 +3600,43 @@
       "perm_comment": "टिप्पणी",
       "perm_edit": "संपादित करें",
       "generateWithOptions": "विकल्पों के साथ बनाएं"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "मेरे सर्वर",
+        "discover": "सेवाएं खोजें"
+      },
+      "quickConnect": "त्वरित कनेक्ट",
+      "search": "खोजें...",
+      "searchServers": "सर्वर खोजें...",
+      "viewGrid": "ग्रिड व्यू",
+      "viewList": "सूची व्यू",
+      "filter": {
+        "all": "सभी",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "पसंदीदा"
+      },
+      "noServers": "कोई सहेजे गए सर्वर नहीं",
+      "noServersHint": "त्वरित कनेक्शन से शुरू करें या सेवा कैटलॉग ब्राउज़ करें।",
+      "noResults": "कोई सर्वर नहीं मिला",
+      "noResultsHint": "\"{query}\" से मेल खाने वाला कोई सर्वर नहीं",
+      "backToServers": "सर्वर पर वापस जाएं",
+      "addFavorite": "पसंदीदा में जोड़ें",
+      "removeFavorite": "पसंदीदा से हटाएं",
+      "discoverTitle": "सेवाएं खोजें",
+      "discoverDescription": "29+ एकीकृत क्लाउड सेवाएं, S3-संगत स्टोरेज, WebDAV प्रदाता और बहुत कुछ ब्राउज़ करें। प्रत्येक सेवा त्वरित सेटअप के लिए पूर्व-कॉन्फ़िगर सेटिंग्स के साथ आती है।",
+      "searchServices": "सेवाएं खोजें...",
+      "discoverHint": "न्यूनतम इनपुट के साथ पूर्व-कॉन्फ़िगर कनेक्शन सेट करने के लिए किसी सेवा पर क्लिक करें।",
+      "category": {
+        "protocols": "प्रोटोकॉल",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV और सेल्फ-होस्टेड",
+        "cloudStorage": "क्लाउड स्टोरेज",
+        "developer": "डेवलपर"
+      }
     }
   }
 }

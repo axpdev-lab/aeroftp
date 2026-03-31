@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektitallennus",
       "swiftTooltip": "OpenStack Swift — yhteensopiva Blomp, OVH, Rackspace -pilvitallennuksen kanssa",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Yhdistä käyttäen vakiotiedostonsiirtoprotokollia. Tukee FTP, FTPS (salattu), SFTP (SSH-pohjainen) ja Azure Blob Storage.",
+      "protocolsInfoLine2": "Syötä palvelimen osoite, portti ja tunnistetiedot aloittaaksesi.",
+      "cloudInfoLine1": "Kirjaudu sisään pilvitiililläsi. Jotkut palvelut käyttävät OAuth (yhden napsautuksen kirjautuminen), toiset vaativat API-avaimen tai sovellussalasanan tilisi asetuksista.",
+      "cloudInfoLine2": "Ilmainen tallennustila vaihtelee palveluntarjoajan mukaan - tarkista kunkin palvelun tiedot.",
+      "developerInfoLine1": "Integraatioita kehitystyönkulkuihin. Selaa varastoja, hallitse julkaisuja ja lataa tiedostoja suoraan isännöintialustoille.",
+      "developerInfoLine2": "Vaatii henkilökohtaisen käyttöoikeustunnisteen (PAT) tai SSH-avaimen todennusta varten."
     },
     "shortcuts": {
       "title": "Pikanäppäimet",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Istunto vanhentunut (24h)",
       "clickToRenew": "Napsauta uusiaksesi istunnon ja yhdistääksesi",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Piilota tunnistetiedot",
+      "showCredentials": "Näytä tunnistetiedot"
     },
     "cyberTools": {
       "title": "Turvallisuustyö­kalut",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Kommentoi",
       "perm_edit": "Muokkaa",
       "generateWithOptions": "Luo asetuksilla"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Omat palvelimet",
+        "discover": "Löydä palvelut"
+      },
+      "quickConnect": "Pikayhteys",
+      "search": "Hae...",
+      "searchServers": "Hae palvelimia...",
+      "viewGrid": "Ruudukkonäkymä",
+      "viewList": "Luettelonäkymä",
+      "filter": {
+        "all": "Kaikki",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Suosikit"
+      },
+      "noServers": "Ei tallennettuja palvelimia",
+      "noServersHint": "Aloita pikayhteydellä tai selaa palveluluetteloa.",
+      "noResults": "Palvelimia ei löytynyt",
+      "noResultsHint": "Yksikään palvelin ei vastaa hakua \"{query}\"",
+      "backToServers": "Takaisin palvelimiin",
+      "addFavorite": "Lisää suosikkeihin",
+      "removeFavorite": "Poista suosikeista",
+      "discoverTitle": "Löydä palvelut",
+      "discoverDescription": "Selaa yli 29 integroitua pilvipalvelua, S3-yhteensopivaa tallennustilaa, WebDAV-palveluntarjoajia ja muuta. Jokainen palvelu sisältää esimääritettyjä asetuksia nopeaan käyttöönottoon.",
+      "searchServices": "Hae palveluja...",
+      "discoverHint": "Napsauta palvelua määrittääksesi esimääritetty yhteys minimaalisella syötteellä.",
+      "category": {
+        "protocols": "Protokollat",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV ja itse isännöity",
+        "cloudStorage": "Pilvitallennustila",
+        "developer": "Kehittäjä"
+      }
     }
   }
 }

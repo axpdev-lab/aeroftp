@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift hlutgeymsla",
       "swiftTooltip": "OpenStack Swift — samhæft við Blomp, OVH, Rackspace skýjageymslu",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Tengdu með stöðluðum skráaflutningssamskiptareglum. Styður FTP, FTPS (dulkóðað), SFTP (SSH-undirstaða) og Azure Blob Storage.",
+      "protocolsInfoLine2": "Sláðu inn vistfang þjóns, gátt og auðkenni til að byrja.",
+      "cloudInfoLine1": "Skráðu þig inn með skýjareikningnum þínum. Sumar þjónustur nota OAuth (innskráning með einum smelli), aðrar krefjast API lykils eða forritaorðs úr reikningsstillingum.",
+      "cloudInfoLine2": "Ókeypis geymslupláss er mismunandi eftir veitu - athugaðu hverja þjónustu fyrir nánari upplýsingar.",
+      "developerInfoLine1": "Samþættingar fyrir þróunarferli. Skoðaðu geymslur, stjórnaðu útgáfum og hladdu upp skrám beint á hýsingarvettvanga.",
+      "developerInfoLine2": "Krefst persónulegs aðgangstákns (PAT) eða SSH lykils til auðkenningar."
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Seta útrunnin (24klst)",
       "clickToRenew": "Smelltu til að endurnýja lotu og tengjast",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Fela auðkenni",
+      "showCredentials": "Sýna auðkenni"
     },
     "cyberTools": {
       "title": "Öryggistæki",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Athugasemd",
       "perm_edit": "Breyta",
       "generateWithOptions": "Búa til með stillingum"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Þjónarnir mínir",
+        "discover": "Uppgötvaðu þjónustur"
+      },
+      "quickConnect": "Flýtitenging",
+      "search": "Leita...",
+      "searchServers": "Leita að þjónum...",
+      "viewGrid": "Reitasýn",
+      "viewList": "Listasýn",
+      "filter": {
+        "all": "Allt",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Ský",
+        "favorites": "Eftirlæti"
+      },
+      "noServers": "Engir vistaðir þjónar",
+      "noServersHint": "Byrjaðu með flýtitengingu eða skoðaðu þjónustuskráninguna.",
+      "noResults": "Engir þjónar fundust",
+      "noResultsHint": "Engir þjónar passa við \"{query}\"",
+      "backToServers": "Til baka í þjóna",
+      "addFavorite": "Bæta við eftirlæti",
+      "removeFavorite": "Fjarlægja úr eftirlætum",
+      "discoverTitle": "Uppgötvaðu þjónustur",
+      "discoverDescription": "Skoðaðu 29+ samþættar skýjaþjónustur, S3-samhæft geymslusvæði, WebDAV-veitendur og fleira. Hver þjónusta kemur með forstilltum stillingum fyrir fljóta uppsetningu.",
+      "searchServices": "Leita að þjónustum...",
+      "discoverHint": "Smelltu á þjónustu til að setja upp forstillta tengingu með lágmarks innslætti.",
+      "category": {
+        "protocols": "Samskiptareglur",
+        "objectStorage": "S3 / Hlutgeymsla",
+        "webdav": "WebDAV og sjálfshýst",
+        "cloudStorage": "Skýgeymsla",
+        "developer": "Þróunarverkfæri"
+      }
     }
   }
 }

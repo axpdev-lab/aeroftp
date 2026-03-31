@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektų saugykla",
       "swiftTooltip": "OpenStack Swift — suderinama su Blomp, OVH, Rackspace debesų saugykla",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Prisijunkite naudodami standartinius failų perdavimo protokolus. Palaiko FTP, FTPS (šifruotas), SFTP (SSH pagrindu) ir Azure Blob Storage.",
+      "protocolsInfoLine2": "Įveskite serverio adresą, prievadą ir prisijungimo duomenis, kad pradėtumėte.",
+      "cloudInfoLine1": "Prisijunkite su savo debesies paskyra. Kai kurios paslaugos naudoja OAuth (prisijungimas vienu paspaudimu), kitos reikalauja API rakto arba programos slaptažodžio iš jūsų paskyros nustatymų.",
+      "cloudInfoLine2": "Nemokama saugykla skiriasi priklausomai nuo tiekėjo - patikrinkite kiekvienos paslaugos detales.",
+      "developerInfoLine1": "Integracijos kūrimo darbo eigoms. Naršykite saugyklas, valdykite leidimus ir įkelkite failus tiesiai į prieglobos platformas.",
+      "developerInfoLine2": "Autentifikavimui reikalingas asmeninis prieigos raktas (PAT) arba SSH raktas."
     },
     "shortcuts": {
       "title": "Klaviatūros trumpiniai",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesija pasibaigė (24val.)",
       "clickToRenew": "Spustelėkite, kad atnaujintumėte sesiją ir prisijungtumėte",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Slėpti prisijungimo duomenis",
+      "showCredentials": "Rodyti prisijungimo duomenis"
     },
     "cyberTools": {
       "title": "Saugumo įrankiai",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komentuoti",
       "perm_edit": "Redaguoti",
       "generateWithOptions": "Generuoti su parinktimis"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mano serveriai",
+        "discover": "Atraskite paslaugas"
+      },
+      "quickConnect": "Greitas prisijungimas",
+      "search": "Ieškoti...",
+      "searchServers": "Ieškoti serverių...",
+      "viewGrid": "Tinklelio rodinys",
+      "viewList": "Sąrašo rodinys",
+      "filter": {
+        "all": "Visi",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Debesis",
+        "favorites": "Mėgstami"
+      },
+      "noServers": "Nėra išsaugotų serverių",
+      "noServersHint": "Pradėkite su greitu prisijungimu arba naršykite paslaugų katalogą.",
+      "noResults": "Serverių nerasta",
+      "noResultsHint": "Nė vienas serveris neatitinka \"{query}\"",
+      "backToServers": "Grįžti prie serverių",
+      "addFavorite": "Pridėti prie mėgstamų",
+      "removeFavorite": "Pašalinti iš mėgstamų",
+      "discoverTitle": "Atraskite paslaugas",
+      "discoverDescription": "Naršykite 29+ integruotas debesų paslaugas, S3 suderinamas saugyklas, WebDAV tiekėjus ir daugiau. Kiekviena paslauga pateikiama su iš anksto sukonfigūruotais nustatymais greitam nustatymui.",
+      "searchServices": "Ieškoti paslaugų...",
+      "discoverHint": "Spustelėkite paslaugą, kad nustatytumėte iš anksto sukonfigūruotą ryšį su minimalia įvestimi.",
+      "category": {
+        "protocols": "Protokolai",
+        "objectStorage": "S3 / Objektų saugykla",
+        "webdav": "WebDAV ir savarankiškai talpinami",
+        "cloudStorage": "Debesų saugykla",
+        "developer": "Kūrėjams"
+      }
     }
   }
 }

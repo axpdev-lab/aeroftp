@@ -2048,7 +2048,13 @@
       "s3InfoLine1": "Requires Access Key ID and Secret Key. Region and endpoint vary by provider.",
       "s3InfoLine2": "Ideal for cloud object storage, backups, and large-scale file hosting.",
       "webdavInfoLine1": "Requires server URL, username, and password. Port 443 (HTTPS) by default.",
-      "webdavInfoLine2": "Ideal for self-hosted clouds, NAS devices, and file sharing."
+      "webdavInfoLine2": "Ideal for self-hosted clouds, NAS devices, and file sharing.",
+      "protocolsInfoLine1": "Connect using standard file transfer protocols. Supports FTP, FTPS (encrypted), SFTP (SSH-based), and Azure Blob Storage.",
+      "protocolsInfoLine2": "Enter your server address, port, and credentials to get started.",
+      "cloudInfoLine1": "Sign in with your cloud account. Some services use OAuth (one-click login), others require an API key or app password from your account settings.",
+      "cloudInfoLine2": "Free storage varies by provider - check each service for details.",
+      "developerInfoLine1": "Integrations for development workflows. Browse repositories, manage releases, and upload files directly to hosting platforms.",
+      "developerInfoLine2": "Requires a personal access token (PAT) or SSH key for authentication."
     },
     "quickLook": {
       "noPreview": "No preview available",
@@ -3504,6 +3510,43 @@
       "tagsUpdated": "Tags updated",
       "addTag": "Add",
       "noTags": "No tags"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "My Servers",
+        "discover": "Discover Services"
+      },
+      "quickConnect": "Quick Connect",
+      "search": "Search...",
+      "searchServers": "Search servers...",
+      "viewGrid": "Grid view",
+      "viewList": "List view",
+      "filter": {
+        "all": "All",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favorites"
+      },
+      "noServers": "No saved servers",
+      "noServersHint": "Start with a quick connection or explore the service catalog.",
+      "noResults": "No servers found",
+      "noResultsHint": "No servers match \"{query}\"",
+      "backToServers": "Back to servers",
+      "addFavorite": "Add to favorites",
+      "removeFavorite": "Remove from favorites",
+      "discoverTitle": "Discover Services",
+      "discoverDescription": "Browse 29+ integrated cloud services, S3-compatible storage, WebDAV providers, and more. Each service comes with pre-configured settings for a quick setup.",
+      "searchServices": "Search services...",
+      "discoverHint": "Click a service to set up a pre-configured connection with minimal input.",
+      "category": {
+        "protocols": "Protocols",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Self-hosted",
+        "cloudStorage": "Cloud Storage",
+        "developer": "Developer"
+      }
     },
     "googledrive": {
       "star": "Star",

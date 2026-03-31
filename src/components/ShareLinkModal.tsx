@@ -287,7 +287,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                       <div className="flex flex-wrap gap-1.5">
                         <button
                           onClick={() => setOptExpiration(null)}
-                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                          className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                             optExpiration === null
                               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
                               : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -299,7 +299,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                           <button
                             key={preset.value}
                             onClick={() => setOptExpiration(preset.value)}
-                            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                            className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                               optExpiration === preset.value
                                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -344,7 +344,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
                           <button
                             key={perm}
                             onClick={() => setOptPermissions(perm)}
-                            className={`px-2.5 py-1 text-xs rounded-md capitalize transition-colors ${
+                            className={`px-2.5 py-1 text-xs rounded-lg capitalize transition-colors ${
                               optPermissions === perm
                                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'

@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift об'єктне сховище",
       "swiftTooltip": "OpenStack Swift — сумісне з Blomp, OVH, Rackspace хмарним сховищем",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Підключайтеся за допомогою стандартних протоколів передачі файлів. Підтримує FTP, FTPS (зашифрований), SFTP (на основі SSH) та Azure Blob Storage.",
+      "protocolsInfoLine2": "Введіть адресу сервера, порт та облікові дані, щоб почати.",
+      "cloudInfoLine1": "Увійдіть за допомогою свого хмарного облікового запису. Деякі сервіси використовують OAuth (вхід одним кліком), інші вимагають API ключ або пароль програми з налаштувань вашого облікового запису.",
+      "cloudInfoLine2": "Безкоштовне сховище залежить від постачальника - перевірте кожен сервіс для деталей.",
+      "developerInfoLine1": "Інтеграції для робочих процесів розробки. Переглядайте репозиторії, керуйте релізами та завантажуйте файли безпосередньо на хостинг-платформи.",
+      "developerInfoLine2": "Потрібен особистий токен доступу (PAT) або SSH ключ для автентифікації."
     },
     "shortcuts": {
       "title": "Грячі клавіші",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Сеанс закінчився (24год)",
       "clickToRenew": "Натисніть для оновлення сесії та підключення",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Сховати облікові дані",
+      "showCredentials": "Показати облікові дані"
     },
     "cyberTools": {
       "title": "Інструменти безпеки",
@@ -3582,6 +3590,43 @@
       "perm_comment": "Коментування",
       "perm_edit": "Редагування",
       "generateWithOptions": "Створити з параметрами"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Мої сервери",
+        "discover": "Знайти сервіси"
+      },
+      "quickConnect": "Швидке підключення",
+      "search": "Пошук...",
+      "searchServers": "Шукати сервери...",
+      "viewGrid": "Вигляд сітки",
+      "viewList": "Вигляд списку",
+      "filter": {
+        "all": "Всі",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Обране"
+      },
+      "noServers": "Немає збережених серверів",
+      "noServersHint": "Почніть зі швидкого підключення або перегляньте каталог сервісів.",
+      "noResults": "Серверів не знайдено",
+      "noResultsHint": "Жоден сервер не відповідає \"{query}\"",
+      "backToServers": "Назад до серверів",
+      "addFavorite": "Додати до обраного",
+      "removeFavorite": "Видалити з обраного",
+      "discoverTitle": "Знайти сервіси",
+      "discoverDescription": "Перегляньте 29+ інтегрованих хмарних сервісів, S3-сумісне сховище, постачальників WebDAV та інше. Кожен сервіс має попередньо налаштовані параметри для швидкого налаштування.",
+      "searchServices": "Шукати сервіси...",
+      "discoverHint": "Натисніть на сервіс, щоб налаштувати попередньо сконфігуроване підключення з мінімальним введенням.",
+      "category": {
+        "protocols": "Протоколи",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV та самостійний хостинг",
+        "cloudStorage": "Хмарне сховище",
+        "developer": "Розробник"
+      }
     }
   }
 }

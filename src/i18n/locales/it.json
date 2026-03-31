@@ -399,7 +399,13 @@
       "swiftDesc": "OpenStack Swift archiviazione oggetti",
       "swiftTooltip": "OpenStack Swift — compatibile con Blomp, OVH, Rackspace archiviazione cloud",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Connettiti utilizzando protocolli standard di trasferimento file. Supporta FTP, FTPS (crittografato), SFTP (basato su SSH) e Azure Blob Storage.",
+      "protocolsInfoLine2": "Inserisci l'indirizzo del server, la porta e le credenziali per iniziare.",
+      "cloudInfoLine1": "Accedi con il tuo account cloud. Alcuni servizi utilizzano OAuth (accesso con un clic), altri richiedono una API key o una password dell'app dalle impostazioni del tuo account.",
+      "cloudInfoLine2": "Lo spazio gratuito varia a seconda del provider - controlla ogni servizio per i dettagli.",
+      "developerInfoLine1": "Integrazioni per flussi di lavoro di sviluppo. Esplora repository, gestisci release e carica file direttamente su piattaforme di hosting.",
+      "developerInfoLine2": "Richiede un personal access token (PAT) o una chiave SSH per l'autenticazione."
     },
     "browser": {
       "remote": "Remoto",
@@ -3584,6 +3590,43 @@
       "perm_comment": "Commenta",
       "perm_edit": "Modifica",
       "generateWithOptions": "Genera con opzioni"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "I miei server",
+        "discover": "Scopri i servizi"
+      },
+      "quickConnect": "Connessione rapida",
+      "search": "Cerca...",
+      "searchServers": "Cerca server...",
+      "viewGrid": "Vista griglia",
+      "viewList": "Vista elenco",
+      "filter": {
+        "all": "Tutti",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Preferiti"
+      },
+      "noServers": "Nessun server salvato",
+      "noServersHint": "Inizia con una connessione rapida o esplora il catalogo dei servizi.",
+      "noResults": "Nessun server trovato",
+      "noResultsHint": "Nessun server corrisponde a \"{query}\"",
+      "backToServers": "Torna ai server",
+      "addFavorite": "Aggiungi ai preferiti",
+      "removeFavorite": "Rimuovi dai preferiti",
+      "discoverTitle": "Scopri i servizi",
+      "discoverDescription": "Esplora oltre 29 servizi cloud integrati, storage S3-compatibili, provider WebDAV e altro. Ogni servizio include impostazioni preconfigurate per una configurazione rapida.",
+      "searchServices": "Cerca servizi...",
+      "discoverHint": "Clicca su un servizio per configurare una connessione preimpostata con input minimo.",
+      "category": {
+        "protocols": "Protocolli",
+        "objectStorage": "S3 / Storage a oggetti",
+        "webdav": "WebDAV e self-hosted",
+        "cloudStorage": "Storage cloud",
+        "developer": "Sviluppatore"
+      }
     }
   }
 }

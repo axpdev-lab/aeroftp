@@ -182,7 +182,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
             {/* Dropdown */}
             {isOpen && (
-                <div className="absolute z-50 mt-2 w-full bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in">
+                <div className="absolute z-50 mt-2 w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in">
                     {/* Search Input */}
                     <div className="p-3 border-b border-gray-200 dark:border-gray-700">
                         <div className="relative">

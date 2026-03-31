@@ -276,7 +276,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
 
       {pendingEmptyConfirm && (
         <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingEmptyConfirm(false)}>
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
             <p className="text-gray-900 dark:text-gray-100 mb-4">
               {t('contextMenu.emptyTrashConfirm')}
             </p>

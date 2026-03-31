@@ -13,6 +13,7 @@ import {
   Play, Pause, RotateCcw, Link2, Eye, EyeOff, Settings, Loader2,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { Checkbox } from '../ui/Checkbox';
 import { useTranslation } from '../../i18n';
 import { SyncScheduler } from '../SyncScheduler';
 import { WatcherStatus } from '../WatcherStatus';
@@ -263,22 +264,16 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 
         {/* Toggles */}
         <div className="space-y-2">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox" checked={config.sync_on_change}
-              onChange={e => setConfig(prev => prev ? { ...prev, sync_on_change: e.target.checked } : null)}
-              className="w-4 h-4 rounded border-gray-300 text-cyan-500"
-            />
-            <span className="text-sm">{t('cloud.syncOnChange') || 'Sync on file changes (real-time watcher)'}</span>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox" checked={config.sync_on_startup}
-              onChange={e => setConfig(prev => prev ? { ...prev, sync_on_startup: e.target.checked } : null)}
-              className="w-4 h-4 rounded border-gray-300 text-cyan-500"
-            />
-            <span className="text-sm">{t('cloud.syncOnStartup') || 'Sync on application startup'}</span>
-          </label>
+          <Checkbox
+            checked={config.sync_on_change}
+            onChange={(v) => setConfig(prev => prev ? { ...prev, sync_on_change: v } : null)}
+            label={<span className="text-sm">{t('cloud.syncOnChange') || 'Sync on file changes (real-time watcher)'}</span>}
+          />
+          <Checkbox
+            checked={config.sync_on_startup}
+            onChange={(v) => setConfig(prev => prev ? { ...prev, sync_on_startup: v } : null)}
+            label={<span className="text-sm">{t('cloud.syncOnStartup') || 'Sync on application startup'}</span>}
+          />
         </div>
 
         {/* Conflict Strategy */}

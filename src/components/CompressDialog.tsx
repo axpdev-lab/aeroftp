@@ -154,7 +154,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label="Compress Files" onClick={(e) => { if (e.target === e.currentTarget && !compressing) onClose(); }}>
-            <div className="compress-dialog rounded-xl shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
+            <div className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
                 style={{ background: 'var(--compress-bg)', border: '1px solid var(--compress-border)', color: 'var(--compress-text)' }}>
 
                 {/* Header */}
@@ -163,7 +163,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         <Archive size={20} style={{ color: 'var(--compress-accent)' }} />
                         <span className="font-semibold text-base">{t('compress.title') || 'Compress Files'}</span>
                     </div>
-                    <button onClick={onClose} disabled={compressing} className="p-1.5 rounded-md transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
+                    <button onClick={onClose} disabled={compressing} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--compress-text-secondary)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         title={t('common.close')}>

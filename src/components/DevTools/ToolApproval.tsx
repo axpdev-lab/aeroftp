@@ -195,7 +195,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                 <button
                                     onClick={() => onApprove(false)}
                                     disabled={!!isDisabled}
-                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-l-md text-xs font-medium transition-colors ${
+                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-l-lg text-xs font-medium transition-colors ${
                                         isDisabled
                                             ? 'opacity-50 cursor-not-allowed bg-gray-600 text-gray-400'
                                             : dangerLevel === 'high'
@@ -210,7 +210,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                 {allowSessionApproval && dangerLevel !== 'high' && !isDisabled && (
                                     <button
                                         onClick={() => setMenuOpen(!menuOpen)}
-                                        className="tool-approval-allow flex items-center px-1.5 py-1 rounded-r-md border-l border-white/20 text-xs transition-colors"
+                                        className="tool-approval-allow flex items-center px-1.5 py-1 rounded-r-lg border-l border-white/20 text-xs transition-colors"
                                         aria-label="More options"
                                         aria-haspopup="true"
                                         aria-expanded={menuOpen}
@@ -220,7 +220,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                                 )}
                                 {/* Dropdown menu */}
                                 {menuOpen && (
-                                    <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-md shadow-lg py-0.5 min-w-[180px]">
+                                    <div className="absolute top-full left-0 mt-1 z-50 bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-0.5 min-w-[180px]">
                                         <button
                                             onClick={() => {
                                                 setMenuOpen(false);
@@ -235,7 +235,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                             </div>
                             <button
                                 onClick={onReject}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-gray-700/60 hover:bg-gray-600/80 text-gray-400 hover:text-gray-200 transition-colors"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-700/60 hover:bg-gray-600/80 text-gray-400 hover:text-gray-200 transition-colors"
                                 aria-label={t('ai.toolApproval.rejectExecution') || 'Reject tool execution'}
                             >
                                 <X size={12} />

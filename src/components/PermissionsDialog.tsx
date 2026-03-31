@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Check, Shield } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { Checkbox } from './ui/Checkbox';
 
 interface PermissionsDialogProps {
     isOpen: boolean;
@@ -139,25 +140,25 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
 
                         {/* Owner */}
                         <div className="font-medium text-gray-700 dark:text-gray-300 flex items-center">{t('permissions.owner')}</div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.owner.read} onChange={() => toggle('owner', 'read')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.owner.write} onChange={() => toggle('owner', 'write')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.owner.execute} onChange={() => toggle('owner', 'execute')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.owner.read} onChange={() => toggle('owner', 'read')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.owner.write} onChange={() => toggle('owner', 'write')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.owner.execute} onChange={() => toggle('owner', 'execute')} /></div>
 
                         {/* Group */}
                         <div className="font-medium text-gray-700 dark:text-gray-300 flex items-center">{t('permissions.group')}</div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.group.read} onChange={() => toggle('group', 'read')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.group.write} onChange={() => toggle('group', 'write')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.group.execute} onChange={() => toggle('group', 'execute')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.group.read} onChange={() => toggle('group', 'read')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.group.write} onChange={() => toggle('group', 'write')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.group.execute} onChange={() => toggle('group', 'execute')} /></div>
 
                         {/* Others */}
                         <div className="font-medium text-gray-700 dark:text-gray-300 flex items-center">{t('permissions.public')}</div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.others.read} onChange={() => toggle('others', 'read')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.others.write} onChange={() => toggle('others', 'write')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
-                        <div className="flex justify-center"><input type="checkbox" checked={flags.others.execute} onChange={() => toggle('others', 'execute')} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.others.read} onChange={() => toggle('others', 'read')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.others.write} onChange={() => toggle('others', 'write')} /></div>
+                        <div className="flex justify-center"><Checkbox checked={flags.others.execute} onChange={() => toggle('others', 'execute')} /></div>
                     </div>
 
                     {/* Octal Input */}
-                    <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl flex items-center justify-between">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('permissions.octal')}</span>
                         <input
                             type="text"
@@ -170,10 +171,10 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
 
                     {/* Actions */}
                     <div className="flex gap-3 pt-2">
-                        <button onClick={onClose} className="flex-1 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl font-medium transition-colors">
+                        <button onClick={onClose} className="flex-1 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg font-medium transition-colors">
                             {t('common.cancel')}
                         </button>
-                        <button onClick={() => onSave(octal)} className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
+                        <button onClick={() => onSave(octal)} className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
                             <Check size={18} /> {t('permissions.apply')}
                         </button>
                     </div>

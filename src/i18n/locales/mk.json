@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift складирање на објекти",
       "swiftTooltip": "OpenStack Swift — компатибилно со Blomp, OVH, Rackspace складирање во облак",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Поврзете се користејќи стандардни протоколи за пренос на датотеки. Поддржува FTP, FTPS (шифрирано), SFTP (базирано на SSH) и Azure Blob Storage.",
+      "protocolsInfoLine2": "Внесете ја адресата на серверот, портот и акредитивите за да започнете.",
+      "cloudInfoLine1": "Најавете се со вашата облак сметка. Некои услуги користат OAuth (најава со еден клик), други бараат API клуч или лозинка на апликација од поставките на вашата сметка.",
+      "cloudInfoLine2": "Бесплатното складиште варира според провајдерот - проверете ги деталите за секоја услуга.",
+      "developerInfoLine1": "Интеграции за развојни работни процеси. Прегледајте складишта, управувајте со изданија и прикачувајте датотеки директно на хостинг платформи.",
+      "developerInfoLine2": "Потребен е личен пристапен токен (PAT) или SSH клуч за автентикација."
     },
     "shortcuts": {
       "title": "Кратенки на тастатура",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Сесијата истече (24ч)",
       "clickToRenew": "Кликнете за обновување на сесијата и поврзување",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Сокриј акредитиви",
+      "showCredentials": "Прикажи акредитиви"
     },
     "cyberTools": {
       "title": "Безбедносни алатки",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Коментар",
       "perm_edit": "Уредување",
       "generateWithOptions": "Генерирај со опции"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Мои сервери",
+        "discover": "Откријте услуги"
+      },
+      "quickConnect": "Брзо поврзување",
+      "search": "Пребарај...",
+      "searchServers": "Пребарај сервери...",
+      "viewGrid": "Мрежен приказ",
+      "viewList": "Листа приказ",
+      "filter": {
+        "all": "Сите",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Облак",
+        "favorites": "Омилени"
+      },
+      "noServers": "Нема зачувани сервери",
+      "noServersHint": "Започнете со брзо поврзување или разгледајте го каталогот на услуги.",
+      "noResults": "Не се пронајдени сервери",
+      "noResultsHint": "Ниеден сервер не одговара на \"{query}\"",
+      "backToServers": "Назад кон серверите",
+      "addFavorite": "Додај во омилени",
+      "removeFavorite": "Отстрани од омилени",
+      "discoverTitle": "Откријте услуги",
+      "discoverDescription": "Прегледајте 29+ интегрирани облак услуги, S3-компатибилни складишта, WebDAV провајдери и повеќе. Секоја услуга доаѓа со претходно конфигурирани поставки за брзо поставување.",
+      "searchServices": "Пребарај услуги...",
+      "discoverHint": "Кликнете на услуга за да поставите претходно конфигурирана врска со минимален внес.",
+      "category": {
+        "protocols": "Протоколи",
+        "objectStorage": "S3 / Објектно складиште",
+        "webdav": "WebDAV и самохостирано",
+        "cloudStorage": "Облак складиште",
+        "developer": "Развивачки алатки"
+      }
     }
   }
 }

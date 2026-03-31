@@ -111,7 +111,7 @@ const TitlebarMenu: React.FC<TitlebarMenuProps> = ({ label, items, isOpen, onOpe
                 {label}
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 min-w-[240px] py-1.5 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-md shadow-xl z-[9999]">
+                <div className="absolute top-full left-0 min-w-[240px] py-1.5 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg shadow-xl z-[9999]">
                     {items.map((item, i) =>
                         item.separator ? (
                             <div key={i} className="my-1.5 mx-3 border-t border-[var(--color-border)]" />
@@ -311,38 +311,41 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 />
             </div>
 
+            {/* Separator after menus */}
+            <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
+
+            {/* Support (Heart) */}
+            <button
+                onClick={onShowSupport}
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                title={t('about.supportDev')}
+            >
+                <Heart size={14} className="text-blue-500 fill-current" />
+            </button>
+
+            {/* Theme Toggle */}
+            <ThemeToggle theme={theme} setTheme={setTheme} />
+
             {/* Center: drag region spacer */}
             <div data-tauri-drag-region className="flex-1 h-full" />
 
             {/* Right: Toolbar buttons + Window controls */}
             <div className="flex items-center gap-0.5">
-                {/* Support */}
-                <button
-                    onClick={onShowSupport}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('about.supportDev')}
-                >
-                    <Heart size={14} className="text-blue-500 fill-current" />
-                </button>
-
-                {/* Settings */}
-                <button
-                    onClick={onOpenSettings}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('common.settings')}
-                >
-                    <Settings size={14} className="text-[var(--color-text-secondary)]" />
-                </button>
-
-                {/* Theme Toggle — has visible bg except in auto */}
-                <ThemeToggle theme={theme} setTheme={setTheme} />
-
-                <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
+                {/* Cyber Toolkit — cyber theme only */}
+                {appTheme === 'cyber' && (
+                    <button
+                        onClick={onShowCyberTools}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={t('cyberTools.title')}
+                    >
+                        <CyberShieldIcon size={14} className="text-emerald-400" />
+                    </button>
+                )}
 
                 {/* AeroVault */}
                 <button
                     onClick={onShowVault}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                     title={t('vault.titleFull')}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" className="text-[var(--color-text-secondary)]">
@@ -352,21 +355,12 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     </svg>
                 </button>
 
-                {/* Cyber Toolkit — cyber theme only, next to Vault */}
-                {appTheme === 'cyber' && (
-                    <button
-                        onClick={onShowCyberTools}
-                        className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                        title={t('cyberTools.title')}
-                    >
-                        <CyberShieldIcon size={14} className="text-emerald-400" />
-                    </button>
-                )}
+                <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
 
                 {/* Lock / Master Password */}
                 <button
                     onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                     title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}
                 >
                     {masterPasswordSet ? (
@@ -376,11 +370,20 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     )}
                 </button>
 
+                {/* Settings */}
+                <button
+                    onClick={onOpenSettings}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    title={t('common.settings')}
+                >
+                    <Settings size={14} className="text-[var(--color-text-secondary)]" />
+                </button>
+
                 {/* Connect / Disconnect */}
                 {isConnected ? (
                     <button
                         onClick={onDisconnect}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-md bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
                         title={t('common.disconnect')}
                     >
                         <LogOut size={11} />
@@ -389,7 +392,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 ) : !showConnectionScreen && (
                     <button
                         onClick={onShowConnectionScreen}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
+                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
                         title={t('common.connect')}
                     >
                         <Cloud size={11} />
@@ -402,14 +405,14 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 {/* Window controls */}
                 <button
                     onClick={handleMinimize}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                     title={t('ui.minimize')}
                 >
                     <Minus size={14} className="text-[var(--color-text-secondary)]" />
                 </button>
                 <button
                     onClick={handleMaximize}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                     title={isMaximized ? t('ui.restore') : t('ui.maximize')}
                 >
                     {isMaximized ? (
@@ -420,7 +423,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 </button>
                 <button
                     onClick={handleClose}
-                    className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-red-500/90 transition-colors cursor-pointer group"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-500/90 transition-colors cursor-pointer group"
                     title={t('ui.close')}
                 >
                     <X size={15} className="text-[var(--color-text-secondary)] group-hover:text-white" />

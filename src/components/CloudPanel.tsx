@@ -18,6 +18,7 @@ import {
 import { useTraySync } from '../hooks/useTraySync';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
+import { Checkbox } from './ui/Checkbox';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { useTranslation } from '../i18n';
@@ -841,11 +842,13 @@ const SetupWizard: React.FC<{
                     <div className="wizard-step">
                         <h3><Settings size={20} /> {t('cloud.stepSettings')}</h3>
                         <div className="settings-options">
-                            <label className="checkbox-option">
-                                <input type="checkbox" checked={syncOnChange} onChange={(e) => setSyncOnChange(e.target.checked)} />
-                                <Zap size={16} />
-                                <span>{t('cloud.syncOnChange')}</span>
-                            </label>
+                            <div className="checkbox-option">
+                                <Checkbox
+                                    checked={syncOnChange}
+                                    onChange={setSyncOnChange}
+                                    label={<><Zap size={16} /><span>{t('cloud.syncOnChange')}</span></>}
+                                />
+                            </div>
 
                             <div className="interval-option">
                                 <Clock size={16} />
@@ -1282,7 +1285,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     if (isLoading) {
         return (
             <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Loading">
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-3">
                         <Loader2 className="animate-spin" size={32} />
                         <p>{t('common.loading')} {t('cloud.title')}...</p>
@@ -1296,7 +1299,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     if (!config?.enabled) {
         return (
             <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Setup">
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Cloud className="text-cyan-500" /> {t('cloud.title')} {t('cloud.setup')}</h2>
                         <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" title={t('common.close')}><X size={20} /></button>
@@ -1315,7 +1318,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     if (showSettings) {
         return (
             <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Settings">
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
                         <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={20} /></button>
@@ -1525,7 +1528,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     // Show dashboard
     return (
         <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Dashboard">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2"><Cloud className="text-cyan-500" /> {t('cloud.title')}</h2>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" title={t('common.close')}><X size={20} /></button>

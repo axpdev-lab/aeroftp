@@ -80,7 +80,7 @@ const ToolChip: React.FC<ToolChipProps> = ({ toolName, argsJson }) => {
     } catch { /* ignore malformed JSON */ }
 
     return (
-        <div className={`inline-flex items-center gap-1.5 bg-gray-700 rounded-md px-2.5 py-0.5 my-1 text-xs border-l-[3px] ${borderColor}`}>
+        <div className={`inline-flex items-center gap-1.5 bg-gray-700 rounded-lg px-2.5 py-0.5 my-1 text-xs border-l-[3px] ${borderColor}`}>
             <span className={iconColor}>{icon}</span>
             <strong>{label}</strong>
             {detail && <span className="opacity-70 ml-1.5">{detail}</span>}

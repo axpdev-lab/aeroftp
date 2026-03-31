@@ -9,6 +9,7 @@ import {
     RefreshCw, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2, Shuffle
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { Checkbox } from './ui/Checkbox';
 
 interface CyberToolsModalProps {
     onClose: () => void;
@@ -512,15 +513,20 @@ const PasswordForgeTab: React.FC = () => {
                             { label: t('cyberTools.pwdDigits'), checked: digits, set: setDigits },
                             { label: t('cyberTools.pwdSymbols'), checked: symbols, set: setSymbols },
                         ].map(({ label, checked, set }) => (
-                            <label key={label} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                                <input type="checkbox" checked={checked} onChange={e => set(e.target.checked)} className="rounded accent-cyan-500" />
-                                {label}
-                            </label>
+                            <Checkbox
+                                key={label}
+                                checked={checked}
+                                onChange={set}
+                                label={<span className="text-xs text-gray-700 dark:text-gray-300">{label}</span>}
+                            />
                         ))}
-                        <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 col-span-2 cursor-pointer">
-                            <input type="checkbox" checked={excludeAmbiguous} onChange={e => setExcludeAmbiguous(e.target.checked)} className="rounded accent-cyan-500" />
-                            {t('cyberTools.pwdExcludeAmbiguous')}
-                        </label>
+                        <div className="col-span-2">
+                            <Checkbox
+                                checked={excludeAmbiguous}
+                                onChange={setExcludeAmbiguous}
+                                label={<span className="text-xs text-gray-500 dark:text-gray-400">{t('cyberTools.pwdExcludeAmbiguous')}</span>}
+                            />
+                        </div>
                     </div>
                 </div>
             ) : (
@@ -547,10 +553,13 @@ const PasswordForgeTab: React.FC = () => {
                                 className="w-full px-3 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-center font-mono"
                             />
                         </div>
-                        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer pt-5">
-                            <input type="checkbox" checked={capitalize} onChange={e => setCapitalize(e.target.checked)} className="rounded accent-cyan-500" />
-                            {t('cyberTools.pwdCapitalize')}
-                        </label>
+                        <div className="flex items-center pt-5">
+                            <Checkbox
+                                checked={capitalize}
+                                onChange={setCapitalize}
+                                label={<span className="text-xs text-gray-700 dark:text-gray-300">{t('cyberTools.pwdCapitalize')}</span>}
+                            />
+                        </div>
                     </div>
                     {wordCount >= 12 && (
                         <p className="text-[10px] text-amber-500/80 mt-1">{t('cyberTools.pwdNotBip39')}</p>

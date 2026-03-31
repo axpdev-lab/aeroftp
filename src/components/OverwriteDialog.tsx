@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
+import { Checkbox } from './ui/Checkbox';
 
 export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'cancel';
 
@@ -116,7 +117,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
 
             {/* Dialog */}
-            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
@@ -242,17 +243,15 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
 
                     {/* Apply to all checkbox */}
                     {queueCount > 0 && (
-                        <label className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <input
-                                type="checkbox"
+                        <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <Checkbox
                                 checked={applyToAll}
-                                onChange={(e) => setApplyToAll(e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                                onChange={setApplyToAll}
+                                label={<span className="text-sm text-gray-700 dark:text-gray-300">
+                                    {t('overwrite.applyToAll') || `Apply to all ${queueCount + 1} files`}
+                                </span>}
                             />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                                {t('overwrite.applyToAll') || `Apply to all ${queueCount + 1} files`}
-                            </span>
-                        </label>
+                        </div>
                     )}
                 </div>
 

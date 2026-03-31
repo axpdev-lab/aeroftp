@@ -143,7 +143,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                 ref={menuRef}
                 className={`
                     fixed z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-lg
-                    rounded-xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50
+                    rounded-lg shadow-2xl border border-gray-200/50 dark:border-gray-700/50
                     py-1 min-w-[180px] overflow-hidden
                     transition-all duration-150 ease-out
                     ${isVisible
@@ -197,7 +197,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                 <div
                     ref={submenuRef}
                     className="fixed z-[60] bg-white/95 dark:bg-gray-800/95 backdrop-blur-lg
-                        rounded-xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50
+                        rounded-lg shadow-2xl border border-gray-200/50 dark:border-gray-700/50
                         py-1 min-w-[180px] overflow-hidden
                         transition-opacity duration-100 opacity-100"
                     style={{ left: submenuPos.left, top: submenuPos.top }}

@@ -608,7 +608,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                         onDrop={isDraggable ? (e) => handleReorderDrop(e, idx) : undefined}
                         onDragEnd={isDraggable ? handleReorderDragEnd : undefined}
                         onContextMenu={(e) => handleServerContextMenu(e, server)}
-                        className={`flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 group ${oauthConnecting === server.id ? 'opacity-75' : ''} ${dragIdx === idx ? 'scale-[0.97] shadow-lg ring-2 ring-blue-400/50' : ''} ${overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-t-2 border-blue-400' : 'border-t-2 border-transparent'}`}
+                        className={`flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 group ${oauthConnecting === server.id ? 'opacity-75' : ''} ${dragIdx === idx ? 'scale-[0.97] shadow-lg ring-2 ring-blue-400/50' : ''} ${overIdx === idx && dragIdx !== null && dragIdx !== idx ? 'border-t-2 border-blue-400' : 'border-t-2 border-transparent'}`}
                     >
                         {/* Drag handle (hidden during search) */}
                         <div className={`cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-opacity shrink-0 -ml-1 ${isDraggable ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 pointer-events-none w-0 -ml-0'}`}

@@ -1607,3 +1607,26 @@ html.cyber .markdown-renderer .text-purple-300 {
     transition: none;
   }
 }
+
+/* ======================================
+   Custom Scroll-Only Scrollbars
+   ====================================== */
+
+.custom-scroll-area {
+  scrollbar-color: transparent transparent; /* Override global scrollbar-color to prevent OS auto-hover */
+}
+
+.custom-scroll-area::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 3px;
+}
+
+.custom-scroll-area.is-scrolling::-webkit-scrollbar-thumb,
+.custom-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.3) !important;
+}
+
+.dark .custom-scroll-area.is-scrolling::-webkit-scrollbar-thumb,
+.dark .custom-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.4) !important;
+}

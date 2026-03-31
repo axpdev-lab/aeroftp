@@ -31,6 +31,7 @@ import { ToastContainer, useToast } from './components/Toast';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
+import { IntroHub } from './components/IntroHub';
 import { AboutDialog } from './components/AboutDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
@@ -84,6 +85,7 @@ import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDial
 import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
+import { Checkbox } from './components/ui/Checkbox';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
@@ -95,7 +97,7 @@ import type { ScanningState } from './components/ScanningToast';
 import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen,
-  Download, Upload, Pencil, Trash2, X,
+  Download, Upload, Pencil, Trash2, X, ShieldCheck, ShieldQuestion, ShieldAlert, Loader2,
   Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
@@ -765,6 +767,16 @@ const App: React.FC = () => {
   const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
   const updateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+interface UpdateVerificationInfo {
+  mode: 'SigstoreVerified' | 'VerificationUnavailable' | 'VerificationFailed';
+  workflow_identity: string | null;
+  oidc_issuer: string | null;
+  artifact_sha256: string;
+  bundle_present: boolean;
+  bundle_parsed: boolean;
+  message: string;
+}
+
   const [updateDownload, setUpdateDownload] = useState<{
     downloading: boolean;
     percentage: number;
@@ -776,6 +788,8 @@ const App: React.FC = () => {
     completedPath?: string;
     error?: string;
     installing?: boolean;
+    installPhase?: 'auth' | 'running' | 'restart';
+    verification?: UpdateVerificationInfo;
   } | null>(null);
 
   // Auto-dismiss update toast after 2 animation cycles (8s) — only when not downloading
@@ -1583,8 +1597,48 @@ const App: React.FC = () => {
         completedPath: p.percentage >= 100 ? prev?.completedPath : undefined,
       }));
     });
-    return () => { unlisten.then(fn => fn()); };
+    
+    // Listen for phase updates during install_deb/etc
+    const unlistenPhase = listen<string>('update_install_phase', (event) => {
+      setUpdateDownload(prev => prev ? { 
+        ...prev, 
+        installPhase: event.payload as 'auth' | 'running' | 'restart',
+        installing: true 
+      } : null);
+    });
+    
+    return () => { 
+      unlisten.then(fn => fn()); 
+      unlistenPhase.then(fn => fn());
+    };
   }, []);
+
+  // 2.4 Post-Restart Confirmation
+  useEffect(() => {
+    const checkPostUpdateMarker = async () => {
+      try {
+        const markerJson = await invoke<string | null>('read_update_marker');
+        if (markerJson) {
+           const data = JSON.parse(markerJson);
+           // Show green success toast with verification info
+           toast.success(
+             t('ui.updateSuccess', { version: data.updated_from }),
+             `AeroFTP is now updated. ${data.verification_mode === 'sigstore' ? '✅ Sigstore Verified' : ''}`
+           );
+           
+           activityLog.log('INFO',
+               `Post-restart check: Update completed via .${data.install_format} (Verified: ${data.verified}, Mode: ${data.verification_mode})`,
+               'success'
+           );
+
+           await invoke('clear_update_marker');
+        }
+      } catch (err) {
+        console.error('Failed to read update marker', err);
+      }
+    };
+    checkPostUpdateMarker();
+  }, [t, activityLog, toast]);
 
   // Start update download
   const startUpdateDownload = useCallback(async () => {
@@ -1594,9 +1648,9 @@ const App: React.FC = () => {
       filename: '', downloaded: 0, total: 0,
     });
     try {
-      const path = await invoke<string>('download_update', { url: updateAvailable.download_url });
-      setUpdateDownload(prev => prev ? { ...prev, downloading: false, completedPath: path } : null);
-      activityLog.log('INFO', `Update downloaded: ${path}`, 'success');
+      const resp = await invoke<{ path: string; verification: UpdateVerificationInfo }>('download_update', { url: updateAvailable.download_url });
+      setUpdateDownload(prev => prev ? { ...prev, downloading: false, completedPath: resp.path, verification: resp.verification } : null);
+      activityLog.log('INFO', `Update downloaded: ${resp.path} (Mode: ${resp.verification.mode})`, 'success');
     } catch (error) {
       setUpdateDownload(prev => prev ? { ...prev, downloading: false, error: String(error) } : null);
       activityLog.log('ERROR', `Update download failed: ${error}`, 'error');
@@ -6634,33 +6688,57 @@ const App: React.FC = () => {
                   {updateDownload.completedPath}
                 </span>
 
-                {/* Install & Restart — platform-aware */}
-                {(['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format)) ? (
-                  <button
-                    onClick={async () => {
-                      const cmd = updateAvailable.install_format === 'appimage'
-                        ? 'install_appimage_update'
-                        : updateAvailable.install_format === 'rpm'
-                          ? 'install_rpm_update'
-                          : 'install_deb_update';
-                      setUpdateDownload(prev => prev ? { ...prev, installing: true } : null);
-                      try {
-                        await invoke(cmd, { downloadedPath: updateDownload.completedPath });
-                      } catch (e) {
-                        setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
-                      }
-                    }}
-                    className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
-                  >
-                    <RefreshCw size={13} /> {t('update.installRestart')}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
-                    className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
-                  >
-                    <ExternalLink size={13} /> {t('update.openInstaller')}
-                  </button>
+                {/* Sigstore Badge */}
+                {updateDownload.verification && (
+                  <div className={`mt-1 flex flex-col gap-1 text-xs border rounded-lg p-2 ${
+                    updateDownload.verification.mode === 'SigstoreVerified' ? 'bg-green-500/10 border-green-500/20 text-green-300' :
+                    updateDownload.verification.mode === 'VerificationFailed' ? 'bg-red-500/10 border-red-500/20 text-red-300' :
+                    'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                  }`}>
+                    <div className="flex items-center justify-between font-medium">
+                      <div className="flex items-center gap-1.5 truncate">
+                        {updateDownload.verification.mode === 'SigstoreVerified' && <ShieldCheck size={14} className="flex-shrink-0" />}
+                        {updateDownload.verification.mode === 'VerificationUnavailable' && <ShieldQuestion size={14} className="flex-shrink-0" />}
+                        {updateDownload.verification.mode === 'VerificationFailed' && <ShieldAlert size={14} className="flex-shrink-0" />}
+                        <span className="truncate">
+                          {updateDownload.verification.mode === 'SigstoreVerified' && 'Signed by axpdev-lab/aeroftp CI'}
+                          {updateDownload.verification.mode === 'VerificationUnavailable' && 'Signature verification unavailable'}
+                          {updateDownload.verification.mode === 'VerificationFailed' && 'Signature verification failed'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Install & Restart — platform-aware, block if VerificationFailed */}
+                {updateDownload.verification?.mode !== 'VerificationFailed' && (
+                  ['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format) ? (
+                    <button
+                      onClick={async () => {
+                        const cmd = updateAvailable.install_format === 'appimage'
+                          ? 'install_appimage_update'
+                          : updateAvailable.install_format === 'rpm'
+                            ? 'install_rpm_update'
+                            : 'install_deb_update';
+                        setUpdateDownload(prev => prev ? { ...prev, installing: true } : null);
+                        try {
+                          await invoke(cmd, { downloadedPath: updateDownload.completedPath, verificationMode: updateDownload.verification?.mode ?? 'VerificationUnavailable' });
+                        } catch (e) {
+                          setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
+                        }
+                      }}
+                      className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw size={13} /> {t('update.installRestart')}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => invoke('open_in_file_manager', { path: updateDownload.completedPath })}
+                      className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink size={13} /> {t('update.openInstaller')}
+                    </button>
+                  )
                 )}
 
                 {/* Secondary: skip for now */}
@@ -6713,13 +6791,30 @@ const App: React.FC = () => {
         {/* Fullscreen overlay during update installation */}
         {updateDownload?.installing && (
           <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-5 animate-scale-in">
-            <svg className="w-12 h-12 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+            <Loader2 className="w-12 h-12 animate-spin text-blue-400" />
             <div className="text-center">
-              <p className="text-white text-lg font-semibold">{t('update.installing')}</p>
+              <p className="text-white text-lg font-semibold">
+                {updateDownload.installPhase === 'auth' && 'Authenticating privileges...'}
+                {updateDownload.installPhase === 'running' && 'Installing package update...'}
+                {updateDownload.installPhase === 'restart' && 'Restarting AeroFTP...'}
+                {!updateDownload.installPhase && t('update.installing')}
+              </p>
               <p className="text-white/60 text-sm mt-1">{t('update.installingDesc')}</p>
+            </div>
+            {/* Phase 3 indicator */}
+            <div className={`flex items-center gap-2 text-xs mt-2 ${
+              updateDownload.verification?.mode === 'SigstoreVerified' ? 'text-green-400' :
+              updateDownload.verification?.mode === 'VerificationUnavailable' ? 'text-amber-400' :
+              'text-red-400'
+            }`}>
+              {updateDownload.verification?.mode === 'SigstoreVerified' && <ShieldCheck size={14} />}
+              {updateDownload.verification?.mode === 'VerificationUnavailable' && <ShieldQuestion size={14} />}
+              {updateDownload.verification?.mode === 'VerificationFailed' && <ShieldAlert size={14} />}
+              <span>
+                {updateDownload.verification?.mode === 'SigstoreVerified' ? 'Sigstore verified release' :
+                 updateDownload.verification?.mode === 'VerificationUnavailable' ? 'Unverified release' :
+                 'Verification Error'}
+              </span>
             </div>
           </div>
         )}
@@ -7206,30 +7301,22 @@ const App: React.FC = () => {
                 {t('filelu.folderSettings')}: <span className="text-blue-600 dark:text-blue-400">{fileLuFolderSettingsDialog.name}</span>
               </h2>
               <div className="space-y-3 mb-5">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fileLuFolderSettingsDialog.filedrop}
-                    onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, filedrop: e.target.checked } : null)}
-                    className="w-4 h-4 accent-blue-600"
-                  />
-                  <div>
+                <Checkbox
+                  checked={fileLuFolderSettingsDialog.filedrop}
+                  onChange={(v) => setFileLuFolderSettingsDialog(d => d ? { ...d, filedrop: v } : null)}
+                  label={<div>
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('filelu.filedrop')}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{t('filelu.filedropDesc')}</div>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fileLuFolderSettingsDialog.isPublic}
-                    onChange={e => setFileLuFolderSettingsDialog(d => d ? { ...d, isPublic: e.target.checked } : null)}
-                    className="w-4 h-4 accent-blue-600"
-                  />
-                  <div>
+                  </div>}
+                />
+                <Checkbox
+                  checked={fileLuFolderSettingsDialog.isPublic}
+                  onChange={(v) => setFileLuFolderSettingsDialog(d => d ? { ...d, isPublic: v } : null)}
+                  label={<div>
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('filelu.folderPublic')}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{t('filelu.folderPublicDesc')}</div>
-                  </div>
-                </label>
+                  </div>}
+                />
               </div>
               <div className="flex gap-3 justify-end">
                 <button onClick={() => setFileLuFolderSettingsDialog(null)} className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
@@ -7340,7 +7427,7 @@ const App: React.FC = () => {
 
         <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
           {!isConnected && showConnectionScreen ? (
-            <ConnectionScreen
+            <IntroHub
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}
               loading={loading}

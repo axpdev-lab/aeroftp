@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektlagring",
       "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace skylagring",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Koble til med standard filoverføringsprotokoller. Støtter FTP, FTPS (kryptert), SFTP (SSH-basert) og Azure Blob Storage.",
+      "protocolsInfoLine2": "Skriv inn serveradresse, port og legitimasjon for å komme i gang.",
+      "cloudInfoLine1": "Logg inn med skykontoen din. Noen tjenester bruker OAuth (ett-klikks pålogging), andre krever en API-nøkkel eller app-passord fra kontoinnstillingene dine.",
+      "cloudInfoLine2": "Gratis lagring varierer etter leverandør - sjekk hver tjeneste for detaljer.",
+      "developerInfoLine1": "Integrasjoner for utviklingsarbeidsflyter. Bla gjennom repositorier, administrer utgivelser og last opp filer direkte til vertingsplattformer.",
+      "developerInfoLine2": "Krever et personlig tilgangstoken (PAT) eller SSH-nøkkel for autentisering."
     },
     "shortcuts": {
       "title": "Tastatursnarveier",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Økt utløpt (24t)",
       "clickToRenew": "Klikk for å fornye økten og koble til",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Skjul legitimasjon",
+      "showCredentials": "Vis legitimasjon"
     },
     "cyberTools": {
       "title": "Sikkerhetsverk­tøy",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Kommenter",
       "perm_edit": "Rediger",
       "generateWithOptions": "Generer med alternativer"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mine servere",
+        "discover": "Utforsk tjenester"
+      },
+      "quickConnect": "Hurtigtilkobling",
+      "search": "Søk...",
+      "searchServers": "Søk etter servere...",
+      "viewGrid": "Rutenettvisning",
+      "viewList": "Listevisning",
+      "filter": {
+        "all": "Alle",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Objekt",
+        "webdav": "WebDAV",
+        "cloud": "Sky",
+        "favorites": "Favoritter"
+      },
+      "noServers": "Ingen lagrede servere",
+      "noServersHint": "Start med en hurtigtilkobling eller utforsk tjenestekatalogen.",
+      "noResults": "Ingen servere funnet",
+      "noResultsHint": "Ingen servere samsvarer med \"{query}\"",
+      "backToServers": "Tilbake til servere",
+      "addFavorite": "Legg til i favoritter",
+      "removeFavorite": "Fjern fra favoritter",
+      "discoverTitle": "Utforsk tjenester",
+      "discoverDescription": "Bla gjennom 29+ integrerte skytjenester, S3-kompatibel lagring, WebDAV-leverandører og mer. Hver tjeneste leveres med forhåndskonfigurerte innstillinger for raskt oppsett.",
+      "searchServices": "Søk etter tjenester...",
+      "discoverHint": "Klikk på en tjeneste for å sette opp en forhåndskonfigurert tilkobling med minimal innsats.",
+      "category": {
+        "protocols": "Protokoller",
+        "objectStorage": "S3 / Objektlagring",
+        "webdav": "WebDAV og selvdriftet",
+        "cloudStorage": "Skylagring",
+        "developer": "Utvikler"
+      }
     }
   }
 }

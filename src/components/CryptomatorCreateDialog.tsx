@@ -57,7 +57,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
       onKeyDown={handleKeyDown}
     >
       <div
-        className="w-full max-w-lg rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 animate-scale-in"
+        className="w-full max-w-lg rounded-lg shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 animate-scale-in"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

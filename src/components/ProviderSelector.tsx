@@ -192,7 +192,7 @@ export const ProviderTabs: React.FC<ProviderTabsProps> = ({ selected, onChange }
                     key={tab.id}
                     onClick={() => onChange(tab.id)}
                     className={`
-                        flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all
+                        flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all
                         ${selected === tab.id
                             ? 'bg-blue-600 text-white shadow-lg'
                             : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700'

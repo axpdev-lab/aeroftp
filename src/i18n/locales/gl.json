@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift almacenamento de obxectos",
       "swiftTooltip": "OpenStack Swift — compatible con Blomp, OVH, Rackspace almacenamento na nube",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Conéctese usando protocolos estándar de transferencia de ficheiros. Admite FTP, FTPS (cifrado), SFTP (baseado en SSH) e Azure Blob Storage.",
+      "protocolsInfoLine2": "Introduza o enderezo do servidor, o porto e as credenciais para comezar.",
+      "cloudInfoLine1": "Inicie sesión coa súa conta na nube. Algúns servizos usan OAuth (inicio de sesión cun clic), outros requiren unha clave API ou contrasinal de aplicación desde a configuración da súa conta.",
+      "cloudInfoLine2": "O almacenamento gratuíto varía segundo o provedor - consulte cada servizo para máis detalles.",
+      "developerInfoLine1": "Integracións para fluxos de traballo de desenvolvemento. Explore repositorios, xestione versións e cargue ficheiros directamente en plataformas de aloxamento.",
+      "developerInfoLine2": "Require un token de acceso persoal (PAT) ou clave SSH para a autenticación."
     },
     "shortcuts": {
       "title": "Atallos de teclado",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesión caducada (24h)",
       "clickToRenew": "Fai clic para renovar a sesión e conectar",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ocultar credenciais",
+      "showCredentials": "Mostrar credenciais"
     },
     "cyberTools": {
       "title": "Ferramentas de seguridade",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Comentar",
       "perm_edit": "Editar",
       "generateWithOptions": "Xerar con opcións"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Os meus servidores",
+        "discover": "Descubrir servizos"
+      },
+      "quickConnect": "Conexión rápida",
+      "search": "Buscar...",
+      "searchServers": "Buscar servidores...",
+      "viewGrid": "Vista de grella",
+      "viewList": "Vista de lista",
+      "filter": {
+        "all": "Todos",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favoritos"
+      },
+      "noServers": "Non hai servidores gardados",
+      "noServersHint": "Comece cunha conexión rápida ou explore o catálogo de servizos.",
+      "noResults": "Non se atoparon servidores",
+      "noResultsHint": "Ningún servidor coincide con \"{query}\"",
+      "backToServers": "Volver aos servidores",
+      "addFavorite": "Engadir a favoritos",
+      "removeFavorite": "Quitar de favoritos",
+      "discoverTitle": "Descubrir servizos",
+      "discoverDescription": "Navegue por máis de 29 servizos na nube integrados, almacenamento compatible con S3, provedores WebDAV e moito máis. Cada servizo inclúe configuracións preestablecidas para unha configuración rápida.",
+      "searchServices": "Buscar servizos...",
+      "discoverHint": "Faga clic nun servizo para configurar unha conexión preconfigurada cun mínimo de entrada.",
+      "category": {
+        "protocols": "Protocolos",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV e autoaloxado",
+        "cloudStorage": "Almacenamento na nube",
+        "developer": "Desenvolvedor"
+      }
     }
   }
 }

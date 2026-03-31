@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift обектно хранилище",
       "swiftTooltip": "OpenStack Swift — съвместимо с Blomp, OVH, Rackspace облачно хранилище",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Свържете се чрез стандартни протоколи за прехвърляне на файлове. Поддържа FTP, FTPS (криптиран), SFTP (базиран на SSH) и Azure Blob Storage.",
+      "protocolsInfoLine2": "Въведете адреса на сървъра, порта и идентификационните данни, за да започнете.",
+      "cloudInfoLine1": "Влезте с вашия облачен акаунт. Някои услуги използват OAuth (вход с едно щракване), други изискват API ключ или парола за приложение от настройките на акаунта ви.",
+      "cloudInfoLine2": "Безплатното хранилище варира по доставчик - проверете всяка услуга за подробности.",
+      "developerInfoLine1": "Интеграции за работни процеси за разработка. Разглеждайте хранилища, управлявайте издания и качвайте файлове директно в хостинг платформи.",
+      "developerInfoLine2": "Изисква личен токен за достъп (PAT) или SSH ключ за удостоверяване."
     },
     "shortcuts": {
       "title": "Клавишни комбинации",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Сесията изтече (24ч)",
       "clickToRenew": "Кликнете, за да подновите сесията и да се свържете",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Скриване на идентификационни данни",
+      "showCredentials": "Показване на идентификационни данни"
     },
     "cyberTools": {
       "title": "Инструменти за сигурност",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Коментиране",
       "perm_edit": "Редактиране",
       "generateWithOptions": "Генериране с опции"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Моите сървъри",
+        "discover": "Открий услуги"
+      },
+      "quickConnect": "Бързо свързване",
+      "search": "Търсене...",
+      "searchServers": "Търсене на сървъри...",
+      "viewGrid": "Мрежов изглед",
+      "viewList": "Списъчен изглед",
+      "filter": {
+        "all": "Всички",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Любими"
+      },
+      "noServers": "Няма запазени сървъри",
+      "noServersHint": "Започнете с бързо свързване или разгледайте каталога с услуги.",
+      "noResults": "Няма намерени сървъри",
+      "noResultsHint": "Няма сървъри, съответстващи на \"{query}\"",
+      "backToServers": "Обратно към сървърите",
+      "addFavorite": "Добави в любими",
+      "removeFavorite": "Премахни от любими",
+      "discoverTitle": "Открий услуги",
+      "discoverDescription": "Разгледайте 29+ интегрирани облачни услуги, S3-съвместими хранилища, WebDAV доставчици и още. Всяка услуга идва с предварително конфигурирани настройки за бърза настройка.",
+      "searchServices": "Търсене на услуги...",
+      "discoverHint": "Щракнете върху услуга, за да настроите предварително конфигурирана връзка с минимален вход.",
+      "category": {
+        "protocols": "Протоколи",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Самостоятелно хостване",
+        "cloudStorage": "Облачно хранилище",
+        "developer": "Разработчици"
+      }
     }
   }
 }

@@ -119,7 +119,7 @@ export const GitHubBranchSelector: React.FC<GitHubBranchSelectorProps> = ({
       {/* Trigger button */}
       <button
         onClick={handleToggle}
-        className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border transition-colors hover:opacity-80"
+        className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg border transition-colors hover:opacity-80"
         style={{
           borderColor: 'var(--color-border)',
           color: 'var(--color-text-primary)',

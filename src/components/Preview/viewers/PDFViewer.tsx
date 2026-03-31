@@ -86,7 +86,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                     <button
                         onClick={downloadAndOpen}
                         disabled={downloading || !pdfSrc}
-                        className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
+                        className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-500/20"
                     >
                         <ExternalLink size={20} />
                         {t('preview.pdf.open')}
@@ -96,7 +96,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                     <button
                         onClick={downloadPdf}
                         disabled={!pdfSrc}
-                        className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
+                        className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
                     >
                         <Download size={20} />
                         {t('preview.pdf.download')}

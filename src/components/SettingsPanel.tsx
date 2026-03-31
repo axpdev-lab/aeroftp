@@ -24,6 +24,7 @@ import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
 import { TotpSetup } from './TotpSetup';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
+import { Checkbox } from './ui/Checkbox';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
@@ -603,7 +604,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
                 {/* Panel */}
-                <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
+                <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center gap-2">
@@ -668,64 +669,50 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                         </div>
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.showHiddenFiles}
-                                                onChange={e => updateSetting('showHiddenFiles', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <span className="text-sm">{t('settings.showHiddenFiles')}</span>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.showHiddenFiles}
+                                            onChange={(v) => updateSetting('showHiddenFiles', v)}
+                                            label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>}
+                                        />
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.confirmBeforeDelete}
-                                                onChange={e => updateSetting('confirmBeforeDelete', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <span className="text-sm">{t('settings.confirmBeforeDelete')}</span>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.confirmBeforeDelete}
+                                            onChange={(v) => updateSetting('confirmBeforeDelete', v)}
+                                            label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>}
+                                        />
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.sortFoldersFirst !== false}
-                                                onChange={e => updateSetting('sortFoldersFirst', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <div>
-                                                <p className="text-sm">{t('settings.sortFoldersFirst')}</p>
-                                                <p className="text-xs text-gray-500">{t('settings.sortFoldersFirstDesc')}</p>
-                                            </div>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.sortFoldersFirst !== false}
+                                            onChange={(v) => updateSetting('sortFoldersFirst', v)}
+                                            label={
+                                                <div>
+                                                    <p className="text-sm">{t('settings.sortFoldersFirst')}</p>
+                                                    <p className="text-xs text-gray-500">{t('settings.sortFoldersFirstDesc')}</p>
+                                                </div>
+                                            }
+                                        />
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.showFileExtensions !== false}
-                                                onChange={e => updateSetting('showFileExtensions', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <div>
-                                                <p className="text-sm">{t('settings.showFileExtensions')}</p>
-                                                <p className="text-xs text-gray-500">{t('settings.showFileExtensionsDesc')}</p>
-                                            </div>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.showFileExtensions !== false}
+                                            onChange={(v) => updateSetting('showFileExtensions', v)}
+                                            label={
+                                                <div>
+                                                    <p className="text-sm">{t('settings.showFileExtensions')}</p>
+                                                    <p className="text-xs text-gray-500">{t('settings.showFileExtensionsDesc')}</p>
+                                                </div>
+                                            }
+                                        />
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.rememberLastFolder}
-                                                onChange={e => updateSetting('rememberLastFolder', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <div>
-                                                <p className="text-sm">{t('settings.rememberLastFolder')}</p>
-                                                <p className="text-xs text-gray-500">{t('settings.rememberLastFolderDesc')}</p>
-                                            </div>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.rememberLastFolder}
+                                            onChange={(v) => updateSetting('rememberLastFolder', v)}
+                                            label={
+                                                <div>
+                                                    <p className="text-sm">{t('settings.rememberLastFolder')}</p>
+                                                    <p className="text-xs text-gray-500">{t('settings.rememberLastFolderDesc')}</p>
+                                                </div>
+                                            }
+                                        />
 
                                         <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                             <label className="block text-sm font-medium mb-2">{t('settings.doubleClickAction')}</label>
@@ -760,18 +747,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 {t('settings.startupOptions')}
                                             </h4>
                                             <div className="space-y-3">
-                                                <label className="flex items-center gap-3 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={settings.launchOnStartup}
-                                                        onChange={e => updateSetting('launchOnStartup', e.target.checked)}
-                                                        className="w-4 h-4 rounded"
-                                                    />
-                                                    <div>
-                                                        <p className="text-sm">{t('settings.launchOnStartup')}</p>
-                                                        <p className="text-xs text-gray-500">{t('settings.launchOnStartupDesc')}</p>
-                                                    </div>
-                                                </label>
+                                                <Checkbox
+                                                    checked={settings.launchOnStartup}
+                                                    onChange={(v) => updateSetting('launchOnStartup', v)}
+                                                    label={
+                                                        <div>
+                                                            <p className="text-sm">{t('settings.launchOnStartup')}</p>
+                                                            <p className="text-xs text-gray-500">{t('settings.launchOnStartupDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
                                             </div>
                                         </div>
 
@@ -917,7 +902,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 return (
                                                     <div
                                                         key={server.id}
-                                                        className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group"
+                                                        className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group"
                                                     >
                                                         <div className="flex items-center gap-3">
                                                             {/* Protocol-colored avatar with favicon/custom icon support */}
@@ -1091,7 +1076,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         return (
                                             <div className="fixed inset-0 z-60 flex items-center justify-center">
                                                 <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
-                                                <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+                                                <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
                                                     <div className="flex items-center gap-3">
                                                         {(() => {
                                                             const logoKey = editingServer.providerId || protocol;
@@ -1297,38 +1282,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 </div>
 
                                                                 <div className="p-3 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 space-y-3">
-                                                                    <label className="flex items-center gap-3 cursor-pointer">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={editingServer.options?.save_session !== false}
-                                                                            onChange={e => setEditingServer({
-                                                                                ...editingServer,
-                                                                                options: { ...editingServer.options, save_session: e.target.checked }
-                                                                            })}
-                                                                            className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
-                                                                        />
-                                                                        <div>
-                                                                            <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
-                                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
-                                                                        </div>
-                                                                    </label>
+                                                                    <Checkbox
+                                                                        checked={editingServer.options?.save_session !== false}
+                                                                        onChange={(v) => setEditingServer({
+                                                                            ...editingServer,
+                                                                            options: { ...editingServer.options, save_session: v }
+                                                                        })}
+                                                                        label={
+                                                                            <div>
+                                                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
+                                                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
+                                                                            </div>
+                                                                        }
+                                                                    />
 
                                                                     {megaMode === 'megacmd' && (
-                                                                        <label className="flex items-center gap-3 cursor-pointer pt-3 border-t border-red-200 dark:border-red-900/30">
-                                                                            <input
-                                                                                type="checkbox"
+                                                                        <div className="pt-3 border-t border-red-200 dark:border-red-900/30">
+                                                                            <Checkbox
                                                                                 checked={!!editingServer.options?.logout_on_disconnect}
-                                                                                onChange={e => setEditingServer({
+                                                                                onChange={(v) => setEditingServer({
                                                                                     ...editingServer,
-                                                                                    options: { ...editingServer.options, logout_on_disconnect: e.target.checked }
+                                                                                    options: { ...editingServer.options, logout_on_disconnect: v }
                                                                                 })}
-                                                                                className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-gray-300 dark:border-gray-600"
+                                                                                label={
+                                                                                    <div>
+                                                                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
+                                                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
+                                                                                    </div>
+                                                                                }
                                                                             />
-                                                                            <div>
-                                                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
-                                                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
-                                                                            </div>
-                                                                        </label>
+                                                                        </div>
                                                                     )}
                                                                 </div>
 
@@ -2026,18 +2009,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.transferModeDesc')}</p>
                                         </div>
 
-                                        <label className="flex items-center gap-3 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.preserveTimestamps}
-                                                onChange={e => updateSetting('preserveTimestamps', e.target.checked)}
-                                                className="w-4 h-4 rounded"
-                                            />
-                                            <div>
-                                                <p className="font-medium">{t('settings.preserveTimestampsLabel')}</p>
-                                                <p className="text-sm text-gray-500">{t('settings.preserveTimestampsDesc')}</p>
-                                            </div>
-                                        </label>
+                                        <Checkbox
+                                            checked={settings.preserveTimestamps}
+                                            onChange={(v) => updateSetting('preserveTimestamps', v)}
+                                            label={
+                                                <div>
+                                                    <p className="font-medium">{t('settings.preserveTimestampsLabel')}</p>
+                                                    <p className="text-sm text-gray-500">{t('settings.preserveTimestampsDesc')}</p>
+                                                </div>
+                                            }
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -2527,7 +2508,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 setAppTheme?.(themeOption.id);
                                                                 // Icon theme auto-syncs via useEffect in App.tsx
                                                             }}
-                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isSelected
+                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected
                                                                     ? themeOption.selectedBorder
                                                                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
                                                                 }`}
@@ -2559,29 +2540,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             {/* Auto mode toggle */}
                                             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                                                <label className="flex items-center gap-3 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={appThemeProp === 'auto'}
-                                                        onChange={e => {
-                                                            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                                                            if (e.target.checked) {
-                                                                setAppTheme?.('auto');
-                                                            } else {
-                                                                setAppTheme?.(prefersDark ? 'dark' : 'light');
-                                                            }
-                                                            // Icon theme auto-syncs via useEffect in App.tsx
-                                                        }}
-                                                        className="w-4 h-4 rounded"
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium flex items-center gap-2">
-                                                            <Monitor size={14} />
-                                                            {t('settings.autoTheme')}
-                                                        </p>
-                                                        <p className="text-sm text-gray-500">{t('settings.autoThemeDesc')}</p>
-                                                    </div>
-                                                </label>
+                                                <Checkbox
+                                                    checked={appThemeProp === 'auto'}
+                                                    onChange={(v) => {
+                                                        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                                                        if (v) {
+                                                            setAppTheme?.('auto');
+                                                        } else {
+                                                            setAppTheme?.(prefersDark ? 'dark' : 'light');
+                                                        }
+                                                        // Icon theme auto-syncs via useEffect in App.tsx
+                                                    }}
+                                                    label={
+                                                        <div>
+                                                            <p className="font-medium flex items-center gap-2">
+                                                                <Monitor size={14} />
+                                                                {t('settings.autoTheme')}
+                                                            </p>
+                                                            <p className="text-sm text-gray-500">{t('settings.autoThemeDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
                                             </div>
                                         </div>
                                     )}
@@ -2603,7 +2582,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     return (
                                                         <button key={option.id}
                                                             onClick={() => { setIconTheme(option.id); flashSaved(); }}
-                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${isSelected
+                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected
                                                                     ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5'
                                                                     : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
                                                                 }`}
@@ -2669,45 +2648,60 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
 
-                                            <label className="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox" checked={settings.showStatusBar} onChange={e => updateSetting('showStatusBar', e.target.checked)} className="w-4 h-4 rounded" />
-                                                <div>
-                                                    <p className="font-medium">{t('settings.showStatusBar')}</p>
-                                                    <p className="text-sm text-gray-500">{t('settings.showStatusBarDesc')}</p>
-                                                </div>
-                                            </label>
+                                            <Checkbox
+                                                checked={settings.showStatusBar}
+                                                onChange={(v) => updateSetting('showStatusBar', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.showStatusBar')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.showStatusBarDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
 
-                                            <label className="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox" checked={settings.showSystemMenu} onChange={e => updateSetting('showSystemMenu', e.target.checked)} className="w-4 h-4 rounded" />
-                                                <div>
-                                                    <p className="font-medium">{t('settings.showSystemMenuBar')}</p>
-                                                    <p className="text-sm text-gray-500">{t('settings.showSystemMenuBarDesc')}</p>
-                                                </div>
-                                            </label>
+                                            <Checkbox
+                                                checked={settings.showSystemMenu}
+                                                onChange={(v) => updateSetting('showSystemMenu', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.showSystemMenuBar')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.showSystemMenuBarDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
 
-                                            <label className="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox" checked={settings.compactMode} onChange={e => updateSetting('compactMode', e.target.checked)} className="w-4 h-4 rounded" />
-                                                <div>
-                                                    <p className="font-medium">{t('settings.compactMode')}</p>
-                                                    <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
-                                                </div>
-                                            </label>
+                                            <Checkbox
+                                                checked={settings.compactMode}
+                                                onChange={(v) => updateSetting('compactMode', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.compactMode')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.compactModeDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
 
-                                            <label className="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox" checked={settings.swapPanels} onChange={e => updateSetting('swapPanels', e.target.checked)} className="w-4 h-4 rounded" />
-                                                <div>
-                                                    <p className="font-medium">{t('settings.swapPanels')}</p>
-                                                    <p className="text-sm text-gray-500">{t('settings.swapPanelsDesc')}</p>
-                                                </div>
-                                            </label>
+                                            <Checkbox
+                                                checked={settings.swapPanels}
+                                                onChange={(v) => updateSetting('swapPanels', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.swapPanels')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.swapPanelsDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
 
-                                            <label className="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox" checked={settings.showToastNotifications} onChange={e => updateSetting('showToastNotifications', e.target.checked)} className="w-4 h-4 rounded" />
-                                                <div>
-                                                    <p className="font-medium">{t('settings.toastNotifications')}</p>
-                                                    <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
-                                                </div>
-                                            </label>
+                                            <Checkbox
+                                                checked={settings.showToastNotifications}
+                                                onChange={(v) => updateSetting('showToastNotifications', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.toastNotifications')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.toastNotificationsDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
 
                                             {/* Visible Columns */}
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
@@ -2722,9 +2716,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         { key: 'permissions', label: t('settings.columnPermissions'), disabled: false },
                                                         { key: 'modified', label: t('settings.columnModified'), disabled: false },
                                                     ].map(col => (
-                                                        <label key={col.key} className={`flex items-center gap-3 ${col.disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-                                                            <input
-                                                                type="checkbox"
+                                                        <div key={col.key} className={col.disabled ? 'opacity-60' : ''}>
+                                                            <Checkbox
                                                                 checked={col.disabled || (settings.visibleColumns || []).includes(col.key)}
                                                                 disabled={col.disabled}
                                                                 onChange={() => {
@@ -2734,10 +2727,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         : [...current, col.key];
                                                                     updateSetting('visibleColumns', updated);
                                                                 }}
-                                                                className="w-4 h-4 rounded"
+                                                                label={<span className="text-sm">{col.label}</span>}
                                                             />
-                                                            <span className="text-sm">{col.label}</span>
-                                                        </label>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
@@ -3652,18 +3644,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
 
                                             <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                                <label className="flex items-center gap-3 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={settings.analyticsEnabled}
-                                                        onChange={e => updateSetting('analyticsEnabled', e.target.checked)}
-                                                        className="w-5 h-5 rounded"
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium">{t('settings.sendAnalytics')}</p>
-                                                        <p className="text-sm text-gray-500">{t('settings.analyticsDesc')}</p>
-                                                    </div>
-                                                </label>
+                                                <Checkbox
+                                                    checked={settings.analyticsEnabled}
+                                                    onChange={(v) => updateSetting('analyticsEnabled', v)}
+                                                    label={
+                                                        <div>
+                                                            <p className="font-medium">{t('settings.sendAnalytics')}</p>
+                                                            <p className="text-sm text-gray-500">{t('settings.analyticsDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
                                             </div>
                                         </div>
 

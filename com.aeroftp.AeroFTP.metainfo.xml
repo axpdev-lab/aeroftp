@@ -137,6 +137,31 @@
   </languages>
 
   <releases>
+    <release version="3.3.0" date="2026-04-01">
+      <description>
+        <p>IntroHub redesign: new tabbed interface with My Servers grid, Discover Services catalog (49 providers), Command Palette (Ctrl+K), and dynamic form tabs. Custom animated checkboxes. SourceForge native SFTP integration. SFTP upload fix (host key mismatch). Auto-update trust UI with Sigstore verification badges. Linux restart reliability fix. 47-language info banners.</p>
+      </description>
+    </release>
+    <release version="3.2.6" date="2026-03-31">
+      <description>
+        <p>macOS static linking fix (liblzma). HIGH vulnerability resolved (russh 0.57 to 0.59). XSS SAST finding fixed. Felicloud direct access and badge. Aikido Security audit: Top 5% benchmark.</p>
+      </description>
+    </release>
+    <release version="3.2.5" date="2026-03-30">
+      <description>
+        <p>Hotfix: Linux localhost bind regression. Plugin now binds to 127.0.0.1 explicitly.</p>
+      </description>
+    </release>
+    <release version="3.2.4" date="2026-03-30">
+      <description>
+        <p>Session management, Blomp Swift provider, CLI batch engine with parallel transfers, agent memory system, speech-to-text transcription.</p>
+      </description>
+    </release>
+    <release version="3.2.3" date="2026-03-30">
+      <description>
+        <p>Drime Cloud (21st provider), activity log improvements, credential masking, ScanningToast UX polish.</p>
+      </description>
+    </release>
     <release version="3.2.2" date="2026-03-30">
       <description>
         <p>Advanced Share Links with password, expiration, and permissions for 13 providers. MEGA S4 Object Storage (S3-compatible, 4 regions). CLI link command with --password/--expires/--permissions. Google Drive commenter role. MEGAcmd re-export fix, trash path sanitization, S4 capability gating. MEGA default tab set to Native API.</p>

@@ -4,6 +4,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Check, X, FileText, ChevronRight, ChevronDown } from 'lucide-react';
 import { DiffPreview } from './DiffPreview';
+import { Checkbox } from '../ui/Checkbox';
 
 export interface FileDiff {
     filePath: string;
@@ -111,15 +112,12 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
                             onClick={() => handleExpandToggle(diff.filePath)}
                         >
                             {/* Checkbox */}
-                            <input
-                                type="checkbox"
-                                checked={selectedFiles.has(diff.filePath)}
-                                onChange={(e) => {
-                                    e.stopPropagation();
-                                    toggleFile(diff.filePath);
-                                }}
-                                className="rounded border-gray-600 bg-gray-700 text-purple-500 focus:ring-purple-500 focus:ring-offset-0 h-3 w-3"
-                            />
+                            <span onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                    checked={selectedFiles.has(diff.filePath)}
+                                    onChange={() => toggleFile(diff.filePath)}
+                                />
+                            </span>
                             {/* Expand arrow */}
                             {expandedFile === diff.filePath
                                 ? <ChevronDown size={12} className="text-gray-500" />

@@ -18,6 +18,7 @@ import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { Checkbox } from './ui/Checkbox';
 
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
@@ -315,7 +316,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in"
+        className="relative w-full max-w-2xl overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 shadow-2xl animate-scale-in"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >
@@ -430,7 +431,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
 
       {/* Confirmation dialog */}
       {confirmDelete && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-xl">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-lg">
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-5 mx-6 max-w-sm animate-scale-in" style={{ backgroundColor: 'var(--color-bg-secondary)' }}>
             <p className="text-sm text-gray-700 dark:text-gray-200 mb-4">
               {confirmDelete.type === 'release'
@@ -877,28 +878,16 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
 
       {/* Toggles */}
       <div className="flex items-center gap-6">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={draft}
-            onChange={e => onDraftChange(e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>
-            {t('github.draft') || 'Draft'}
-          </span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={prerelease}
-            onChange={e => onPrereleaseChange(e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>
-            {t('github.prerelease') || 'Pre-release'}
-          </span>
-        </label>
+        <Checkbox
+          checked={draft}
+          onChange={onDraftChange}
+          label={<span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{t('github.draft') || 'Draft'}</span>}
+        />
+        <Checkbox
+          checked={prerelease}
+          onChange={onPrereleaseChange}
+          label={<span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{t('github.prerelease') || 'Pre-release'}</span>}
+        />
       </div>
 
       {/* Footer */}

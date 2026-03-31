@@ -132,4 +132,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.2.6 - 31 March 2026*
+*AeroFTP v3.3.0 - 1 April 2026*

@@ -245,7 +245,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     return (
       <div
         ref={containerRef}
-        className="flex items-center h-8 bg-white border-blue-500 dark:bg-gray-800/50 rounded-md border px-1 gap-1 w-full"
+        className="flex items-center h-8 bg-white border-blue-500 dark:bg-gray-800/50 rounded-lg border px-1 gap-1 w-full"
       >
         <input
           ref={inputRef}
@@ -279,7 +279,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   return (
     <nav
       ref={containerRef}
-      className="flex items-center h-8 bg-white border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 rounded-md border px-2 gap-0.5 overflow-hidden w-full relative"
+      className="flex items-center h-8 bg-white border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 rounded-lg border px-2 gap-0.5 overflow-hidden w-full relative"
       role="navigation"
       aria-label="Breadcrumb"
     >
@@ -323,7 +323,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
 
               {/* Overflow dropdown */}
               {overflowDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-md py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
+                <div className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[160px]">
                   {collapsedSegments.map((seg) => {
                     const locked = isAboveMinPath(seg.fullPath);
                     return <button
@@ -371,7 +371,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                 {chevronDropdown?.segmentIndex === realIndex - 1 && (
                   <div
                     ref={chevronDropdownRef}
-                    className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-md py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
+                    className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
                   >
                     {chevronDropdown.loading ? (
                       <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">

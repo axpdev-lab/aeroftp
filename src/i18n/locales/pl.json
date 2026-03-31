@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift pamięć obiektowa",
       "swiftTooltip": "OpenStack Swift — kompatybilny z Blomp, OVH, Rackspace pamięcią w chmurze",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Połącz się za pomocą standardowych protokołów transferu plików. Obsługuje FTP, FTPS (szyfrowany), SFTP (oparty na SSH) i Azure Blob Storage.",
+      "protocolsInfoLine2": "Wprowadź adres serwera, port i dane uwierzytelniające, aby rozpocząć.",
+      "cloudInfoLine1": "Zaloguj się na swoje konto chmurowe. Niektóre usługi używają OAuth (logowanie jednym kliknięciem), inne wymagają klucza API lub hasła aplikacji z ustawień konta.",
+      "cloudInfoLine2": "Darmowa przestrzeń różni się w zależności od dostawcy - sprawdź szczegóły każdej usługi.",
+      "developerInfoLine1": "Integracje dla przepływów pracy programistycznej. Przeglądaj repozytoria, zarządzaj wydaniami i przesyłaj pliki bezpośrednio na platformy hostingowe.",
+      "developerInfoLine2": "Wymaga osobistego tokenu dostępu (PAT) lub klucza SSH do uwierzytelniania."
     },
     "shortcuts": {
       "title": "Skróty klawiszowe",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesja wygasła (24 godz.)",
       "clickToRenew": "Kliknij, aby odnowić sesję i połączyć się",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ukryj dane logowania",
+      "showCredentials": "Pokaż dane logowania"
     },
     "cyberTools": {
       "title": "Narzędzia bezpieczeństwa",
@@ -3582,6 +3590,43 @@
       "perm_comment": "Komentowanie",
       "perm_edit": "Edycja",
       "generateWithOptions": "Wygeneruj z opcjami"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Moje serwery",
+        "discover": "Odkryj usługi"
+      },
+      "quickConnect": "Szybkie połączenie",
+      "search": "Szukaj...",
+      "searchServers": "Szukaj serwerów...",
+      "viewGrid": "Widok siatki",
+      "viewList": "Widok listy",
+      "filter": {
+        "all": "Wszystkie",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Obiektowe",
+        "webdav": "WebDAV",
+        "cloud": "Chmura",
+        "favorites": "Ulubione"
+      },
+      "noServers": "Brak zapisanych serwerów",
+      "noServersHint": "Zacznij od szybkiego połączenia lub przeglądaj katalog usług.",
+      "noResults": "Nie znaleziono serwerów",
+      "noResultsHint": "Żaden serwer nie pasuje do \"{query}\"",
+      "backToServers": "Powrót do serwerów",
+      "addFavorite": "Dodaj do ulubionych",
+      "removeFavorite": "Usuń z ulubionych",
+      "discoverTitle": "Odkryj usługi",
+      "discoverDescription": "Przeglądaj ponad 29 zintegrowanych usług chmurowych, magazynów S3-kompatybilnych, dostawców WebDAV i wiele więcej. Każda usługa zawiera wstępnie skonfigurowane ustawienia do szybkiego uruchomienia.",
+      "searchServices": "Szukaj usług...",
+      "discoverHint": "Kliknij usługę, aby skonfigurować wstępnie przygotowane połączenie z minimalnym nakładem pracy.",
+      "category": {
+        "protocols": "Protokoły",
+        "objectStorage": "S3 / Magazyn obiektowy",
+        "webdav": "WebDAV i self-hosted",
+        "cloudStorage": "Magazyn chmurowy",
+        "developer": "Deweloper"
+      }
     }
   }
 }

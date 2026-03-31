@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift penyimpanan objek",
       "swiftTooltip": "OpenStack Swift — kompatibel dengan Blomp, OVH, Rackspace penyimpanan cloud",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Sambungkan menggunakan protokol transfer file standar. Mendukung FTP, FTPS (terenkripsi), SFTP (berbasis SSH), dan Azure Blob Storage.",
+      "protocolsInfoLine2": "Masukkan alamat server, port, dan kredensial Anda untuk memulai.",
+      "cloudInfoLine1": "Masuk dengan akun cloud Anda. Beberapa layanan menggunakan OAuth (login satu klik), yang lain memerlukan API key atau kata sandi aplikasi dari pengaturan akun Anda.",
+      "cloudInfoLine2": "Penyimpanan gratis bervariasi tergantung penyedia - periksa setiap layanan untuk detailnya.",
+      "developerInfoLine1": "Integrasi untuk alur kerja pengembangan. Telusuri repositori, kelola rilis, dan unggah file langsung ke platform hosting.",
+      "developerInfoLine2": "Memerlukan personal access token (PAT) atau SSH key untuk autentikasi."
     },
     "shortcuts": {
       "title": "Pintasan Keyboard",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesi kedaluwarsa (24j)",
       "clickToRenew": "Klik untuk memperbarui sesi dan menghubungkan",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Sembunyikan kredensial",
+      "showCredentials": "Tampilkan kredensial"
     },
     "cyberTools": {
       "title": "Alat Keamanan",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komentar",
       "perm_edit": "Edit",
       "generateWithOptions": "Buat dengan opsi"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Server Saya",
+        "discover": "Jelajahi Layanan"
+      },
+      "quickConnect": "Sambungan Cepat",
+      "search": "Cari...",
+      "searchServers": "Cari server...",
+      "viewGrid": "Tampilan kisi",
+      "viewList": "Tampilan daftar",
+      "filter": {
+        "all": "Semua",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favorit"
+      },
+      "noServers": "Tidak ada server tersimpan",
+      "noServersHint": "Mulai dengan sambungan cepat atau jelajahi katalog layanan.",
+      "noResults": "Server tidak ditemukan",
+      "noResultsHint": "Tidak ada server yang cocok dengan \"{query}\"",
+      "backToServers": "Kembali ke server",
+      "addFavorite": "Tambah ke favorit",
+      "removeFavorite": "Hapus dari favorit",
+      "discoverTitle": "Jelajahi Layanan",
+      "discoverDescription": "Telusuri 29+ layanan cloud terintegrasi, penyimpanan S3-kompatibel, penyedia WebDAV, dan lainnya. Setiap layanan dilengkapi pengaturan pra-konfigurasi untuk penyiapan cepat.",
+      "searchServices": "Cari layanan...",
+      "discoverHint": "Klik layanan untuk menyiapkan koneksi pra-konfigurasi dengan input minimal.",
+      "category": {
+        "protocols": "Protokol",
+        "objectStorage": "S3 / Penyimpanan Objek",
+        "webdav": "WebDAV & Self-hosted",
+        "cloudStorage": "Penyimpanan Cloud",
+        "developer": "Pengembang"
+      }
     }
   }
 }

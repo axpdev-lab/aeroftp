@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift พื้นที่เก็บข้อมูลออบเจกต์",
       "swiftTooltip": "OpenStack Swift — เข้ากันได้กับ Blomp, OVH, Rackspace พื้นที่เก็บข้อมูลคลาวด์",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "เชื่อมต่อโดยใช้โปรโตคอลถ่ายโอนไฟล์มาตรฐาน รองรับ FTP, FTPS (เข้ารหัส), SFTP (บนพื้นฐาน SSH) และ Azure Blob Storage",
+      "protocolsInfoLine2": "ป้อนที่อยู่เซิร์ฟเวอร์ พอร์ต และข้อมูลประจำตัวเพื่อเริ่มต้น",
+      "cloudInfoLine1": "ลงชื่อเข้าใช้ด้วยบัญชีคลาวด์ของคุณ บริการบางอย่างใช้ OAuth (เข้าสู่ระบบด้วยคลิกเดียว) บางอย่างต้องการคีย์ API หรือรหัสผ่านแอปจากการตั้งค่าบัญชีของคุณ",
+      "cloudInfoLine2": "พื้นที่จัดเก็บฟรีแตกต่างกันตามผู้ให้บริการ - ตรวจสอบรายละเอียดของแต่ละบริการ",
+      "developerInfoLine1": "การผสานรวมสำหรับเวิร์กโฟลว์การพัฒนา เรียกดูรีโพซิทอรี จัดการรีลีส และอัปโหลดไฟล์โดยตรงไปยังแพลตฟอร์มโฮสติ้ง",
+      "developerInfoLine2": "ต้องการโทเค็นการเข้าถึงส่วนบุคคล (PAT) หรือคีย์ SSH สำหรับการยืนยันตัวตน"
     },
     "shortcuts": {
       "title": "แป้นพิมพ์ลัด",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "เซสชันหมดอายุ (24 ชม.)",
       "clickToRenew": "คลิกเพื่อต่ออายุเซสชันและเชื่อมต่อ",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "ซ่อนข้อมูลรับรอง",
+      "showCredentials": "แสดงข้อมูลรับรอง"
     },
     "cyberTools": {
       "title": "เครื่องมือความปลอดภัย",
@@ -3592,6 +3600,43 @@
       "perm_comment": "แสดงความคิดเห็น",
       "perm_edit": "แก้ไข",
       "generateWithOptions": "สร้างพร้อมตัวเลือก"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "เซิร์ฟเวอร์ของฉัน",
+        "discover": "สำรวจบริการ"
+      },
+      "quickConnect": "เชื่อมต่อด่วน",
+      "search": "ค้นหา...",
+      "searchServers": "ค้นหาเซิร์ฟเวอร์...",
+      "viewGrid": "มุมมองตาราง",
+      "viewList": "มุมมองรายการ",
+      "filter": {
+        "all": "ทั้งหมด",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / ออบเจกต์",
+        "webdav": "WebDAV",
+        "cloud": "คลาวด์",
+        "favorites": "รายการโปรด"
+      },
+      "noServers": "ไม่มีเซิร์ฟเวอร์ที่บันทึกไว้",
+      "noServersHint": "เริ่มต้นด้วยการเชื่อมต่อด่วนหรือสำรวจแค็ตตาล็อกบริการ",
+      "noResults": "ไม่พบเซิร์ฟเวอร์",
+      "noResultsHint": "ไม่มีเซิร์ฟเวอร์ที่ตรงกับ \"{query}\"",
+      "backToServers": "กลับไปยังเซิร์ฟเวอร์",
+      "addFavorite": "เพิ่มในรายการโปรด",
+      "removeFavorite": "ลบออกจากรายการโปรด",
+      "discoverTitle": "สำรวจบริการ",
+      "discoverDescription": "เรียกดูบริการคลาวด์ที่ผสานรวมกว่า 29 รายการ, พื้นที่จัดเก็บที่เข้ากันได้กับ S3, ผู้ให้บริการ WebDAV และอื่นๆ แต่ละบริการมาพร้อมการตั้งค่าล่วงหน้าสำหรับการติดตั้งอย่างรวดเร็ว",
+      "searchServices": "ค้นหาบริการ...",
+      "discoverHint": "คลิกบริการเพื่อตั้งค่าการเชื่อมต่อที่กำหนดค่าไว้ล่วงหน้าด้วยการป้อนข้อมูลน้อยที่สุด",
+      "category": {
+        "protocols": "โปรโตคอล",
+        "objectStorage": "S3 / พื้นที่จัดเก็บออบเจกต์",
+        "webdav": "WebDAV และโฮสต์เอง",
+        "cloudStorage": "พื้นที่จัดเก็บคลาวด์",
+        "developer": "นักพัฒนา"
+      }
     }
   }
 }

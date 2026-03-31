@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swiftオブジェクトストレージ",
       "swiftTooltip": "OpenStack Swift — Blomp、OVH、Rackspaceクラウドストレージと互換",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "標準のファイル転送プロトコルを使用して接続します。FTP、FTPS（暗号化）、SFTP（SSHベース）、Azure Blob Storageに対応しています。",
+      "protocolsInfoLine2": "サーバーアドレス、ポート、認証情報を入力して開始してください。",
+      "cloudInfoLine1": "クラウドアカウントでサインインします。OAuthを使用するサービス（ワンクリックログイン）もあれば、アカウント設定からAPI キーやアプリパスワードが必要なサービスもあります。",
+      "cloudInfoLine2": "無料ストレージ容量はプロバイダーによって異なります - 詳細は各サービスをご確認ください。",
+      "developerInfoLine1": "開発ワークフロー向けの統合機能です。リポジトリの閲覧、リリースの管理、ホスティングプラットフォームへのファイルの直接アップロードが可能です。",
+      "developerInfoLine2": "認証にはパーソナルアクセストークン（PAT）またはSSHキーが必要です。"
     },
     "shortcuts": {
       "title": "キーボードショートカット",
@@ -3028,7 +3034,9 @@
       "expBadge": "EXP",
       "sessionExpired": "セッション期限切れ (24時間)",
       "clickToRenew": "クリックしてセッションを更新し接続",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "認証情報を非表示",
+      "showCredentials": "認証情報を表示"
     },
     "cyberTools": {
       "title": "セキュリティツール",
@@ -3582,6 +3590,43 @@
       "perm_comment": "コメント",
       "perm_edit": "編集",
       "generateWithOptions": "オプション付きで生成"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "マイサーバー",
+        "discover": "サービスを探す"
+      },
+      "quickConnect": "クイック接続",
+      "search": "検索...",
+      "searchServers": "サーバーを検索...",
+      "viewGrid": "グリッド表示",
+      "viewList": "リスト表示",
+      "filter": {
+        "all": "すべて",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "クラウド",
+        "favorites": "お気に入り"
+      },
+      "noServers": "保存済みサーバーはありません",
+      "noServersHint": "クイック接続で始めるか、サービスカタログを探索してください。",
+      "noResults": "サーバーが見つかりません",
+      "noResultsHint": "\"{query}\" に一致するサーバーはありません",
+      "backToServers": "サーバーに戻る",
+      "addFavorite": "お気に入りに追加",
+      "removeFavorite": "お気に入りから削除",
+      "discoverTitle": "サービスを探す",
+      "discoverDescription": "29以上の統合クラウドサービス、S3互換ストレージ、WebDAVプロバイダーなどを閲覧できます。各サービスには素早いセットアップのための事前設定が含まれています。",
+      "searchServices": "サービスを検索...",
+      "discoverHint": "サービスをクリックして、最小限の入力で事前設定された接続をセットアップします。",
+      "category": {
+        "protocols": "プロトコル",
+        "objectStorage": "S3 / オブジェクトストレージ",
+        "webdav": "WebDAV & セルフホスト",
+        "cloudStorage": "クラウドストレージ",
+        "developer": "開発者向け"
+      }
     }
   }
 }

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { TransferProgressBar } from '../TransferProgressBar';
+import { Checkbox } from '../ui/Checkbox';
 import {
     X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield,
     Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers,
@@ -127,7 +128,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="AI Model Editor">
             <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-            <div className="relative bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 animate-scale-in">
+            <div className="relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Cpu size={20} className="text-purple-400" />
                     {isNew ? t('ai.settings.addModel') : t('ai.settings.editModel')}
@@ -177,42 +178,26 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                     <div>
                         <label className="block text-sm text-gray-400 mb-2">{t('ai.settings.capabilities')}</label>
                         <div className="flex flex-wrap gap-3">
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.supportsStreaming}
-                                    onChange={e => setFormData({ ...formData, supportsStreaming: e.target.checked })}
-                                    className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
-                                />
-                                <span>⚡ {t('ai.settings.streaming')}</span>
-                            </label>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.supportsTools}
-                                    onChange={e => setFormData({ ...formData, supportsTools: e.target.checked })}
-                                    className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
-                                />
-                                <span>🔧 {t('ai.settings.tools')}</span>
-                            </label>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.supportsVision}
-                                    onChange={e => setFormData({ ...formData, supportsVision: e.target.checked })}
-                                    className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
-                                />
-                                <span>👁 {t('ai.settings.vision')}</span>
-                            </label>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.supportsThinking}
-                                    onChange={e => setFormData({ ...formData, supportsThinking: e.target.checked })}
-                                    className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
-                                />
-                                <span>💭 {t('ai.settings.thinking')}</span>
-                            </label>
+                            <Checkbox
+                                checked={formData.supportsStreaming}
+                                onChange={(v) => setFormData({ ...formData, supportsStreaming: v })}
+                                label={<span className="text-sm">⚡ {t('ai.settings.streaming')}</span>}
+                            />
+                            <Checkbox
+                                checked={formData.supportsTools}
+                                onChange={(v) => setFormData({ ...formData, supportsTools: v })}
+                                label={<span className="text-sm">🔧 {t('ai.settings.tools')}</span>}
+                            />
+                            <Checkbox
+                                checked={formData.supportsVision}
+                                onChange={(v) => setFormData({ ...formData, supportsVision: v })}
+                                label={<span className="text-sm">👁 {t('ai.settings.vision')}</span>}
+                            />
+                            <Checkbox
+                                checked={formData.supportsThinking}
+                                onChange={(v) => setFormData({ ...formData, supportsThinking: v })}
+                                label={<span className="text-sm">💭 {t('ai.settings.thinking')}</span>}
+                            />
                         </div>
                     </div>
 
@@ -229,15 +214,11 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                     </div>
 
                     {/* Enabled Toggle */}
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={formData.isEnabled}
-                            onChange={e => setFormData({ ...formData, isEnabled: e.target.checked })}
-                            className="rounded border-gray-600 bg-gray-900 text-purple-500 focus:ring-purple-500"
-                        />
-                        <span>{t('ai.settings.enabled')}</span>
-                    </label>
+                    <Checkbox
+                        checked={formData.isEnabled}
+                        onChange={(v) => setFormData({ ...formData, isEnabled: v })}
+                        label={<span className="text-sm">{t('ai.settings.enabled')}</span>}
+                    />
                 </div>
 
                 {/* Actions */}
@@ -692,7 +673,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-4">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-            <div className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-xl shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
+            <div className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
                     <div className="flex items-center gap-3">
@@ -1502,25 +1483,21 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <p className="text-[10px] text-gray-500 mb-3">
                                     {t('ai.webSearch.description')}
                                 </p>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.advancedSettings?.webSearchEnabled || false}
-                                        onChange={(e) => {
-                                            const newSettings = {
-                                                ...settings,
-                                                advancedSettings: {
-                                                    ...settings.advancedSettings,
-                                                    webSearchEnabled: e.target.checked,
-                                                },
-                                            };
-                                            setSettings(newSettings);
-                                            saveSettings(newSettings);
-                                        }}
-                                        className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
-                                    />
-                                    <span className="text-gray-300">{t('ai.webSearch.enable')}</span>
-                                </label>
+                                <Checkbox
+                                    checked={settings.advancedSettings?.webSearchEnabled || false}
+                                    onChange={(v) => {
+                                        const newSettings = {
+                                            ...settings,
+                                            advancedSettings: {
+                                                ...settings.advancedSettings,
+                                                webSearchEnabled: v,
+                                            },
+                                        };
+                                        setSettings(newSettings);
+                                        saveSettings(newSettings);
+                                    }}
+                                    label={<span className="text-sm text-gray-300">{t('ai.webSearch.enable')}</span>}
+                                />
                                 <p className="text-[10px] text-gray-500 mt-2 italic">
                                     {t('ai.webSearch.providerNote')}
                                 </p>
@@ -1845,7 +1822,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                 return (
                     <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={() => { setAvailableModels(null); setModelFilter(''); }} role="dialog" aria-modal="true" aria-label="Available Models">
-                        <div className="bg-gray-800 rounded-xl border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
+                        <div className="bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
                             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                                 <div className="flex items-center gap-2">
                                     <List size={16} className="text-indigo-400" />

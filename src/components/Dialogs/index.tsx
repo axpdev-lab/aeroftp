@@ -51,7 +51,7 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
             <div
-                className={`bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 border ${accentMap[type]} overflow-hidden`}
+                className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-md w-full mx-4 border ${accentMap[type]} overflow-hidden`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-start gap-4 p-5">
@@ -108,7 +108,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={message}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-sm animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
                 <p className="text-gray-900 dark:text-gray-100 mb-4">{message}</p>
                 <div className="flex justify-end gap-2">
                     <button
@@ -153,7 +153,7 @@ export const InputDialog: React.FC<InputDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl w-96 animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl w-96 animate-scale-in">
                 <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{title}</h3>
                 <div className="relative mb-4">
                     <input
@@ -215,7 +215,7 @@ export const SyncNavDialog: React.FC<SyncNavDialogProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={missingPath}>
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-md animate-scale-in">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-md animate-scale-in">
                 <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
                     📁 {t('browser.newFolder')}
                 </h3>
@@ -431,7 +431,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={onClose}>
             <div
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[420px] max-h-[80vh] overflow-hidden animate-scale-in"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[420px] max-h-[80vh] overflow-hidden animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}

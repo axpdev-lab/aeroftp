@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
+import { Checkbox } from './ui/Checkbox';
 import {
     Loader2, Search, RefreshCw, Zap, X, FolderSync,
     Folder, Globe, File, AlertTriangle, Check,
@@ -1927,8 +1928,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         <>
                             <div className="sync-table-header">
                                 <div className="sync-col-check">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         checked={selectedPaths.size === comparisons.filter(c => !c.is_dir).length && comparisons.length > 0}
                                         onChange={() =>
                                             selectedPaths.size === comparisons.filter(c => !c.is_dir).length
@@ -1968,13 +1968,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                 >
                                                     <div className="sync-col-check">
                                                         {!comparison.is_dir ? (
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedPaths.has(comparison.relative_path)}
-                                                                onChange={() => toggleSelection(comparison.relative_path)}
-                                                                onClick={e => e.stopPropagation()}
-                                                                disabled={isSyncing}
-                                                            />
+                                                            <span onClick={e => e.stopPropagation()}>
+                                                                <Checkbox
+                                                                    checked={selectedPaths.has(comparison.relative_path)}
+                                                                    onChange={() => toggleSelection(comparison.relative_path)}
+                                                                    disabled={isSyncing}
+                                                                />
+                                                            </span>
                                                         ) : (
                                                             <span className="text-gray-500 text-xs">&mdash;</span>
                                                         )}

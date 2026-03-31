@@ -228,11 +228,11 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                         <td className="px-3 py-2 text-right">
                                             <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {!entry.isDir && (
-                                                    <button onClick={(e) => { e.stopPropagation(); state.handleExtract(entry.name); }} className="p-1.5 hover:bg-blue-100 dark:hover:bg-gray-600 rounded-md transition-colors" title={t('vault.extract')}>
+                                                    <button onClick={(e) => { e.stopPropagation(); state.handleExtract(entry.name); }} className="p-1.5 hover:bg-blue-100 dark:hover:bg-gray-600 rounded-lg transition-colors" title={t('vault.extract')}>
                                                         <Download size={14} />
                                                     </button>
                                                 )}
-                                                <button onClick={(e) => { e.stopPropagation(); state.handleRemove(entry.name, entry.isDir); }} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-md transition-colors text-red-400" title={t('vault.remove')}>
+                                                <button onClick={(e) => { e.stopPropagation(); state.handleRemove(entry.name, entry.isDir); }} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-400" title={t('vault.remove')}>
                                                     <Trash2 size={14} />
                                                 </button>
                                             </div>

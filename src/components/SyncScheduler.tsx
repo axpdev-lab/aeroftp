@@ -8,6 +8,7 @@ import { SyncSchedule, TimeWindow, Weekday } from '../types';
 import { useTranslation } from '../i18n';
 import { Clock, Play, Pause, CalendarDays } from 'lucide-react';
 import { logger } from '../utils/logger';
+import { Checkbox } from './ui/Checkbox';
 
 interface SyncSchedulerProps {
     disabled?: boolean;
@@ -146,16 +147,12 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
                     <Clock size={14} className="text-blue-400" />
                     {t('syncPanel.schedulerTitle')}
                 </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={schedule.enabled}
-                        onChange={toggleEnabled}
-                        disabled={disabled}
-                        className="w-3.5 h-3.5 accent-blue-500"
-                    />
-                    <span className="text-xs text-gray-500">{t('syncPanel.schedulerEnabled')}</span>
-                </label>
+                <Checkbox
+                    checked={schedule.enabled}
+                    onChange={toggleEnabled}
+                    disabled={disabled}
+                    label={<span className="text-xs text-gray-500">{t('syncPanel.schedulerEnabled')}</span>}
+                />
             </div>
 
             {schedule.enabled && (
@@ -194,17 +191,15 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
                     )}
 
                     {/* Time Window toggle */}
-                    <label className="flex items-center gap-1.5 cursor-pointer">
+                    <div className="flex items-center gap-1.5">
                         <CalendarDays size={12} className="text-purple-400" />
-                        <input
-                            type="checkbox"
+                        <Checkbox
                             checked={showTimeWindow}
                             onChange={toggleTimeWindow}
                             disabled={disabled}
-                            className="w-3 h-3 accent-purple-500"
+                            label={<span className="text-xs text-gray-500">{t('syncPanel.schedulerTimeWindow')}</span>}
                         />
-                        <span className="text-xs text-gray-500">{t('syncPanel.schedulerTimeWindow')}</span>
-                    </label>
+                    </div>
 
                     {/* Time Window details */}
                     {showTimeWindow && schedule.time_window && (

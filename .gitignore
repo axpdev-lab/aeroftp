@@ -88,4 +88,5 @@ bun.lock
 
 # Generated/cached files
 .cache/
-.claude/worktrees/
+.claude/
+.github/agents/

@@ -126,7 +126,7 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
-        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
       >
@@ -208,7 +208,7 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCreateLabel(); }}
                 placeholder={t('zohoworkdrive.labelName')}
-                className="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                className="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
               />
               <div className="flex items-center gap-1.5 mt-2">
                 {PRESET_COLORS.map(c => (
@@ -223,14 +223,14 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
               <div className="flex justify-end gap-2 mt-2.5">
                 <button
                   onClick={() => { setShowCreate(false); setNewName(''); }}
-                  className="px-2.5 py-1 text-xs rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  className="px-2.5 py-1 text-xs rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleCreateLabel}
                   disabled={!newName.trim() || creating}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creating && <Loader2 size={10} className="animate-spin" />}
                   {t('common.create')}

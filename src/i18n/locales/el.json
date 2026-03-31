@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift αποθήκευση αντικειμένων",
       "swiftTooltip": "OpenStack Swift — συμβατό με Blomp, OVH, Rackspace αποθήκευση cloud",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Συνδεθείτε χρησιμοποιώντας τυπικά πρωτόκολλα μεταφοράς αρχείων. Υποστηρίζει FTP, FTPS (κρυπτογραφημένο), SFTP (βασισμένο σε SSH) και Azure Blob Storage.",
+      "protocolsInfoLine2": "Εισαγάγετε τη διεύθυνση του διακομιστή, τη θύρα και τα διαπιστευτήρια για να ξεκινήσετε.",
+      "cloudInfoLine1": "Συνδεθείτε με τον λογαριασμό σας στο cloud. Ορισμένες υπηρεσίες χρησιμοποιούν OAuth (σύνδεση με ένα κλικ), άλλες απαιτούν κλειδί API ή κωδικό εφαρμογής από τις ρυθμίσεις του λογαριασμού σας.",
+      "cloudInfoLine2": "Ο δωρεάν αποθηκευτικός χώρος ποικίλλει ανά πάροχο - ελέγξτε κάθε υπηρεσία για λεπτομέρειες.",
+      "developerInfoLine1": "Ενσωματώσεις για ροές εργασίας ανάπτυξης. Περιηγηθείτε σε αποθετήρια, διαχειριστείτε εκδόσεις και μεταφορτώστε αρχεία απευθείας σε πλατφόρμες φιλοξενίας.",
+      "developerInfoLine2": "Απαιτεί προσωπικό διακριτικό πρόσβασης (PAT) ή κλειδί SSH για έλεγχο ταυτότητας."
     },
     "shortcuts": {
       "title": "Συντομεύσεις πληκτρολογίου",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Η συνεδρία έληξε (24ώ)",
       "clickToRenew": "Κάντε κλικ για ανανέωση συνεδρίας και σύνδεση",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Απόκρυψη διαπιστευτηρίων",
+      "showCredentials": "Εμφάνιση διαπιστευτηρίων"
     },
     "cyberTools": {
       "title": "Εργαλεία Ασφαλείας",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Σχόλιο",
       "perm_edit": "Επεξεργασία",
       "generateWithOptions": "Δημιουργία με επιλογές"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Οι διακομιστές μου",
+        "discover": "Ανακαλύψτε υπηρεσίες"
+      },
+      "quickConnect": "Γρήγορη σύνδεση",
+      "search": "Αναζήτηση...",
+      "searchServers": "Αναζήτηση διακομιστών...",
+      "viewGrid": "Προβολή πλέγματος",
+      "viewList": "Προβολή λίστας",
+      "filter": {
+        "all": "Όλα",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Αγαπημένα"
+      },
+      "noServers": "Δεν υπάρχουν αποθηκευμένοι διακομιστές",
+      "noServersHint": "Ξεκινήστε με μια γρήγορη σύνδεση ή εξερευνήστε τον κατάλογο υπηρεσιών.",
+      "noResults": "Δεν βρέθηκαν διακομιστές",
+      "noResultsHint": "Κανένας διακομιστής δεν αντιστοιχεί στο \"{query}\"",
+      "backToServers": "Πίσω στους διακομιστές",
+      "addFavorite": "Προσθήκη στα αγαπημένα",
+      "removeFavorite": "Αφαίρεση από τα αγαπημένα",
+      "discoverTitle": "Ανακαλύψτε υπηρεσίες",
+      "discoverDescription": "Περιηγηθείτε σε 29+ ενσωματωμένες υπηρεσίες cloud, αποθήκευση συμβατή με S3, παρόχους WebDAV και πολλά άλλα. Κάθε υπηρεσία διαθέτει προρυθμισμένες ρυθμίσεις για γρήγορη εγκατάσταση.",
+      "searchServices": "Αναζήτηση υπηρεσιών...",
+      "discoverHint": "Κάντε κλικ σε μια υπηρεσία για να ρυθμίσετε μια προρυθμισμένη σύνδεση με ελάχιστη εισαγωγή.",
+      "category": {
+        "protocols": "Πρωτόκολλα",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Αυτο-φιλοξενούμενο",
+        "cloudStorage": "Αποθήκευση Cloud",
+        "developer": "Προγραμματιστής"
+      }
     }
   }
 }

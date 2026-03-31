@@ -89,7 +89,7 @@ const SidebarItem: React.FC<SidebarItemProps> = React.memo(({
   return (
     <button
       aria-current={isActive ? 'page' : undefined}
-      className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+      className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
         isActive
           ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
           : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
@@ -418,7 +418,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         <button
           aria-current={isTrashView ? 'page' : undefined}
           onClick={() => onNavigateTrash ? onNavigateTrash() : undefined}
-          className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+          className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             isTrashView
               ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
               : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
@@ -513,7 +513,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       <div className="py-1">
         <button
           aria-expanded={showVolumes}
-          className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+          className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
             showVolumes
               ? 'text-blue-600 dark:text-blue-400'
               : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
@@ -549,7 +549,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             return (
               <div
                 key={vol.mount_point}
-                className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-md cursor-pointer transition-colors duration-100 ${
+                className={`flex flex-col gap-0.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors duration-100 ${
                   currentPath === vol.mount_point
                     ? 'bg-blue-100 dark:bg-blue-600/20'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700/50'
@@ -594,7 +594,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
             return (
               <div
                 key={part.device}
-                className="flex flex-col gap-0.5 px-2 py-1.5 rounded-md transition-colors duration-100 hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                className="flex flex-col gap-0.5 px-2 py-1.5 rounded-lg transition-colors duration-100 hover:bg-gray-100 dark:hover:bg-gray-700/50"
               >
                 <div className="flex items-center gap-2">
                   <HardDrive size={16} className="opacity-40 flex-shrink-0" />
@@ -637,7 +637,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
           {labelCounts.map(lc => (
             <button
               key={lc.id}
-              className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer rounded-md mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+              className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
                 activeTagFilter === lc.id
                   ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
                   : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'

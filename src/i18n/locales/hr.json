@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift pohrana objekata",
       "swiftTooltip": "OpenStack Swift — kompatibilno s Blomp, OVH, Rackspace pohranom u oblaku",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Povežite se koristeći standardne protokole za prijenos datoteka. Podržava FTP, FTPS (šifrirano), SFTP (bazirano na SSH) i Azure Blob Storage.",
+      "protocolsInfoLine2": "Unesite adresu poslužitelja, port i vjerodajnice za početak.",
+      "cloudInfoLine1": "Prijavite se svojim računom u oblaku. Neke usluge koriste OAuth (prijava jednim klikom), druge zahtijevaju API ključ ili lozinku aplikacije iz postavki vašeg računa.",
+      "cloudInfoLine2": "Besplatna pohrana varira ovisno o pružatelju - provjerite svaku uslugu za detalje.",
+      "developerInfoLine1": "Integracije za razvojne radne tijekove. Pregledajte repozitorije, upravljajte izdanjima i učitavajte datoteke izravno na platforme za hosting.",
+      "developerInfoLine2": "Zahtijeva osobni pristupni token (PAT) ili SSH ključ za autentifikaciju."
     },
     "shortcuts": {
       "title": "Tipkovnički prečaci",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesija istekla (24h)",
       "clickToRenew": "Kliknite za obnovu sesije i povezivanje",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Sakrij vjerodajnice",
+      "showCredentials": "Prikaži vjerodajnice"
     },
     "cyberTools": {
       "title": "Sigurnosni alati",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komentiranje",
       "perm_edit": "Uređivanje",
       "generateWithOptions": "Generiraj s opcijama"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Moji poslužitelji",
+        "discover": "Otkrijte usluge"
+      },
+      "quickConnect": "Brzo povezivanje",
+      "search": "Pretraži...",
+      "searchServers": "Pretraži poslužitelje...",
+      "viewGrid": "Prikaz mreže",
+      "viewList": "Prikaz popisa",
+      "filter": {
+        "all": "Sve",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Oblak",
+        "favorites": "Favoriti"
+      },
+      "noServers": "Nema spremljenih poslužitelja",
+      "noServersHint": "Započnite s brzim povezivanjem ili pregledajte katalog usluga.",
+      "noResults": "Nisu pronađeni poslužitelji",
+      "noResultsHint": "Nijedan poslužitelj ne odgovara \"{query}\"",
+      "backToServers": "Natrag na poslužitelje",
+      "addFavorite": "Dodaj u favorite",
+      "removeFavorite": "Ukloni iz favorita",
+      "discoverTitle": "Otkrijte usluge",
+      "discoverDescription": "Pregledajte 29+ integriranih usluga u oblaku, S3-kompatibilnih pohrana, WebDAV pružatelja i više. Svaka usluga dolazi s unaprijed konfiguriranim postavkama za brzo postavljanje.",
+      "searchServices": "Pretraži usluge...",
+      "discoverHint": "Kliknite na uslugu za postavljanje unaprijed konfigurirane veze s minimalnim unosom.",
+      "category": {
+        "protocols": "Protokoli",
+        "objectStorage": "S3 / Objektna pohrana",
+        "webdav": "WebDAV i samohostirano",
+        "cloudStorage": "Pohrana u oblaku",
+        "developer": "Razvojni alati"
+      }
     }
   }
 }

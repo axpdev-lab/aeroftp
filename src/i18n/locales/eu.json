@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektu biltegia",
       "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace hodei biltegiekin bateragarria",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Konektatu fitxategi transferentzia protokolo estandarrak erabiliz. FTP, FTPS (enkriptatua), SFTP (SSH oinarrikoa) eta Azure Blob Storage onartzen ditu.",
+      "protocolsInfoLine2": "Sartu zerbitzariaren helbidea, portua eta kredentzialak hasteko.",
+      "cloudInfoLine1": "Hasi saioa zure hodeiko kontuarekin. Zerbitzu batzuek OAuth erabiltzen dute (klik bakarreko saioa hastea), beste batzuek API gakoa edo aplikazio pasahitza behar dute zure kontuaren ezarpenetatik.",
+      "cloudInfoLine2": "Doako biltegiratzea hornitzailearen arabera aldatzen da - egiaztatu zerbitzu bakoitza xehetasunetarako.",
+      "developerInfoLine1": "Integrazio garapen lan-fluxuetarako. Arakatu biltegiak, kudeatu bertsioak eta igo fitxategiak zuzenean hosting plataformetara.",
+      "developerInfoLine2": "Sarbide token pertsonala (PAT) edo SSH gakoa behar da autentifikaziorako."
     },
     "shortcuts": {
       "title": "Teklatu lasterbideak",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Saioa iraungi da (24h)",
       "clickToRenew": "Egin klik saioa berritzeko eta konektatzeko",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ezkutatu kredentzialak",
+      "showCredentials": "Erakutsi kredentzialak"
     },
     "cyberTools": {
       "title": "Segurtasun tresnak",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Iruzkindu",
       "perm_edit": "Editatu",
       "generateWithOptions": "Sortu aukerekin"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Nire zerbitzariak",
+        "discover": "Zerbitzuak aurkitu"
+      },
+      "quickConnect": "Konexio azkarra",
+      "search": "Bilatu...",
+      "searchServers": "Zerbitzariak bilatu...",
+      "viewGrid": "Sareta ikuspegia",
+      "viewList": "Zerrenda ikuspegia",
+      "filter": {
+        "all": "Denak",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Gogokoak"
+      },
+      "noServers": "Ez dago gordetako zerbitzaririk",
+      "noServersHint": "Hasi konexio azkar batekin edo arakatu zerbitzu katalogoa.",
+      "noResults": "Ez da zerbitzaririk aurkitu",
+      "noResultsHint": "Ez dago zerbitzaririk \"{query}\" batekin bat datorrenik",
+      "backToServers": "Itzuli zerbitzarietara",
+      "addFavorite": "Gehitu gogokoetara",
+      "removeFavorite": "Kendu gogokoetatik",
+      "discoverTitle": "Zerbitzuak aurkitu",
+      "discoverDescription": "Arakatu 29+ hodeiko zerbitzu integratu, S3 bateragarriko biltegiratze, WebDAV hornitzaileak eta gehiago. Zerbitzu bakoitzak aldez aurretik konfiguratutako ezarpenak ditu konfigurazio azkarrerako.",
+      "searchServices": "Zerbitzuak bilatu...",
+      "discoverHint": "Egin klik zerbitzu batean aldez aurretik konfiguratutako konexioa ezartzeko sarrera minimoarekin.",
+      "category": {
+        "protocols": "Protokoloak",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV eta auto-ostatatua",
+        "cloudStorage": "Hodeiko biltegiratzea",
+        "developer": "Garatzailea"
+      }
     }
   }
 }

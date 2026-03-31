@@ -13,6 +13,7 @@ import * as React from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { Replace, Plus, Hash, AlertTriangle, X, Check, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { Checkbox } from './ui/Checkbox';
 
 /** A4-10: Validate filename — reject path separators, null bytes, and dot-only names */
 function isValidFilename(name: string): boolean {
@@ -281,15 +282,11 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                   />
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={caseSensitive}
-                  onChange={e => setCaseSensitive(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded"
-                />
-                {t('batchRename.caseSensitive') || 'Case sensitive'}
-              </label>
+              <Checkbox
+                checked={caseSensitive}
+                onChange={setCaseSensitive}
+                label={<span className="text-xs text-gray-600 dark:text-gray-400">{t('batchRename.caseSensitive') || 'Case sensitive'}</span>}
+              />
             </div>
           )}
 

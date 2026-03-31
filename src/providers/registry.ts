@@ -1025,7 +1025,7 @@ export const PROVIDERS: ProviderConfig[] = [
         features: {
             sync: false,
         },
-        helpUrl: 'https://sourceforge.net/p/forge/documentation/Release%20Files%20for%20Download/',
+        helpUrl: 'https://docs.aeroftp.app/protocols/sourceforge',
         signupUrl: 'https://sourceforge.net/user/registration',
     },
     {

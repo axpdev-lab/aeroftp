@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ExternalLink, LogIn, CheckCircle, AlertCircle, Loader2, Settings, FolderOpen, Save, LogOut, RefreshCw, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Checkbox } from './ui/Checkbox';
 import { useOAuth2, OAuthProvider, OAUTH_APPS } from '../hooks/useOAuth2';
 import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
@@ -348,12 +349,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     return (
       <div className="space-y-4">
         {/* Active Status Card */}
-        <div className={`p-4 rounded-xl border-2 ${provider === 'googledrive' ? 'border-red-500/30 bg-red-500/5' :
+        <div className={`p-4 rounded-lg border-2 ${provider === 'googledrive' ? 'border-red-500/30 bg-red-500/5' :
           provider === 'dropbox' ? 'border-blue-500/30 bg-blue-500/5' :
             'border-sky-500/30 bg-sky-500/5'
           }`}>
           <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${provider === 'googledrive' ? 'bg-red-500/20' :
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${provider === 'googledrive' ? 'bg-red-500/20' :
               provider === 'dropbox' ? 'bg-blue-500/20' :
                 'bg-sky-500/20'
               }`}>
@@ -384,12 +385,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 onLocalPathChange?.(e.target.value);
               }}
               placeholder="~/Downloads"
-              className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+              className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
             />
             <button
               type="button"
               onClick={browseLocalFolder}
-              className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl"
+              className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
               title={t('common.browse')}
             >
               <FolderOpen size={18} />
@@ -402,7 +403,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           onClick={handleQuickConnect}
           disabled={disabled || isAuthenticating}
           className={`
-            w-full py-3 px-4 rounded-xl text-white font-medium
+            w-full py-3 px-4 rounded-lg text-white font-medium
             flex items-center justify-center gap-2 transition-colors
             ${providerColors[provider]}
             disabled:opacity-50 disabled:cursor-not-allowed
@@ -425,7 +426,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         <div className="flex gap-2">
           <button
             onClick={handleUseNewAccount}
-            className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <RefreshCw size={14} />
             {t('connection.oauth.useDifferentAccount')}
@@ -433,7 +434,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-xl flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+            className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-lg flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
             title={t('connection.oauth.disconnectAccount')}
           >
             {isLoggingOut ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
@@ -489,12 +490,12 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               onLocalPathChange?.(e.target.value);
             }}
             placeholder="~/Downloads"
-            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
           />
           <button
             type="button"
             onClick={browseLocalFolder}
-            className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-xl"
+            className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
             title={t('common.browse')}
           >
             <FolderOpen size={18} />
@@ -503,21 +504,18 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       </div>
 
       {/* Save Connection Option */}
-      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-        <input
-          type="checkbox"
-          id={`save-oauth-${provider}`}
+      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        <Checkbox
           checked={wantToSave}
-          onChange={(e) => {
-            setWantToSave(e.target.checked);
-            onSaveConnectionChange?.(e.target.checked);
+          onChange={(v) => {
+            setWantToSave(v);
+            onSaveConnectionChange?.(v);
           }}
-          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          label={<div className="flex-1">
+            <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
+            <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
+          </div>}
         />
-        <label htmlFor={`save-oauth-${provider}`} className="flex-1">
-          <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
-          <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
-        </label>
         <Save size={16} className="text-gray-400" />
       </div>
 
@@ -533,7 +531,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               onConnectionNameChange?.(e.target.value);
             }}
             placeholder={t('connection.oauth.myProvider', { provider: providerNames[provider] })}
-            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-sm"
+            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
           />
         </div>
       )}

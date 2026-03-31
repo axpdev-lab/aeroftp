@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift lưu trữ đối tượng",
       "swiftTooltip": "OpenStack Swift — tương thích với Blomp, OVH, Rackspace lưu trữ đám mây",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Kết nối bằng các giao thức truyền tệp tiêu chuẩn. Hỗ trợ FTP, FTPS (mã hóa), SFTP (dựa trên SSH) và Azure Blob Storage.",
+      "protocolsInfoLine2": "Nhập địa chỉ máy chủ, cổng và thông tin đăng nhập để bắt đầu.",
+      "cloudInfoLine1": "Đăng nhập bằng tài khoản đám mây của bạn. Một số dịch vụ sử dụng OAuth (đăng nhập một lần nhấp), số khác yêu cầu khóa API hoặc mật khẩu ứng dụng từ cài đặt tài khoản.",
+      "cloudInfoLine2": "Dung lượng miễn phí khác nhau tùy nhà cung cấp - kiểm tra từng dịch vụ để biết chi tiết.",
+      "developerInfoLine1": "Tích hợp cho quy trình phát triển. Duyệt kho lưu trữ, quản lý bản phát hành và tải tệp trực tiếp lên nền tảng lưu trữ.",
+      "developerInfoLine2": "Yêu cầu mã thông báo truy cập cá nhân (PAT) hoặc khóa SSH để xác thực."
     },
     "shortcuts": {
       "title": "Phím tắt",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Phiên hết hạn (24 giờ)",
       "clickToRenew": "Nhấp để gia hạn phiên và kết nối",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ẩn thông tin đăng nhập",
+      "showCredentials": "Hiện thông tin đăng nhập"
     },
     "cyberTools": {
       "title": "Công cụ bảo mật",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Bình luận",
       "perm_edit": "Chỉnh sửa",
       "generateWithOptions": "Tạo với tùy chọn"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Máy chủ của tôi",
+        "discover": "Khám phá dịch vụ"
+      },
+      "quickConnect": "Kết nối nhanh",
+      "search": "Tìm kiếm...",
+      "searchServers": "Tìm máy chủ...",
+      "viewGrid": "Chế độ lưới",
+      "viewList": "Chế độ danh sách",
+      "filter": {
+        "all": "Tất cả",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Yêu thích"
+      },
+      "noServers": "Không có máy chủ đã lưu",
+      "noServersHint": "Bắt đầu với kết nối nhanh hoặc khám phá danh mục dịch vụ.",
+      "noResults": "Không tìm thấy máy chủ",
+      "noResultsHint": "Không có máy chủ nào khớp với \"{query}\"",
+      "backToServers": "Quay lại máy chủ",
+      "addFavorite": "Thêm vào yêu thích",
+      "removeFavorite": "Xóa khỏi yêu thích",
+      "discoverTitle": "Khám phá dịch vụ",
+      "discoverDescription": "Duyệt hơn 29 dịch vụ đám mây tích hợp, lưu trữ tương thích S3, nhà cung cấp WebDAV và nhiều hơn nữa. Mỗi dịch vụ đi kèm cài đặt được cấu hình sẵn để thiết lập nhanh.",
+      "searchServices": "Tìm dịch vụ...",
+      "discoverHint": "Nhấp vào dịch vụ để thiết lập kết nối được cấu hình sẵn với đầu vào tối thiểu.",
+      "category": {
+        "protocols": "Giao thức",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Tự lưu trữ",
+        "cloudStorage": "Lưu trữ đám mây",
+        "developer": "Nhà phát triển"
+      }
     }
   }
 }

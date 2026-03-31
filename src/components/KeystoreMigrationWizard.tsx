@@ -7,6 +7,7 @@ import { Shield, Server, Bot, Cloud, X, CheckCircle2, AlertTriangle, ArrowRight,
 import { secureStore } from '../utils/secureStorage';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
+import { Checkbox } from './ui/Checkbox';
 
 interface KeystoreMigrationWizardProps {
     isOpen: boolean;
@@ -162,7 +163,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
             className={`fixed inset-0 ${bgOverlay} flex items-center justify-center z-50`}
             onClick={e => e.target === e.currentTarget && onSkip()}
         >
-            <div className={`${bgPanel} rounded-xl shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
+            <div className={`${bgPanel} rounded-lg shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
                 {/* Header */}
                 <div className={`flex items-center justify-between px-5 py-4 border-b ${borderColor}`}>
                     <div className="flex items-center gap-3">
@@ -298,22 +299,20 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                             </div>
 
                             {/* Remove localStorage toggle */}
-                            <label className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} cursor-pointer ${isLightTheme ? 'bg-gray-50' : 'bg-gray-700/50'}`}>
-                                <input
-                                    type="checkbox"
+                            <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} ${isLightTheme ? 'bg-gray-50' : 'bg-gray-700/50'}`}>
+                                <Checkbox
                                     checked={removeLocalStorage}
-                                    onChange={e => setRemoveLocalStorage(e.target.checked)}
-                                    className="w-4 h-4 rounded accent-emerald-500"
+                                    onChange={setRemoveLocalStorage}
+                                    label={<div>
+                                        <div className={`text-sm font-medium ${textPrimary}`}>
+                                            {t('settings.migrationCleanup')}
+                                        </div>
+                                        <div className={`text-xs ${textSecondary}`}>
+                                            Recommended for maximum security
+                                        </div>
+                                    </div>}
                                 />
-                                <div>
-                                    <div className={`text-sm font-medium ${textPrimary}`}>
-                                        {t('settings.migrationCleanup')}
-                                    </div>
-                                    <div className={`text-xs ${textSecondary}`}>
-                                        Recommended for maximum security
-                                    </div>
-                                </div>
-                            </label>
+                            </div>
                         </div>
                     )}
                 </div>

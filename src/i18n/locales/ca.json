@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift emmagatzematge d'objectes",
       "swiftTooltip": "OpenStack Swift — compatible amb Blomp, OVH, Rackspace emmagatzematge al núvol",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Connecteu-vos mitjançant protocols estàndard de transferència de fitxers. Admet FTP, FTPS (xifrat), SFTP (basat en SSH) i Azure Blob Storage.",
+      "protocolsInfoLine2": "Introduïu l'adreça del servidor, el port i les credencials per començar.",
+      "cloudInfoLine1": "Inicieu sessió amb el vostre compte al núvol. Alguns serveis utilitzen OAuth (inici de sessió amb un clic), d'altres requereixen una clau API o contrasenya d'aplicació des de la configuració del vostre compte.",
+      "cloudInfoLine2": "L'emmagatzematge gratuït varia segons el proveïdor - consulteu cada servei per a més detalls.",
+      "developerInfoLine1": "Integracions per a fluxos de treball de desenvolupament. Navegueu pels repositoris, gestioneu versions i pugeu fitxers directament a plataformes d'allotjament.",
+      "developerInfoLine2": "Requereix un token d'accés personal (PAT) o una clau SSH per a l'autenticació."
     },
     "shortcuts": {
       "title": "Dreceres de Teclat",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sessió caducada (24h)",
       "clickToRenew": "Feu clic per renovar la sessió i connectar-vos",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Amaga credencials",
+      "showCredentials": "Mostra credencials"
     },
     "cyberTools": {
       "title": "Eines de seguretat",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Comentar",
       "perm_edit": "Editar",
       "generateWithOptions": "Genera amb opcions"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Els meus servidors",
+        "discover": "Descobreix serveis"
+      },
+      "quickConnect": "Connexió ràpida",
+      "search": "Cerca...",
+      "searchServers": "Cerca servidors...",
+      "viewGrid": "Vista de graella",
+      "viewList": "Vista de llista",
+      "filter": {
+        "all": "Tots",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Preferits"
+      },
+      "noServers": "Cap servidor desat",
+      "noServersHint": "Comenceu amb una connexió ràpida o exploreu el catàleg de serveis.",
+      "noResults": "No s'han trobat servidors",
+      "noResultsHint": "Cap servidor coincideix amb \"{query}\"",
+      "backToServers": "Torna als servidors",
+      "addFavorite": "Afegeix als preferits",
+      "removeFavorite": "Elimina dels preferits",
+      "discoverTitle": "Descobreix serveis",
+      "discoverDescription": "Navegueu per més de 29 serveis al núvol integrats, emmagatzematge compatible amb S3, proveïdors WebDAV i més. Cada servei inclou configuracions preestablertes per a una configuració ràpida.",
+      "searchServices": "Cerca serveis...",
+      "discoverHint": "Feu clic en un servei per configurar una connexió preconfigurada amb un mínim d'entrada.",
+      "category": {
+        "protocols": "Protocols",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV i autoallotjat",
+        "cloudStorage": "Emmagatzematge al núvol",
+        "developer": "Desenvolupador"
+      }
     }
   }
 }

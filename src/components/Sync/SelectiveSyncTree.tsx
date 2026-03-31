@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { FolderOpen, ChevronRight, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Checkbox } from '../ui/Checkbox';
 
 interface RemoteFolderEntry {
     path: string;
@@ -158,19 +159,17 @@ export const SelectiveSyncTree: React.FC<SelectiveSyncTreeProps> = ({
                                 ) : (
                                     <span className="w-4" />
                                 )}
-                                <label className={`flex items-center gap-1.5 text-xs cursor-pointer flex-1 ${
+                                <div className={`flex items-center gap-1.5 text-xs flex-1 ${
                                     isParentExcluded ? 'opacity-40' : isExcluded ? 'opacity-60 line-through' : ''
                                 }`}>
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         checked={!isExcluded && !isParentExcluded}
                                         onChange={() => toggleExclude(folder.path)}
                                         disabled={isParentExcluded}
-                                        className="rounded border-gray-500 text-cyan-500 focus:ring-cyan-500 flex-shrink-0"
                                     />
                                     <FolderOpen size={13} className="text-yellow-500 flex-shrink-0" />
                                     <span className="truncate">{folder.name}</span>
-                                </label>
+                                </div>
                             </div>
                         );
                     })

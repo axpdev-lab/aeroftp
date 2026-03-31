@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift object storage",
       "swiftTooltip": "OpenStack Swift — katugma sa Blomp, OVH, Rackspace cloud storage",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Kumonekta gamit ang mga karaniwang protocol sa paglilipat ng file. Sinusuportahan ang FTP, FTPS (naka-encrypt), SFTP (batay sa SSH), at Azure Blob Storage.",
+      "protocolsInfoLine2": "Ilagay ang iyong server address, port, at mga kredensyal para magsimula.",
+      "cloudInfoLine1": "Mag-sign in gamit ang iyong cloud account. Ang ilang serbisyo ay gumagamit ng OAuth (one-click login), ang iba naman ay nangangailangan ng API key o app password mula sa mga setting ng iyong account.",
+      "cloudInfoLine2": "Ang libreng storage ay iba-iba sa bawat provider - tingnan ang bawat serbisyo para sa mga detalye.",
+      "developerInfoLine1": "Mga integrasyon para sa mga workflow ng development. Mag-browse ng mga repository, pamahalaan ang mga release, at mag-upload ng mga file nang direkta sa mga hosting platform.",
+      "developerInfoLine2": "Nangangailangan ng personal access token (PAT) o SSH key para sa authentication."
     },
     "shortcuts": {
       "title": "Keyboard Shortcuts",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Na-expire ang session (24 oras)",
       "clickToRenew": "I-click upang i-renew ang session at kumonekta",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Itago ang mga kredensyal",
+      "showCredentials": "Ipakita ang mga kredensyal"
     },
     "cyberTools": {
       "title": "Security Tools",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Komento",
       "perm_edit": "I-edit",
       "generateWithOptions": "Bumuo na may mga opsyon"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Aking mga Server",
+        "discover": "Tuklasin ang mga Serbisyo"
+      },
+      "quickConnect": "Mabilis na Koneksyon",
+      "search": "Maghanap...",
+      "searchServers": "Maghanap ng mga server...",
+      "viewGrid": "Grid view",
+      "viewList": "List view",
+      "filter": {
+        "all": "Lahat",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Mga Paborito"
+      },
+      "noServers": "Walang naka-save na mga server",
+      "noServersHint": "Magsimula sa mabilis na koneksyon o tuklasin ang katalogo ng serbisyo.",
+      "noResults": "Walang nahanap na mga server",
+      "noResultsHint": "Walang server na tumutugma sa \"{query}\"",
+      "backToServers": "Bumalik sa mga server",
+      "addFavorite": "Idagdag sa mga paborito",
+      "removeFavorite": "Alisin sa mga paborito",
+      "discoverTitle": "Tuklasin ang mga Serbisyo",
+      "discoverDescription": "Mag-browse ng 29+ na pinagsama-samang serbisyo ng cloud, S3-compatible na storage, mga WebDAV provider, at marami pa. Ang bawat serbisyo ay may kasamang pre-configured na mga setting para sa mabilis na setup.",
+      "searchServices": "Maghanap ng mga serbisyo...",
+      "discoverHint": "Mag-click sa isang serbisyo para mag-setup ng pre-configured na koneksyon na may kaunting input.",
+      "category": {
+        "protocols": "Mga Protokol",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV at Self-hosted",
+        "cloudStorage": "Cloud Storage",
+        "developer": "Developer"
+      }
     }
   }
 }

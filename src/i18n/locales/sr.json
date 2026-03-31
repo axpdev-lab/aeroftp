@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift складиштење објеката",
       "swiftTooltip": "OpenStack Swift — компатибилно са Blomp, OVH, Rackspace складиштењем у облаку",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Повежите се користећи стандардне протоколе за пренос датотека. Подржава FTP, FTPS (шифровано), SFTP (базирано на SSH) и Azure Blob Storage.",
+      "protocolsInfoLine2": "Унесите адресу сервера, порт и акредитиве за почетак.",
+      "cloudInfoLine1": "Пријавите се са својим клауд налогом. Неки сервиси користе OAuth (пријава једним кликом), други захтевају API кључ или лозинку апликације из подешавања налога.",
+      "cloudInfoLine2": "Бесплатно складиште варира по пружаоцу - проверите сваки сервис за детаље.",
+      "developerInfoLine1": "Интеграције за развојне радне токове. Прегледајте репозиторијуме, управљајте издањима и отпремајте датотеке директно на хостинг платформе.",
+      "developerInfoLine2": "Потребан је лични приступни токен (PAT) или SSH кључ за аутентификацију."
     },
     "shortcuts": {
       "title": "Prečice na tastaturi",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Сесија истекла (24ч)",
       "clickToRenew": "Кликните за обнову сесије и повезивање",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Сакриј акредитиве",
+      "showCredentials": "Прикажи акредитиве"
     },
     "cyberTools": {
       "title": "Безбедносни алати",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Коментар",
       "perm_edit": "Уређивање",
       "generateWithOptions": "Генериши са опцијама"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Моји сервери",
+        "discover": "Откријте сервисе"
+      },
+      "quickConnect": "Брзо повезивање",
+      "search": "Претрага...",
+      "searchServers": "Претрага сервера...",
+      "viewGrid": "Приказ мреже",
+      "viewList": "Приказ листе",
+      "filter": {
+        "all": "Све",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Објектно",
+        "webdav": "WebDAV",
+        "cloud": "Облак",
+        "favorites": "Омиљени"
+      },
+      "noServers": "Нема сачуваних сервера",
+      "noServersHint": "Почните са брзим повезивањем или истражите каталог сервиса.",
+      "noResults": "Није пронађен ниједан сервер",
+      "noResultsHint": "Ниједан сервер не одговара \"{query}\"",
+      "backToServers": "Назад на сервере",
+      "addFavorite": "Додај у омиљене",
+      "removeFavorite": "Уклони из омиљених",
+      "discoverTitle": "Откријте сервисе",
+      "discoverDescription": "Прегледајте више од 29 интегрисаних клауд сервиса, S3-компатибилних складишта, WebDAV пружалаца и још много тога. Сваки сервис долази са унапред конфигурисаним подешавањима за брзо постављање.",
+      "searchServices": "Претрага сервиса...",
+      "discoverHint": "Кликните на сервис да подесите унапред конфигурисану везу са минималним уносом.",
+      "category": {
+        "protocols": "Протоколи",
+        "objectStorage": "S3 / Објектно складиште",
+        "webdav": "WebDAV и самохостовано",
+        "cloudStorage": "Клауд складиште",
+        "developer": "Програмер"
+      }
     }
   }
 }

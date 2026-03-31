@@ -34,7 +34,7 @@ export function GitHubLocalSyncWarning({
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
       <div
-        className="relative border border-amber-200 dark:border-amber-700 rounded-xl shadow-2xl w-[480px] animate-scale-in overflow-hidden"
+        className="relative border border-amber-200 dark:border-amber-700 rounded-lg shadow-2xl w-[480px] animate-scale-in overflow-hidden"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         role="dialog"
         aria-modal="true"

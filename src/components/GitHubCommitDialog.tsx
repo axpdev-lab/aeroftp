@@ -161,7 +161,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
 
       {/* Dialog */}
       <div
-        className="relative w-full max-w-md overflow-hidden rounded-xl border shadow-2xl animate-scale-in"
+        className="relative w-full max-w-md overflow-hidden rounded-lg border shadow-2xl animate-scale-in"
         style={{
           backgroundColor: 'var(--color-bg-secondary)',
           borderColor: 'var(--color-border)',

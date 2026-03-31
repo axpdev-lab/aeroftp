@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift storfa gwrthrychau",
       "swiftTooltip": "OpenStack Swift — yn gydnaws â Blomp, OVH, Rackspace storfa cwmwl",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Cysylltwch gan ddefnyddio protocolau trosglwyddo ffeiliau safonol. Yn cefnogi FTP, FTPS (wedi'i amgryptio), SFTP (seiliedig ar SSH), ac Azure Blob Storage.",
+      "protocolsInfoLine2": "Rhowch gyfeiriad y gweinydd, y porth a'r manylion adnabod i ddechrau.",
+      "cloudInfoLine1": "Mewngofnodwch gyda'ch cyfrif cwmwl. Mae rhai gwasanaethau'n defnyddio OAuth (mewngofnodi un clic), mae eraill angen allwedd API neu gyfrinair ap o osodiadau'ch cyfrif.",
+      "cloudInfoLine2": "Mae storfa am ddim yn amrywio yn ôl darparwr - gwiriwch bob gwasanaeth am fanylion.",
+      "developerInfoLine1": "Integreiddiadau ar gyfer llif gwaith datblygu. Porwch stordai, rheolwch ryddhau, a llwythwch ffeiliau'n uniongyrchol i lwyfannau lletya.",
+      "developerInfoLine2": "Angen tocyn mynediad personol (PAT) neu allwedd SSH ar gyfer dilysu."
     },
     "shortcuts": {
       "title": "Llwybrau Byr Bysellfwrdd",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesiwn wedi dod i ben (24a)",
       "clickToRenew": "Cliciwch i adnewyddu sesiwn a chysylltu",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Cuddio manylion",
+      "showCredentials": "Dangos manylion"
     },
     "cyberTools": {
       "title": "Offer diogelwch",
@@ -3611,6 +3619,43 @@
       "perm_comment": "Sylw",
       "perm_edit": "Golygu",
       "generateWithOptions": "Cynhyrchu gyda dewisiadau"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Fy Ngweinyddion",
+        "discover": "Darganfod Gwasanaethau"
+      },
+      "quickConnect": "Cysylltiad Cyflym",
+      "search": "Chwilio...",
+      "searchServers": "Chwilio gweinyddion...",
+      "viewGrid": "Golwg grid",
+      "viewList": "Golwg rhestr",
+      "filter": {
+        "all": "Pob un",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Ffefrynnau"
+      },
+      "noServers": "Dim gweinyddion wedi'u cadw",
+      "noServersHint": "Dechreuwch gyda chysylltiad cyflym neu archwiliwch y catalog gwasanaethau.",
+      "noResults": "Dim gweinyddion wedi'u canfod",
+      "noResultsHint": "Nid oes gweinyddion yn cyfateb i \"{query}\"",
+      "backToServers": "Yn ôl i weinyddion",
+      "addFavorite": "Ychwanegu at ffefrynnau",
+      "removeFavorite": "Tynnu o ffefrynnau",
+      "discoverTitle": "Darganfod Gwasanaethau",
+      "discoverDescription": "Porwch drwy 29+ o wasanaethau cwmwl integredig, storfa sy'n gydnaws â S3, darparwyr WebDAV, a mwy. Mae pob gwasanaeth yn dod gyda gosodiadau wedi'u rhag-ffurfweddu ar gyfer gosodiad cyflym.",
+      "searchServices": "Chwilio gwasanaethau...",
+      "discoverHint": "Cliciwch ar wasanaeth i sefydlu cysylltiad wedi'i ragffurfweddu gyda mewnbwn lleiaf.",
+      "category": {
+        "protocols": "Protocolau",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV a hunanletya",
+        "cloudStorage": "Storfa Cwmwl",
+        "developer": "Datblygwr"
+      }
     }
   }
 }

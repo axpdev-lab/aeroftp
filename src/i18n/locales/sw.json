@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift hifadhi ya vitu",
       "swiftTooltip": "OpenStack Swift — inayolingana na Blomp, OVH, Rackspace hifadhi ya wingu",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Unganisha kwa kutumia itifaki za kawaida za uhamishaji faili. Inasaidia FTP, FTPS (iliyosimbwa), SFTP (inayotegemea SSH), na Azure Blob Storage.",
+      "protocolsInfoLine2": "Ingiza anwani ya seva, mlango, na vitambulisho ili kuanza.",
+      "cloudInfoLine1": "Ingia kwa akaunti yako ya wingu. Huduma fulani hutumia OAuth (kuingia kwa kubofya mara moja), nyingine zinahitaji ufunguo wa API au nenosiri la programu kutoka mipangilio ya akaunti yako.",
+      "cloudInfoLine2": "Hifadhi ya bure hutofautiana kwa mtoa huduma - angalia kila huduma kwa maelezo.",
+      "developerInfoLine1": "Muunganisho kwa mtiririko wa kazi za maendeleo. Vinjari hazina, simamia matoleo na pakia faili moja kwa moja kwenye majukwaa ya kupangisha.",
+      "developerInfoLine2": "Inahitaji tokeni ya ufikiaji binafsi (PAT) au ufunguo wa SSH kwa uthibitishaji."
     },
     "shortcuts": {
       "title": "Njia za Mkato",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Kipindi kimeisha (saa 24)",
       "clickToRenew": "Bofya kuhuisha kipindi na kuunganisha",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ficha vitambulisho",
+      "showCredentials": "Onyesha vitambulisho"
     },
     "cyberTools": {
       "title": "Zana za Usalama",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Toa maoni",
       "perm_edit": "Hariri",
       "generateWithOptions": "Tengeneza na chaguzi"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Seva zangu",
+        "discover": "Gundua huduma"
+      },
+      "quickConnect": "Unganisho wa haraka",
+      "search": "Tafuta...",
+      "searchServers": "Tafuta seva...",
+      "viewGrid": "Mwonekano wa gridi",
+      "viewList": "Mwonekano wa orodha",
+      "filter": {
+        "all": "Zote",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Kitu",
+        "webdav": "WebDAV",
+        "cloud": "Wingu",
+        "favorites": "Vipendwa"
+      },
+      "noServers": "Hakuna seva zilizohifadhiwa",
+      "noServersHint": "Anza na unganisho wa haraka au chunguza katalogi ya huduma.",
+      "noResults": "Hakuna seva zilizopatikana",
+      "noResultsHint": "Hakuna seva zinazofanana na \"{query}\"",
+      "backToServers": "Rudi kwa seva",
+      "addFavorite": "Ongeza kwenye vipendwa",
+      "removeFavorite": "Ondoa kutoka vipendwa",
+      "discoverTitle": "Gundua huduma",
+      "discoverDescription": "Vinjari huduma 29+ za wingu zilizounganishwa, hifadhi inayoendana na S3, watoa huduma wa WebDAV na zaidi. Kila huduma inakuja na mipangilio iliyoandaliwa mapema kwa usanidi wa haraka.",
+      "searchServices": "Tafuta huduma...",
+      "discoverHint": "Bofya huduma ili kusanidi unganisho ulioandaliwa mapema kwa uingizaji mdogo.",
+      "category": {
+        "protocols": "Itifaki",
+        "objectStorage": "S3 / Hifadhi ya vitu",
+        "webdav": "WebDAV na kujihifadhi",
+        "cloudStorage": "Hifadhi ya wingu",
+        "developer": "Msanidi"
+      }
     }
   }
 }

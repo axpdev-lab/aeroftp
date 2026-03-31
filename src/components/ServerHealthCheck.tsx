@@ -352,7 +352,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-xl">
+                        <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
                             <Activity size={20} className="text-blue-600 dark:text-blue-400" />
                         </div>
                         <div>

@@ -778,7 +778,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
-        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-[600px] h-[70vh] flex flex-col animate-scale-in overflow-hidden"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[600px] h-[70vh] flex flex-col animate-scale-in overflow-hidden"
         role="dialog"
         aria-modal="true"
       >

@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift 오브젝트 스토리지",
       "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace 클라우드 스토리지와 호환",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "표준 파일 전송 프로토콜을 사용하여 연결합니다. FTP, FTPS(암호화), SFTP(SSH 기반) 및 Azure Blob Storage를 지원합니다.",
+      "protocolsInfoLine2": "서버 주소, 포트 및 자격 증명을 입력하여 시작하세요.",
+      "cloudInfoLine1": "클라우드 계정으로 로그인하세요. 일부 서비스는 OAuth(원클릭 로그인)를 사용하고, 다른 서비스는 계정 설정에서 API 키 또는 앱 비밀번호가 필요합니다.",
+      "cloudInfoLine2": "무료 저장 용량은 제공업체에 따라 다릅니다 - 자세한 내용은 각 서비스를 확인하세요.",
+      "developerInfoLine1": "개발 워크플로를 위한 통합 기능입니다. 리포지토리를 탐색하고, 릴리스를 관리하며, 호스팅 플랫폼에 파일을 직접 업로드할 수 있습니다.",
+      "developerInfoLine2": "인증을 위해 개인 액세스 토큰(PAT) 또는 SSH 키가 필요합니다."
     },
     "shortcuts": {
       "title": "단축키",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "세션 만료 (24시간)",
       "clickToRenew": "클릭하여 세션을 갱신하고 연결",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "자격 증명 숨기기",
+      "showCredentials": "자격 증명 표시"
     },
     "cyberTools": {
       "title": "보안 도구",
@@ -3582,6 +3590,43 @@
       "perm_comment": "댓글",
       "perm_edit": "편집",
       "generateWithOptions": "옵션으로 생성"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "내 서버",
+        "discover": "서비스 탐색"
+      },
+      "quickConnect": "빠른 연결",
+      "search": "검색...",
+      "searchServers": "서버 검색...",
+      "viewGrid": "그리드 보기",
+      "viewList": "목록 보기",
+      "filter": {
+        "all": "전체",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "클라우드",
+        "favorites": "즐겨찾기"
+      },
+      "noServers": "저장된 서버가 없습니다",
+      "noServersHint": "빠른 연결로 시작하거나 서비스 카탈로그를 탐색해 보세요.",
+      "noResults": "서버를 찾을 수 없습니다",
+      "noResultsHint": "\"{query}\"와 일치하는 서버가 없습니다",
+      "backToServers": "서버로 돌아가기",
+      "addFavorite": "즐겨찾기에 추가",
+      "removeFavorite": "즐겨찾기에서 제거",
+      "discoverTitle": "서비스 탐색",
+      "discoverDescription": "29개 이상의 통합 클라우드 서비스, S3 호환 스토리지, WebDAV 제공업체 등을 탐색하세요. 각 서비스에는 빠른 설정을 위한 사전 구성 설정이 포함되어 있습니다.",
+      "searchServices": "서비스 검색...",
+      "discoverHint": "서비스를 클릭하여 최소한의 입력으로 사전 구성된 연결을 설정하세요.",
+      "category": {
+        "protocols": "프로토콜",
+        "objectStorage": "S3 / 오브젝트 스토리지",
+        "webdav": "WebDAV & 셀프 호스팅",
+        "cloudStorage": "클라우드 스토리지",
+        "developer": "개발자"
+      }
     }
   }
 }

@@ -8,6 +8,7 @@
  */
 
 import React, { useState } from 'react';
+import { Checkbox } from '../ui/Checkbox';
 import {
     ArrowDown, ArrowUp, ArrowLeftRight,
     ShieldCheck, RotateCcw, Gauge, Zap, Shrink, HardDrive,
@@ -187,33 +188,24 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                 onToggle={() => setOpenSection('compare')}
             >
                 <div className="sync-compare-options">
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={options.compare_timestamp}
-                            onChange={e => onOptionsChange({ ...options, compare_timestamp: e.target.checked })}
-                            disabled={disabled}
-                        />
-                        {t('syncPanel.timestamp')}
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={options.compare_size}
-                            onChange={e => onOptionsChange({ ...options, compare_size: e.target.checked })}
-                            disabled={disabled}
-                        />
-                        {t('syncPanel.size')}
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={options.compare_checksum}
-                            onChange={e => onOptionsChange({ ...options, compare_checksum: e.target.checked })}
-                            disabled={disabled}
-                        />
-                        {t('syncPanel.checksum')}
-                    </label>
+                    <Checkbox
+                        checked={options.compare_timestamp}
+                        onChange={(v) => onOptionsChange({ ...options, compare_timestamp: v })}
+                        disabled={disabled}
+                        label={t('syncPanel.timestamp')}
+                    />
+                    <Checkbox
+                        checked={options.compare_size}
+                        onChange={(v) => onOptionsChange({ ...options, compare_size: v })}
+                        disabled={disabled}
+                        label={t('syncPanel.size')}
+                    />
+                    <Checkbox
+                        checked={options.compare_checksum}
+                        onChange={(v) => onOptionsChange({ ...options, compare_checksum: v })}
+                        disabled={disabled}
+                        label={t('syncPanel.checksum')}
+                    />
                 </div>
 
                 <div className="sync-adv-divider" />
@@ -344,16 +336,15 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                                 </label>
                             )}
                             {isSftp && (
-                                <label className="flex items-center gap-1.5 text-xs">
-                                    <input
-                                        type="checkbox"
+                                <span className="flex items-center gap-1.5 text-xs">
+                                    <Checkbox
                                         checked={deltaSyncEnabled}
-                                        onChange={e => onDeltaSyncEnabledChange(e.target.checked)}
+                                        onChange={onDeltaSyncEnabledChange}
                                         disabled={disabled}
                                     />
                                     <HardDrive size={12} className="text-indigo-400" />
                                     {t('syncPanel.deltaSync')}
-                                </label>
+                                </span>
                             )}
                         </div>
                     </>
@@ -411,18 +402,17 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
 
                 {/* Canary Mode */}
                 <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                            type="checkbox"
+                    <span className="flex items-center gap-2 text-xs">
+                        <Checkbox
                             checked={canaryMode}
-                            onChange={e => onCanaryModeChange(e.target.checked)}
+                            onChange={onCanaryModeChange}
                             disabled={disabled}
                         />
                         <FlaskConical size={12} className="text-amber-500" />
                         <span className="text-gray-700 dark:text-gray-300 font-medium">
                             {t('syncPanel.canaryMode') || 'Canary Mode'}
                         </span>
-                    </label>
+                    </span>
 
                     {canaryMode && (
                         <div className="pl-5 space-y-2">

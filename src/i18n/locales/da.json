@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektlagring",
       "swiftTooltip": "OpenStack Swift — kompatibel med Blomp, OVH, Rackspace cloudlagring",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Opret forbindelse med standard filoverførselsprotokoller. Understøtter FTP, FTPS (krypteret), SFTP (SSH-baseret) og Azure Blob Storage.",
+      "protocolsInfoLine2": "Indtast din serveradresse, port og legitimationsoplysninger for at komme i gang.",
+      "cloudInfoLine1": "Log ind med din cloud-konto. Nogle tjenester bruger OAuth (log ind med ét klik), andre kræver en API-nøgle eller app-adgangskode fra dine kontoindstillinger.",
+      "cloudInfoLine2": "Gratis lagring varierer efter udbyder - tjek hver tjeneste for detaljer.",
+      "developerInfoLine1": "Integrationer til udviklingsarbejdsgange. Gennemse repositorier, administrer udgivelser og upload filer direkte til hostingplatforme.",
+      "developerInfoLine2": "Kræver et personligt adgangstoken (PAT) eller SSH-nøgle til godkendelse."
     },
     "shortcuts": {
       "title": "Tastaturgenveje",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Session udløbet (24t)",
       "clickToRenew": "Klik for at forny sessionen og oprette forbindelse",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Skjul legitimationsoplysninger",
+      "showCredentials": "Vis legitimationsoplysninger"
     },
     "cyberTools": {
       "title": "Sikkerhedsværktøjer",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Kommenter",
       "perm_edit": "Rediger",
       "generateWithOptions": "Generer med indstillinger"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mine servere",
+        "discover": "Udforsk tjenester"
+      },
+      "quickConnect": "Hurtig forbindelse",
+      "search": "Søg...",
+      "searchServers": "Søg servere...",
+      "viewGrid": "Gittervisning",
+      "viewList": "Listevisning",
+      "filter": {
+        "all": "Alle",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favoritter"
+      },
+      "noServers": "Ingen gemte servere",
+      "noServersHint": "Start med en hurtig forbindelse eller udforsk tjenestekatalog.",
+      "noResults": "Ingen servere fundet",
+      "noResultsHint": "Ingen servere matcher \"{query}\"",
+      "backToServers": "Tilbage til servere",
+      "addFavorite": "Tilføj til favoritter",
+      "removeFavorite": "Fjern fra favoritter",
+      "discoverTitle": "Udforsk tjenester",
+      "discoverDescription": "Gennemse 29+ integrerede cloud-tjenester, S3-kompatibel lagring, WebDAV-udbydere og mere. Hver tjeneste leveres med forudkonfigurerede indstillinger til hurtig opsætning.",
+      "searchServices": "Søg tjenester...",
+      "discoverHint": "Klik på en tjeneste for at opsætte en forudkonfigureret forbindelse med minimal input.",
+      "category": {
+        "protocols": "Protokoller",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV & Selvhostet",
+        "cloudStorage": "Cloud-lagring",
+        "developer": "Udvikler"
+      }
     }
   }
 }

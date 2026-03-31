@@ -156,7 +156,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
             />
 
             {/* Dialog - Theme aware */}
-            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
                     <div className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                                 <button
                                     key={key}
                                     onClick={() => openUrl(link.url)}
-                                    className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all hover:scale-105"
+                                    className="flex flex-col items-center gap-2 p-4 rounded-lg bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-all hover:scale-105"
                                 >
                                     <link.Icon />
                                     <span className={`text-xs font-medium text-center leading-tight ${link.textColor}`}>
@@ -195,7 +195,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                             {/* Star on GitHub - free support */}
                             <button
                                 onClick={() => openUrl('https://github.com/axpdev-lab/aeroftp')}
-                                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:border-amber-300 dark:hover:border-amber-600 transition-all hover:scale-105"
+                                className="flex flex-col items-center gap-2 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:border-amber-300 dark:hover:border-amber-600 transition-all hover:scale-105"
                             >
                                 <Star size={24} className="text-amber-500" />
                                 <span className="text-xs font-medium text-center leading-tight text-amber-700 dark:text-amber-400">
@@ -241,7 +241,7 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                             const crypto = CRYPTO_ADDRESSES[selectedCrypto as keyof typeof CRYPTO_ADDRESSES];
                             const IconComponent = crypto.Icon;
                             return (
-                                <div className="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-4 animate-slide-down">
+                                <div className="bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg p-4 animate-slide-down">
                                     <div className="flex gap-4">
                                         {/* QR Code */}
                                         <div className="flex-shrink-0 bg-white p-2 rounded-lg shadow-sm">

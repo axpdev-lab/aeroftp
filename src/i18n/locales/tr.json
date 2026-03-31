@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift nesne depolama",
       "swiftTooltip": "OpenStack Swift — Blomp, OVH, Rackspace bulut depolama ile uyumlu",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Standart dosya aktarım protokolleri kullanarak bağlanın. FTP, FTPS (şifreli), SFTP (SSH tabanlı) ve Azure Blob Storage desteklenir.",
+      "protocolsInfoLine2": "Başlamak için sunucu adresinizi, bağlantı noktanızı ve kimlik bilgilerinizi girin.",
+      "cloudInfoLine1": "Bulut hesabınızla oturum açın. Bazı hizmetler OAuth (tek tıkla giriş) kullanır, diğerleri hesap ayarlarınızdan API anahtarı veya uygulama şifresi gerektirir.",
+      "cloudInfoLine2": "Ücretsiz depolama sağlayıcıya göre değişir - ayrıntılar için her hizmeti kontrol edin.",
+      "developerInfoLine1": "Geliştirme iş akışları için entegrasyonlar. Depoları göz atın, sürümleri yönetin ve dosyaları doğrudan barındırma platformlarına yükleyin.",
+      "developerInfoLine2": "Kimlik doğrulama için kişisel erişim belirteci (PAT) veya SSH anahtarı gerektirir."
     },
     "shortcuts": {
       "title": "Klavye Kısayolları",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Oturum süresi doldu (24sa)",
       "clickToRenew": "Oturumu yenilemek ve bağlanmak için tıklayın",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Kimlik bilgilerini gizle",
+      "showCredentials": "Kimlik bilgilerini göster"
     },
     "cyberTools": {
       "title": "Güvenlik Araçları",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Yorum",
       "perm_edit": "Düzenle",
       "generateWithOptions": "Seçeneklerle oluştur"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Sunucularım",
+        "discover": "Hizmetleri Keşfet"
+      },
+      "quickConnect": "Hızlı Bağlantı",
+      "search": "Ara...",
+      "searchServers": "Sunucu ara...",
+      "viewGrid": "Izgara görünümü",
+      "viewList": "Liste görünümü",
+      "filter": {
+        "all": "Tümü",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favoriler"
+      },
+      "noServers": "Kayıtlı sunucu yok",
+      "noServersHint": "Hızlı bağlantı ile başlayın veya hizmet kataloğunu keşfedin.",
+      "noResults": "Sunucu bulunamadı",
+      "noResultsHint": "\"{query}\" ile eşleşen sunucu yok",
+      "backToServers": "Sunuculara geri dön",
+      "addFavorite": "Favorilere ekle",
+      "removeFavorite": "Favorilerden kaldır",
+      "discoverTitle": "Hizmetleri Keşfet",
+      "discoverDescription": "29+ entegre bulut hizmeti, S3 uyumlu depolama, WebDAV sağlayıcıları ve daha fazlasına göz atın. Her hizmet hızlı kurulum için önceden yapılandırılmış ayarlarla gelir.",
+      "searchServices": "Hizmet ara...",
+      "discoverHint": "Minimum girişle önceden yapılandırılmış bir bağlantı kurmak için bir hizmete tıklayın.",
+      "category": {
+        "protocols": "Protokoller",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV ve Kendi Barındırma",
+        "cloudStorage": "Bulut Depolama",
+        "developer": "Geliştirici"
+      }
     }
   }
 }

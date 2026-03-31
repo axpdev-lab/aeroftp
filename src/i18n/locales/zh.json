@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift对象存储",
       "swiftTooltip": "OpenStack Swift — 兼容Blomp、OVH、Rackspace云存储",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "使用标准文件传输协议连接。支持 FTP、FTPS（加密）、SFTP（基于 SSH）和 Azure Blob Storage。",
+      "protocolsInfoLine2": "输入服务器地址、端口和凭据即可开始。",
+      "cloudInfoLine1": "使用您的云账户登录。某些服务使用 OAuth（一键登录），其他服务需要从账户设置中获取 API 密钥或应用密码。",
+      "cloudInfoLine2": "免费存储空间因提供商而异 - 请查看每项服务了解详情。",
+      "developerInfoLine1": "用于开发工作流的集成。浏览仓库、管理发布并将文件直接上传到托管平台。",
+      "developerInfoLine2": "需要个人访问令牌 (PAT) 或 SSH 密钥进行身份验证。"
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "会话已过期 (24小时)",
       "clickToRenew": "点击续期会话并连接",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "隐藏凭据",
+      "showCredentials": "显示凭据"
     },
     "cyberTools": {
       "title": "安全工具",
@@ -3582,6 +3590,43 @@
       "perm_comment": "评论",
       "perm_edit": "编辑",
       "generateWithOptions": "使用选项生成"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "我的服务器",
+        "discover": "发现服务"
+      },
+      "quickConnect": "快速连接",
+      "search": "搜索...",
+      "searchServers": "搜索服务器...",
+      "viewGrid": "网格视图",
+      "viewList": "列表视图",
+      "filter": {
+        "all": "全部",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "收藏"
+      },
+      "noServers": "没有保存的服务器",
+      "noServersHint": "从快速连接开始或浏览服务目录。",
+      "noResults": "未找到服务器",
+      "noResultsHint": "没有匹配 \"{query}\" 的服务器",
+      "backToServers": "返回服务器",
+      "addFavorite": "添加到收藏",
+      "removeFavorite": "从收藏中移除",
+      "discoverTitle": "发现服务",
+      "discoverDescription": "浏览 29+ 个集成云服务、S3 兼容存储、WebDAV 提供商等。每项服务都附带预配置设置，可快速设置。",
+      "searchServices": "搜索服务...",
+      "discoverHint": "点击服务以最少输入设置预配置连接。",
+      "category": {
+        "protocols": "协议",
+        "objectStorage": "S3 / 对象存储",
+        "webdav": "WebDAV 和自托管",
+        "cloudStorage": "云存储",
+        "developer": "开发者"
+      }
     }
   }
 }

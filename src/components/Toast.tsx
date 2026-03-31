@@ -78,7 +78,7 @@ export const Toast: React.FC<ToastProps> = ({
     return (
         <div
             className={`
-        flex items-start gap-3 p-4 rounded-xl border shadow-lg backdrop-blur-sm
+        flex items-start gap-3 p-4 rounded-lg border shadow-lg backdrop-blur-sm
         ${styles.bg} ${styles.border}
         transform transition-all duration-300 ease-out
         ${isExiting ? 'opacity-0 translate-x-8' : 'opacity-100 translate-x-0'}

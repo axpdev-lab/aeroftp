@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objectopslag",
       "swiftTooltip": "OpenStack Swift — compatibel met Blomp, OVH, Rackspace cloudopslag",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Maak verbinding met standaard bestandsoverdrachtsprotocollen. Ondersteunt FTP, FTPS (versleuteld), SFTP (SSH-gebaseerd) en Azure Blob Storage.",
+      "protocolsInfoLine2": "Voer het serveradres, de poort en inloggegevens in om te beginnen.",
+      "cloudInfoLine1": "Meld u aan met uw cloudaccount. Sommige diensten gebruiken OAuth (inloggen met één klik), andere vereisen een API-sleutel of app-wachtwoord uit uw accountinstellingen.",
+      "cloudInfoLine2": "Gratis opslagruimte verschilt per provider - controleer elke dienst voor details.",
+      "developerInfoLine1": "Integraties voor ontwikkelworkflows. Blader door repositories, beheer releases en upload bestanden rechtstreeks naar hostingplatforms.",
+      "developerInfoLine2": "Vereist een persoonlijk toegangstoken (PAT) of SSH-sleutel voor authenticatie."
     },
     "shortcuts": {
       "title": "Sneltoetsen",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sessie verlopen (24u)",
       "clickToRenew": "Klik om sessie te vernieuwen en te verbinden",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Inloggegevens verbergen",
+      "showCredentials": "Inloggegevens tonen"
     },
     "cyberTools": {
       "title": "Beveiligingstools",
@@ -3582,6 +3590,43 @@
       "perm_comment": "Reageren",
       "perm_edit": "Bewerken",
       "generateWithOptions": "Genereren met opties"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Mijn servers",
+        "discover": "Diensten ontdekken"
+      },
+      "quickConnect": "Snel verbinden",
+      "search": "Zoeken...",
+      "searchServers": "Servers zoeken...",
+      "viewGrid": "Rasterweergave",
+      "viewList": "Lijstweergave",
+      "filter": {
+        "all": "Alles",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favorieten"
+      },
+      "noServers": "Geen opgeslagen servers",
+      "noServersHint": "Begin met een snelle verbinding of verken de servicecatalogus.",
+      "noResults": "Geen servers gevonden",
+      "noResultsHint": "Geen servers komen overeen met \"{query}\"",
+      "backToServers": "Terug naar servers",
+      "addFavorite": "Toevoegen aan favorieten",
+      "removeFavorite": "Verwijderen uit favorieten",
+      "discoverTitle": "Diensten ontdekken",
+      "discoverDescription": "Blader door 29+ geïntegreerde clouddiensten, S3-compatibele opslag, WebDAV-providers en meer. Elke dienst wordt geleverd met vooraf geconfigureerde instellingen voor een snelle configuratie.",
+      "searchServices": "Diensten zoeken...",
+      "discoverHint": "Klik op een dienst om een vooraf geconfigureerde verbinding in te stellen met minimale invoer.",
+      "category": {
+        "protocols": "Protocollen",
+        "objectStorage": "S3 / Objectopslag",
+        "webdav": "WebDAV & Zelf gehost",
+        "cloudStorage": "Cloudopslag",
+        "developer": "Ontwikkelaar"
+      }
     }
   }
 }

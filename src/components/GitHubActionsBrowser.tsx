@@ -161,7 +161,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl max-h-[75vh] overflow-hidden rounded-xl shadow-2xl flex flex-col animate-scale-in"
+        className="relative w-full max-w-2xl max-h-[75vh] overflow-hidden rounded-lg shadow-2xl flex flex-col animate-scale-in"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}
         onClick={e => e.stopPropagation()}
       >

@@ -52,7 +52,7 @@ export function GoogleDriveCommentDialog({ filePath, fileName, onClose }: Google
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
-        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
       >

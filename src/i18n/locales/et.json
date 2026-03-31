@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektimälu",
       "swiftTooltip": "OpenStack Swift — ühilduv Blomp, OVH, Rackspace pilvemäluga",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Ühenduge standardsete failiedastusprotokollide kaudu. Toetab FTP, FTPS (krüptitud), SFTP (SSH-põhine) ja Azure Blob Storage.",
+      "protocolsInfoLine2": "Sisestage alustamiseks serveri aadress, port ja mandaadid.",
+      "cloudInfoLine1": "Logige sisse oma pilvekontoga. Mõned teenused kasutavad OAuth (ühe klõpsuga sisselogimine), teised nõuavad API võtit või rakenduse parooli teie konto seadetest.",
+      "cloudInfoLine2": "Tasuta salvestusruum varieerub pakkuja järgi - kontrollige iga teenust üksikasjade jaoks.",
+      "developerInfoLine1": "Integratsioonid arendustöövoogude jaoks. Sirvige hoidlaid, hallake väljalaskeid ja laadige faile otse hostimisplatvormidele üles.",
+      "developerInfoLine2": "Autentimiseks on vajalik isiklik juurdepääsuluba (PAT) või SSH võti."
     },
     "shortcuts": {
       "title": "Kiirklahvid",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Seanss aegunud (24h)",
       "clickToRenew": "Klõpsake seansi uuendamiseks ja ühendamiseks",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Peida mandaadid",
+      "showCredentials": "Kuva mandaadid"
     },
     "cyberTools": {
       "title": "Turvalisuse tööriistad",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Kommenteeri",
       "perm_edit": "Muuda",
       "generateWithOptions": "Loo valikutega"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Minu serverid",
+        "discover": "Avasta teenused"
+      },
+      "quickConnect": "Kiirühendus",
+      "search": "Otsi...",
+      "searchServers": "Otsi servereid...",
+      "viewGrid": "Ruudustikuvaade",
+      "viewList": "Loendivaade",
+      "filter": {
+        "all": "Kõik",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Lemmikud"
+      },
+      "noServers": "Salvestatud serverid puuduvad",
+      "noServersHint": "Alustage kiirühendusega või sirvige teenuste kataloogi.",
+      "noResults": "Servereid ei leitud",
+      "noResultsHint": "Ükski server ei vasta päringule \"{query}\"",
+      "backToServers": "Tagasi serverite juurde",
+      "addFavorite": "Lisa lemmikutesse",
+      "removeFavorite": "Eemalda lemmikutest",
+      "discoverTitle": "Avasta teenused",
+      "discoverDescription": "Sirvige 29+ integreeritud pilveteenust, S3-ühilduvat salvestusruumi, WebDAV pakkujaid ja palju muud. Iga teenus on eelkonfigureeritud kiireks seadistamiseks.",
+      "searchServices": "Otsi teenuseid...",
+      "discoverHint": "Klõpsake teenusel, et seadistada eelkonfigureeritud ühendus minimaalse sisendiga.",
+      "category": {
+        "protocols": "Protokollid",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV ja isehostitav",
+        "cloudStorage": "Pilvesalvestus",
+        "developer": "Arendaja"
+      }
     }
   }
 }

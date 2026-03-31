@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektové úložiště",
       "swiftTooltip": "OpenStack Swift — kompatibilní s Blomp, OVH, Rackspace cloudovým úložištěm",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Připojte se pomocí standardních protokolů pro přenos souborů. Podporuje FTP, FTPS (šifrovaný), SFTP (založený na SSH) a Azure Blob Storage.",
+      "protocolsInfoLine2": "Pro začátek zadejte adresu serveru, port a přihlašovací údaje.",
+      "cloudInfoLine1": "Přihlaste se svým cloudovým účtem. Některé služby používají OAuth (přihlášení jedním klikem), jiné vyžadují API klíč nebo heslo aplikace z nastavení vašeho účtu.",
+      "cloudInfoLine2": "Bezplatné úložiště se liší podle poskytovatele - podrobnosti naleznete u každé služby.",
+      "developerInfoLine1": "Integrace pro vývojářské pracovní postupy. Procházejte repozitáře, spravujte vydání a nahrávejte soubory přímo na hostingové platformy.",
+      "developerInfoLine2": "Vyžaduje osobní přístupový token (PAT) nebo SSH klíč pro ověření."
     },
     "shortcuts": {
       "title": "Klávesové zkratky",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Relace vypršela (24 hod.)",
       "clickToRenew": "Klikněte pro obnovení relace a připojení",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Skrýt přihlašovací údaje",
+      "showCredentials": "Zobrazit přihlašovací údaje"
     },
     "cyberTools": {
       "title": "Bezpečnostní nástroje",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Komentování",
       "perm_edit": "Úpravy",
       "generateWithOptions": "Vytvořit s možnostmi"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Moje servery",
+        "discover": "Objevit služby"
+      },
+      "quickConnect": "Rychlé připojení",
+      "search": "Hledat...",
+      "searchServers": "Hledat servery...",
+      "viewGrid": "Mřížkové zobrazení",
+      "viewList": "Seznamové zobrazení",
+      "filter": {
+        "all": "Vše",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Oblíbené"
+      },
+      "noServers": "Žádné uložené servery",
+      "noServersHint": "Začněte rychlým připojením nebo prozkoumejte katalog služeb.",
+      "noResults": "Žádné servery nenalezeny",
+      "noResultsHint": "Žádné servery neodpovídají \"{query}\"",
+      "backToServers": "Zpět na servery",
+      "addFavorite": "Přidat do oblíbených",
+      "removeFavorite": "Odebrat z oblíbených",
+      "discoverTitle": "Objevit služby",
+      "discoverDescription": "Procházejte 29+ integrovaných cloudových služeb, S3 kompatibilní úložiště, poskytovatele WebDAV a další. Každá služba je dodávána s předkonfigurovaným nastavením pro rychlé nastavení.",
+      "searchServices": "Hledat služby...",
+      "discoverHint": "Kliknutím na službu nastavíte předkonfigurované připojení s minimálním vstupem.",
+      "category": {
+        "protocols": "Protokoly",
+        "objectStorage": "S3 / Object Storage",
+        "webdav": "WebDAV a vlastní hosting",
+        "cloudStorage": "Cloudové úložiště",
+        "developer": "Vývojáři"
+      }
     }
   }
 }

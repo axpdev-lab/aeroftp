@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift stocare de obiecte",
       "swiftTooltip": "OpenStack Swift — compatibil cu Blomp, OVH, Rackspace stocare cloud",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Conectează-te folosind protocoale standard de transfer de fişiere. Suportă FTP, FTPS (criptat), SFTP (bazat pe SSH) şi Azure Blob Storage.",
+      "protocolsInfoLine2": "Introdu adresa serverului, portul şi datele de autentificare pentru a începe.",
+      "cloudInfoLine1": "Autentifică-te cu contul tău cloud. Unele servicii folosesc OAuth (autentificare cu un clic), altele necesită o cheie API sau parolă de aplicaţie din setările contului.",
+      "cloudInfoLine2": "Stocarea gratuită variază în funcţie de furnizor - verifică fiecare serviciu pentru detalii.",
+      "developerInfoLine1": "Integrări pentru fluxuri de lucru de dezvoltare. Răsfoieşte depozite, gestionează lansări şi încarcă fişiere direct pe platforme de găzduire.",
+      "developerInfoLine2": "Necesită un token de acces personal (PAT) sau o cheie SSH pentru autentificare."
     },
     "shortcuts": {
       "title": "Scurtături tastatură",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Sesiune expirată (24h)",
       "clickToRenew": "Faceți clic pentru a reînnoi sesiunea și a vă conecta",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Ascunde datele de autentificare",
+      "showCredentials": "Afișează datele de autentificare"
     },
     "cyberTools": {
       "title": "Instrumente de Securitate",
@@ -3582,6 +3590,43 @@
       "perm_comment": "Comentariu",
       "perm_edit": "Editare",
       "generateWithOptions": "Generează cu opțiuni"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Serverele mele",
+        "discover": "Descoperă servicii"
+      },
+      "quickConnect": "Conectare rapidă",
+      "search": "Caută...",
+      "searchServers": "Caută servere...",
+      "viewGrid": "Vizualizare grilă",
+      "viewList": "Vizualizare listă",
+      "filter": {
+        "all": "Toate",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Obiect",
+        "webdav": "WebDAV",
+        "cloud": "Cloud",
+        "favorites": "Favorite"
+      },
+      "noServers": "Niciun server salvat",
+      "noServersHint": "Începe cu o conectare rapidă sau explorează catalogul de servicii.",
+      "noResults": "Niciun server găsit",
+      "noResultsHint": "Niciun server nu corespunde cu \"{query}\"",
+      "backToServers": "Înapoi la servere",
+      "addFavorite": "Adaugă la favorite",
+      "removeFavorite": "Elimină din favorite",
+      "discoverTitle": "Descoperă servicii",
+      "discoverDescription": "Răsfoieşte peste 29 de servicii cloud integrate, stocare compatibilă S3, furnizori WebDAV şi multe altele. Fiecare serviciu vine cu setări preconfigurare pentru o configurare rapidă.",
+      "searchServices": "Caută servicii...",
+      "discoverHint": "Apasă pe un serviciu pentru a configura o conexiune preconfigurată cu efort minim.",
+      "category": {
+        "protocols": "Protocoale",
+        "objectStorage": "S3 / Stocare obiecte",
+        "webdav": "WebDAV şi auto-găzduit",
+        "cloudStorage": "Stocare în cloud",
+        "developer": "Dezvoltator"
+      }
     }
   }
 }

@@ -297,7 +297,7 @@ const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
 // ============ Updater Command ============
 
 fn update_download_supported(install_format: &str) -> bool {
-    matches!(install_format, "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg" | "snap")
+    matches!(install_format, "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg")
 }
 
 fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
@@ -309,7 +309,6 @@ fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
         "msi" => lower.ends_with(".msi"),
         "exe" => lower.ends_with(".exe"),
         "dmg" => lower.ends_with(".dmg"),
-        "snap" => lower.ends_with(".snap"),
         _ => false,
     }
 }
@@ -547,11 +546,73 @@ async fn download_update_artifact(
     Ok(())
 }
 
-fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -> Result<(), String> {
-    let bundle_file = std::fs::File::open(bundle_path)
-        .map_err(|error| format!("Failed to open Sigstore bundle: {}", error))?;
-    let bundle: sigstore::bundle::Bundle = serde_json::from_reader(bundle_file)
-        .map_err(|error| format!("Failed to parse Sigstore bundle: {}", error))?;
+#[derive(Serialize, Clone)]
+enum VerificationMode {
+    SigstoreVerified,
+    VerificationUnavailable,
+    VerificationFailed,
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateVerificationInfo {
+    mode: VerificationMode,
+    workflow_identity: Option<String>,
+    oidc_issuer: Option<String>,
+    artifact_sha256: String,
+    bundle_present: bool,
+    bundle_parsed: bool,
+    message: String,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadUpdateResponse {
+    path: String,
+    verification: UpdateVerificationInfo,
+}
+
+/// Verify a Sigstore bundle against a downloaded artifact.
+///
+/// # Return value contract
+/// Returns `Ok(UpdateVerificationInfo)` for ALL verification outcomes, including
+/// `VerificationMode::VerificationFailed`. This is intentional: callers MUST inspect
+/// `.mode` on the returned value to distinguish success from failure. The `Err` variant
+/// is reserved for infrastructure errors (e.g. unable to open the artifact file or
+/// initialize the Sigstore trust root) that prevent verification from even being attempted.
+///
+/// The `download_update` caller relies on this contract to delete the artifact and
+/// return a user-facing error when `mode == VerificationFailed`.
+fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -> Result<UpdateVerificationInfo, String> {
+    let artifact_sha256 = sha256_file_hex(artifact_path).unwrap_or_else(|_| "unknown".to_string());
+
+    let bundle_file = match std::fs::File::open(bundle_path) {
+        Ok(f) => f,
+        Err(_) => {
+            return Ok(UpdateVerificationInfo {
+                mode: VerificationMode::VerificationUnavailable,
+                workflow_identity: None,
+                oidc_issuer: None,
+                artifact_sha256,
+                bundle_present: false,
+                bundle_parsed: false,
+                message: "Sigstore bundle not found on GitHub Release".to_string(),
+            });
+        }
+    };
+
+    let bundle: sigstore::bundle::Bundle = match serde_json::from_reader(bundle_file) {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(UpdateVerificationInfo {
+                mode: VerificationMode::VerificationUnavailable,
+                workflow_identity: None,
+                oidc_issuer: None,
+                artifact_sha256,
+                bundle_present: true,
+                bundle_parsed: false,
+                message: format!("Sigstore bundle unparseable: {}", e),
+            });
+        }
+    };
 
     let mut artifact_file = std::fs::File::open(artifact_path)
         .map_err(|error| format!("Failed to open downloaded artifact: {}", error))?;
@@ -559,11 +620,28 @@ fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -
     let verifier = SigstoreVerifier::production()
         .map_err(|error| format!("Failed to initialize Sigstore trust root: {}", error))?;
     let identity = format!("{}{}", SIGSTORE_WORKFLOW_IDENTITY_PREFIX, tag);
-    let verification_policy = policy::Identity::new(identity, SIGSTORE_OIDC_ISSUER);
+    let verification_policy = policy::Identity::new(identity.clone(), SIGSTORE_OIDC_ISSUER);
 
-    verifier
-        .verify(&mut artifact_file, bundle, &verification_policy, true)
-        .map_err(|error| format!("Sigstore verification failed: {}", error))
+    match verifier.verify(&mut artifact_file, bundle, &verification_policy, true) {
+        Ok(_) => Ok(UpdateVerificationInfo {
+            mode: VerificationMode::SigstoreVerified,
+            workflow_identity: Some(identity),
+            oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
+            artifact_sha256,
+            bundle_present: true,
+            bundle_parsed: true,
+            message: "Successfully verified against GitHub Actions Sigstore transparency log".to_string(),
+        }),
+        Err(e) => Ok(UpdateVerificationInfo {
+            mode: VerificationMode::VerificationFailed,
+            workflow_identity: Some(identity),
+            oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
+            artifact_sha256,
+            bundle_present: true,
+            bundle_parsed: true,
+            message: format!("Signature verification failed: {}", e),
+        })
+    }
 }
 
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
@@ -797,7 +875,7 @@ fn sha256_file_hex(path: &Path) -> Result<String, String> {
 
 /// Download an update file with progress events
 #[tauri::command]
-async fn download_update(app: AppHandle, url: String) -> Result<String, String> {
+async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateResponse, String> {
     let asset = parse_release_download_url(&url)?;
 
     let download_directory = dirs::download_dir().unwrap_or_else(std::env::temp_dir);
@@ -810,31 +888,21 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
     let client = HttpClient::new();
 
     download_update_artifact(&app, &client, &asset.download_url, &destination, &asset.asset_name).await?;
-    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP").await?;
+    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP").await.ok(); // Ignore missing bundle here, verification checks it later
 
     let verify_destination = destination.clone();
     let verify_bundle = bundle_path.clone();
     let verify_tag = asset.tag.clone();
-    let verification_result = tokio::task::spawn_blocking(move || {
+    let verification_info = tokio::task::spawn_blocking(move || {
         verify_sigstore_bundle(&verify_destination, &verify_bundle, &verify_tag)
     })
     .await
-    .map_err(|error| format!("Sigstore verification task failed: {}", error))?;
+    .map_err(|error| format!("Sigstore verification task failed: {}", error))??;
 
-    if let Err(error) = verification_result {
-        // If it's a bundle format/parse error (not a signature mismatch), warn and continue.
-        // The artifact integrity is still verified by GitHub Release SHA-256 checksums.
-        // This handles the v0.1 (base64Signature) vs v0.3 (messageSignature) format mismatch
-        // that occurs when GitHub Actions generates bundles in a format our sigstore crate
-        // version doesn't recognize yet.
-        if error.contains("parse Sigstore bundle") || error.contains("unrecognized field") || error.contains("missing field") || error.contains("unknown bundle profile") {
-            tracing::warn!("[Updater] Sigstore bundle format not recognized, proceeding without signature verification: {}", error);
-            let _ = tokio::fs::remove_file(&bundle_path).await;
-        } else {
-            let _ = tokio::fs::remove_file(&destination).await;
-            let _ = tokio::fs::remove_file(&bundle_path).await;
-            return Err(error);
-        }
+    if matches!(verification_info.mode, VerificationMode::VerificationFailed) {
+        let _ = tokio::fs::remove_file(&destination).await;
+        let _ = tokio::fs::remove_file(&bundle_path).await;
+        return Err(verification_info.message);
     }
 
     validate_update_path(destination.to_string_lossy().as_ref())?;
@@ -842,7 +910,10 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
 
     let _ = tokio::fs::remove_file(&bundle_path).await;
 
-    Ok(destination.to_string_lossy().to_string())
+    Ok(DownloadUpdateResponse {
+        path: destination.to_string_lossy().to_string(),
+        verification: verification_info,
+    })
 }
 
 /// Spawn a fully detached relaunch process using setsid.
@@ -851,33 +922,94 @@ async fn download_update(app: AppHandle, url: String) -> Result<String, String> 
 #[cfg(unix)]
 #[allow(dead_code)]
 fn spawn_detached_relaunch(exe_path: &str) {
-    use std::os::unix::process::CommandExt;
+    let helper = std::path::Path::new("/usr/lib/aeroftp/aeroftp-restart-helper");
+    let parent_pid = std::process::id().to_string();
 
-    // First spawn a sleep process, then the actual binary — both without shell
+    if helper.exists() {
+        // Preferred: external helper survives parent exit
+        match std::process::Command::new("setsid")
+            .arg("--fork")
+            .arg(helper)
+            .arg(exe_path)
+            .arg(&parent_pid)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {
+                tracing::info!("Restart helper spawned for PID {}", parent_pid);
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("Restart helper failed: {}, falling back to direct spawn", e);
+            }
+        }
+    }
+
+    // Fallback: original approach with increased delay + SIGHUP ignore
+    use std::os::unix::process::CommandExt;
     let exe_owned = exe_path.to_string();
     let mut cmd = std::process::Command::new(&exe_owned);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    // SAFETY: setsid() creates a new session, detaching from parent's process group.
-    // This is safe because we haven't spawned threads in the child yet.
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
             // Brief pause to let parent exit cleanly
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_secs(5));
             Ok(())
         });
     }
     match cmd.spawn() {
-        Ok(_) => info!("Detached relaunch spawned: {}", exe_path),
+        Ok(_) => tracing::info!("Detached relaunch spawned: {}", exe_path),
         Err(e) => tracing::warn!("Failed to spawn relaunch: {}", e),
     }
 }
 
+fn write_update_marker(app: &AppHandle, from: &str, to: &str, format: &str, verification_mode: &str) {
+    let verified = verification_mode == "SigstoreVerified";
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        let marker = config_dir.join("last-update.json");
+        let data = serde_json::json!({
+            "updated_from": from,
+            "updated_to": to,
+            "install_format": format,
+            "verified": verified,
+            "verification_mode": verification_mode,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        let _ = std::fs::write(&marker, data.to_string());
+    }
+}
+
+#[tauri::command]
+async fn read_update_marker(app: AppHandle) -> Result<Option<String>, String> {
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        let marker = config_dir.join("last-update.json");
+        if marker.exists() {
+            return std::fs::read_to_string(&marker).map(Some).map_err(|e| e.to_string());
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+async fn clear_update_marker(app: AppHandle) -> Result<(), String> {
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        let marker = config_dir.join("last-update.json");
+        if marker.exists() {
+            let _ = std::fs::remove_file(marker);
+        }
+    }
+    Ok(())
+}
+
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
-async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+async fn install_appimage_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
 
     let downloaded = PathBuf::from(&downloaded_path);
@@ -926,6 +1058,11 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
     }
 
     let _ = std::fs::remove_file(&backup_path);
+    
+    let from_version = app.package_info().version.to_string();
+    write_update_marker(&app, &from_version, "unknown", "appimage", &verification_mode);
+    let _ = app.emit("update_install_phase", "restart");
+
     #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
@@ -936,7 +1073,7 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String) -> Res
 /// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
 /// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
-async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+async fn install_deb_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
     if !downloaded_path.to_ascii_lowercase().ends_with(".deb") {
         return Err("Downloaded update is not a .deb package".to_string());
@@ -948,6 +1085,7 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
     }
 
     let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
         .arg(&downloaded_path)
@@ -962,6 +1100,11 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
 
     let current_exe = std::env::current_exe()
         .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+        
+    let from_version = app.package_info().version.to_string();
+    write_update_marker(&app, &from_version, "unknown", "deb", &verification_mode);
+    let _ = app.emit("update_install_phase", "restart");
+
     #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
@@ -971,7 +1114,7 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String) -> Result<(
 /// Install an .rpm package via pkexec with branded Polkit dialog and restart the app.
 /// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
-async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+async fn install_rpm_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
     if !downloaded_path.to_ascii_lowercase().ends_with(".rpm") {
         return Err("Downloaded update is not an .rpm package".to_string());
@@ -983,6 +1126,7 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
     }
 
     let package_hash = sha256_file_hex(Path::new(&downloaded_path))?;
+    let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
         .arg(&downloaded_path)
@@ -997,6 +1141,11 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
 
     let current_exe = std::env::current_exe()
         .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
+        
+    let from_version = app.package_info().version.to_string();
+    write_update_marker(&app, &from_version, "unknown", "rpm", &verification_mode);
+    let _ = app.emit("update_install_phase", "restart");
+
     #[cfg(unix)]
     spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
     app.exit(0);
@@ -1006,7 +1155,7 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String) -> Result<(
 /// Launch Windows installer (.msi or .exe) and exit the app
 #[cfg(windows)]
 #[tauri::command]
-async fn install_windows_update(app: AppHandle, downloaded_path: String) -> Result<(), String> {
+async fn install_windows_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
     let downloaded = std::path::Path::new(&downloaded_path);
     if !downloaded.exists() {
         return Err("Downloaded file not found".to_string());
@@ -1033,6 +1182,10 @@ async fn install_windows_update(app: AppHandle, downloaded_path: String) -> Resu
         }
         _ => return Err(format!("Unknown installer format: .{}", ext)),
     }
+
+    let from_version = app.package_info().version.to_string();
+    write_update_marker(&app, &from_version, "unknown", ext.as_str(), &verification_mode);
+    let _ = app.emit("update_install_phase", "restart");
 
     // Give installer a moment to start, then exit
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -8320,6 +8473,8 @@ pub fn run() {
             get_system_info,
             // Updater commands
             check_update,
+            read_update_marker,
+            clear_update_marker,
             log_update_detection,
             download_update,
             install_appimage_update,

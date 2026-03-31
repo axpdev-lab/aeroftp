@@ -43,7 +43,7 @@ export const ScanningToast: React.FC<ScanningToastProps> = React.memo(({ state, 
       <div
         className="
           pointer-events-auto
-          flex items-center gap-3 px-5 py-3.5 rounded-xl
+          flex items-center gap-3 px-5 py-3.5 rounded-lg
           border shadow-2xl backdrop-blur-md
           bg-white/90 dark:bg-gray-800/90
           border-gray-200 dark:border-gray-700

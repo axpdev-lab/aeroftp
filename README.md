@@ -77,7 +77,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (25 protocols, sync, share)
+├── AeroCloud    - Personal cloud (26 protocols, sync, share)
 ├── AeroFile     - Professional file manager
 ├── AeroSync     - Bidirectional sync engine
 ├── AeroVault    - Military-grade encryption
@@ -121,7 +121,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, share links (expiry) |
 | **GitHub** | PAT / Device Flow | Repository as filesystem, single-file commits plus atomic batch upload/delete flows, release assets (2 GiB), branch workflow for protected branches, auto PR creation |
-| **SourceForge** | SSH (SFTP) | *Coming soon* - SFTP preset with SourceForge project paths, file release management |
+| **SourceForge** | SSH (SFTP) | SFTP preset with SourceForge project paths, file release management |
 
 **Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) with maturity badges shown in the setup wizard. 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display where the provider exposes it, share links, and Dropbox-style conflict naming.
 
@@ -293,7 +293,7 @@ aeroftp-cli ls --profile "My Google Drive" /
 
 **Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `head`, `tail`, `touch`, `hashsum`, `check`, `find`, `stat`, `df`, `tree`, `about`, `dedupe`, `sync`, `link`, `batch`, `profiles`
 
-**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, Felicloud + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
+**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, SourceForge, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, Felicloud + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
 
 **Features**:
 - **`--profile` vault profiles** - connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows

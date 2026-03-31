@@ -708,7 +708,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             analyser={analyserRef.current}
                             shader={glShader}
                             isPlaying={playback.isPlaying}
-                            className={isFullscreen ? '' : 'rounded-xl'}
+                            className={isFullscreen ? '' : 'rounded-lg'}
                             onContextLost={() => {
                                 // Auto-fallback to Canvas 2D when WebGL context is lost
                                 logger.warn('WebGL context lost — falling back to Canvas 2D');
@@ -721,13 +721,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             mode={visualizerMode}
                             isPlaying={playback.isPlaying}
                             cyberMode={cyberMode}
-                            className={isFullscreen ? '' : 'rounded-xl'}
+                            className={isFullscreen ? '' : 'rounded-lg'}
                         />
                     )}
 
                     {/* Buffering overlay */}
                     {isBuffering && !loadError && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
                             <div className="flex flex-col items-center gap-2">
                                 <Loader2 size={32} className="text-cyan-400 animate-spin" />
                                 <span className="text-sm text-gray-300">
@@ -739,7 +739,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
                     {/* Error overlay with retry button */}
                     {loadError && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-xl">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-lg">
                             <div className="flex flex-col items-center gap-3 text-center px-4">
                                 <AlertTriangle size={40} className="text-yellow-500" />
                                 <span className="text-sm text-red-400">{loadError}</span>

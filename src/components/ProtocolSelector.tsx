@@ -7,6 +7,7 @@
  */
 
 import React, { useState } from 'react';
+import { Checkbox } from './ui/Checkbox';
 import {
     Server,
     Cloud,
@@ -155,8 +156,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
     },
-    // SourceForge: hidden in production until provider confirmation and testing
-    ...(import.meta.env.DEV ? [{
+    {
         type: 'sftp' as const,
         name: 'SourceForge',
         icon: <SourceForgeLogo size={18} />,
@@ -166,7 +166,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-orange-500',
         tooltip: t('protocol.sourceforgeTooltip'),
         providerId: 'sourceforge',
-    }] : []),
+    },
     // Service Providers (GitHub first, then cloud services)
     {
         type: 'github',
@@ -402,8 +402,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
     { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
-    // SourceForge: hidden in production until provider confirmation
-    ...(import.meta.env.DEV ? [{ type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' }] : []),
+    { type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
     { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
@@ -483,7 +482,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                     type="button"
                     onClick={() => !disabled && handleOpenChange(!isOpen)}
                     disabled={disabled}
-                    className="w-full px-4 py-3 pl-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-left cursor-pointer focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between"
+                    className="w-full px-4 py-3 pl-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-left cursor-pointer focus:ring-2 focus:ring-blue-500 focus:border-transparent flex items-center justify-between"
                 >
                     <span className={selectedProtocol ? '' : 'text-gray-400'}>
                         {selectedProtocol
@@ -665,50 +664,63 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const [showInsecureCertModal, setShowInsecureCertModal] = useState(false);
 
     if (protocol === 'sftp') {
+        const hasKeyConfig = !!(options.private_key_path || options.key_passphrase);
+        const [sshOpen, setSshOpen] = useState(hasKeyConfig);
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                {/* Collapsible SSH Auth header */}
+                <button
+                    type="button"
+                    onClick={() => setSshOpen(!sshOpen)}
+                    className="w-full flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                >
+                    <ChevronDown size={14} className={`transition-transform duration-200 ${sshOpen ? '' : '-rotate-90'}`} />
                     <Lock size={14} />
                     {t('protocol.sshAuth')}
-                </div>
-                <p className="text-xs text-gray-500">
-                    {t('protocol.sshAuthHelp')}
-                </p>
-                <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('protocol.privateKeyPath')}</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={options.private_key_path || ''}
-                            onChange={(e) => onChange({ ...options, private_key_path: e.target.value })}
-                            disabled={disabled}
-                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={t('protocol.privateKeyPlaceholder')}
-                        />
-                        {onBrowseKeyFile && (
-                            <button
-                                type="button"
-                                onClick={onBrowseKeyFile}
-                                disabled={disabled}
-                                className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
-                                title={t('protocol.browseKeyFile')}
-                            >
-                                <HardDrive size={16} />
-                            </button>
+                    <span className="text-xs font-normal text-gray-400">({t('common.optional')})</span>
+                </button>
+                {sshOpen && (
+                    <div className="space-y-3 animate-fade-in-down">
+                        <p className="text-xs text-gray-500">
+                            {t('protocol.sshAuthHelp')}
+                        </p>
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5">{t('protocol.privateKeyPath')}</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={options.private_key_path || ''}
+                                    onChange={(e) => onChange({ ...options, private_key_path: e.target.value })}
+                                    disabled={disabled}
+                                    className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                    placeholder={t('protocol.privateKeyPlaceholder')}
+                                />
+                                {onBrowseKeyFile && (
+                                    <button
+                                        type="button"
+                                        onClick={onBrowseKeyFile}
+                                        disabled={disabled}
+                                        className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
+                                        title={t('protocol.browseKeyFile')}
+                                    >
+                                        <HardDrive size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        {options.private_key_path && (
+                            <div>
+                                <label className="block text-sm font-medium mb-1.5">{t('protocol.keyPassphrase')}</label>
+                                <input
+                                    type="password"
+                                    value={options.key_passphrase || ''}
+                                    onChange={(e) => onChange({ ...options, key_passphrase: e.target.value })}
+                                    disabled={disabled}
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                    placeholder={t('protocol.keyPassphraseHelp')}
+                                />
+                            </div>
                         )}
-                    </div>
-                </div>
-                {options.private_key_path && (
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">{t('protocol.keyPassphrase')}</label>
-                        <input
-                            type="password"
-                            value={options.key_passphrase || ''}
-                            onChange={(e) => onChange({ ...options, key_passphrase: e.target.value })}
-                            disabled={disabled}
-                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
-                            placeholder={t('protocol.keyPassphraseHelp')}
-                        />
                     </div>
                 )}
                 <div>
@@ -720,7 +732,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         disabled={disabled}
                         min={5}
                         max={300}
-                        className="w-24 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        className="w-24 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                     />
                 </div>
             </div>
@@ -797,7 +809,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                         placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
                         required
                     />
@@ -843,7 +855,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                 placeholder={endpointPlaceholder}
                             />
                         ) : (
@@ -854,12 +866,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.accountId || ''}
                                     onChange={(e) => handleAccountIdChange(e.target.value)}
                                     disabled={disabled}
-                                    className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-xl border-r-0 flex-1 min-w-0' : 'rounded-xl w-full'}`}
+                                    className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
                                     placeholder={accountIdField.placeholder || 'Account ID'}
                                     required={accountIdField.required}
                                 />
                                 {endpointFixedPart && (
-                                    <span className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-xl text-sm text-gray-500 dark:text-gray-300 whitespace-nowrap">
+                                    <span className="px-3 py-2.5 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm text-gray-500 dark:text-gray-300 whitespace-nowrap">
                                         {endpointFixedPart}
                                     </span>
                                 )}
@@ -883,7 +895,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.region || ''}
                                     onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                 >
                                     <option value="">{t('protocol.selectRegion')}</option>
                                     {regionField.options!.map(opt => (
@@ -896,7 +908,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.region || ''}
                                     onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                     placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
                                 />
                             )}
@@ -925,7 +937,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                         disabled={disabled || !!endpointLocked}
-                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
                                         <option value="">{t('protocol.selectRegion')}</option>
                                         {endpointField.options.map(opt => (
@@ -938,7 +950,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                         disabled={disabled || !!endpointLocked}
-                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         placeholder={endpointPlaceholder}
                                     />
                                 )}
@@ -973,7 +985,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled || !!endpointLocked}
-                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <option value="">{t('protocol.selectRegion')}</option>
                                 {endpointField.options.map(opt => (
@@ -986,7 +998,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled || !!endpointLocked}
-                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 placeholder={endpointPlaceholder}
                             />
                         )}
@@ -997,16 +1009,12 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                 )}
 
                 {(showEndpoint || hasAccountIdTemplate) && (
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={options.pathStyle || false}
-                            onChange={(e) => onChange({ ...options, pathStyle: e.target.checked })}
-                            disabled={disabled}
-                            className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                        />
-                        {t('protocol.pathStyle')}
-                    </label>
+                    <Checkbox
+                        checked={options.pathStyle || false}
+                        onChange={(v) => onChange({ ...options, pathStyle: v })}
+                        disabled={disabled}
+                        label={<span className="text-sm">{t('protocol.pathStyle')}</span>}
+                    />
                 )}
                 {!isEditing && (providerConfig?.helpUrl || providerConfig?.signupUrl) && (
                     <div className="flex items-center gap-3 mt-1">
@@ -1110,7 +1118,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                         placeholder={t('protocol.azureContainerPlaceholder')}
                         required
                     />
@@ -1174,7 +1182,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={currentTlsMode}
                         onChange={(e) => onChange({ ...options, tlsMode: e.target.value as FtpTlsMode })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                     >
                         {protocol === 'ftp' && (
                             <option value="explicit_if_available">{t('protocol.encryptionExplicitIfAvailable')}</option>
@@ -1189,27 +1197,23 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
 
                 {/* Accept invalid certificates (only when TLS is used) */}
                 {currentTlsMode !== 'none' && (
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={options.verifyCert === false}
-                            onChange={(e) => {
-                                if (e.target.checked) {
-                                    setShowInsecureCertModal(true);
-                                } else {
-                                    onChange({ ...options, verifyCert: true });
-                                }
-                            }}
-                            disabled={disabled}
-                            className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                        />
-                        {t('protocol.acceptInvalidCerts')}
-                    </label>
+                    <Checkbox
+                        checked={options.verifyCert === false}
+                        onChange={(v) => {
+                            if (v) {
+                                setShowInsecureCertModal(true);
+                            } else {
+                                onChange({ ...options, verifyCert: true });
+                            }
+                        }}
+                        disabled={disabled}
+                        label={<span className="text-sm">{t('protocol.acceptInvalidCerts')}</span>}
+                    />
                 )}
 
                 {/* Insecure warning — only when user explicitly chooses plain FTP */}
                 {showInsecureWarning && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                         <div className="flex items-start gap-2">
                             <ShieldCheck size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
                             <div>

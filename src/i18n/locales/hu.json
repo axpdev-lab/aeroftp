@@ -1306,7 +1306,13 @@
       "swiftDesc": "OpenStack Swift objektumtárhely",
       "swiftTooltip": "OpenStack Swift — kompatibilis a Blomp, OVH, Rackspace felhőtárhellyel",
       "megaS4Desc": "MEGA S4 Object Storage (Pro plan, 4 regions)",
-      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies"
+      "megaS4Tooltip": "MEGA S4 Object Storage - S3-compatible, 4 regions (EU/CA), presigned URLs, IAM policies",
+      "protocolsInfoLine1": "Csatlakozzon szabványos fájlátviteli protokollokkal. Támogatja az FTP, FTPS (titkosított), SFTP (SSH-alapú) és Azure Blob Storage protokollokat.",
+      "protocolsInfoLine2": "Adja meg a szerver címét, portját és hitelesítő adatait a kezdéshez.",
+      "cloudInfoLine1": "Jelentkezzen be felhőfiókjával. Egyes szolgáltatások OAuth-t használnak (egykattintásos bejelentkezés), mások API-kulcsot vagy alkalmazásjelszót igényelnek a fiókbeállításokból.",
+      "cloudInfoLine2": "Az ingyenes tárhelykapacitás szolgáltatónként változik - ellenőrizze az egyes szolgáltatások részleteit.",
+      "developerInfoLine1": "Integrációk fejlesztési munkafolyamatokhoz. Böngésszen tárolókat, kezeljen kiadásokat, és töltsön fel fájlokat közvetlenül tárhelyplatformokra.",
+      "developerInfoLine2": "Személyes hozzáférési token (PAT) vagy SSH-kulcs szükséges a hitelesítéshez."
     },
     "shortcuts": {
       "title": "Billentyűparancsok",
@@ -3063,7 +3069,9 @@
       "expBadge": "EXP",
       "sessionExpired": "Munkamenet lejárt (24ó)",
       "clickToRenew": "Kattintson a munkamenet megújításához és csatlakozáshoz",
-      "opendriveDisplay": "OpenDrive {username}"
+      "opendriveDisplay": "OpenDrive {username}",
+      "hideCredentials": "Hitelesítő adatok elrejtése",
+      "showCredentials": "Hitelesítő adatok megjelenítése"
     },
     "cyberTools": {
       "title": "Biztonsági eszközök",
@@ -3592,6 +3600,43 @@
       "perm_comment": "Hozzászólás",
       "perm_edit": "Szerkesztés",
       "generateWithOptions": "Létrehozás beállításokkal"
+    },
+    "introHub": {
+      "tab": {
+        "myServers": "Saját szerverek",
+        "discover": "Szolgáltatások felfedezése"
+      },
+      "quickConnect": "Gyors csatlakozás",
+      "search": "Keresés...",
+      "searchServers": "Szerverek keresése...",
+      "viewGrid": "Rácsnézet",
+      "viewList": "Listanézet",
+      "filter": {
+        "all": "Összes",
+        "ftpSftp": "FTP / SFTP",
+        "s3": "S3 / Object",
+        "webdav": "WebDAV",
+        "cloud": "Felhő",
+        "favorites": "Kedvencek"
+      },
+      "noServers": "Nincsenek mentett szerverek",
+      "noServersHint": "Kezdjen egy gyors csatlakozással, vagy böngéssze a szolgáltatáskatalógust.",
+      "noResults": "Nem található szerver",
+      "noResultsHint": "Egyetlen szerver sem felel meg a következőnek: \"{query}\"",
+      "backToServers": "Vissza a szerverekhez",
+      "addFavorite": "Hozzáadás a kedvencekhez",
+      "removeFavorite": "Eltávolítás a kedvencekből",
+      "discoverTitle": "Szolgáltatások felfedezése",
+      "discoverDescription": "Böngésszen 29+ integrált felhőszolgáltatás, S3-kompatibilis tároló, WebDAV-szolgáltató és egyéb között. Minden szolgáltatás előre konfigurált beállításokkal érkezik a gyors beállításhoz.",
+      "searchServices": "Szolgáltatások keresése...",
+      "discoverHint": "Kattintson egy szolgáltatásra egy előre konfigurált kapcsolat beállításához minimális bevitellel.",
+      "category": {
+        "protocols": "Protokollok",
+        "objectStorage": "S3 / Objektumtároló",
+        "webdav": "WebDAV és saját tárhely",
+        "cloudStorage": "Felhőtároló",
+        "developer": "Fejlesztői eszközök"
+      }
     }
   }
 }
