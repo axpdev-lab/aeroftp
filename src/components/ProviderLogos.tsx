@@ -266,11 +266,11 @@ export const FileLuLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// FeliCloud — blue cloud outline (Nextcloud-based, EU)
+// Felicloud — blue cloud outline (Nextcloud-based, EU)
 export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/felicloud.png"
-        alt="FeliCloud"
+        alt="Felicloud"
         width={size}
         height={size}
         style={{ objectFit: 'contain' }}

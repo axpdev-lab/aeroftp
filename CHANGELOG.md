@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded `indicatif` 0.17 to 0.18, removing unmaintained `number_prefix` dependency
 - Cargo dependency update: 116 crate bumps including openssl, rustls, tao, wry
 - SourceForge provider preset hidden until provider confirmation (dev-only)
-- **FeliCloud direct access**: Clicking FeliCloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list
-- **FeliCloud badge**: Uses Nextcloud blue (#0083ce) for API OCS badge in protocol selector and saved servers
+- **Felicloud direct access**: Clicking Felicloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list
+- **Felicloud badge**: Uses Nextcloud blue (#0083ce) for API OCS badge in protocol selector and saved servers
 - **Saved servers WebDAV URL**: Shortened to hostname only instead of full URL path
 - **Status bar panel consistency**: File count indicators (remote/local) now match the visual panel order when panels are swapped
 
@@ -164,7 +164,7 @@ Full native MEGA protocol implementation eliminating the MEGAcmd external depend
 
 #### Fixed
 - **`keyring` crate mock backend**: Fixed missing platform features in Cargo.toml that caused the keyring crate to compile with an in-memory mock backend on all platforms, which would have caused irrecoverable vault passphrase loss on app restart
-- **Nextcloud trash button**: Restricted to Nextcloud/FeliCloud WebDAV providers only
+- **Nextcloud trash button**: Restricted to Nextcloud/Felicloud WebDAV providers only
 - **LargeIconsGrid performance**: Virtualized with react-virtuoso for large directories
 - **DOMPurify CVE**: Overridden to 3.3.3 (CVE mutation-XSS via monaco-editor)
 - **Clippy lint fixes**: Resolved `Cow<str>.as_ref()` ambiguity in sync.rs and aeroftp_cli.rs triggered by sigstore dependency
@@ -180,10 +180,10 @@ Full native MEGA protocol implementation eliminating the MEGAcmd external depend
 
 ## [3.1.6] - 2026-03-28
 
-### FeliCloud, Share Link Modal & Provider Bug Fixes
+### Felicloud, Share Link Modal & Provider Bug Fixes
 
 #### New Features
-- **FeliCloud** (20th cloud provider): Nextcloud-based EU cloud with 10 GB free, GDPR compliant. Full OCS API integration with share links (auto-generated passwords when server requires) and WebDAV trashbin management.
+- **Felicloud** (20th cloud provider): Nextcloud-based EU cloud with 10 GB free, GDPR compliant. Full OCS API integration with share links (auto-generated passwords when server requires) and WebDAV trashbin management.
 - **Share Link Modal**: New dedicated modal replacing toast notifications. Shows link in copyable field with visual confirmation, password section for servers that require it, loading/error states, and retry button.
 - **Activity Log Coverage**: All trash operations (restore, permanent delete, empty) tracked across 14 providers. Move-to-trash (5 providers), share link creation, and 30+ provider-specific operations (FileLu, Box, Google Drive, Zoho, GitHub, Filen) now logged.
 - **RESTORE Operation Type**: New activity log filter with themed colors across all 4 UI themes.
@@ -198,7 +198,7 @@ Full native MEGA protocol implementation eliminating the MEGAcmd external depend
 - **MEGA**: Fixed download (`--resume` flag removed, unsupported by MEGAcmd 2.5.x). Fixed trash path (`//bin/` for MEGAcmd 2.5.1). Delete now soft-deletes via `mega-mv`. Restore goes to current directory.
 - **Dropbox**: Restore auto-fetches file revision via `list_revisions` when rev is missing. Permanent delete button removed (requires Team scope unavailable on personal accounts).
 - **Share link providers**: Fixed `supportsNativeShareLink` list (removed Internxt, added Azure/kDrive/Drime Cloud). Expiration parameter now properly passed to backend. Provider icons added for all 19 providers in context menu.
-- **FeliCloud share link 403**: Auto-retries with generated password (min 1 lowercase + 1 uppercase + 1 digit + 1 special char) when Nextcloud instance enforces password-protected links.
+- **Felicloud share link 403**: Auto-retries with generated password (min 1 lowercase + 1 uppercase + 1 digit + 1 special char) when Nextcloud instance enforces password-protected links.
 - **Em-dash cleanup**: Replaced with regular hyphen across all 9 trash manager titles.
 
 #### i18n

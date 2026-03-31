@@ -193,7 +193,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Nextcloud', logoId: 'nextcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
-  { name: 'FeliCloud', logoId: 'felicloud',
+  { name: 'Felicloud', logoId: 'felicloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
   { name: 'Hetzner Storage Box', logoId: 'hetzner',

@@ -2413,7 +2413,7 @@ const App: React.FC = () => {
                 : protocol === 'swift'
                   ? `Blomp ${effectiveParams.username}`
                   : effectiveParams.providerId === 'felicloud'
-                    ? `FeliCloud ${effectiveParams.username}`
+                    ? `Felicloud ${effectiveParams.username}`
                     : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       const logId = humanLog.logStart('CONNECT', { server: providerName, protocol: protocolLabel });
@@ -7154,7 +7154,7 @@ const App: React.FC = () => {
         )}
         {showNextcloudTrash && (
           <NextcloudTrashManager
-            providerName={(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'FeliCloud' : 'Nextcloud'}
+            providerName={(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />

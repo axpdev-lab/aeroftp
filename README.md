@@ -100,7 +100,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 | **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
 | **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
 | **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA, hybrid upload (SCP) |
-| **WebDAV** | HTTPS | Nextcloud, FeliCloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD, Seafile. HTTP Digest auth (RFC 2617), file locking (RFC 4918), OCS share links + trash for Nextcloud-based servers |
+| **WebDAV** | HTTPS | Nextcloud, Felicloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD, Seafile. HTTP Digest auth (RFC 2617), file locking (RFC 4918), OCS share links + trash for Nextcloud-based servers |
 | **S3** | HTTPS | AWS S3, MEGA S4, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
 | **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share links (view/comment/edit permissions), workspace export |
 | **Dropbox** | OAuth2 PKCE | File versions, thumbnails, share links (password + expiry on Pro+) |
@@ -116,7 +116,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 | **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, share links (password + expiry), team drive management |
 | **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, share links, unlimited storage plans |
 | **Koofr** | OAuth2 PKCE | 10GB free, EU-based (Slovenia), native REST API, share links, trash management |
-| **FeliCloud** | WebDAV + OCS API | 10GB free, EU/GDPR, Nextcloud-based, share links (password + expiry), trash management |
+| **Felicloud** | WebDAV + OCS API | 10GB free, EU/GDPR, Nextcloud-based, share links (password + expiry), trash management |
 | **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, share links, server clone, remote URL upload, trash management |
 | **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
 | **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, share links (expiry) |
@@ -293,7 +293,7 @@ aeroftp-cli ls --profile "My Google Drive" /
 
 **Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `head`, `tail`, `touch`, `hashsum`, `check`, `find`, `stat`, `df`, `tree`, `about`, `dedupe`, `sync`, `link`, `batch`, `profiles`
 
-**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, FeliCloud + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
+**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, Felicloud + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
 
 **Features**:
 - **`--profile` vault profiles** - connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows

@@ -1106,8 +1106,8 @@ export const PROVIDERS: ProviderConfig[] = [
     },
     {
         id: 'felicloud',
-        name: 'FeliCloud',
-        description: 'FeliCloud (10 GB free, Nextcloud-based, EU/GDPR)',
+        name: 'Felicloud',
+        description: 'Felicloud (10 GB free, Nextcloud-based, EU/GDPR)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',

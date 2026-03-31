@@ -325,7 +325,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
     },
     {
         type: 'webdav',
-        name: 'FeliCloud',
+        name: 'Felicloud',
         icon: <FeliCloudLogo size={18} />,
         description: t('protocol.felicloudDesc'),
         defaultPort: 443,
@@ -423,7 +423,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
-    { type: 'webdav', name: 'FeliCloud', icon: <FeliCloudLogo size={18} />, description: 'FeliCloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'FeliCloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
+    { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
