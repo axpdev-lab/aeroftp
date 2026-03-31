@@ -99,13 +99,14 @@ For the complete privacy model, data storage locations, and deletion instruction
 
 ## Security Audits
 
-| Date | Auditors | Result |
-| ---- | -------- | ------ |
-| March 2026 | GPT 5.4 + Claude Opus 4.6 | Desktop security: 4 findings, all remediated |
-| March 2026 | Aikido Security | Top 5% benchmark, 0 open issues, OWASP/ISO/CIS/NIS2/GDPR |
-| v2.9.5 | Claude Opus 4.6 + GPT 5.4 | 117 findings, grade A- |
-| v2.8.7 | Claude Opus 4.6 + GPT 5.4 | 45+ findings resolved, grade A- |
-| v2.4.0 | 12 auditors, 4 phases | Provider integration audit, grade A- |
+| Date | Auditors | Result | Report |
+| ---- | -------- | ------ | ------ |
+| March 2026 | GPT 5.4 + Claude Opus 4.6 | Desktop security: 4 findings, all remediated | |
+| March 2026 | Aikido Security | Top 5% benchmark, 0 open issues, OWASP/ISO/CIS/NIS2/GDPR | [PDF](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf) |
+| February 2026 | Aikido Security | Top 5% benchmark, 0 open issues | [PDF](docs/Security%20Audit%20Report%20axpnet%20-%20February%202026.pdf) |
+| v2.9.5 | Claude Opus 4.6 + GPT 5.4 | 117 findings, grade A- | |
+| v2.8.7 | Claude Opus 4.6 + GPT 5.4 | 45+ findings resolved, grade A- | |
+| v2.4.0 | 12 auditors, 4 phases | Provider integration audit, grade A- | |
 
 Cumulative: 300+ findings identified across 9 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
 
