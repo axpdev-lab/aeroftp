@@ -636,8 +636,11 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     {oauthConnecting === server.id && (
                                         <span className="text-xs text-blue-500 animate-pulse">{t('connection.authenticating')}</span>
                                     )}
-                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
-                                        {server.protocol || 'ftp'}
+                                    <span
+                                        className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${server.providerId === 'felicloud' ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
+                                        style={server.providerId === 'felicloud' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}
+                                    >
+                                        {server.providerId === 'felicloud' ? 'API OCS' : (server.protocol || 'ftp')}
                                     </span>
                                     {gitHubBadge && (
                                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gitHubBadge.className}`}>
@@ -685,7 +688,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                                             return `${base}${modeLabel}`;
                                                         })()
                                                     : server.protocol === 'webdav'
-                                                        ? server.username + '@' + (server.host?.replace(/^https?:\/\//, '') || server.host)
+                                                        ? (() => {
+                                                            const raw = server.host?.replace(/^https?:\/\//, '') || server.host || '';
+                                                            try { const h = new URL(server.host?.startsWith('http') ? server.host : `https://${server.host}`).hostname; return `${server.username}@${h}`; } catch { return `${server.username}@${raw}`; }
+                                                        })()
                                                         : `${server.username}@${server.host}:${server.port}`
                                     }
                                 </div>

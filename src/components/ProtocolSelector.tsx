@@ -537,7 +537,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                         : protocol.badge === 'Soon'
                                             ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
                                             : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                                    }`}>
+                                    }`} style={protocol.badge === 'API OCS' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}>
                                     {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
                                     {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
@@ -591,7 +591,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                                 : protocol.badge === 'Soon'
                                                     ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
                                                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-                                    }`}>
+                                    }`} style={protocol.badge === 'API OCS' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}>
                                     {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
                                     {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
