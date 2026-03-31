@@ -76,6 +76,11 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
 
+### Continuous Monitoring
+
+- **[Aikido Security](https://aikido.dev)**: SAST, SCA, secrets detection, IaC scanning - daily automated scans
+- **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
+
 For Sigstore verification commands and CI/CD security controls, see [Supply Chain Security](https://docs.aeroftp.app/security/supply-chain).
 
 ### Memory Safety

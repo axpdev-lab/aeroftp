@@ -376,6 +376,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 |---|---|
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
+| **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
 | **Dependency Scanning** | 1,156 packages monitored (320 JS + 836 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
 | **Security Audits** | 300+ findings resolved across [9 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |
