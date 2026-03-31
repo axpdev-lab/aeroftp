@@ -102,12 +102,12 @@ For the complete privacy model, data storage locations, and deletion instruction
 | Date | Auditors | Result |
 | ---- | -------- | ------ |
 | March 2026 | GPT 5.4 + Claude Opus 4.6 | Desktop security: 4 findings, all remediated |
-| February 2026 | Aikido Security | Top 5% benchmark, 0 open issues |
+| March 2026 | Aikido Security | Top 5% benchmark, 0 open issues, OWASP/ISO/CIS/NIS2/GDPR |
 | v2.9.5 | Claude Opus 4.6 + GPT 5.4 | 117 findings, grade A- |
 | v2.8.7 | Claude Opus 4.6 + GPT 5.4 | 45+ findings resolved, grade A- |
 | v2.4.0 | 12 auditors, 4 phases | Provider integration audit, grade A- |
 
-Cumulative: 300+ findings identified across 8 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
+Cumulative: 300+ findings identified across 9 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
 
 ## Known Issues
 
