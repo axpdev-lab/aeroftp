@@ -1,7 +1,7 @@
 # AeroFTP Roadmap
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
-> This roadmap is updated regularly. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpnet/aeroftp/issues).
+> This roadmap is updated regularly. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
 
 ---
 
@@ -17,6 +17,21 @@
 ---
 
 ## Recently Shipped
+
+### v3.2.6 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **macOS crash fix** | Static liblzma linking eliminates DYLD crash at launch caused by dynamic Homebrew dependency. |
+| **Security hardening** | Resolved HIGH vulnerability (russh 0.59), removed dangerouslySetInnerHTML XSS finding, 116 dependency updates. Aikido Security: **Top 5% benchmark**, 0 open issues. |
+| **Felicloud direct access** | Clicking Felicloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list. |
+| **Status bar consistency** | File count indicators (remote/local) now match the visual panel order when panels are swapped. |
+
+### v3.2.5 (March 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Linux localhost fix** | Fixed connection refused on startup when `tauri-plugin-localhost` resolved to IPv6. Plugin now explicitly binds to `127.0.0.1`. |
 
 ### v3.2.2 (March 2026)
 
@@ -51,13 +66,13 @@
 | **Glob Find Patterns** | 8 providers (WebDAV, SFTP, S3, Jottacloud, Yandex Disk, GitHub, Filen, pCloud) now support glob patterns in find. |
 | **LargeIconsGrid Virtualization** | react-virtuoso for large directories. |
 | **DOMPurify CVE Fix** | Override to 3.3.3 (CVE mutation-XSS via monaco-editor). |
-| **Nextcloud Trash Scope** | Trash button restricted to Nextcloud/FeliCloud WebDAV providers only. |
+| **Nextcloud Trash Scope** | Trash button restricted to Nextcloud/Felicloud WebDAV providers only. |
 
 ### v3.1.6 (March 2026)
 
 | Feature | Description |
 |---------|-------------|
-| **FeliCloud** (20th provider) | Nextcloud-based EU cloud storage with 10 GB free, GDPR compliant. Full OCS API integration with share links and trash management. |
+| **Felicloud** (20th provider) | Nextcloud-based EU cloud storage with 10 GB free, GDPR compliant. Full OCS API integration with share links and trash management. |
 | **Share Link Modal** | New dedicated modal for share links with visual confirmation, copy buttons, and automatic password display when required by the server. |
 | **FileLu Performance** | Folder listing speed improved by 50% through parallel API calls. |
 | **Activity Log Coverage** | All trash operations (restore, permanent delete, empty) now tracked in the activity log across 14 providers. Share link creation and 30+ provider-specific operations also logged. |
@@ -109,7 +124,7 @@ Every new cloud provider integration is a milestone. Here's the full history:
 
 | # | Provider | Version | Protocol |
 |---|----------|---------|----------|
-| 20 | **FeliCloud** | v3.1.6 | WebDAV + OCS API |
+| 20 | **Felicloud** | v3.1.6 | WebDAV + OCS API |
 | 19 | **FileLu** | v2.7.0 | REST API |
 | 18 | **Zoho WorkDrive** | v3.1.2 | OAuth2 |
 | 17 | **Yandex Disk** | v2.9.0 | OAuth2 |
@@ -136,16 +151,11 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
 ## In Progress
 
-### v3.2.0 (Q2 2026)
-
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Native MEGA Protocol** | Planned | Remove MEGAcmd dependency. Direct API communication with MEGA servers, no external software required. Brings MEGA in line with how rclone handles it. |
-| **Agent MCP Server** | Planned | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. |
-| **Agent Session Tokens** | Planned | Pre-authorized scoped sessions for headless automation. No interactive dialogs needed within approved scope. |
-| **Advanced Share Links** | Design complete | Expiration date picker, password protection, permission controls. 9 providers support expiration, 6 support configurable permissions. |
-| **Blomp** (21st provider) | Awaiting API access | 40 GB free cloud storage via OpenStack Swift. Backend ready, waiting for storage proxy access. |
-| **Full Activity Logging** | Phase 1 done | Extending activity log to cover all provider-specific operations. |
+| **SourceForge** (21st provider) | Awaiting confirmation | SFTP preset for SourceForge File Release System. Backend ready, hidden until provider testing complete. |
+| **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. |
+| **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. |
 
 ---
 
@@ -153,19 +163,22 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
 | Feature | Description |
 |---------|-------------|
-| **Share Link Management** | View, revoke, and manage existing share links across 10+ providers that support it. |
-| **Cross-Server Operations** | Server-to-server diff, sync, and audit via CLI agent with credential isolation across all protocols. |
-| **Autonomous Server Audit** | Scheduled cron-compatible server checks (disk usage, backup freshness, file integrity) with JSON/webhook output. |
-| **Voice Commands** | Whisper-based speech-to-text for AeroAgent, with on-device transcription. |
-| **AeroVault v2** | Next-generation encrypted vault with directory support and AES-256-GCM-SIV chunked encryption. |
-| **AeroCloud v2** | Enhanced personal cloud sync with selective sync, bandwidth throttling, and conflict visualization. |
+| **Universal File Versioning** | Unified versions panel across 12+ providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud, OpenDrive, MEGA). |
+| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support. |
+| **CLI Parallel Transfers** | `--parallel N` worker pool for concurrent transfers. Segmented parallel downloads for large files. Server-to-server copy for cloud-to-cloud migration. |
+| **AeroCloud Selective Sync** | Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization. |
+| **Agent Orchestration** | JSON-RPC programmatic mode, mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync. |
+| **AeroVault v2 Enhancements** | Cross-platform migration, multi-device sync integration, key rotation. |
+| **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI. |
+| **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow. |
 
 ### Provider Pipeline
 
 | Provider | Protocol | Status |
 |----------|----------|--------|
+| **SourceForge** | SFTP | Awaiting confirmation |
 | **Blomp** | OpenStack Swift | Awaiting API access |
-| **Nextcloud** (generic) | WebDAV + OCS | Planned (FeliCloud paved the way) |
+| **Nextcloud** (generic) | WebDAV + OCS | Planned (Felicloud paved the way) |
 
 ---
 
@@ -175,11 +188,12 @@ These features are being evaluated based on community interest:
 
 | Feature | Description |
 |---------|-------------|
-| **IPFS / Web3 Storage** | Decentralized file storage integration |
-| **Tor Support** | Anonymous file transfers via Tor hidden services |
+| **IPFS / Web3 Storage** | Decentralized file storage integration (NLnet grant submitted) |
+| **Tor Support** | Anonymous file transfers via Tor hidden services (NLnet grant submitted) |
 | **Biometric Unlock** | Fingerprint/face unlock for the encrypted vault |
-| **Code Signing** | Signed builds for Windows, macOS, and Linux |
-| **Mobile App** | Android companion app |
+| **CLI TUI Explorer** | ncdu-style interactive disk usage explorer for remote servers |
+| **CLI FUSE Mount** | Mount remote servers as local filesystem |
+| **CLI Serve Mode** | Expose remote storage as local HTTP/WebDAV server |
 
 ---
 
@@ -194,10 +208,10 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 ## How to Contribute
 
 - **Star the repo** to show your support
-- **Report bugs** via [GitHub Issues](https://github.com/axpnet/aeroftp/issues)
+- **Report bugs** via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues)
 - **Suggest features** by opening a discussion
 - **Help translate** - we're always looking for native speakers to improve translations
 
 ---
 
-*Last updated: March 29, 2026*
+*Last updated: March 31, 2026*
