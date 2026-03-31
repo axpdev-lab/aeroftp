@@ -155,8 +155,9 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-blue-500',
         tooltip: t('protocol.azureTooltip'),
     },
-    {
-        type: 'sftp',
+    // SourceForge: hidden in production until provider confirmation and testing
+    ...(import.meta.env.DEV ? [{
+        type: 'sftp' as const,
         name: 'SourceForge',
         icon: <SourceForgeLogo size={18} />,
         description: t('protocol.sourceforgeDesc'),
@@ -165,7 +166,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         color: 'text-orange-500',
         tooltip: t('protocol.sourceforgeTooltip'),
         providerId: 'sourceforge',
-    },
+    }] : []),
     // Service Providers (GitHub first, then cloud services)
     {
         type: 'github',
@@ -400,7 +401,8 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, description: 'Nextcloud, CloudMe, Koofr', defaultPort: 443, badge: 'TLS', color: 'text-orange-500', tooltip: 'WebDAV protocol' },
     { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, description: 'AWS S3, MinIO, R2, B2', defaultPort: 443, badge: 'HMAC', color: 'text-amber-600', tooltip: 'S3-compatible storage' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, description: 'Microsoft Azure Storage', defaultPort: 443, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Azure Blob Storage' },
-    { type: 'sftp', name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
+    // SourceForge: hidden in production until provider confirmation
+    ...(import.meta.env.DEV ? [{ type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' }] : []),
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
     { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },

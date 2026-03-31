@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.6] - 2026-03-31
+
+### macOS static linking fix & security hardening
+
+#### Fixed
+
+- **macOS crash at launch** (DYLD / library not found): The macOS binary was dynamically linking against Homebrew's `liblzma.5.dylib` (`/opt/homebrew/lib/`), causing a DYLD crash at launch. Users without Homebrew got a missing library error; users with Homebrew could still crash due to library version mismatches. Now statically links liblzma into the binary, eliminating the external dependency entirely
+- **Security: HIGH vulnerability resolved** (GHSA-q29p-9pfr-j652): Upgraded `russh` 0.57 to 0.59, which replaces `libcrux-ml-kem`/`libcrux-sha3` with RustCrypto `ml-kem`, eliminating the vulnerable dependency from the tree
+- **Security: XSS SAST finding resolved**: Removed `dangerouslySetInnerHTML` from GitHubReleaseBrowser, replaced with safe React element rendering
+
+#### Changed
+
+- Upgraded `indicatif` 0.17 to 0.18, removing unmaintained `number_prefix` dependency
+- Cargo dependency update: 116 crate bumps including openssl, rustls, tao, wry
+- SourceForge provider preset hidden until provider confirmation (dev-only)
+
+#### Security
+
+- Aikido Security audit: **Top 5% benchmark**, 0 open issues across all categories
+- Full compliance coverage: OWASP Top 10, ISO 27001, CIS v8.1, NIS2, GDPR
+
 ## [3.2.5] - 2026-03-30
 
 ### Hotfix: Linux localhost bind regression
