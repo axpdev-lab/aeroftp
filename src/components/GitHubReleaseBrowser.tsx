@@ -848,18 +848,21 @@ const CreateReleaseForm: React.FC<CreateReleaseFormProps> = ({
           <div
             className="w-full px-4 py-3 pl-6 text-sm rounded-lg border overflow-y-auto prose prose-sm dark:prose-invert max-w-none"
             style={{ ...inputStyle, minHeight: '12rem', maxHeight: '24rem' }}
-            dangerouslySetInnerHTML={{ __html: body
-              .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/#### (.+)/g, '<h4>$1</h4>')
-              .replace(/### (.+)/g, '<h3>$1</h3>')
-              .replace(/## (.+)/g, '<h2>$1</h2>')
-              .replace(/# (.+)/g, '<h1>$1</h1>')
-              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-              .replace(/\n- /g, '\n<li>')
-              .replace(/\n\n/g, '<br/><br/>')
-              .replace(/\n/g, '<br/>')
-            }}
-          />
+          >
+            {body.split('\n').map((line, i) => {
+              const renderInline = (text: string) => {
+                const parts = text.split(/\*\*(.+?)\*\*/g);
+                return parts.map((p, j) => j % 2 === 1 ? <strong key={j}>{p}</strong> : p);
+              };
+              if (line.startsWith('#### ')) return <h4 key={i}>{renderInline(line.slice(5))}</h4>;
+              if (line.startsWith('### ')) return <h3 key={i}>{renderInline(line.slice(4))}</h3>;
+              if (line.startsWith('## ')) return <h2 key={i}>{renderInline(line.slice(3))}</h2>;
+              if (line.startsWith('# ')) return <h1 key={i}>{renderInline(line.slice(2))}</h1>;
+              if (line.startsWith('- ')) return <li key={i}>{renderInline(line.slice(2))}</li>;
+              if (line.trim() === '') return <br key={i} />;
+              return <p key={i} className="my-0">{renderInline(line)}</p>;
+            })}
+          </div>
         ) : (
           <textarea
             value={body}

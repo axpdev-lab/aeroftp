@@ -10,8 +10,7 @@
 use russh::client::{self, Config, Handle, Handler, Msg};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
 use russh::client::AuthResult;
-use russh::{Channel, ChannelId, ChannelMsg, CryptoVec};
-// Note: CryptoVec will be replaced with bytes::Bytes when upgrading to russh 0.58+
+use russh::{Channel, ChannelId, ChannelMsg};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -243,8 +242,7 @@ pub async fn ssh_shell_write(
     let session = mgr.sessions.get(&session_id)
         .ok_or("SSH shell session not found")?;
 
-    let cv = CryptoVec::from(data.as_bytes());
-    session.handle.data(session.channel_id, cv)
+    session.handle.data(session.channel_id, data.into_bytes())
         .await
         .map_err(|_| "SSH write error".to_string())?;
 
