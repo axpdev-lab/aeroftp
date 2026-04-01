@@ -541,13 +541,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         if (saveState === 'saving') return; // prevent double-click
         setSaveState('saving');
         try {
-            const normalizedSettings = {
-                ...settings,
-                fontSize: clampAppFontSize(settings.fontSize),
-                fontFamily: normalizeAppFontFamily(settings.fontFamily),
-            };
+            // Normalize font values before saving to vault
+            settings.fontSize = clampAppFontSize(settings.fontSize);
+            settings.fontFamily = normalizeAppFontFamily(settings.fontFamily);
 
-            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings);
+            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
             secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
