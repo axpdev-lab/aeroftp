@@ -125,6 +125,10 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             host: "api.github.com",
             probe_url: "https://api.github.com/zen",
         }),
+        "gitlab" => Some(CloudProviderInfo {
+            host: "gitlab.com",
+            probe_url: "https://gitlab.com/api/v4/version",
+        }),
         "yandexdisk" => Some(CloudProviderInfo {
             host: "cloud-api.yandex.net",
             probe_url: "https://cloud-api.yandex.net/v1/disk/",

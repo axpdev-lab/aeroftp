@@ -1676,7 +1676,32 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
             return Ok((config, "/".to_string()));
         }
-        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk, github", scheme)),
+        "gitlab" => {
+            // gitlab://gitlab.com/owner/repo or gitlab://self-hosted.com/owner/repo
+            let host = url_obj.host_str().unwrap_or("gitlab.com");
+            let path = url_obj.path().trim_matches('/');
+            let gitlab_host = if path.is_empty() {
+                host.to_string()
+            } else {
+                format!("{}/{}", host, path)
+            };
+
+            let password = resolve_password(&url_obj, &ProviderType::GitLab, cli)?;
+
+            let config = ProviderConfig {
+                name: "GitLab CLI".to_string(),
+                provider_type: ProviderType::GitLab,
+                host: gitlab_host,
+                port: url_obj.port(),
+                username: None,
+                password: Some(password),
+                initial_path: Some("/".to_string()),
+                extra: HashMap::new(),
+            };
+
+            return Ok((config, "/".to_string()));
+        }
+        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk, github, gitlab", scheme)),
     };
 
     let username = if url_obj.username().is_empty() {
@@ -1696,7 +1721,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
     // For WebDAV/GitHub, the URL path is part of the host — initial_path is always /
     let url_path = match provider_type {
-        ProviderType::WebDav | ProviderType::GitHub => "/".to_string(),
+        ProviderType::WebDav | ProviderType::GitHub | ProviderType::GitLab => "/".to_string(),
         _ => {
             if url_obj.path().is_empty() || url_obj.path() == "/" {
                 "/".to_string()
@@ -2192,7 +2217,8 @@ async fn create_and_connect_for_agent(
         "WEBDAV" | "WEBDAVS" => ftp_client_gui_lib::providers::ProviderType::WebDav,
         "S3" => ftp_client_gui_lib::providers::ProviderType::S3,
         "GITHUB" => ftp_client_gui_lib::providers::ProviderType::GitHub,
-        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub.", other, profile_name)),
+        "GITLAB" => ftp_client_gui_lib::providers::ProviderType::GitLab,
+        other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab.", other, profile_name)),
     };
 
     let config = ftp_client_gui_lib::providers::ProviderConfig {
@@ -2294,7 +2320,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "ftp", "ftps", "sftp", "webdav", "webdavs", "s3",
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
-            "github", "googledrive", "dropbox", "onedrive", "box",
+            "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
             "pcloud", "zohoworkdrive", "fourshared", "drime"
         ],
         "safety_rules": [
@@ -2484,6 +2510,7 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         "opendrive" => ProviderType::OpenDrive,
         "kdrive" => ProviderType::KDrive,
         "github" => ProviderType::GitHub,
+        "gitlab" => ProviderType::GitLab,
         "swift" => ProviderType::Swift,
         "yandexdisk" => ProviderType::YandexDisk,
         "googledrive" => ProviderType::GoogleDrive,

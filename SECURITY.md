@@ -44,13 +44,14 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 25 protocols with appropriate transport security:
+AeroFTP supports 27 protocols with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |
 | **End-to-end encrypted** | MEGA.nz, Filen, Internxt (client-side AES, zero-knowledge) |
 | **OAuth2 with PKCE** | Google Drive, Dropbox, OneDrive, Box, Zoho WorkDrive, kDrive, Koofr, Internxt |
 | **TLS/HTTPS** | S3, WebDAV, Azure Blob, pCloud, FileLu, Jottacloud, OpenDrive, Yandex Disk |
+| **API Token over HTTPS** | GitHub, GitLab (PAT/Project Access Token, API v4) |
 | **SSH** | SFTP with TOFU host key verification |
 | **Configurable TLS** | FTP/FTPS (Explicit, Implicit, opportunistic) |
 
@@ -132,4 +133,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.3.0 - 1 April 2026*
+*AeroFTP v3.3.2 - 1 April 2026*

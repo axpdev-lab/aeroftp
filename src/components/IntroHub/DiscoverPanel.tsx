@@ -37,7 +37,7 @@ function ServiceCard({ item, onSelect }: { item: DiscoverItem; onSelect: () => v
     return (
         <button
             onClick={onSelect}
-            className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500/40 rounded-lg transition-all text-left hover:shadow-sm"
+            className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30 rounded-lg transition-all text-left shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
         >
             {/* Logo - no container box, just the icon like original ProtocolSelector */}
             <div className="w-7 h-7 shrink-0 flex items-center justify-center">
@@ -93,43 +93,19 @@ function ServiceCard({ item, onSelect }: { item: DiscoverItem; onSelect: () => v
 export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const t = useTranslation();
     const categories = useMemo(() => buildDiscoverCategories(), []);
-    const [activeCategory, setActiveCategory] = useState<CatalogCategoryId>('protocols');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [activeCategory, setActiveCategory] = useState<CatalogCategoryId>(() => {
+        const saved = localStorage.getItem('aeroftp-discover-category');
+        return (saved as CatalogCategoryId) || 'protocols';
+    });
 
     const activeItems = useMemo(() => {
         const cat = categories.find(c => c.id === activeCategory);
-        if (!cat) return [];
-        if (!searchQuery.trim()) return cat.items;
-        const q = searchQuery.toLowerCase();
-        return cat.items.filter(item =>
-            item.name.toLowerCase().includes(q) ||
-            (item.description || '').toLowerCase().includes(q) ||
-            (item.providerId || '').toLowerCase().includes(q)
-        );
-    }, [categories, activeCategory, searchQuery]);
-
-    // Global search across all categories
-    const globalResults = useMemo(() => {
-        if (!searchQuery.trim()) return null;
-        const q = searchQuery.toLowerCase();
-        const results: DiscoverItem[] = [];
-        for (const cat of categories) {
-            for (const item of cat.items) {
-                if (item.name.toLowerCase().includes(q) ||
-                    (item.description || '').toLowerCase().includes(q) ||
-                    (item.providerId || '').toLowerCase().includes(q)) {
-                    results.push(item);
-                }
-            }
-        }
-        return results;
-    }, [categories, searchQuery]);
+        return cat?.items ?? [];
+    }, [categories, activeCategory]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
         onSelectProvider(item.protocol, item.providerId);
     }, [onSelectProvider]);
-
-    const displayItems = globalResults !== null ? globalResults : activeItems;
 
     return (
         <div className="h-full flex gap-4">
@@ -141,9 +117,9 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                 {categories.map((cat) => (
                     <button
                         key={cat.id}
-                        onClick={() => { setActiveCategory(cat.id); setSearchQuery(''); }}
+                        onClick={() => { setActiveCategory(cat.id); localStorage.setItem('aeroftp-discover-category', cat.id); }}
                         className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
-                            activeCategory === cat.id && !searchQuery
+                            activeCategory === cat.id
                                 ? 'bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 font-medium'
                                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                         }`}
@@ -161,52 +137,21 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
 
             {/* Main content */}
             <div className="flex-1 min-w-0 flex flex-col">
-                {/* Search bar */}
-                <div className="relative mb-4">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={t('introHub.searchServices')}
-                        className="w-full h-9 pl-9 pr-8 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        >
-                            <X size={14} />
-                        </button>
-                    )}
+                {/* Category header */}
+                <div className="flex items-center gap-2 mb-3">
+                    <span className={CATEGORY_COLORS[activeCategory]}>
+                        {CATEGORY_ICONS[categories.find(c => c.id === activeCategory)?.icon || 'Server']}
+                    </span>
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {t(categories.find(c => c.id === activeCategory)?.labelKey || '')}
+                    </h3>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {activeItems.length} {activeItems.length === 1 ? 'service' : 'services'}
+                    </span>
                 </div>
 
-                {/* Category header */}
-                {!searchQuery && (
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className={CATEGORY_COLORS[activeCategory]}>
-                            {CATEGORY_ICONS[categories.find(c => c.id === activeCategory)?.icon || 'Server']}
-                        </span>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            {t(categories.find(c => c.id === activeCategory)?.labelKey || '')}
-                        </h3>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
-                            {activeItems.length} {activeItems.length === 1 ? 'service' : 'services'}
-                        </span>
-                    </div>
-                )}
-
-                {searchQuery && (
-                    <div className="flex items-center gap-2 mb-3">
-                        <Search size={14} className="text-gray-400" />
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
-                            {displayItems.length} results for "{searchQuery}"
-                        </span>
-                    </div>
-                )}
-
                 {/* Info banner for each category */}
-                {!searchQuery && (() => {
+                {(() => {
                     const infoKeyMap: Record<CatalogCategoryId, string> = {
                         'protocols': 'protocols',
                         'object-storage': 's3',
@@ -229,14 +174,14 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
 
                 {/* Provider grid */}
                 <div className="flex-1 overflow-y-auto">
-                    {displayItems.length === 0 ? (
+                    {activeItems.length === 0 ? (
                         <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                             <Search size={32} className="mx-auto mb-3 opacity-50" />
                             <p className="text-sm">{t('introHub.noResults')}</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {displayItems.map((item) => (
+                            {activeItems.map((item) => (
                                 <ServiceCard
                                     key={item.id}
                                     item={item}

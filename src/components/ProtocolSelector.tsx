@@ -413,7 +413,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
     { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Drime Cloud (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
-    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-violet-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 1 GB free' },
+    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 1 GB free' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
     { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Infomaniak kDrive (15 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
     { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
@@ -1332,11 +1332,12 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         drime: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-        filelu: 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300',
+        filelu: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         koofr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         opendrive: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         yandexdisk: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
         github: 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300',
+        gitlab: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
         swift: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
     };
 

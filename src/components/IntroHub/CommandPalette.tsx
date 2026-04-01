@@ -78,7 +78,7 @@ export function CommandPalette({
                 (s.host || '').toLowerCase().includes(q) ||
                 (s.protocol || '').toLowerCase().includes(q)
             )
-            : servers.slice(0, 5); // Show recent 5 when empty
+            : [...servers].sort((a, b) => (b.lastConnected || '').localeCompare(a.lastConnected || '')).slice(0, 5);
 
         for (const s of matchingServers.slice(0, 8)) {
             out.push({

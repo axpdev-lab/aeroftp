@@ -867,7 +867,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             ? { ...connectionParams, server: connectionParams.server || 'filelu.com', username: connectionParams.username || 'api-key', port: connectionParams.port || 443 }
             : protocol === 'opendrive'
                 ? { ...connectionParams, server: connectionParams.server || 'dev.opendrive.com', port: connectionParams.port || 443 }
-            : protocol === 'github'
+            : protocol === 'github' || protocol === 'gitlab'
                 ? { ...connectionParams, server: connectionParams.server || '', port: connectionParams.port || 443 }
             : selectedProvider?.defaults?.server && !connectionParams.server
                 ? { ...connectionParams, server: selectedProvider.defaults.server, port: connectionParams.port || selectedProvider.defaults.port || getDefaultPort(protocol) }
@@ -1146,6 +1146,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 return 'myaccount.blob.core.windows.net';
             case 'github':
                 return t('protocol.githubOwnerRepoPlaceholder');
+            case 'gitlab':
+                return 'gitlab.com/owner/repo';
             default:
                 return t('connection.serverPlaceholder');
         }
@@ -1156,6 +1158,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 's3') return t('connection.accessKeyId');
         if (protocol === 'azure') return t('connection.azureAccountName');
         if (protocol === 'github') return t('github.ownerRepo');
+        if (protocol === 'gitlab') return 'Project Path';
         return t('connection.username');
     };
 
@@ -1164,6 +1167,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 's3') return t('connection.secretAccessKey');
         if (protocol === 'azure') return t('connection.azureAccessKey');
         if (protocol === 'github') return t('github.personalAccessToken');
+        if (protocol === 'gitlab') return 'Access Token';
         return t('connection.password');
     };
 
@@ -1322,7 +1326,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     {/* Header: simplified in formOnly (just title, no buttons) */}
                     {formOnly ? (
                     <div className="mb-4">
-                        <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                            {(() => {
+                                const logoId = selectedProviderId || protocol || '';
+                                const LogoComponent = PROVIDER_LOGOS[logoId];
+                                const providerName = selectedProvider?.name || protocol?.toUpperCase() || '';
+                                if (!LogoComponent && !providerName) return null;
+                                return (
+                                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                        {LogoComponent && <LogoComponent size={20} />}
+                                        <span className="font-medium">{providerName}</span>
+                                    </div>
+                                );
+                            })()}
+                        </div>
                         {protocol === 'webdav' && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('protocol.webdavDesc')}</p>
                         )}
@@ -1660,7 +1678,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 href="https://filelu.com/5253515355.html"
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-violet-500 hover:text-violet-400 transition-colors"
+                                                className="text-sky-500 hover:text-sky-400 transition-colors"
                                                 title="FileLu"
                                                 aria-label="Open FileLu link"
                                             >
@@ -1732,8 +1750,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-violet-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-violet-600 hover:bg-violet-700'}`}
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-sky-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
@@ -3188,6 +3206,51 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <Lock size={12} /> {t('connection.endToEndEncrypted')}
                                             </p>
                                         </div>
+                                    </div>
+                                ) : protocol === 'gitlab' ? (
+                                    /* GitLab Form — Host/Project + Access Token */
+                                    <div className="space-y-4 pt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">Project Path</label>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.server}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    server: e.target.value,
+                                                    port: 443,
+                                                })}
+                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                placeholder="gitlab.com/owner/repo"
+                                                autoFocus
+                                            />
+                                            <p className="text-xs text-gray-400 mt-1.5">
+                                                Use <code className="text-gray-300">owner/repo</code> for gitlab.com, or <code className="text-gray-300">self-hosted.com/owner/repo</code> for self-hosted instances
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">Access Token</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        password: e.target.value,
+                                                        port: 443,
+                                                    })}
+                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                    placeholder="glpat-xxxxxxxxxxxx"
+                                                />
+                                                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-gray-400 mt-1.5">
+                                                Personal or Project Access Token with <code className="text-gray-300">api</code> scope
+                                            </p>
+                                        </div>
+                                        {renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password, buttonColorClass: 'bg-orange-600 hover:bg-orange-700' })}
                                     </div>
                                 ) : protocol === 'swift' ? (
                                     /* Blomp / OpenStack Swift Form */

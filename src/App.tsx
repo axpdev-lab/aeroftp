@@ -102,7 +102,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit
 } from 'lucide-react';
 
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
@@ -143,7 +143,7 @@ import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -189,7 +189,7 @@ const App: React.FC = () => {
   const settings = useSettings();
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
-    showStatusBar, defaultLocalPath, fontSize, doubleClickAction, rememberLastFolder, visibleColumns,
+    showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
     sortFoldersFirst, showFileExtensions, fileExistsAction, swapPanels,
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
@@ -198,6 +198,14 @@ const App: React.FC = () => {
     setSwapPanels,
     SETTINGS_KEY,
   } = settings;
+
+  // Sync font CSS variables to <html> so Tailwind rem-based classes scale globally
+  useEffect(() => {
+    const root = document.documentElement;
+    const effectiveSize = compactMode ? Math.round(fontSize * 0.85) : fontSize;
+    root.style.setProperty('--app-font-size', `${effectiveSize}px`);
+    root.style.setProperty('--app-font-family', fontFamily);
+  }, [fontSize, fontFamily, compactMode]);
 
   const toggleSwapPanels = useCallback(async () => {
     const next = !swapPanels;
@@ -1949,7 +1957,7 @@ interface UpdateVerificationInfo {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'];
   // Providers that support server-side copy (for context menu)
   const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
@@ -2151,13 +2159,16 @@ interface UpdateVerificationInfo {
 
   const refreshGitHubContext = useCallback(async (refreshBranches = false) => {
     const protocol = getActiveProviderProtocol();
-    if (!isConnected || protocol !== 'github') {
+    const isGitForge = protocol === 'github' || protocol === 'gitlab';
+    if (!isConnected || !isGitForge) {
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
       return;
     }
 
     try {
+      // Use protocol-specific commands but same state shape
+      const infoCommand = protocol === 'gitlab' ? 'gitlab_get_info' : 'github_get_info';
       const info = await invoke<{
         owner: string;
         repo: string;
@@ -2166,25 +2177,30 @@ interface UpdateVerificationInfo {
         writeModeKind: 'direct' | 'branch' | 'readonly' | 'unknown';
         workingBranch: string | null;
         repoPrivate: boolean;
-      }>('github_get_info');
+      }>(infoCommand);
       setGitHubRepoInfo(info);
 
-      // Check if GitHub Pages is enabled (lightweight, non-blocking)
-      invoke<unknown>('github_get_pages')
-        .then(result => setHasGitHubPages(result !== null))
-        .catch(() => setHasGitHubPages(false));
+      // GitHub-only: Pages and Actions checks
+      if (protocol === 'github') {
+        invoke<unknown>('github_get_pages')
+          .then(result => setHasGitHubPages(result !== null))
+          .catch(() => setHasGitHubPages(false));
 
-      // Check if any GitHub Actions runs are active (in_progress/queued)
-      invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
-        .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
-        .catch(() => setHasActiveGitHubActions(false));
+        invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
+          .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
+          .catch(() => setHasActiveGitHubActions(false));
+      } else {
+        setHasGitHubPages(false);
+        setHasActiveGitHubActions(false);
+      }
 
       if (refreshBranches) {
-        const branches = await invoke<Array<{ name: string; protected: boolean }>>('github_list_branches');
+        const branchCommand = protocol === 'gitlab' ? 'gitlab_list_branches' : 'github_list_branches';
+        const branches = await invoke<Array<{ name: string; protected: boolean }>>(branchCommand);
         setGitHubBranches(branches);
       }
     } catch (error) {
-      console.warn('Failed to refresh GitHub context:', error);
+      console.warn(`Failed to refresh ${protocol} context:`, error);
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
       setHasGitHubPages(false);
@@ -2283,7 +2299,7 @@ interface UpdateVerificationInfo {
 
   useEffect(() => {
     const protocol = getActiveProviderProtocol();
-    if (!isConnected || protocol !== 'github') {
+    if (!isConnected || (protocol !== 'github' && protocol !== 'gitlab')) {
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
       return;
@@ -3657,7 +3673,7 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
-      const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
+      const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
 
       if (isDir) {
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
@@ -4079,7 +4095,7 @@ interface UpdateVerificationInfo {
       if (filesToUpload.length > 0) {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
+        const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
         if (isGitHubRepoMode) {
@@ -4166,8 +4182,9 @@ interface UpdateVerificationInfo {
                 localPath: item.filePath,
                 remotePath: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${item.fileName}`,
               }));
+              const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
               const result = await invoke<{ commit_sha: string; files_count: number }>(
-                'github_batch_upload', { files, message: batchCommitMessage }
+                batchCommand, { files, message: batchCommitMessage }
               );
               // Mark all as complete
               for (const item of nonDirItems) {
@@ -4673,7 +4690,7 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
-      const isGitHubRepoMode = protocol === 'github' && !currentRemotePath.startsWith('/.github-releases');
+      const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
       let batchCommitMessage: string | undefined;
 
       if (isGitHubRepoMode) {
@@ -4712,7 +4729,8 @@ interface UpdateVerificationInfo {
         // Atomic delete for all non-dir files in one commit
         if (filePaths.length > 0) {
           try {
-            await invoke('github_batch_delete', {
+            const deleteCommand = protocol === 'gitlab' ? 'gitlab_batch_delete' : 'github_batch_delete';
+            await invoke(deleteCommand, {
               paths: filePaths,
               message: batchCommitMessage,
             });
@@ -4885,7 +4903,7 @@ interface UpdateVerificationInfo {
     const fileName = path.split(/[\\/]/).pop() || path;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const isGitHubRepoMode = protocol === 'github' && !path.startsWith('/.github-releases');
+    const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
     if (!isDir && isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
       setGitHubCommitDialog({
@@ -5232,7 +5250,7 @@ interface UpdateVerificationInfo {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: currentProtocol === 'github' ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
+      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
       ...(count > 1 ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -5256,7 +5274,7 @@ interface UpdateVerificationInfo {
           protocol: currentProtocol,
         }), disabled: count > 1
       },
-      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : currentProtocol === 'github' ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
+      { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
       ...(currentProtocol === 'jottacloud' ? [{
         label: t('contextMenu.moveToTrash'),
@@ -5590,6 +5608,7 @@ interface UpdateVerificationInfo {
               case 'filen': return 'Filen';
               case 'opendrive': return 'OpenDrive';
               case 'github': return 'GitHub';
+              case 'gitlab': return 'GitLab';
               case 'filelu': return 'FileLu';
               case 'webdav': return 'Nextcloud';
               case 'kdrive': return 'kDrive';
@@ -5891,7 +5910,8 @@ interface UpdateVerificationInfo {
     }
 
     const count = selection.size;
-    const isGitHub = (connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol) === 'github';
+    const _activeProto = connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol;
+    const isGitHub = _activeProto === 'github' || _activeProto === 'gitlab';
     const uploadLabel = isGitHub
       ? (count > 1 ? t('github.commitFiles', { count }) : t('github.commit'))
       : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
@@ -5903,7 +5923,7 @@ interface UpdateVerificationInfo {
     const items: ContextMenuItem[] = [
       {
         label: uploadLabel,
-        icon: isGitHub ? <Github size={14} /> : <Cloud size={14} />,
+        icon: _activeProto === 'github' ? <Github size={14} /> : _activeProto === 'gitlab' ? <GitLabLogo size={14} /> : <Cloud size={14} />,
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
@@ -6536,7 +6556,13 @@ interface UpdateVerificationInfo {
         isLightTheme={theme === 'light'}
       />
 
-      <div className={`isolate relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''} font-size-${fontSize}`}>
+      <div
+        className={`app-root isolate relative h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-300 flex flex-col overflow-hidden ${compactMode ? 'compact-mode' : ''}`}
+        style={{
+          '--app-font-size': `${fontSize}px`,
+          '--app-font-family': fontFamily,
+        } as React.CSSProperties}
+      >
         {/* App Background Pattern Overlay — behind content (-z-10) but above gradient bg */}
         {appBackgroundPattern?.svg && (
           <div className="absolute inset-0 pointer-events-none -z-10">
@@ -7956,7 +7982,7 @@ interface UpdateVerificationInfo {
                     >
                       <RefreshCw size={13} />
                     </button>
-                    {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (
+                    {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (
                       <GitHubBranchSelector
                         currentBranch={gitHubRepoInfo.branch}
                         branches={gitHubBranches}
@@ -8128,7 +8154,7 @@ interface UpdateVerificationInfo {
                         </button>
                       </div>
                     ) : viewMode === 'list' ? (
-                      <table className="w-full" role="grid" aria-label="Remote files">
+                      <table className="w-full text-sm" role="grid" aria-label="Remote files">
                         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
                           <tr role="row">
                             <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
@@ -8769,7 +8795,7 @@ interface UpdateVerificationInfo {
         {showStatusBar && (
           <StatusBar
             isConnected={isConnected}
-            gitHubStatus={isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' ? (
+            gitHubStatus={isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' ? (
               <GitHubWriteModeIndicator
                 writeMode={gitHubRepoInfo.writeModeKind}
                 workingBranch={gitHubRepoInfo.workingBranch || undefined}

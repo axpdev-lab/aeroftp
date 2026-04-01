@@ -25,6 +25,7 @@ export type MyServersFilterBy =
     | 's3'
     | 'webdav'
     | 'cloud'
+    | 'dev'
     | 'favorites';
 
 /** Maps a ProviderType or providerId to a catalog category for display */
@@ -88,6 +89,7 @@ export const PROTOCOL_CATEGORY_MAP: Record<string, CatalogCategoryId> = {
 
     // Developer
     github: 'developer',
+    gitlab: 'developer',
     sourceforge: 'developer',
 
     // Cloud (ex-Enterprise)
@@ -107,11 +109,14 @@ export interface FilterChip {
     matchFn: (protocol: string, providerId?: string) => boolean;
 }
 
+const DEV_PROTOCOLS = ['github', 'gitlab'];
+
 export const FILTER_CHIPS: FilterChip[] = [
     { id: 'all', labelKey: 'introHub.filter.all', matchFn: () => true },
     { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p) => ['ftp', 'ftps', 'sftp'].includes(p) },
     { id: 's3', labelKey: 'introHub.filter.s3', matchFn: (p) => p === 's3' },
     { id: 'webdav', labelKey: 'introHub.filter.webdav', matchFn: (p) => p === 'webdav' },
-    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure'].includes(p) },
+    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', ...DEV_PROTOCOLS].includes(p) },
+    { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p) => DEV_PROTOCOLS.includes(p) },
     { id: 'favorites', labelKey: 'introHub.filter.favorites', matchFn: () => true }, // Filtered by isFavorite in MyServersPanel
 ];

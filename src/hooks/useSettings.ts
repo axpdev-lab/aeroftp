@@ -21,6 +21,32 @@ import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStora
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
 
+export const MIN_APP_FONT_SIZE = 10;
+export const MAX_APP_FONT_SIZE = 22;
+export const DEFAULT_APP_FONT_FAMILY = "'Inter', system-ui, sans-serif";
+
+const LEGACY_FONT_SIZE_MAP: Record<string, number> = {
+  small: 13,
+  medium: 16,
+  large: 18,
+};
+
+export const clampAppFontSize = (value: unknown): number => {
+  const normalized = typeof value === 'string'
+    ? LEGACY_FONT_SIZE_MAP[value] ?? Number(value)
+    : Number(value);
+
+  if (!Number.isFinite(normalized)) {
+    return LEGACY_FONT_SIZE_MAP.medium;
+  }
+
+  return Math.min(MAX_APP_FONT_SIZE, Math.max(MIN_APP_FONT_SIZE, Math.round(normalized)));
+};
+
+export const normalizeAppFontFamily = (value: unknown): string => {
+  return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_APP_FONT_FAMILY;
+};
+
 export interface AppSettings {
   compactMode: boolean;
   showHiddenFiles: boolean;
@@ -28,7 +54,8 @@ export interface AppSettings {
   confirmBeforeDelete: boolean;
   showStatusBar: boolean;
   defaultLocalPath: string;
-  fontSize: 'small' | 'medium' | 'large';
+  fontSize: number;
+  fontFamily: string;
   doubleClickAction: 'preview' | 'download';
   rememberLastFolder: boolean;
   systemMenuVisible: boolean;
@@ -54,7 +81,8 @@ const DEFAULTS: AppSettings = {
   confirmBeforeDelete: true,
   showStatusBar: true,
   defaultLocalPath: '',
-  fontSize: 'medium',
+  fontSize: 16,
+  fontFamily: DEFAULT_APP_FONT_FAMILY,
   doubleClickAction: 'preview',
   rememberLastFolder: true,
   systemMenuVisible: false,
@@ -76,7 +104,8 @@ export const useSettings = () => {
   const [confirmBeforeDelete, setConfirmBeforeDelete] = useState(DEFAULTS.confirmBeforeDelete);
   const [showStatusBar, setShowStatusBar] = useState(DEFAULTS.showStatusBar);
   const [defaultLocalPath, setDefaultLocalPath] = useState(DEFAULTS.defaultLocalPath);
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(DEFAULTS.fontSize);
+  const [fontSize, setFontSize] = useState<number>(DEFAULTS.fontSize);
+  const [fontFamily, setFontFamily] = useState(DEFAULTS.fontFamily);
   const [doubleClickAction, setDoubleClickAction] = useState<'preview' | 'download'>(DEFAULTS.doubleClickAction);
   const [rememberLastFolder, setRememberLastFolder] = useState(DEFAULTS.rememberLastFolder);
   const [systemMenuVisible, setSystemMenuVisible] = useState(DEFAULTS.systemMenuVisible);
@@ -98,9 +127,10 @@ export const useSettings = () => {
     if (typeof parsed.confirmBeforeDelete === 'boolean') setConfirmBeforeDelete(parsed.confirmBeforeDelete);
     if (typeof parsed.showStatusBar === 'boolean') setShowStatusBar(parsed.showStatusBar);
     if (typeof parsed.defaultLocalPath === 'string') setDefaultLocalPath(parsed.defaultLocalPath);
-    if (parsed.fontSize && ['small', 'medium', 'large'].includes(parsed.fontSize as string)) {
-      setFontSize(parsed.fontSize as 'small' | 'medium' | 'large');
+    if (typeof parsed.fontSize === 'number' || typeof parsed.fontSize === 'string') {
+      setFontSize(clampAppFontSize(parsed.fontSize));
     }
+    if ('fontFamily' in parsed) setFontFamily(normalizeAppFontFamily(parsed.fontFamily));
     if (parsed.doubleClickAction && ['preview', 'download'].includes(parsed.doubleClickAction as string)) {
       setDoubleClickAction(parsed.doubleClickAction as 'preview' | 'download');
     }
@@ -183,6 +213,7 @@ export const useSettings = () => {
     showStatusBar,
     defaultLocalPath,
     fontSize,
+    fontFamily,
     doubleClickAction,
     rememberLastFolder,
     systemMenuVisible,
@@ -205,6 +236,7 @@ export const useSettings = () => {
     setShowStatusBar,
     setDefaultLocalPath,
     setFontSize,
+    setFontFamily,
     setDoubleClickAction,
     setRememberLastFolder,
     setSystemMenuVisible,

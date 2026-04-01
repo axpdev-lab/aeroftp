@@ -68,10 +68,10 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
   switch (writeMode) {
     case 'direct':
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
           {visibilityBadge}
           <span
-            className="inline-flex items-center gap-1 text-xs text-green-500"
+            className="inline-flex items-center gap-1 text-xs text-green-500 whitespace-nowrap"
             title={t('github.writeModeDirectTooltip') || 'Changes are committed directly to the branch'}
           >
             <CheckCircle size={12} />
@@ -83,10 +83,10 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
     case 'branch':
       return (
         <>
-          <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 whitespace-nowrap">
           {visibilityBadge}
           <span
-            className="inline-flex items-center gap-1 text-xs text-yellow-500"
+            className="inline-flex items-center gap-1 text-xs text-yellow-500 whitespace-nowrap"
             title={
               t('github.writeModeBranchTooltip', { branch: workingBranch || '' }) ||
               `Changes will be committed to ${workingBranch || 'working branch'}`
@@ -173,10 +173,10 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
 
     case 'readonly':
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
           {visibilityBadge}
           <span
-            className="inline-flex items-center gap-1 text-xs text-red-400"
+            className="inline-flex items-center gap-1 text-xs text-red-400 whitespace-nowrap"
             title={t('github.writeModeReadOnlyTooltip') || 'No write access to this repository'}
           >
             <Lock size={12} />

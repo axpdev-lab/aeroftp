@@ -525,7 +525,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           </div>
         ) : viewMode === 'list' ? (
           /* ===================== LIST VIEW ===================== */
-          <table className="w-full" role="grid" aria-label={t('browser.name')}>
+          <table className="w-full text-sm" role="grid" aria-label={t('browser.name')}>
             <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
               <tr role="row">
                 <SortableHeader label={t('browser.name')} field="name" currentField={sortField} order={sortOrder} onClick={onSort} />

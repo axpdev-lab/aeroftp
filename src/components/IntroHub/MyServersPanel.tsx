@@ -37,7 +37,7 @@ const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<
 function deriveProviderId(server: ServerProfile): string | undefined {
     const proto = server.protocol;
     if (!proto) return undefined;
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github'].includes(proto)) return proto;
+    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github', 'gitlab'].includes(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('backblaze')) return 'backblaze';
@@ -216,7 +216,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, favorites: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, dev: 0, favorites: 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
@@ -346,7 +346,7 @@ export function MyServersPanel({
 
             // Build connection params - for provider protocols, use host only (no port append)
             const proto = server.protocol || 'ftp';
-            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift'].includes(proto);
+            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift'].includes(proto);
             const defaultPort = proto === 'sftp' ? 22 : proto === 'ftps' ? 990 : 21;
             const serverString = isProviderProtocol
                 ? server.host

@@ -51,14 +51,14 @@ const CLOUD_SERVICES: DiscoverItem[] = [
 ];
 
 const PROTOCOL_ITEMS: DiscoverItem[] = [
-    { id: 'ftp-generic', name: 'FTP', description: 'File Transfer Protocol', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
-    { id: 'ftps-generic', name: 'FTPS', description: 'FTP over TLS', protocol: 'ftps', badge: 'TLS', isGeneric: true, source: 'protocol' },
+    { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
     { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, source: 'protocol' },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [
     { id: 'github', name: 'GitHub', description: 'Repository file system', protocol: 'github', badge: 'API', source: 'protocol' },
+    { id: 'gitlab', name: 'GitLab', description: 'Repository & CI/CD platform', protocol: 'gitlab', badge: 'API', source: 'protocol' },
 ];
 
 /** Badge overrides for registry providers with distinctive features */
@@ -106,12 +106,11 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         .filter(p => !EXCLUDED_IDS.has(p.id))
         .map(registryToDiscoverItem);
 
-    // Add SourceForge to developer items if present in registry
+    // Add SourceForge FIRST in developer items (SSH-based, foundational)
     const sfInRegistry = ftpProviders.find(p => p.id === 'sourceforge');
-    const devItems = [...DEVELOPER_ITEMS];
-    if (sfInRegistry) {
-        devItems.push({ ...sfInRegistry, description: 'Open source hosting' });
-    }
+    const devItems = sfInRegistry
+        ? [{ ...sfInRegistry, description: 'Open source hosting' }, ...DEVELOPER_ITEMS]
+        : [...DEVELOPER_ITEMS];
 
     // Add Hetzner to protocol items if present
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');

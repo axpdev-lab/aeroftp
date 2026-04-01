@@ -632,15 +632,25 @@ fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -
             bundle_parsed: true,
             message: "Successfully verified against GitHub Actions Sigstore transparency log".to_string(),
         }),
-        Err(e) => Ok(UpdateVerificationInfo {
-            mode: VerificationMode::VerificationFailed,
-            workflow_identity: Some(identity),
-            oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
-            artifact_sha256,
-            bundle_present: true,
-            bundle_parsed: true,
-            message: format!("Signature verification failed: {}", e),
-        })
+        Err(e) => {
+            let err_msg = format!("{}", e);
+            // "unknown bundle profile" = sigstore crate doesn't support newer bundle format
+            // Treat as unavailable (non-blocking) rather than failed (blocking)
+            let mode = if err_msg.contains("unknown bundle profile") {
+                VerificationMode::VerificationUnavailable
+            } else {
+                VerificationMode::VerificationFailed
+            };
+            Ok(UpdateVerificationInfo {
+                mode,
+                workflow_identity: Some(identity),
+                oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
+                artifact_sha256,
+                bundle_present: true,
+                bundle_parsed: true,
+                message: format!("Signature verification failed: {}", e),
+            })
+        }
     }
 }
 
@@ -4775,6 +4785,8 @@ static SPLASH_CREATED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::O
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 #[tauri::command]
 async fn app_ready(app: AppHandle) {
+    use tauri_plugin_window_state::{StateFlags, WindowExt};
+
     // IMPORTANT: Do NOT set APP_READY_DONE here! Setting it early creates a race
     // condition: rebuild_menu sees the flag, calls app.set_menu() globally, and GTK
     // applies it to the splash window that hasn't been destroyed yet → menu flash.
@@ -4814,9 +4826,13 @@ async fn app_ready(app: AppHandle) {
         }
     }
 
-    // 4. Show main window without menu (frontend controls visibility via toggle_menu_bar)
+    // 4. Restore saved size/position/maximized state only after splash teardown,
+    // then show the main window without menu (frontend controls visibility via toggle_menu_bar)
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
+        let _ = main_window.restore_state(
+            StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
+        );
         let _ = main_window.show();
         let _ = main_window.set_focus();
         info!("Main window shown");
@@ -7946,8 +7962,20 @@ pub fn run() {
                 }
             }
         }))
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_denylist(&["splashscreen"])
+                .skip_initial_state("main")
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .setup(move |app| {
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
+            use tauri_plugin_window_state::{StateFlags, WindowExt};
 
             // Ensure AppConfig directory exists with restricted permissions (0700)
             if let Ok(config_dir) = app.path().app_config_dir() {
@@ -8195,13 +8223,15 @@ pub fn run() {
                         }
                     }
                 }
-                if let Some(main) = app_handle.get_webview_window("main") {
-                    let _ = main.remove_menu();
-                    let _ = main.show();
-                    let _ = main.set_focus();
+                if let Some(main_window) = app_handle.get_webview_window("main") {
+                    let _ = main_window.remove_menu();
+                    let _ = main_window.restore_state(
+                        StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
+                    );
+                    let _ = main_window.show();
+                    let _ = main_window.set_focus();
                 }
             });
-
             // ============ System Tray Icon ============
             // Create tray menu
             let tray_sync_now = MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
@@ -8739,6 +8769,12 @@ pub fn run() {
             provider_commands::github_batch_delete,
             provider_commands::github_check_local_sync,
             provider_commands::github_push_local,
+            // GitLab-specific commands
+            provider_commands::gitlab_list_branches,
+            provider_commands::gitlab_get_info,
+            provider_commands::gitlab_switch_branch,
+            provider_commands::gitlab_batch_upload,
+            provider_commands::gitlab_batch_delete,
             // Filen Encrypted Notes
             provider_commands::filen_notes_list,
             provider_commands::filen_notes_create,

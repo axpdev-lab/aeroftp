@@ -126,6 +126,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'GitHub', logoId: 'github',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: ['devTools', 'checksum'] },
+  { name: 'GitLab', logoId: 'gitlab',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'],
+    advanced: ['devTools', 'checksum'] },
 
   // ── S3 Compatible ──
   { name: 'Amazon S3', logoId: 'amazon-s3', section: 'S3 Compatible',

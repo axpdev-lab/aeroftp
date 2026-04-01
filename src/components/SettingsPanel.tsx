@@ -30,6 +30,7 @@ import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
+import { DEFAULT_APP_FONT_FAMILY, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE, clampAppFontSize, normalizeAppFontFamily } from '../hooks/useSettings';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -118,6 +119,19 @@ interface SettingsPanelProps {
 // Settings storage key
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
+const CUSTOM_FONT_VALUE = '__custom__';
+
+const FONT_PRESETS = [
+    { label: 'Inter (Default)', value: DEFAULT_APP_FONT_FAMILY, bundled: true },
+    { label: 'System Default', value: 'system-ui, -apple-system, sans-serif', bundled: true },
+    { label: 'FiraGO', value: "'FiraGO', sans-serif", bundled: false },
+    { label: 'Noto Sans', value: "'Noto Sans', sans-serif", bundled: false },
+    { label: 'JetBrains Mono', value: "'JetBrains Mono', monospace", bundled: false },
+];
+
+const getSelectedFontPreset = (fontFamily: string) => {
+    return FONT_PRESETS.find((preset) => preset.value === fontFamily);
+};
 const SERVERS_KEY = 'aeroftp-saved-servers';
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
 
@@ -168,7 +182,8 @@ interface AppSettings {
     compactMode: boolean;
     showSystemMenu: boolean;
     swapPanels: boolean;
-    fontSize: 'small' | 'medium' | 'large';
+    fontSize: number;
+    fontFamily: string;
     // Columns
     visibleColumns: string[];
     // File browser
@@ -202,7 +217,8 @@ const defaultSettings: AppSettings = {
     compactMode: false,
     showSystemMenu: false,
     swapPanels: false,
-    fontSize: 'medium',
+    fontSize: 14,
+    fontFamily: DEFAULT_APP_FONT_FAMILY,
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
     showFileExtensions: true,
@@ -433,6 +449,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
+    const selectedFontPreset = getSelectedFontPreset(settings.fontFamily);
+    const fontSelectValue = selectedFontPreset?.value ?? CUSTOM_FONT_VALUE;
+    const previewFontFamily = normalizeAppFontFamily(settings.fontFamily);
 
     // Load settings on open
     useEffect(() => {
@@ -441,9 +460,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 try {
                     const saved = await secureGetWithFallback<AppSettings>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
                     if (saved) {
-                        setSettings({ ...defaultSettings, ...saved });
+                        const normalizedSettings = {
+                            ...defaultSettings,
+                            ...saved,
+                            fontSize: clampAppFontSize(saved.fontSize ?? defaultSettings.fontSize),
+                            fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
+                        };
+                        setSettings(normalizedSettings);
                         // One-way idempotent migration to vault with plaintext cleanup
-                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, { ...defaultSettings, ...saved }).catch(() => { });
+                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings).catch(() => { });
                     }
 
                     // Load servers: sync fallback first, then try vault
@@ -516,7 +541,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         if (saveState === 'saving') return; // prevent double-click
         setSaveState('saving');
         try {
-            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
+            const normalizedSettings = {
+                ...settings,
+                fontSize: clampAppFontSize(settings.fontSize),
+                fontFamily: normalizeAppFontFamily(settings.fontFamily),
+            };
+
+            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings);
             secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
@@ -531,12 +562,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             }
             // Remove legacy OAuth settings from localStorage
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
-            localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
+            localStorage.setItem('analytics_enabled', normalizedSettings.analyticsEnabled ? 'true' : 'false');
             // Apply system menu setting immediately
-            invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
+            invoke('toggle_menu_bar', { visible: normalizedSettings.showSystemMenu });
             // Apply autostart setting (idempotent — no pre-check needed)
             try {
-                if (settings.launchOnStartup) {
+                if (normalizedSettings.launchOnStartup) {
                     await enableAutostart();
                 } else {
                     await disableAutostart();
@@ -547,8 +578,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 const actual = await isAutostartEnabled().catch(() => false);
                 setSettings(prev => ({ ...prev, launchOnStartup: actual }));
             }
+            setSettings(normalizedSettings);
             // Notify App.tsx of settings change with inline payload for immediate sync
-            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: settings }));
+            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: normalizedSettings }));
             setHasChanges(false);
             setSaveState('saved');
             // Brief "saved" feedback then close
@@ -1051,6 +1083,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             { value: 'drime', label: 'Drime Cloud', port: 443 },
                                             { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
                                             { value: 'github', label: 'GitHub', port: 443 },
+                                            { value: 'gitlab', label: 'GitLab', port: 443 },
                                         ];
 
                                         const handleProtocolChange = (newProtocol: string) => {
@@ -2629,21 +2662,83 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             <div>
                                                 <label className="block text-sm font-medium mb-2">{t('settings.fontSize')}</label>
-                                                <div className="flex gap-2">
-                                                    {(['small', 'medium', 'large'] as const).map(size => (
-                                                        <button
-                                                            key={size}
-                                                            onClick={() => updateSetting('fontSize', size)}
-                                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${settings.fontSize === size
-                                                                ? 'bg-blue-500 text-white'
-                                                                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-                                                                }`}
-                                                        >
-                                                            {size === 'small' ? t('settings.fontSizeSmall') : size === 'medium' ? t('settings.fontSizeMedium') : t('settings.fontSizeLarge')}
-                                                        </button>
+                                                <p className="text-xs text-gray-500 mb-2">{t('settings.fontFamilyDesc')}</p>
+                                                <select
+                                                    value={fontSelectValue}
+                                                    onChange={(e) => {
+                                                        const value = e.target.value;
+                                                        if (value === CUSTOM_FONT_VALUE) {
+                                                            if (fontSelectValue !== CUSTOM_FONT_VALUE) {
+                                                                updateSetting('fontFamily', '');
+                                                            }
+                                                            return;
+                                                        }
+                                                        updateSetting('fontFamily', value);
+                                                    }}
+                                                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                                >
+                                                    {FONT_PRESETS.map((preset) => (
+                                                        <option key={preset.value} value={preset.value}>
+                                                            {preset.label}{preset.bundled ? '' : ' • system install'}
+                                                        </option>
                                                     ))}
+                                                    <option value={CUSTOM_FONT_VALUE}>Custom...</option>
+                                                </select>
+                                                {fontSelectValue === CUSTOM_FONT_VALUE && (
+                                                    <input
+                                                        type="text"
+                                                        value={settings.fontFamily}
+                                                        onChange={(e) => updateSetting('fontFamily', e.target.value)}
+                                                        placeholder={t('settings.fontCustomPlaceholder')}
+                                                        className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                                    />
+                                                )}
+                                                {selectedFontPreset && !selectedFontPreset.bundled && (
+                                                    <p className="text-xs text-gray-500 mt-2">Requires system install. AeroFTP falls back automatically if unavailable.</p>
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <div className="flex items-center justify-between gap-4 mb-2">
+                                                    <label className="block text-sm font-medium">{t('settings.fontSize')}</label>
+                                                    <span className="text-sm font-medium text-blue-600 dark:text-blue-400">{settings.fontSize}px</span>
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-1">{t('settings.fontSizeDesc')}</p>
+                                                <input
+                                                    type="range"
+                                                    min={MIN_APP_FONT_SIZE}
+                                                    max={MAX_APP_FONT_SIZE}
+                                                    step={1}
+                                                    value={settings.fontSize}
+                                                    onChange={(e) => updateSetting('fontSize', clampAppFontSize(Number(e.target.value)))}
+                                                    className="w-full accent-blue-500"
+                                                />
+                                                <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                                                    <span>{MIN_APP_FONT_SIZE}px</span>
+                                                    <span>{MAX_APP_FONT_SIZE}px</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2">{t('settings.fontSizeDesc')}</p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">{t('settings.fontPreview')}</label>
+                                                <div
+                                                    className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-3 text-gray-900 dark:text-gray-100"
+                                                    style={{ fontSize: `${settings.fontSize}px`, fontFamily: previewFontFamily }}
+                                                >
+                                                    {t('settings.fontPreview')} - AaBbCcDd 123
+                                                </div>
+                                                {(settings.fontSize !== 16 || settings.fontFamily !== DEFAULT_APP_FONT_FAMILY) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            updateSetting('fontSize', 16);
+                                                            updateSetting('fontFamily', DEFAULT_APP_FONT_FAMILY);
+                                                        }}
+                                                        className="mt-2 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                                                    >
+                                                        {t('settings.fontReset')}
+                                                    </button>
+                                                )}
                                             </div>
 
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />

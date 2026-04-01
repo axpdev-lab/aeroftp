@@ -64,6 +64,8 @@ pub enum ProviderType {
     YandexDisk,
     /// GitHub (Repository & Releases browser)
     GitHub,
+    /// GitLab (Repository browser, REST API v4)
+    GitLab,
     /// OpenStack Swift Object Storage (Blomp, OVH, Rackspace)
     Swift,
 }
@@ -96,6 +98,7 @@ impl fmt::Display for ProviderType {
             ProviderType::OpenDrive => write!(f, "OpenDrive"),
             ProviderType::YandexDisk => write!(f, "Yandex Disk"),
             ProviderType::GitHub => write!(f, "GitHub"),
+            ProviderType::GitLab => write!(f, "GitLab"),
             ProviderType::Swift => write!(f, "Swift"),
         }
     }
@@ -130,6 +133,7 @@ impl ProviderType {
             ProviderType::OpenDrive => 443,
             ProviderType::YandexDisk => 443,
             ProviderType::GitHub => 443,
+            ProviderType::GitLab => 443,
             ProviderType::Swift => 443,
         }
     }
@@ -162,6 +166,7 @@ impl ProviderType {
             ProviderType::OpenDrive |
             ProviderType::YandexDisk |
             ProviderType::GitHub |
+            ProviderType::GitLab |
             ProviderType::Swift
         )
     }

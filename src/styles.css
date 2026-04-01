@@ -646,12 +646,33 @@ tbody tr:hover .lucide-file-text {
    Compact Mode - Smaller fonts & spacing
    ====================================== */
 
-.compact-mode {
-  font-size: 12px;
+.app-root {
+  font-size: var(--app-font-size, 16px);
+  font-family: var(--app-font-family, 'Inter', system-ui, sans-serif);
 }
 
-.compact-mode body {
-  font-size: 12px;
+/* compact-mode font scaling is handled in App.tsx useEffect via --app-font-size on html */
+/* Compact file table rows keep em-based sizing */
+
+/* ── Font scaling: set html font-size so ALL Tailwind rem-based classes scale ── */
+/* Monaco editor and xterm terminal are NOT affected (they use px-based sizing). */
+html {
+  font-size: var(--app-font-size, 16px) !important;
+}
+
+/* ── Status bar: truncate on narrow windows ── */
+[role="status"] > div { min-width: 0; }
+[role="status"] button > span { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  [role="status"] button > span:not(.px-1):not(.px-1\.5):not(.min-w-\[18px\]):not(.min-w-\[16px\]) {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  [role="status"] .w-20 { width: 3rem; }
+  [role="status"] .gap-4 { gap: 0.5rem; }
 }
 
 /* Compact file list items */
@@ -879,63 +900,6 @@ tbody tr:hover .lucide-file-text {
 
 .compact-mode .file-grid-size {
   font-size: 9px;
-}
-
-/* ======================================
-   Font Size Options
-   Small, Medium (default), Large
-   ====================================== */
-
-/* Small Font Size */
-.font-size-small {
-  font-size: 12px;
-}
-
-.font-size-small table {
-  font-size: 11px;
-}
-
-.font-size-small .text-sm {
-  font-size: 10px;
-}
-
-.font-size-small .text-xs {
-  font-size: 9px;
-}
-
-.font-size-small button {
-  font-size: 11px;
-}
-
-/* Medium Font Size (default) */
-.font-size-medium {
-  font-size: 14px;
-}
-
-/* Large Font Size */
-.font-size-large {
-  font-size: 16px;
-}
-
-.font-size-large table {
-  font-size: 15px;
-}
-
-.font-size-large .text-sm {
-  font-size: 14px;
-}
-
-.font-size-large .text-xs {
-  font-size: 12px;
-}
-
-.font-size-large button {
-  font-size: 15px;
-}
-
-.font-size-large th,
-.font-size-large td {
-  padding: 12px 16px;
 }
 
 /* ======================================

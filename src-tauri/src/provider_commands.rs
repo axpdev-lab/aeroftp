@@ -140,6 +140,7 @@ impl ProviderConnectionParams {
             "opendrive" => ProviderType::OpenDrive,
             "yandexdisk" => ProviderType::YandexDisk,
             "github" => ProviderType::GitHub,
+            "gitlab" => ProviderType::GitLab,
             "swift" => ProviderType::Swift,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
@@ -4348,6 +4349,174 @@ pub async fn github_get_info(
         },
         "workingBranch": github.working_branch(),
         "repoPrivate": github.is_private(),
+    }))
+}
+
+// ── GitLab-specific commands ──────────────────────────────────────
+
+/// List all branches of the connected GitLab repository
+#[tauri::command]
+pub async fn gitlab_list_branches(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let branches = gitlab.list_branches().await
+        .map_err(|e| format!("Failed to list branches: {}", e))?;
+
+    Ok(branches.iter().map(|b| serde_json::json!({
+        "name": b.name,
+        "protected": b.is_protected,
+        "default": b.is_default,
+        "canPush": b.can_push,
+    })).collect())
+}
+
+/// Get info about the connected GitLab repository
+#[tauri::command]
+pub async fn gitlab_get_info(
+    state: State<'_, ProviderState>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let write_mode_kind = if gitlab.can_push() { "direct" } else { "readonly" };
+
+    Ok(serde_json::json!({
+        "owner": gitlab.project_path(),
+        "repo": gitlab.project_path(),
+        "branch": gitlab.active_branch_name(),
+        "writeMode": if gitlab.can_push() { "Direct" } else { "ReadOnly" },
+        "writeModeKind": write_mode_kind,
+        "workingBranch": serde_json::Value::Null,
+        "repoPrivate": gitlab.is_private(),
+    }))
+}
+
+/// Switch branch on the connected GitLab repository
+#[tauri::command]
+pub async fn gitlab_switch_branch(
+    state: State<'_, ProviderState>,
+    branch: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.switch_branch(&branch).await
+        .map_err(|e| format!("Failed to switch branch: {}", e))
+}
+
+/// Atomic batch upload of files to GitLab via REST commits API.
+#[tauri::command]
+pub async fn gitlab_batch_upload(
+    state: State<'_, ProviderState>,
+    files: Vec<serde_json::Value>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let mut actions = Vec::with_capacity(files.len());
+    for file_val in &files {
+        let local_path = file_val.get("localPath").and_then(|v| v.as_str())
+            .ok_or("Each file must have a 'localPath'")?;
+        let remote_path = file_val.get("remotePath").and_then(|v| v.as_str())
+            .ok_or("Each file must have a 'remotePath'")?;
+        let data = tokio::fs::read(local_path).await
+            .map_err(|e| format!("Failed to read {}: {}", local_path, e))?;
+        let content_b64 = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &data,
+        );
+        let clean_path = remote_path.trim_start_matches('/');
+        // Check if file exists to determine create vs update
+        let action = if gitlab.exists(clean_path).await.unwrap_or(false) {
+            "update"
+        } else {
+            "create"
+        };
+        actions.push(serde_json::json!({
+            "action": action,
+            "file_path": clean_path,
+            "content": content_b64,
+            "encoding": "base64",
+        }));
+    }
+
+    let commit = gitlab.commit_actions_pub(&message, actions).await
+        .map_err(|e| format!("Batch upload failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "commit_sha": commit.id,
+        "files_count": files.len(),
+    }))
+}
+
+/// Atomic batch delete of files on GitLab via REST commits API.
+#[tauri::command]
+pub async fn gitlab_batch_delete(
+    state: State<'_, ProviderState>,
+    paths: Vec<String>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let actions: Vec<serde_json::Value> = paths.iter().map(|p| {
+        serde_json::json!({
+            "action": "delete",
+            "file_path": p.trim_start_matches('/'),
+        })
+    }).collect();
+
+    let commit = gitlab.commit_actions_pub(&message, actions).await
+        .map_err(|e| format!("Batch delete failed: {}", e))?;
+
+    Ok(serde_json::json!({
+        "commit_sha": commit.id,
+        "deletions_count": paths.len(),
     }))
 }
 

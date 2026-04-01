@@ -105,7 +105,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         <>
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                             <Wifi size={12} className="text-green-500" />
-                            <span className="font-medium text-green-600 dark:text-green-400">
+                            <span className="font-medium text-green-600 dark:text-green-400 truncate max-w-[200px]">
                                 {serverInfo || t('statusBar.connected')}
                             </span>
                         </>
@@ -182,7 +182,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </div>
 
             {/* Right: File Count + Sync + DevTools */}
-            <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-4 min-w-0 shrink overflow-hidden">
                 {/* Storage Quota */}
                 {isConnected && storageQuota && storageQuota.total > 0 && (
                     <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>

@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.3.1"
+version = "3.3.2"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -49,6 +49,7 @@ notify = { version = "8", default-features = true }                          # F
 notify-debouncer-full = "0.6"                                               # Debouncer with rename tracking, event dedup, quiet-period batching
 tauri-plugin-single-instance = "2.3.6"
 tauri-plugin-autostart = "2"                                               # Launch on system startup
+tauri-plugin-window-state = "2"
 
 # Multi-protocol providers (Sprint 1)
 async-trait = "0.1"

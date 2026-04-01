@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.2" date="2026-04-01">
+      <description>
+        <p>GitLab provider: browse repositories, upload/download files, atomic batch commits via REST API v4. Branch selector, commit dialog, write mode indicator. Font customization: continuous 10-22px slider, font family selector (Inter, FiraGO, Noto Sans, custom). Window state persistence: size, position, maximized saved between sessions. Developer filter chip in My Servers. Floating card design. Provider identity in form headers. 50 integrated services.</p>
+      </description>
+    </release>
     <release version="3.3.0" date="2026-04-01">
       <description>
         <p>IntroHub redesign: new tabbed interface with My Servers grid, Discover Services catalog (49 providers), Command Palette (Ctrl+K), and dynamic form tabs. Custom animated checkboxes. SourceForge native SFTP integration. SFTP upload fix (host key mismatch). Auto-update trust UI with Sigstore verification badges. Linux restart reliability fix. 47-language info banners.</p>

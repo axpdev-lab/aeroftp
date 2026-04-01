@@ -77,7 +77,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (26 protocols, sync, share)
+├── AeroCloud    - Personal cloud (27 protocols, sync, share)
 ├── AeroFile     - Professional file manager
 ├── AeroSync     - Bidirectional sync engine
 ├── AeroVault    - Military-grade encryption

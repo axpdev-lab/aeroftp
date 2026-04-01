@@ -131,19 +131,6 @@ export function IntroHubHeader({
 
             {/* Right side actions */}
             <div className="flex items-center gap-1.5 shrink-0">
-                {/* Search / Command Palette trigger */}
-                <button
-                    onClick={onCommandPalette}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 text-sm transition-colors min-w-[140px]"
-                    title="Ctrl+K"
-                >
-                    <Search size={14} />
-                    <span className="text-gray-400 dark:text-gray-500 hidden sm:inline">{t('introHub.search')}</span>
-                    <kbd className="ml-auto text-[10px] font-mono px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-gray-500 dark:text-gray-400">
-                        Ctrl+K
-                    </kbd>
-                </button>
-
                 {/* Active sessions badge */}
                 {hasExistingSessions && onSkipToFileManager && (
                     <button

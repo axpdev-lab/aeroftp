@@ -99,6 +99,7 @@ pub async fn session_connect(
         "filelu" => ProviderType::FileLu,
         "opendrive" => ProviderType::OpenDrive,
         "github" => ProviderType::GitHub,
+        "gitlab" => ProviderType::GitLab,
         other => return Err(format!("Unknown protocol: {}", other)),
     };
 

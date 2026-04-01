@@ -4,7 +4,7 @@ import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
-import { CommandPalette } from './CommandPalette';
+// CommandPalette removed — search is redundant with filter chips
 import { ConnectionScreen } from '../ConnectionScreen';
 import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
@@ -80,7 +80,7 @@ export function IntroHub(props: IntroHubProps) {
     const [formTabs, setFormTabs] = useState<FormTabState[]>([]);
 
     // Command Palette
-    const [showPalette, setShowPalette] = useState(false);
+    // showPalette removed — CommandPalette was redundant with filter chips
 
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
@@ -189,7 +189,7 @@ export function IntroHub(props: IntroHubProps) {
 
     // Command Palette
     const handleCommandPalette = useCallback(() => {
-        setShowPalette(true);
+        // no-op — CommandPalette removed
     }, []);
 
     // Connect from Command Palette (saved server)
@@ -215,9 +215,6 @@ export function IntroHub(props: IntroHubProps) {
             } else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
                 e.preventDefault();
                 handleTabChange('discover');
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                e.preventDefault();
-                handleCommandPalette();
             } else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
                 handleNewConnection();
@@ -310,17 +307,6 @@ export function IntroHub(props: IntroHubProps) {
                     </div>
                 )}
             </div>
-
-            {/* Command Palette (Ctrl+K) */}
-            <CommandPalette
-                isOpen={showPalette}
-                onClose={() => setShowPalette(false)}
-                servers={paletteServers}
-                onConnectServer={handlePaletteConnect}
-                onSelectProvider={handleSelectProvider}
-                onQuickConnect={() => { setShowPalette(false); handleNewConnection(); }}
-                onNavigateTab={(tab) => { setShowPalette(false); handleTabChange(tab); }}
-            />
 
             {/* Export/Import Dialog */}
             {showExportImport && (
