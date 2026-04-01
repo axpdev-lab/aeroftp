@@ -65,7 +65,8 @@
       "retry": "Opnieuw",
       "optional": "optioneel",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "vereist"
     },
     "connection": {
       "title": "Verbinden met Server",

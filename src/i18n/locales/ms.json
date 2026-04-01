@@ -65,7 +65,8 @@
       "retry": "Cuba lagi",
       "optional": "pilihan",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "diperlukan"
     },
     "connection": {
       "title": "Sambung ke Pelayan",

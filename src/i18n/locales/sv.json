@@ -65,7 +65,8 @@
       "retry": "Försök igen",
       "optional": "valfritt",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obligatorisk"
     },
     "connection": {
       "title": "Anslut till server",

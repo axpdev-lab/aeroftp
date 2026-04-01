@@ -65,7 +65,8 @@
       "retry": "Reîncercare",
       "optional": "optional",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obligatoriu"
     },
     "connection": {
       "title": "Conectare la server",

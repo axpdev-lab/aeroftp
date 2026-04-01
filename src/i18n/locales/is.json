@@ -65,7 +65,8 @@
       "retry": "Reyna aftur",
       "optional": "valfrjalst",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "nauðsynlegt"
     },
     "connection": {
       "title": "Tengjast þjóni",

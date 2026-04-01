@@ -65,7 +65,8 @@
       "retry": "Pokušaj ponovo",
       "optional": "neobavezno",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obavezno"
     },
     "connection": {
       "title": "Poveži se na poslužitelj",

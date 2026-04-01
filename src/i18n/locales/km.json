@@ -65,7 +65,8 @@
       "retry": "ព្យាយាមម្ដងទៀត",
       "optional": "ជាក់មិនចំបាច់",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "ចាំបាច់"
     },
     "connection": {
       "title": "តភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",

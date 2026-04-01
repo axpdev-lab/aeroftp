@@ -65,7 +65,8 @@
       "retry": "Επανάληψη",
       "optional": "προαιρετικό",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "απαιτείται"
     },
     "connection": {
       "title": "Σύνδεση σε διακομιστή",

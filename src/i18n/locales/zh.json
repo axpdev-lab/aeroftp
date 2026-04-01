@@ -65,7 +65,8 @@
       "retry": "重试",
       "optional": "可选",
       "check": "检查",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "必填"
     },
     "connection": {
       "title": "连接到服务器",

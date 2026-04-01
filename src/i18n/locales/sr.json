@@ -65,7 +65,8 @@
       "retry": "Покушај поново",
       "optional": "опционално",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "обавезно"
     },
     "connection": {
       "title": "Повежи се на сервер",

@@ -65,7 +65,8 @@
       "retry": "Subukan muli",
       "optional": "opsyonal",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "kinakailangan"
     },
     "connection": {
       "title": "Kumonekta sa Server",

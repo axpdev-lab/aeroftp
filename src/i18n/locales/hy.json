@@ -65,7 +65,8 @@
       "retry": "Կրկնել",
       "optional": "ոչ պարտադիր",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "պարտադիր"
     },
     "connection": {
       "title": "Կապվել սերվերուհն",

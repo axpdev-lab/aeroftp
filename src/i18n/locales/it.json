@@ -65,7 +65,8 @@
       "size": "Dimensione",
       "retry": "Riprova",
       "check": "Verifica",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obbligatorio"
     },
     "lockScreen": {
       "locked": "App Bloccata",

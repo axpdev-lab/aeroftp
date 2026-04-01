@@ -65,7 +65,8 @@
       "retry": "재시도",
       "optional": "선택 사항",
       "check": "확인",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "필수"
     },
     "connection": {
       "title": "서버에 연결",

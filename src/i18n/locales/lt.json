@@ -65,7 +65,8 @@
       "retry": "Bandyti dar kartą",
       "optional": "neprivaloma",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "privalomas"
     },
     "connection": {
       "title": "Prisijungti prie serverio",

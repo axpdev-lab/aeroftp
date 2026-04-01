@@ -65,7 +65,8 @@
       "retry": "পুনরায় চেষ্টা করুন",
       "optional": "ঐচ্ছিক",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "প্রয়োজনীয়"
     },
     "connection": {
       "title": "সার্ভারে সংযোগ করুন",

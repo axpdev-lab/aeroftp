@@ -65,7 +65,8 @@
       "retry": "Prøv igjen",
       "optional": "valgfritt",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "påkrevd"
     },
     "connection": {
       "title": "Koble til server",

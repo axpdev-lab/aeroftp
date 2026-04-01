@@ -65,7 +65,8 @@
       "retry": "Zkusit znovu",
       "optional": "volitelné",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "povinné"
     },
     "connection": {
       "title": "Připojení k serveru",

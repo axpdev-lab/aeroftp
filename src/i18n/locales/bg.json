@@ -65,7 +65,8 @@
       "retry": "Опитай отново",
       "optional": "незадължително",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "задължително"
     },
     "connection": {
       "title": "Свързване със сървър",

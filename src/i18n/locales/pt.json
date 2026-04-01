@@ -65,7 +65,8 @@
       "retry": "Tentar novamente",
       "optional": "opcional",
       "check": "Verificar",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obrigatório"
     },
     "connection": {
       "title": "Conectar ao Servidor",

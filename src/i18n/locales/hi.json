@@ -65,7 +65,8 @@
       "retry": "पुनः प्रयास करें",
       "optional": "वैकल्पिक",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "आवश्यक"
     },
     "connection": {
       "title": "सर्वर से कनेक्ट करें",

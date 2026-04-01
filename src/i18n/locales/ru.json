@@ -65,7 +65,8 @@
       "retry": "Повторить",
       "optional": "необязательно",
       "check": "Проверить",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "обязательно"
     },
     "connection": {
       "title": "Подключение к серверу",

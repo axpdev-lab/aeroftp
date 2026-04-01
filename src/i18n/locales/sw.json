@@ -65,7 +65,8 @@
       "retry": "Jaribu tena",
       "optional": "hiari",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "inahitajika"
     },
     "connection": {
       "title": "Unganisha na Seva",

@@ -65,7 +65,8 @@
       "retry": "Proovi uuesti",
       "optional": "valikuline",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "nõutav"
     },
     "connection": {
       "title": "Ühenda serveriga",

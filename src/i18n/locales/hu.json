@@ -65,7 +65,8 @@
       "retry": "Újra",
       "optional": "nem kotelezo",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "kötelező"
     },
     "connection": {
       "title": "Csatlakozás szerverhez",

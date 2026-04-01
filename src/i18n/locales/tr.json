@@ -65,7 +65,8 @@
       "retry": "Tekrar dene",
       "optional": "isteğe bağlı",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "gerekli"
     },
     "connection": {
       "title": "Sunucuya Bağlan",

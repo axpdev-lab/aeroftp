@@ -65,7 +65,8 @@
       "retry": "Ailgeisio",
       "optional": "dewisol",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "gofynnol"
     },
     "connection": {
       "title": "Cysylltu a'r Gweinydd",

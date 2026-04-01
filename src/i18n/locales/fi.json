@@ -65,7 +65,8 @@
       "retry": "Yritä uudelleen",
       "optional": "valinnainen",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "vaadittu"
     },
     "connection": {
       "title": "Yhdistä palvelimeen",

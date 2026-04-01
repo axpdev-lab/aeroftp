@@ -65,7 +65,8 @@
       "retry": "Wiederholen",
       "optional": "optional",
       "check": "Prüfen",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "erforderlich"
     },
     "connection": {
       "title": "Mit Server verbinden",

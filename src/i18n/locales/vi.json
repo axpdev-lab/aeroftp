@@ -65,7 +65,8 @@
       "retry": "Thử lại",
       "optional": "tùy chọn",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "bắt buộc"
     },
     "connection": {
       "title": "Kết nối đến máy chủ",

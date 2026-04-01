@@ -65,7 +65,8 @@
       "retry": "ხელახლა",
       "optional": "არასავალდებულო",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "სავალდებულო"
     },
     "connection": {
       "title": "სერვერთან დაკავშირება",

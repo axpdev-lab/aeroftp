@@ -65,7 +65,8 @@
       "retry": "Mēģināt vēlreiz",
       "optional": "neobligats",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obligāts"
     },
     "connection": {
       "title": "Savienoties ar serveri",

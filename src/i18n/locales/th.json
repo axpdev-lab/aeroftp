@@ -65,7 +65,8 @@
       "retry": "ลองใหม่",
       "optional": "ไม่บังคับ",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "จำเป็น"
     },
     "connection": {
       "title": "เชื่อมต่อเซิร์ฟเวอร์",

@@ -65,7 +65,8 @@
       "retry": "Réessayer",
       "optional": "facultatif",
       "check": "Vérifier",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "obligatoire"
     },
     "connection": {
       "title": "Connexion au Serveur",

@@ -65,7 +65,8 @@
       "retry": "Saiatu berriro",
       "optional": "aukerakoa",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "beharrezkoa"
     },
     "connection": {
       "title": "Zerbitzarira Konektatu",

@@ -65,7 +65,8 @@
       "retry": "Coba lagi",
       "optional": "opsional",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "wajib"
     },
     "connection": {
       "title": "Hubungkan ke Server",

@@ -65,7 +65,8 @@
       "retry": "Ponów",
       "optional": "opcjonalne",
       "check": "Check",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "required": "wymagane"
     },
     "connection": {
       "title": "Połącz z serwerem",
