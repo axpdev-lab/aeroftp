@@ -560,12 +560,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             }
             // Remove legacy OAuth settings from localStorage
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
-            localStorage.setItem('analytics_enabled', normalizedSettings.analyticsEnabled ? 'true' : 'false');
+            localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
             // Apply system menu setting immediately
-            invoke('toggle_menu_bar', { visible: normalizedSettings.showSystemMenu });
+            invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
             // Apply autostart setting (idempotent — no pre-check needed)
             try {
-                if (normalizedSettings.launchOnStartup) {
+                if (settings.launchOnStartup) {
                     await enableAutostart();
                 } else {
                     await disableAutostart();
@@ -576,9 +576,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 const actual = await isAutostartEnabled().catch(() => false);
                 setSettings(prev => ({ ...prev, launchOnStartup: actual }));
             }
-            setSettings(normalizedSettings);
+            setSettings(settings);
             // Notify App.tsx of settings change with inline payload for immediate sync
-            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: normalizedSettings }));
+            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: settings }));
             setHasChanges(false);
             setSaveState('saved');
             // Brief "saved" feedback then close
