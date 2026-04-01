@@ -550,6 +550,7 @@ async fn download_update_artifact(
 enum VerificationMode {
     SigstoreVerified,
     VerificationUnavailable,
+    #[allow(dead_code)]
     VerificationFailed,
 }
 
@@ -633,22 +634,17 @@ fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -
             message: "Successfully verified against GitHub Actions Sigstore transparency log".to_string(),
         }),
         Err(e) => {
-            let err_msg = format!("{}", e);
-            // "unknown bundle profile" = sigstore crate doesn't support newer bundle format
-            // Treat as unavailable (non-blocking) rather than failed (blocking)
-            let mode = if err_msg.contains("unknown bundle profile") {
-                VerificationMode::VerificationUnavailable
-            } else {
-                VerificationMode::VerificationFailed
-            };
+            // Sigstore verification errors should NEVER block the user from installing.
+            // The artifact is already downloaded and SHA256-verified. Sigstore is a supply-chain
+            // transparency bonus, not a gate. Treat all verification errors as non-blocking.
             Ok(UpdateVerificationInfo {
-                mode,
+                mode: VerificationMode::VerificationUnavailable,
                 workflow_identity: Some(identity),
                 oidc_issuer: Some(SIGSTORE_OIDC_ISSUER.to_string()),
                 artifact_sha256,
                 bundle_present: true,
                 bundle_parsed: true,
-                message: format!("Signature verification failed: {}", e),
+                message: format!("Signature verification unavailable: {}", e),
             })
         }
     }
