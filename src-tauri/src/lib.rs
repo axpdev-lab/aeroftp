@@ -2731,7 +2731,24 @@ fn get_system_info() -> SystemInfo {
         .unwrap_or(false);
 
     let keyring_backend = if cfg!(target_os = "linux") {
-        "gnome-keyring / Secret Service"
+        // Detect actual keyring provider from desktop environment.
+        // The `keyring` crate uses the D-Bus Secret Service API (org.freedesktop.secrets),
+        // which is provided by different daemons depending on the DE:
+        // KDE → kwalletd, GNOME/XFCE/MATE/Cinnamon → gnome-keyring
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        let desktop_upper = desktop.to_uppercase();
+        if desktop_upper.contains("KDE") {
+            "KDE Wallet (Secret Service API)"
+        } else if desktop_upper.contains("GNOME")
+            || desktop_upper.contains("UNITY")
+            || desktop_upper.contains("CINNAMON")
+            || desktop_upper.contains("MATE")
+            || desktop_upper.contains("XFCE")
+        {
+            "GNOME Keyring (Secret Service API)"
+        } else {
+            "Secret Service API (D-Bus)"
+        }
     } else if cfg!(target_os = "macos") {
         "macOS Keychain"
     } else if cfg!(target_os = "windows") {

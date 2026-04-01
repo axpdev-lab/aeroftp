@@ -6,9 +6,11 @@ import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
 import { CommandPalette } from './CommandPalette';
 import { ConnectionScreen } from '../ConnectionScreen';
+import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { useTranslation } from '../../i18n';
+import { secureStoreAndClean } from '../../utils/secureStorage';
 import type { ProviderType } from '../../types';
 
 const TAB_STATE_KEY = 'aeroftp-intro-active-tab';
@@ -39,6 +41,7 @@ export interface IntroHubProps {
     onOpenCloudPanel?: () => void;
     hasExistingSessions?: boolean;
     serversRefreshKey?: number;
+    onServersChanged?: () => void;
 }
 
 function generateTabId(): string {
@@ -62,6 +65,7 @@ export function IntroHub(props: IntroHubProps) {
         onOpenCloudPanel,
         hasExistingSessions,
         serversRefreshKey,
+        onServersChanged,
     } = props;
 
     const t = useTranslation();
@@ -317,6 +321,27 @@ export function IntroHub(props: IntroHubProps) {
                 onQuickConnect={() => { setShowPalette(false); handleNewConnection(); }}
                 onNavigateTab={(tab) => { setShowPalette(false); handleTabChange(tab); }}
             />
+
+            {/* Export/Import Dialog */}
+            {showExportImport && (
+                <ExportImportDialog
+                    servers={paletteServers}
+                    onImport={(newServers) => {
+                        let currentServers: ServerProfile[] = [];
+                        try {
+                            const stored = localStorage.getItem('aeroftp-saved-servers');
+                            if (stored) currentServers = JSON.parse(stored);
+                        } catch { /* fallback */ }
+                        if (currentServers.length === 0) currentServers = paletteServers;
+                        const updated = [...currentServers, ...newServers];
+                        secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', updated).catch(() => {});
+                        setPaletteServers(updated);
+                        setShowExportImport(false);
+                        onServersChanged?.();
+                    }}
+                    onClose={() => setShowExportImport(false)}
+                />
+            )}
         </div>
     );
 }

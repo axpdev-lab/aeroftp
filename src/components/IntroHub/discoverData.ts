@@ -40,6 +40,7 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E', signupUrl: 'https://filen.io', source: 'protocol' },
     { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E', signupUrl: 'https://internxt.com', source: 'protocol' },
     { id: 'kdrive', name: 'kDrive', description: 'Infomaniak Swiss cloud (15 GB free)', protocol: 'kdrive', badge: 'API', signupUrl: 'https://www.infomaniak.com/en/kdrive', source: 'protocol' },
+    { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', source: 'protocol' },
     { id: 'jottacloud', name: 'Jottacloud', description: 'Norwegian cloud storage (5 GB free)', protocol: 'jottacloud', badge: 'API', signupUrl: 'https://www.jottacloud.com', source: 'protocol' },
     { id: 'drime', name: 'Drime Cloud', description: 'Cloud storage with API access (20 GB free)', protocol: 'drime', badge: 'API', signupUrl: 'https://drime.cloud', source: 'protocol' },
     { id: 'fourshared', name: '4shared', description: 'File sharing platform (15 GB free)', protocol: 'fourshared', badge: 'OAuth', signupUrl: 'https://www.4shared.com', source: 'protocol' },
@@ -47,7 +48,6 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'yandexdisk', name: 'Yandex Disk', description: 'Russian cloud storage (5 GB free)', protocol: 'yandexdisk', badge: 'OAuth', signupUrl: 'https://disk.yandex.com', source: 'protocol' },
     { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', source: 'protocol' },
     { id: 'zohoworkdrive', name: 'Zoho WorkDrive', description: 'Team collaboration and storage (5 GB free)', protocol: 'zohoworkdrive', badge: 'OAuth', signupUrl: 'https://www.zoho.com/workdrive/', source: 'protocol' },
-    { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', source: 'protocol' },
 ];
 
 const PROTOCOL_ITEMS: DiscoverItem[] = [
@@ -93,7 +93,15 @@ const EXCLUDED_IDS = new Set(['filelu-ftp', 'filelu-ftps']);
 
 export function buildDiscoverCategories(): DiscoverCategory[] {
     const s3Providers = getProvidersByCategory('s3').map(registryToDiscoverItem);
-    const webdavProviders = getProvidersByCategory('webdav').map(registryToDiscoverItem);
+    const webdavProviders = getProvidersByCategory('webdav').map(registryToDiscoverItem)
+        .sort((a, b) => {
+            // WebDAV Server (generic) first, then Nextcloud, Felicloud, then alphabetical
+            const priority: Record<string, number> = { 'custom-webdav': 0, 'nextcloud': 1, 'felicloud': 2 };
+            const pa = priority[a.id] ?? 10;
+            const pb = priority[b.id] ?? 10;
+            if (pa !== pb) return pa - pb;
+            return a.name.localeCompare(b.name);
+        });
     const ftpProviders = getProvidersByCategory('ftp')
         .filter(p => !EXCLUDED_IDS.has(p.id))
         .map(registryToDiscoverItem);

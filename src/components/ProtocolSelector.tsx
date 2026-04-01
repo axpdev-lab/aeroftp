@@ -18,7 +18,8 @@ import {
     HardDrive,
     ChevronDown,
     ExternalLink,
-    Pencil
+    Pencil,
+    Info,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
@@ -664,8 +665,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const [showInsecureCertModal, setShowInsecureCertModal] = useState(false);
 
     if (protocol === 'sftp') {
+        const isSourceForge = selectedProviderId === 'sourceforge';
         const hasKeyConfig = !!(options.private_key_path || options.key_passphrase);
-        const [sshOpen, setSshOpen] = useState(hasKeyConfig);
+        const [sshOpen, setSshOpen] = useState(hasKeyConfig || isSourceForge);
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 {/* Collapsible SSH Auth header */}
@@ -677,13 +679,27 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     <ChevronDown size={14} className={`transition-transform duration-200 ${sshOpen ? '' : '-rotate-90'}`} />
                     <Lock size={14} />
                     {t('protocol.sshAuth')}
-                    <span className="text-xs font-normal text-gray-400">({t('common.optional')})</span>
+                    <span className={`text-xs font-normal ${isSourceForge ? 'text-amber-500' : 'text-gray-400'}`}>
+                        ({isSourceForge ? t('common.required') : t('common.optional')})
+                    </span>
                 </button>
                 {sshOpen && (
                     <div className="space-y-3 animate-fade-in-down">
                         <p className="text-xs text-gray-500">
                             {t('protocol.sshAuthHelp')}
                         </p>
+                        {isSourceForge && (
+                            <div className="flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/30 rounded-lg text-xs text-amber-800 dark:text-amber-200">
+                                <Info size={13} className="shrink-0 mt-0.5" />
+                                <span>
+                                    SourceForge requires SSH key authentication. Generate a key with{' '}
+                                    <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-[11px]">ssh-keygen -t ed25519</code>{' '}
+                                    and upload it to{' '}
+                                    <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">SSH Settings</a>.{' '}
+                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/protocols/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a>
+                                </span>
+                            </div>
+                        )}
                         <div>
                             <label className="block text-sm font-medium mb-1.5">{t('protocol.privateKeyPath')}</label>
                             <div className="flex gap-2">

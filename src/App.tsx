@@ -649,8 +649,15 @@ const App: React.FC = () => {
         console.error('Failed to initialize credential vault:', err);
       } finally {
         // Pre-warm vault: fetch server profiles so data is ready for SavedServers
+        // If vault has data but localStorage is empty (Windows vault.db recovery), restore it
         try {
-          await secureGetWithFallback<unknown[]>('server_profiles', 'aeroftp-saved-servers');
+          const vaultServers = await secureGetWithFallback<unknown[]>('server_profiles', 'aeroftp-saved-servers');
+          if (vaultServers && vaultServers.length > 0) {
+            const localStored = localStorage.getItem('aeroftp-saved-servers');
+            if (!localStored || localStored === '[]') {
+              localStorage.setItem('aeroftp-saved-servers', JSON.stringify(vaultServers));
+            }
+          }
         } catch { /* non-critical */ }
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
@@ -7437,6 +7444,7 @@ interface UpdateVerificationInfo {
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
               serversRefreshKey={serversRefreshKey}
+              onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
                 if (isCloudActive) {
                   // Already connected — switch to cloud tab

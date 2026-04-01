@@ -132,7 +132,7 @@ export function MyServersToolbar({
                 <button
                     onClick={onOpenExportImport}
                     className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-800/40 text-amber-600 dark:text-amber-400 transition-colors"
-                    title={t('savedServers.importExport')}
+                    title={t('settings.exportImport')}
                 >
                     <ImportExportIcon size={15} />
                 </button>
