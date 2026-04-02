@@ -954,24 +954,50 @@ fn spawn_detached_relaunch(exe_path: &str) {
         }
     }
 
-    // Fallback: original approach with increased delay + SIGHUP ignore
+    // Fallback: inline PID-polling via sh (same logic as helper script).
+    // Waits until parent PID exits, then relaunches. Works on fast and slow PCs.
+    // Arguments passed via $0/$1 to prevent shell injection.
+    let script = r#"i=0; while kill -0 "$1" 2>/dev/null; do sleep 1; i=$((i+1)); [ "$i" -ge 60 ] && exit 1; done; sleep 1; exec "$0""#;
+
+    // Try setsid --fork first (fully detached from parent session)
+    if std::process::Command::new("setsid")
+        .arg("--fork")
+        .arg("sh")
+        .arg("-c")
+        .arg(script)
+        .arg(exe_path)
+        .arg(&parent_pid)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .is_ok()
+    {
+        tracing::info!("Inline restart (setsid) spawned for PID {}", parent_pid);
+        return;
+    }
+
+    // Last resort: pre_exec with libc::setsid()
     use std::os::unix::process::CommandExt;
     let exe_owned = exe_path.to_string();
-    let mut cmd = std::process::Command::new(&exe_owned);
-    cmd.stdin(std::process::Stdio::null())
+    let pid_owned = parent_pid.clone();
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c")
+        .arg(script)
+        .arg(&exe_owned)
+        .arg(&pid_owned)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     unsafe {
         cmd.pre_exec(|| {
             libc::setsid();
             libc::signal(libc::SIGHUP, libc::SIG_IGN);
-            // Brief pause to let parent exit cleanly
-            std::thread::sleep(std::time::Duration::from_secs(5));
             Ok(())
         });
     }
     match cmd.spawn() {
-        Ok(_) => tracing::info!("Detached relaunch spawned: {}", exe_path),
+        Ok(_) => tracing::info!("Inline restart (pre_exec) spawned for PID {}", parent_pid),
         Err(e) => tracing::warn!("Failed to spawn relaunch: {}", e),
     }
 }

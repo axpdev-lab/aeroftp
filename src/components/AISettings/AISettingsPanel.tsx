@@ -525,7 +525,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     displayName: name.split(':')[0].replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
                     maxTokens: 4096,
                     supportsStreaming: true,
-                    supportsTools: false,
+                    supportsTools: true,
                     supportsVision: VISION_PATTERNS.test(name),
                     isEnabled: true,
                     isDefault: existingNames.length === 0 && index === 0,
@@ -774,13 +774,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                 </div>
 
                                                 {/* Status indicator */}
-                                                <div className={`w-2 h-2 rounded-full ${provider.isEnabled && provider.apiKey
+                                                <div className={`w-2 h-2 rounded-full ${provider.isEnabled && (provider.apiKey || provider.type === 'ollama')
                                                     ? 'bg-green-500'
                                                     : provider.isEnabled
                                                         ? 'bg-yellow-500'
                                                         : 'bg-gray-500'
                                                     }`} title={
-                                                        provider.isEnabled && provider.apiKey
+                                                        provider.isEnabled && (provider.apiKey || provider.type === 'ollama')
                                                             ? t('ai.settings.active')
                                                             : provider.isEnabled
                                                                 ? t('ai.settings.missingApiKey')

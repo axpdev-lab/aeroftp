@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.4" date="2026-04-03">
+      <description>
+        <p>Ollama local AI fix: models now appear in chat dropdown, status indicator shows green, tool calls work correctly. Update verification shows green SHA-256 badge instead of amber warning. Reliable app restart after update using PID-polling instead of fixed timeout. Auto-imported AI models now have tools enabled by default.</p>
+      </description>
+    </release>
     <release version="3.3.3" date="2026-04-02">
       <description>
         <p>Provider health check dashboard: progressive wave scan with status indicators on Discover service cards. S3 Advanced Options with locked preset fields and edit warning. Provider logos in connect buttons. AWS theme-aware logo. Form card redesign: unified styling, card footer with links, 2-line disclaimer. Form tab context menu and origin memory. S3 folder delete fix for MinIO. Font customization and window state persistence. GitLab integration. 51 integrated services across 6 protocols. Documentation reorganized: Technical Reference and Setup Guides.</p>

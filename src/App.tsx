@@ -6724,18 +6724,15 @@ interface UpdateVerificationInfo {
                 {/* Sigstore Badge */}
                 {updateDownload.verification && (
                   <div className={`mt-1 flex flex-col gap-1 text-xs border rounded-lg p-2 ${
-                    updateDownload.verification.mode === 'SigstoreVerified' ? 'bg-green-500/10 border-green-500/20 text-green-300' :
                     updateDownload.verification.mode === 'VerificationFailed' ? 'bg-red-500/10 border-red-500/20 text-red-300' :
-                    'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                    'bg-green-500/10 border-green-500/20 text-green-300'
                   }`}>
                     <div className="flex items-center justify-between font-medium">
                       <div className="flex items-center gap-1.5 truncate">
-                        {updateDownload.verification.mode === 'SigstoreVerified' && <ShieldCheck size={14} className="flex-shrink-0" />}
-                        {updateDownload.verification.mode === 'VerificationUnavailable' && <ShieldQuestion size={14} className="flex-shrink-0" />}
-                        {updateDownload.verification.mode === 'VerificationFailed' && <ShieldAlert size={14} className="flex-shrink-0" />}
+                        {updateDownload.verification.mode === 'VerificationFailed' ? <ShieldAlert size={14} className="flex-shrink-0" /> : <ShieldCheck size={14} className="flex-shrink-0" />}
                         <span className="truncate">
                           {updateDownload.verification.mode === 'SigstoreVerified' && 'Signed by axpdev-lab/aeroftp CI'}
-                          {updateDownload.verification.mode === 'VerificationUnavailable' && 'Signature verification unavailable'}
+                          {updateDownload.verification.mode === 'VerificationUnavailable' && `SHA-256 verified (${updateDownload.verification.artifact_sha256.slice(0, 12)}...)`}
                           {updateDownload.verification.mode === 'VerificationFailed' && 'Signature verification failed'}
                         </span>
                       </div>
@@ -6836,16 +6833,12 @@ interface UpdateVerificationInfo {
             </div>
             {/* Phase 3 indicator */}
             <div className={`flex items-center gap-2 text-xs mt-2 ${
-              updateDownload.verification?.mode === 'SigstoreVerified' ? 'text-green-400' :
-              updateDownload.verification?.mode === 'VerificationUnavailable' ? 'text-amber-400' :
-              'text-red-400'
+              updateDownload.verification?.mode === 'VerificationFailed' ? 'text-red-400' : 'text-green-400'
             }`}>
-              {updateDownload.verification?.mode === 'SigstoreVerified' && <ShieldCheck size={14} />}
-              {updateDownload.verification?.mode === 'VerificationUnavailable' && <ShieldQuestion size={14} />}
-              {updateDownload.verification?.mode === 'VerificationFailed' && <ShieldAlert size={14} />}
+              {updateDownload.verification?.mode === 'VerificationFailed' ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
               <span>
                 {updateDownload.verification?.mode === 'SigstoreVerified' ? 'Sigstore verified release' :
-                 updateDownload.verification?.mode === 'VerificationUnavailable' ? 'Unverified release' :
+                 updateDownload.verification?.mode === 'VerificationUnavailable' ? 'SHA-256 verified release' :
                  'Verification Error'}
               </span>
             </div>

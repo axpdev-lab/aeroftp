@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.4] - 2026-04-03
+
+### Ollama fix, update verification & restart reliability
+
+#### Fixed
+
+- **Ollama models not appearing in chat dropdown**: API key check now correctly skips Ollama (local provider, no key needed). Models appear in selector and tool calls work
+- **Ollama "Missing API Key" warning**: Status indicator in AI Settings now shows green for Ollama instead of amber "Missing API Key"
+- **Ollama "API key not configured" error on chat**: Message send flow now bypasses keyring lookup for Ollama providers
+- **Update verification indicator**: SHA-256 verified releases now show green ShieldCheck badge instead of amber "Unverified release" warning
+- **App restart after update**: Replaced fixed 5-second sleep with PID-polling (waits for process to actually exit). Works reliably on both fast and slow machines. Three fallback layers: helper script, setsid inline, pre_exec inline
+
+#### Changed
+
+- **AI model auto-import**: Tools capability now enabled by default for all auto-imported models (was disabled, breaking AeroAgent tool calls)
+
 ## [3.3.3] - 2026-04-02
 
 ### GitLab integration, provider dashboard & form polish

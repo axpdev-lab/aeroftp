@@ -785,6 +785,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const enabledProviders: string[] = [];
                 for (const p of settings.providers) {
                     if (!p.isEnabled) continue;
+                    // Ollama doesn't need an API key
+                    if (p.type === 'ollama') {
+                        enabledProviders.push(p.id);
+                        continue;
+                    }
                     // Check if API key exists (either in-memory from migration or in keyring)
                     if (p.apiKey) {
                         enabledProviders.push(p.id);
@@ -1835,12 +1840,16 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error(`Provider not configured for ${activeModel.providerName}`);
             }
 
-            // Fetch API key from OS Keyring
+            // Fetch API key from OS Keyring (Ollama doesn't need one)
             let apiKey: string;
-            try {
-                apiKey = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
-            } catch {
-                throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
+            if (provider.type === 'ollama') {
+                apiKey = 'ollama';
+            } else {
+                try {
+                    apiKey = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+                } catch {
+                    throw new Error(`API key not configured for ${activeModel.providerName}. Open AI Settings to add one.`);
+                }
             }
 
             // Check model capabilities (needed for context budget calculation)
