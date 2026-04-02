@@ -107,7 +107,10 @@ export function MyServersPanel({
     const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState<MyServersFilterBy>('all');
+    const [activeFilter, setActiveFilter] = useState<MyServersFilterBy>(() => {
+        const stored = localStorage.getItem('aeroftp_myservers_filter');
+        return (stored as MyServersFilterBy) || 'all';
+    });
     const [viewMode, setViewMode] = useState<MyServersViewMode>(() => {
         const stored = localStorage.getItem(VIEW_MODE_KEY);
         return (stored === 'list' ? 'list' : 'grid') as MyServersViewMode;
@@ -406,7 +409,7 @@ export function MyServersPanel({
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 activeFilter={activeFilter}
-                onFilterChange={setActiveFilter}
+                onFilterChange={(f: MyServersFilterBy) => { setActiveFilter(f); localStorage.setItem('aeroftp_myservers_filter', f); }}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 credentialsMasked={credentialsMasked}

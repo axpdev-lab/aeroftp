@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "ใช้เครื่องมือ MEGAcmd เป็นตัวเชื่อม ต้องติดตั้ง MEGAcmd แยกต่างหาก",
             "megaNativeNotice": "แนะนำ: Native API",
-            "megaNativeNoticeDesc": "Native API เชื่อมต่อกับ MEGA โดยตรงโดยไม่ต้องพึ่งพาซอฟต์แวร์ภายนอก ไม่ต้องติดตั้งซอฟต์แวร์เพิ่มเติม"
+            "megaNativeNoticeDesc": "Native API เชื่อมต่อกับ MEGA โดยตรงโดยไม่ต้องพึ่งพาซอฟต์แวร์ภายนอก ไม่ต้องติดตั้งซอฟต์แวร์เพิ่มเติม",
+            "connectTo": "เชื่อมต่อกับ {provider}"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -1203,7 +1204,7 @@
             "region": "ภูมิภาค",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint กำหนดเอง",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URL แบบ Path-style",
             "webdavNote": "เส้นทาง WebDAV ต้องระบุเส้นทางแบบเต็ม",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "เอกสาร {name}",
             "webdavExampleLabel": "ตัวอย่าง:",
             "webdavBasePath": "เส้นทางฐาน: {path}",
+            "connectVia": "เชื่อมต่อกับ {name} ผ่าน {protocol}",
             "webdavConnectVia": "เชื่อมต่อกับ {name} ผ่าน WebDAV",
             "s3Endpoint": "ปลายทาง",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "ลงชื่อเข้าใช้ด้วยบัญชีคลาวด์ของคุณ บริการบางอย่างใช้ OAuth (เข้าสู่ระบบด้วยคลิกเดียว) บางอย่างต้องการคีย์ API หรือรหัสผ่านแอปจากการตั้งค่าบัญชีของคุณ",
             "cloudInfoLine2": "พื้นที่จัดเก็บฟรีแตกต่างกันตามผู้ให้บริการ - ตรวจสอบรายละเอียดของแต่ละบริการ",
             "developerInfoLine1": "การผสานรวมสำหรับเวิร์กโฟลว์การพัฒนา เรียกดูรีโพซิทอรี จัดการรีลีส และอัปโหลดไฟล์โดยตรงไปยังแพลตฟอร์มโฮสติ้ง",
-            "developerInfoLine2": "ต้องการโทเค็นการเข้าถึงส่วนบุคคล (PAT) หรือคีย์ SSH สำหรับการยืนยันตัวตน"
+            "developerInfoLine2": "ต้องการโทเค็นการเข้าถึงส่วนบุคคล (PAT) หรือคีย์ SSH สำหรับการยืนยันตัวตน",
+            "independentProject": "AeroFTP เป็นโครงการอิสระ การเชื่อมต่อกับ {provider} ดูแลรักษาผ่านเอกสารทางการอย่างเป็นทางการ",
+            "independentProjectContact": "AeroFTP เป็นโปรเจกต์อิสระที่ติดต่อโดยตรงกับ {provider} เพื่อให้มั่นใจในการผสานรวมที่เชื่อถือได้และการสนับสนุนโดยตรง",
+            "advanced": "ขั้นสูง",
+            "advancedWarning": "ฟิลด์เหล่านี้ได้รับการกำหนดค่าล่วงหน้าสำหรับผู้ให้บริการนี้ การเปลี่ยนแปลงอาจทำให้การเชื่อมต่อไม่ทำงานอย่างถูกต้อง",
+            "advancedUnlock": "แก้ไขต่อ",
+            "directContact": "ติดต่อโดยตรงกับ {provider} สำหรับการสนับสนุนเร่งด่วนและการอัปเดต"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

@@ -23,6 +23,7 @@ interface QuickConnectDirs {
 interface FormTabState extends FormTab {
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
+    originTab?: string;
 }
 
 export interface IntroHubProps {
@@ -130,12 +131,18 @@ export function IntroHub(props: IntroHubProps) {
                 protocol,
                 port: provider?.defaults?.port || undefined,
                 providerId,
+                options: {
+                    pathStyle: provider?.defaults?.pathStyle,
+                    region: provider?.defaults?.region,
+                    endpoint: provider?.defaults?.endpoint,
+                },
             },
             quickConnectDirs: { remoteDir: provider?.defaults?.basePath || '', localDir: '' },
+            originTab: activeTab,
         };
         setFormTabs(prev => [...prev, newTab]);
         setActiveTab(id);
-    }, []);
+    }, [activeTab]);
 
     // Create a form tab for editing a saved server
     const handleEdit = useCallback((profile: ServerProfile) => {
@@ -166,15 +173,26 @@ export function IntroHub(props: IntroHubProps) {
                 remoteDir: profile.initialPath || '',
                 localDir: profile.localInitialPath || '',
             },
+            originTab: activeTab,
         };
         setFormTabs(prev => [...prev, newTab]);
         setActiveTab(id);
-    }, [formTabs]);
+    }, [formTabs, activeTab]);
 
-    // Close a form tab
+    // Close a form tab — return to the tab that opened it
     const handleCloseFormTab = useCallback((tabId: string) => {
-        setFormTabs(prev => prev.filter(ft => ft.id !== tabId));
-        setActiveTab(prev => prev === tabId ? 'my-servers' : prev);
+        setFormTabs(prev => {
+            const closing = prev.find(ft => ft.id === tabId);
+            const origin = closing?.originTab || 'my-servers';
+            setActiveTab(current => current === tabId ? origin : current);
+            return prev.filter(ft => ft.id !== tabId);
+        });
+    }, []);
+
+    // Close all form tabs
+    const handleCloseAllFormTabs = useCallback(() => {
+        setFormTabs([]);
+        setActiveTab('my-servers');
     }, []);
 
     // Update form tab's connectionParams
@@ -237,6 +255,7 @@ export function IntroHub(props: IntroHubProps) {
                 onCommandPalette={handleCommandPalette}
                 formTabs={formTabs}
                 onCloseFormTab={handleCloseFormTab}
+                onCloseAllFormTabs={handleCloseAllFormTabs}
                 hasExistingSessions={hasExistingSessions}
                 onSkipToFileManager={onSkipToFileManager}
                 onAeroCloud={onAeroCloud}
@@ -271,6 +290,7 @@ export function IntroHub(props: IntroHubProps) {
                 {activeFormTab && (
                     <div className="flex-1 flex flex-col">
                         <ConnectionScreen
+                            key={activeFormTab.id}
                             formOnly
                             connectionParams={activeFormTab.connectionParams}
                             quickConnectDirs={activeFormTab.quickConnectDirs}

@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Користи MEGAcmd алат као мост. Захтева засебно инсталиран MEGAcmd.",
             "megaNativeNotice": "Препоручено: Изворни API",
-            "megaNativeNoticeDesc": "Изворни API се директно повезује са MEGA без спољних зависности. Није потребан додатни софтвер."
+            "megaNativeNoticeDesc": "Изворни API се директно повезује са MEGA без спољних зависности. Није потребан додатни софтвер.",
+            "connectTo": "Повежите се са {provider}"
         },
         "browser": {
             "remote": "Удаљено",
@@ -1203,7 +1204,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Prilagođena krajnja tačka",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URL-ovi",
             "webdavNote": "WebDAV putanja mora biti potpuna.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "{name} dokumentacija",
             "webdavExampleLabel": "Primer:",
             "webdavBasePath": "Osnovna putanja: {path}",
+            "connectVia": "Povežite se sa {name} preko {protocol}",
             "webdavConnectVia": "Povežite se sa {name} preko WebDAV",
             "s3Endpoint": "Krajnja tačka",
             "azureBlobStorage": "Azure Blob skladište",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Пријавите се са својим клауд налогом. Неки сервиси користе OAuth (пријава једним кликом), други захтевају API кључ или лозинку апликације из подешавања налога.",
             "cloudInfoLine2": "Бесплатно складиште варира по пружаоцу - проверите сваки сервис за детаље.",
             "developerInfoLine1": "Интеграције за развојне радне токове. Прегледајте репозиторијуме, управљајте издањима и отпремајте датотеке директно на хостинг платформе.",
-            "developerInfoLine2": "Потребан је лични приступни токен (PAT) или SSH кључ за аутентификацију."
+            "developerInfoLine2": "Потребан је лични приступни токен (PAT) или SSH кључ за аутентификацију.",
+            "independentProject": "AeroFTP је независан пројекат. Интеграција са {provider} одржава се путем званичне документације.",
+            "independentProjectContact": "AeroFTP је независан пројекат у директном контакту са {provider} ради обезбеђивања поуздане интеграције и директне подршке.",
+            "advanced": "Напредно",
+            "advancedWarning": "Ова поља су унапред конфигурисана за овог провајдера. Њихова промена може спречити исправно функционисање везе.",
+            "advancedUnlock": "Ипак уреди",
+            "directContact": "У директном контакту са {provider} за приоритетну подршку и ажурирања."
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",

@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Folosește instrumentul MEGAcmd ca punte. Necesită MEGAcmd instalat separat.",
             "megaNativeNotice": "Recomandat: API nativ",
-            "megaNativeNoticeDesc": "API-ul nativ se conectează direct la MEGA fără dependențe externe. Nu este necesar software suplimentar."
+            "megaNativeNoticeDesc": "API-ul nativ se conectează direct la MEGA fără dependențe externe. Nu este necesar software suplimentar.",
+            "connectTo": "Conectare la {provider}"
         },
         "browser": {
             "remote": "La distanță",
@@ -1203,7 +1204,7 @@
             "region": "Regiune",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint personalizat",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URL-uri stil cale",
             "webdavNote": "Calea WebDAV trebuie să fie completă.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "Documentație {name}",
             "webdavExampleLabel": "Exemplu:",
             "webdavBasePath": "Cale de bază: {path}",
+            "connectVia": "Conectare la {name} prin {protocol}",
             "webdavConnectVia": "Conectare la {name} prin WebDAV",
             "s3Endpoint": "Endpoint",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Autentifică-te cu contul tău cloud. Unele servicii folosesc OAuth (autentificare cu un clic), altele necesită o cheie API sau parolă de aplicaţie din setările contului.",
             "cloudInfoLine2": "Stocarea gratuită variază în funcţie de furnizor - verifică fiecare serviciu pentru detalii.",
             "developerInfoLine1": "Integrări pentru fluxuri de lucru de dezvoltare. Răsfoieşte depozite, gestionează lansări şi încarcă fişiere direct pe platforme de găzduire.",
-            "developerInfoLine2": "Necesită un token de acces personal (PAT) sau o cheie SSH pentru autentificare."
+            "developerInfoLine2": "Necesită un token de acces personal (PAT) sau o cheie SSH pentru autentificare.",
+            "independentProject": "AeroFTP este un proiect independent. Integrarea {provider} este întreținută prin documentația oficială.",
+            "independentProjectContact": "AeroFTP este un proiect independent in contact direct cu {provider} pentru a asigura o integrare fiabila si suport direct.",
+            "advanced": "Avansat",
+            "advancedWarning": "Aceste campuri sunt preconfigurate pentru acest furnizor. Modificarea lor poate impiedica conexiunea sa functioneze corect.",
+            "advancedUnlock": "Editeaza oricum",
+            "directContact": "In contact direct cu {provider} pentru suport prioritar si actualizari."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

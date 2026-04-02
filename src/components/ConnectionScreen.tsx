@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -39,7 +39,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     onedrive: 'from-sky-500 to-sky-400',
     mega: 'from-red-600 to-red-500',
     box: 'from-blue-500 to-blue-600',
-    pcloud: 'from-green-500 to-teal-400',
+    pcloud: 'from-sky-500 to-cyan-400',
     azure: 'from-blue-600 to-indigo-500',
     filen: 'from-emerald-500 to-green-400',
     opendrive: 'from-cyan-500 to-sky-400',
@@ -479,6 +479,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [showPassword, setShowPassword] = useState(false);
 
     // Provider selection state (for S3/WebDAV)
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [advancedUnlocked, setAdvancedUnlocked] = useState(false);
+    const [showAdvancedWarning, setShowAdvancedWarning] = useState(false);
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
         formOnly && connectionParams.providerId ? connectionParams.providerId : null
     );
@@ -1053,6 +1056,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Reset provider selection when protocol changes
         setSelectedProviderId(null);
         setPresetUnlocked({});
+        setAdvancedUnlocked(false);
 
         // If a providerId was passed (e.g. SourceForge), auto-apply the preset
         if (providerId) {
@@ -1098,6 +1102,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleProviderSelect = (provider: ProviderConfig) => {
         setSelectedProviderId(provider.id);
         setPresetUnlocked({});
+        setAdvancedUnlocked(false);
 
         // For endpointTemplate providers without a default region, auto-select the first region option
         let effectiveRegion = provider.defaults?.region;
@@ -1171,6 +1176,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return t('connection.password');
     };
 
+    // Provider logo for connect buttons (OAuth/API providers show their logo instead of Cloud icon)
+    const ConnectIcon = (() => {
+        const logoId = selectedProviderId || protocol || '';
+        const Logo = PROVIDER_LOGOS[logoId];
+        if (Logo) return <Logo size={18} />;
+        return <Cloud size={18} />;
+    })();
+
     /**
      * Renders the right column (paths + save + button) for formOnly 2-column layout.
      * Also used inline for single-column providers.
@@ -1217,7 +1230,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     const project = e.target.value.replace(/^\/+/, '');
                                     onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: sfPrefix + project });
                                 }}
-                                className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm"
+                                className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-r-lg text-sm"
                                 placeholder="aeroftp"
                             />
                         </div>
@@ -1226,7 +1239,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             type="text"
                             value={quickConnectDirs.remoteDir}
                             onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                             placeholder={remotePathPlaceholder}
                         />
                     )}
@@ -1239,7 +1252,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             type="text"
                             value={quickConnectDirs.localDir}
                             onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                            className="flex-1 px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                             placeholder={t('connection.initialLocalPath')}
                         />
                         <button
@@ -1271,7 +1284,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 value={connectionName}
                                 onChange={(e) => setConnectionName(e.target.value)}
                                 placeholder={connectionNameKey}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                             {showIcon && renderIconPicker()}
                         </div>
@@ -1292,7 +1305,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     <button
                         onClick={handleConnectAndSave}
                         disabled={loading || btnDisabled}
-                        className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : buttonColorClass}`}
+                        className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                     >
                         {loading ? (
                             <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
@@ -1319,34 +1332,39 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
     return (
+        <>
         <div className={`w-full mx-auto relative z-10 ${formOnlyMaxW}`}>
             <div className={formOnly ? '' : 'grid md:grid-cols-2 gap-6'}>
                 {/* Quick Connect */}
-                <div className={`min-w-0 w-full overflow-hidden ${formOnly ? 'bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6' : 'bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6'}`}>
+                <div className={`min-w-0 w-full overflow-hidden ${formOnly ? 'bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6' : 'bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6'}`}>
                     {/* Header: simplified in formOnly (just title, no buttons) */}
                     {formOnly ? (
                     <div className="mb-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                        <div className="flex items-start justify-between">
+                            <div>
+                                <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
+                                {selectedProvider && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('connection.connectTo', { provider: selectedProvider.name })}</p>
+                                )}
+                            </div>
                             {(() => {
                                 const logoId = selectedProviderId || protocol || '';
                                 const LogoComponent = PROVIDER_LOGOS[logoId];
                                 const providerName = selectedProvider?.name || protocol?.toUpperCase() || '';
                                 if (!LogoComponent && !providerName) return null;
                                 return (
-                                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                        {LogoComponent && <LogoComponent size={20} />}
-                                        <span className="font-medium">{providerName}</span>
+                                    <div className="flex flex-col items-end gap-0.5">
+                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                            {LogoComponent && <LogoComponent size={20} />}
+                                            <span className="font-medium">{providerName}</span>
+                                        </div>
+                                        {selectedProvider?.description && (
+                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-xs text-right leading-tight">{selectedProvider.description}</span>
+                                        )}
                                     </div>
                                 );
                             })()}
                         </div>
-                        {protocol === 'webdav' && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('protocol.webdavDesc')}</p>
-                        )}
-                        {protocol === 's3' && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('protocol.s3Desc')}</p>
-                        )}
                     </div>
                     ) : (
                     <div className="flex items-center justify-between mb-4">
@@ -1616,8 +1634,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         ) : (
                             <>
                                 {/* Selected Provider Header (for S3/WebDAV) */}
-                                {selectedProvider && (
-                                    <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 rounded-lg mb-3">
+                                {selectedProvider && !formOnly && (
+                                    <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] rounded-lg mb-3">
                                         <div className="flex items-center gap-2">
                                             <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-lg flex items-center justify-center">
                                                 {selectedProvider.id && PROVIDER_LOGOS[selectedProvider.id]
@@ -1635,14 +1653,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={() => setSelectedProviderId(null)}
-                                                className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
-                                            >
-                                                {t('connection.change')}
-                                            </button>
-                                        </div>
+                                        <button
+                                            onClick={() => setSelectedProviderId(null)}
+                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                                        >
+                                            {t('connection.change')}
+                                        </button>
                                     </div>
                                 )}
 
@@ -1663,7 +1679,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: 443,
                                                         username: 'api-key'
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                                                     placeholder={t('ai.settings.enterApiKey')}
                                                     autoFocus
                                                 />
@@ -1696,7 +1712,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -1704,7 +1720,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -1739,7 +1755,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('filelu.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -1750,13 +1766,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-sky-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -1777,7 +1793,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: 443,
                                                         username: 'token'
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                     placeholder={t('connection.jottacloudTokenPlaceholder')}
                                                     autoFocus
                                                 />
@@ -1800,7 +1816,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -1808,7 +1824,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -1843,7 +1859,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -1854,13 +1870,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -1881,7 +1897,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: 443,
                                                         username: 'api-token'
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                     placeholder={t('connection.drimeTokenPlaceholder')}
                                                     autoFocus
                                                 />
@@ -1904,7 +1920,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -1912,7 +1928,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -1947,7 +1963,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -1958,13 +1974,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -1985,7 +2001,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'app.koofr.net',
                                                     port: 443,
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                 placeholder={t('connection.koofrEmailPlaceholder')}
                                                 autoFocus
                                             />
@@ -2002,7 +2018,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         server: 'app.koofr.net',
                                                         port: 443,
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                     placeholder={t('connection.koofrAppPasswordPlaceholder')}
                                                 />
                                                 <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -2029,7 +2045,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2037,7 +2053,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2072,7 +2088,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2083,13 +2099,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-green-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -2112,7 +2128,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'dev.opendrive.com',
                                                     port: 443,
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                                 placeholder={t('protocol.opendriveUsernamePlaceholder')}
                                                 autoFocus
                                             />
@@ -2129,7 +2145,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         server: 'dev.opendrive.com',
                                                         port: 443,
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                                     placeholder={t('settings.passwordPlaceholder')}
                                                 />
                                                 <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -2153,7 +2169,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2161,7 +2177,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2195,7 +2211,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2206,13 +2222,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-cyan-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-cyan-600 hover:bg-cyan-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
+                                                    <>{ConnectIcon} {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -2232,7 +2248,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: e.target.value,
                                                     port: 443,
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                                                 placeholder={t('protocol.githubOwnerRepoPlaceholder')}
                                                 autoFocus
                                             />
@@ -2330,7 +2346,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 password: e.target.value,
                                                                 port: 443,
                                                             })}
-                                                            className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                            className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                                                             placeholder="github_pat_xxxxxxxxxxxx"
                                                         />
                                                         <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -2512,7 +2528,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2520,7 +2536,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2554,7 +2570,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2565,13 +2581,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.server || (!connectionParams.password && !gitHubPemInVault && connectionParams.options?.githubAuthMode !== 'authorize')}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-gray-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-600 hover:bg-gray-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
+                                                    <>{ConnectIcon} {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -2594,7 +2610,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         port: 443,
                                                         username: 'api-token'
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.kdriveTokenPlaceholder')}
                                                     autoFocus
                                                 />
@@ -2612,7 +2628,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, bucket: e.target.value, drive_id: e.target.value }
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder={t('connection.kdriveDriveIdPlaceholder')}
                                                 inputMode="numeric"
                                             />
@@ -2636,7 +2652,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2644,7 +2660,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2679,7 +2695,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2690,13 +2706,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.password || !connectionParams.options?.bucket}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.connect')}</>
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -2719,7 +2735,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'gateway.internxt.com',
                                                     port: 443
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder={t('connection.internxtEmailPlaceholder')}
                                                 autoFocus
                                             />
@@ -2731,7 +2747,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.internxtPasswordPlaceholder')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -2749,7 +2765,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                 placeholder={t('connection.twoFactorOptional')}
                                                 maxLength={6}
                                                 inputMode="numeric"
@@ -2779,7 +2795,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2787,7 +2803,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2822,7 +2838,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2833,13 +2849,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
+                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
@@ -2865,7 +2881,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'filen.io',
                                                     port: 443
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                 placeholder={t('connection.filenEmailPlaceholder')}
                                                 autoFocus
                                             />
@@ -2877,7 +2893,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                     placeholder={t('connection.filenPasswordPlaceholder')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -2895,7 +2911,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...connectionParams,
                                                     options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                 placeholder={t('connection.twoFactorOptional')}
                                                 maxLength={6}
                                                 inputMode="numeric"
@@ -2925,7 +2941,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -2933,7 +2949,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -2968,7 +2984,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -2979,13 +2995,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                                             >
                                                 {loading ? (
                                                     <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
+                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
@@ -3009,7 +3025,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'mega.nz', // Force dummy server for internal logic
                                                     port: 443
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                 placeholder={t('connection.megaEmailPlaceholder')}
                                                 autoFocus
                                             />
@@ -3021,7 +3037,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                     placeholder={t('connection.megaPasswordPlaceholder')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -3137,7 +3153,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePathMega')}
                                                 />
                                                 <div className="flex gap-2">
@@ -3145,7 +3161,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -3180,7 +3196,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.megaConnectionNamePlaceholder')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                                     />
                                                     {renderIconPicker()}
                                                 </div>
@@ -3191,7 +3207,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
                                             >
                                                 {loading ? (
@@ -3199,7 +3215,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ) : saveConnection ? (
                                                     <><Save size={18} /> {t('common.save')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
+                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
@@ -3220,7 +3236,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: e.target.value,
                                                     port: 443,
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                                                 placeholder="gitlab.com/owner/repo"
                                                 autoFocus
                                             />
@@ -3239,7 +3255,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         password: e.target.value,
                                                         port: 443,
                                                     })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                                                     placeholder="glpat-xxxxxxxxxxxx"
                                                 />
                                                 <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -3266,7 +3282,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: 'https://authenticate.blomp.com',
                                                     port: 443
                                                 })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                 placeholder="your@blomp.com"
                                                 autoFocus
                                             />
@@ -3278,7 +3294,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                     placeholder={t('connection.password')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -3297,7 +3313,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={quickConnectDirs.remoteDir}
                                                     onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.initialRemotePath')}
                                                 />
                                                 <div className="flex gap-2">
@@ -3305,7 +3321,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         type="text"
                                                         value={quickConnectDirs.localDir}
                                                         onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                         placeholder={t('connection.initialLocalPath')}
                                                     />
                                                     <button
@@ -3340,7 +3356,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         value={connectionName}
                                                         onChange={(e) => setConnectionName(e.target.value)}
                                                         placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                                     />
                                                 </div>
                                             )}
@@ -3350,7 +3366,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <button
                                                 onClick={handleConnectAndSave}
                                                 disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
                                                 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
                                             >
                                                 {loading ? (
@@ -3358,7 +3374,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ) : saveConnection ? (
                                                     <><Save size={18} /> {t('common.save')}</>
                                                 ) : (
-                                                    <><Cloud size={20} /> {t('connection.secureLogin')}</>
+                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
                                                 )}
                                             </button>
                                         </div>
@@ -3371,32 +3387,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {(() => {
                                             const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
-                                            const serverLocked = hasPresetServer && !presetUnlocked['server'] && !editingProfileId;
-                                            return isNonGenericS3 ? null : (
+                                            const hideServerField = hasPresetServer && !editingProfileId;
+                                            if (isNonGenericS3) return null;
+                                            if (hideServerField) return null; // Shown in Advanced Options below
+                                            return (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1.5">
                                                             <label className="block text-sm font-medium">
                                                                 {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
                                                             </label>
-                                                            {serverLocked && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setPresetUnlocked(prev => ({ ...prev, server: true }))}
-                                                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
-                                                                    title={t('common.edit')}
-                                                                >
-                                                                    <Pencil size={10} />
-                                                                    {t('common.edit')}
-                                                                </button>
-                                                            )}
                                                         </div>
                                                         <input
                                                             type="text"
-                                                            value={serverLocked && !connectionParams.server ? (selectedProvider?.defaults?.server || '') : connectionParams.server}
+                                                            value={connectionParams.server}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                            disabled={!!serverLocked}
-                                                            className={`w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${serverLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                             placeholder={getServerPlaceholder()}
                                                         />
                                                     </div>
@@ -3406,8 +3412,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             type="number"
                                                             value={connectionParams.port || getDefaultPort(protocol)}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || getDefaultPort(protocol) })}
-                                                            disabled={!!serverLocked}
-                                                            className={`w-full px-3 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-center ${serverLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
                                                             min={1}
                                                             max={65535}
                                                         />
@@ -3421,7 +3426,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 type="text"
                                                 value={connectionParams.username}
                                                 onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                 placeholder={protocol === 's3' ? 'AKIAIOSFODNN7EXAMPLE' : protocol === 'azure' ? 'aeroftp2026' : t('connection.usernamePlaceholder')}
                                             />
                                         </div>
@@ -3432,7 +3437,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type={showPassword ? 'text' : 'password'}
                                                     value={connectionParams.password}
                                                     onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
-                                                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                                     placeholder={t('connection.passwordPlaceholder')}
                                                 />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -3453,12 +3458,94 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             presetUnlocked={presetUnlocked}
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                         />
+                                        {/* Advanced Options — hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
+                                        {(() => {
+                                            const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric && !editingProfileId;
+                                            if (!hasPresetServer || protocol === 's3') return null;
+                                            return (
+                                                <div className="pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAdvanced(!showAdvanced)}
+                                                        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 transition-colors"
+                                                    >
+                                                        <Settings size={12} />
+                                                        <span>{t('protocol.advanced')}</span>
+                                                        <ChevronDown size={12} className={`transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
+                                                    </button>
+                                                    {showAdvanced && (
+                                                        <div className="mt-2 space-y-2 pl-0.5">
+                                                            <div className="flex gap-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <label className="block text-xs font-medium mb-1 text-gray-500">{t('connection.server')}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={connectionParams.server || selectedProvider?.defaults?.server || ''}
+                                                                        onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                                        disabled={!advancedUnlocked}
+                                                                        className={`w-full px-3 py-2 border rounded-lg text-sm ${advancedUnlocked ? 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+                                                                        placeholder={selectedProvider?.defaults?.server || ''}
+                                                                    />
+                                                                </div>
+                                                                <div className="w-20">
+                                                                    <label className="block text-xs font-medium mb-1 text-gray-500">{t('connection.port')}</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={connectionParams.port || selectedProvider?.defaults?.port || getDefaultPort(protocol)}
+                                                                        onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || getDefaultPort(protocol) })}
+                                                                        disabled={!advancedUnlocked}
+                                                                        className={`w-full px-2 py-2 border rounded-lg text-sm text-center ${advancedUnlocked ? 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
+                                                                        min={1}
+                                                                        max={65535}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            {!advancedUnlocked && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowAdvancedWarning(true)}
+                                                                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                                                >
+                                                                    <Pencil size={10} />
+                                                                    {t('common.edit')}
+                                                                </button>
+                                                            )}
+                                                            {/* Warning mini-modal */}
+                                                            {showAdvancedWarning && (
+                                                                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg">
+                                                                    <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                                                                        <Shield size={12} className="inline mr-1 -mt-0.5" />
+                                                                        {t('protocol.advancedWarning')}
+                                                                    </p>
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => { setAdvancedUnlocked(true); setShowAdvancedWarning(false); }}
+                                                                            className="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors"
+                                                                        >
+                                                                            {t('protocol.advancedUnlock')}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setShowAdvancedWarning(false)}
+                                                                            className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                                                                        >
+                                                                            {t('common.cancel')}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                     {/* RIGHT COLUMN: Paths, Save, Buttons (shared renderRightColumn) */}
                                     {renderRightColumn({
                                         disabled: ((protocol === 's3' || protocol === 'azure') && !connectionParams.options?.bucket),
                                         buttonColorClass: 'bg-blue-600 hover:bg-blue-700',
-                                        remotePathPlaceholder: selectedProviderId === 'sourceforge' ? '/home/frs/project/your-project/' : protocol === 's3' ? '/prefix/' : protocol === 'azure' ? '/virtual-folder/' : '/www',
+                                        remotePathPlaceholder: selectedProviderId === 'sourceforge' ? '/home/frs/project/your-project/' : protocol === 's3' ? '/remote-folder' : protocol === 'azure' ? '/remote-folder' : '/remote-folder',
                                         showCancelSaveAsNew: true,
                                     })}
                                     </div>
@@ -3466,6 +3553,53 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </>
                         )}
                     </div>
+                    {/* Card footer — provider connectVia + links */}
+                    {(() => {
+                        if (!selectedProvider || selectedProvider.isGeneric || editingProfileId) return null;
+                        const proto = protocol === 's3' ? 'S3' : protocol === 'webdav' ? 'WebDAV' : null;
+                        if (!proto) return null;
+                        const footerText = selectedProvider.defaults?.basePath && protocol === 'webdav'
+                            ? t('protocol.webdavBasePath', { path: selectedProvider.defaults.basePath })
+                            : t('protocol.connectVia', { name: selectedProvider.name, protocol: proto });
+                        return (
+                            <div className="-mx-6 -mb-6 mt-4 px-6 py-3 bg-gray-50/80 dark:bg-white/[0.02] border-t border-gray-100 dark:border-gray-700/50 rounded-b-lg">
+                                <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-xs">
+                                    <span className="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                        <Cloud size={12} />
+                                        {footerText}
+                                    </span>
+                                    {selectedProvider.signupUrl && (
+                                        <>
+                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                                            <a
+                                                href={selectedProvider.signupUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                                            >
+                                                <ExternalLink size={10} />
+                                                {t('connection.createAccount')}
+                                            </a>
+                                        </>
+                                    )}
+                                    {selectedProvider.helpUrl && (
+                                        <>
+                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                                            <a
+                                                href={selectedProvider.helpUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                            >
+                                                <ExternalLink size={10} />
+                                                Docs
+                                            </a>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 {/* Saved Servers (hidden in formOnly mode) */}
@@ -3586,6 +3720,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
             )}
         </div>
+        {/* Provider independence disclaimer — outside formOnlyMaxW container */}
+        {(() => {
+            const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
+            const providerName = disclaimerProvider?.name
+                || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab' } as Record<string, string>)[protocol || ''];
+            if (!providerName || disclaimerProvider?.isGeneric) return null;
+            const contactProtocols = new Set(['zohoworkdrive']);
+            const isContact = disclaimerProvider?.contactVerified || contactProtocols.has(protocol || '');
+            return (
+                <div className="mt-3 space-y-1">
+                    <p className="text-center text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1.5">
+                        <Info size={12} className="shrink-0" />
+                        <span>{t('protocol.independentProject', { provider: providerName })}</span>
+                    </p>
+                    {isContact && (
+                        <p className="text-center text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1.5">
+                            <ShieldCheck size={12} className="shrink-0 text-emerald-500" />
+                            <span>{t('protocol.directContact', { provider: providerName })}</span>
+                        </p>
+                    )}
+                </div>
+            );
+        })()}
+        </>
     );
 };
 

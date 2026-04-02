@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Использует инструмент MEGAcmd в качестве моста. Требуется отдельная установка MEGAcmd.",
             "megaNativeNotice": "Рекомендуется: Нативный API",
-            "megaNativeNoticeDesc": "Нативный API подключается напрямую к MEGA без внешних зависимостей. Дополнительное программное обеспечение не требуется."
+            "megaNativeNoticeDesc": "Нативный API подключается напрямую к MEGA без внешних зависимостей. Дополнительное программное обеспечение не требуется.",
+            "connectTo": "Подключиться к {provider}"
         },
         "browser": {
             "remote": "Удалённый",
@@ -1203,7 +1204,7 @@
             "region": "Регион",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Свой эндпоинт",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URL",
             "webdavNote": "Нужен полный путь WebDAV.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "Документация {name}",
             "webdavExampleLabel": "Пример:",
             "webdavBasePath": "Базовый путь: {path}",
+            "connectVia": "Подключиться к {name} через {protocol}",
             "webdavConnectVia": "Подключиться к {name} через WebDAV",
             "s3Endpoint": "Конечная точка",
             "azureBlobStorage": "Хранилище Azure Blob",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Войдите в свою облачную учётную запись. Некоторые сервисы используют OAuth (вход в один клик), другие требуют ключ API или пароль приложения из настроек аккаунта.",
             "cloudInfoLine2": "Бесплатное хранилище зависит от провайдера - проверьте каждый сервис для подробностей.",
             "developerInfoLine1": "Интеграции для рабочих процессов разработки. Просматривайте репозитории, управляйте релизами и загружайте файлы напрямую на хостинг-платформы.",
-            "developerInfoLine2": "Требуется персональный токен доступа (PAT) или ключ SSH для аутентификации."
+            "developerInfoLine2": "Требуется персональный токен доступа (PAT) или ключ SSH для аутентификации.",
+            "independentProject": "AeroFTP — независимый проект. Интеграция с {provider} поддерживается на основе официальной документации.",
+            "independentProjectContact": "AeroFTP - независимый проект, находящийся в прямом контакте с {provider} для обеспечения надежной интеграции и прямой поддержки.",
+            "advanced": "Дополнительно",
+            "advancedWarning": "Эти поля предварительно настроены для этого провайдера. Их изменение может помешать правильной работе подключения.",
+            "advancedUnlock": "Все равно изменить",
+            "directContact": "В прямом контакте с {provider} для приоритетной поддержки и обновлений."
         },
         "shortcuts": {
             "title": "Горячие клавиши",

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock } from 'lucide-react';
 import { ServerProfile, ProviderType } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -182,7 +182,7 @@ export const ServerCard = React.memo(function ServerCard({
 
                 {/* Col: Time */}
                 {timeAgo && (
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0 w-8 text-right">{timeAgo}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0 text-right flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>
                 )}
 
                 {/* Actions (hover) */}
@@ -242,7 +242,7 @@ export const ServerCard = React.memo(function ServerCard({
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <ServerBadges server={server} />
                         {timeAgo && (
-                            <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">{timeAgo}</span>
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex items-center gap-0.5"><Clock size={8} />{timeAgo}</span>
                         )}
                     </div>
                 </div>

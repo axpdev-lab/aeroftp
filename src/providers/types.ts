@@ -134,6 +134,9 @@ export interface ProviderConfig {
         thumbnails?: boolean;
     };
 
+    /** URL to check provider availability (HEAD request for health check) */
+    healthCheckUrl?: string;
+
     /** Documentation/help URL */
     helpUrl?: string;
 
@@ -142,6 +145,9 @@ export interface ProviderConfig {
 
     /** Whether this provider is fully tested/stable */
     stable?: boolean;
+
+    /** Whether AeroFTP has established direct contact with this provider */
+    contactVerified?: boolean;
 }
 
 // ============================================================================

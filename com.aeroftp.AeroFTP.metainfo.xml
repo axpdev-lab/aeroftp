@@ -137,9 +137,9 @@
   </languages>
 
   <releases>
-    <release version="3.3.2" date="2026-04-01">
+    <release version="3.3.3" date="2026-04-02">
       <description>
-        <p>GitLab provider: browse repositories, upload/download files, atomic batch commits via REST API v4. Branch selector, commit dialog, write mode indicator. Font customization: continuous 10-22px slider, font family selector (Inter, FiraGO, Noto Sans, custom). Window state persistence: size, position, maximized saved between sessions. Developer filter chip in My Servers. Floating card design. Provider identity in form headers. 50 integrated services.</p>
+        <p>Provider health check dashboard: progressive wave scan with status indicators on Discover service cards. S3 Advanced Options with locked preset fields and edit warning. Provider logos in connect buttons. AWS theme-aware logo. Form card redesign: unified styling, card footer with links, 2-line disclaimer. Form tab context menu and origin memory. S3 folder delete fix for MinIO. Font customization and window state persistence. GitLab integration. 51 integrated services across 6 protocols. Documentation reorganized: Technical Reference and Setup Guides.</p>
       </description>
     </release>
     <release version="3.3.0" date="2026-04-01">

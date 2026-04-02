@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     Server, Database, Globe, Cloud, Code,
-    ChevronRight, Search, X, Zap, ShieldCheck, Lock, Info,
+    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -10,6 +10,7 @@ import { ProtocolIcon, ProtocolBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem } from './discoverData';
 import { CatalogCategoryId } from '../../types/catalog';
+import { useProviderHealth, type HealthStatus, type HealthTarget } from '../../hooks/useProviderHealth';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
@@ -31,7 +32,22 @@ interface DiscoverPanelProps {
     onSelectProvider: (protocol: ProviderType, providerId?: string) => void;
 }
 
-function ServiceCard({ item, onSelect }: { item: DiscoverItem; onSelect: () => void }) {
+const HEALTH_COLORS: Record<HealthStatus, string> = {
+    up: 'bg-green-400',
+    slow: 'bg-amber-400',
+    down: 'bg-red-400',
+    pending: 'bg-gray-400/50 animate-pulse',
+    unknown: 'bg-gray-500/30',
+};
+const HEALTH_LABELS: Record<HealthStatus, string> = {
+    up: 'Online',
+    slow: 'Slow',
+    down: 'Unreachable',
+    pending: 'Checking...',
+    unknown: '',
+};
+
+function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onSelect: () => void; healthStatus?: HealthStatus }) {
     const LogoComponent = PROVIDER_LOGOS[item.providerId || item.id] || PROVIDER_LOGOS[item.protocol];
 
     return (
@@ -84,6 +100,14 @@ function ServiceCard({ item, onSelect }: { item: DiscoverItem; onSelect: () => v
                 </span>
             )}
 
+            {/* Health status dot */}
+            {healthStatus && (
+                <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${HEALTH_COLORS[healthStatus]}`}
+                    title={HEALTH_LABELS[healthStatus] || undefined}
+                />
+            )}
+
             {/* Arrow */}
             <ChevronRight size={14} className="text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         </button>
@@ -98,10 +122,30 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         return (saved as CatalogCategoryId) || 'protocols';
     });
 
+    // Provider health scan — per-tab, triggered on tab change
+    const { getStatus, scanItems, scanning } = useProviderHealth();
+
     const activeItems = useMemo(() => {
         const cat = categories.find(c => c.id === activeCategory);
         return cat?.items ?? [];
     }, [categories, activeCategory]);
+
+    // Auto-scan when tab changes (800ms delay for lazy load feel)
+    useEffect(() => {
+        const targets = activeItems
+            .filter(item => item.healthCheckUrl)
+            .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
+        if (targets.length === 0) return;
+        const timer = setTimeout(() => scanItems(targets), 600);
+        return () => clearTimeout(timer);
+    }, [activeCategory, activeItems, scanItems]);
+
+    const handleManualCheck = useCallback(() => {
+        const targets = activeItems
+            .filter(item => item.healthCheckUrl)
+            .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
+        scanItems(targets, true);
+    }, [activeItems, scanItems]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
         onSelectProvider(item.protocol, item.providerId);
@@ -128,7 +172,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             {CATEGORY_ICONS[cat.icon]}
                         </span>
                         <span className="flex-1 text-left truncate">{t(cat.labelKey)}</span>
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
                             {cat.count}
                         </span>
                     </button>
@@ -145,9 +189,23 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                         {t(categories.find(c => c.id === activeCategory)?.labelKey || '')}
                     </h3>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
                         {activeItems.length} {activeItems.length === 1 ? 'service' : 'services'}
                     </span>
+                    <div className="flex-1" />
+                    <button
+                        onClick={handleManualCheck}
+                        disabled={scanning}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors ${
+                            scanning
+                                ? 'text-gray-400 dark:text-gray-500 cursor-wait'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                        }`}
+                        title="Check service availability"
+                    >
+                        <Activity size={11} className={scanning ? 'animate-pulse' : ''} />
+                        {scanning ? 'Scanning...' : 'Check'}
+                    </button>
                 </div>
 
                 {/* Info banner for each category */}
@@ -186,6 +244,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                     key={item.id}
                                     item={item}
                                     onSelect={() => handleSelect(item)}
+                                    healthStatus={item.healthCheckUrl ? getStatus(item.providerId || item.id).status : 'unknown'}
                                 />
                             ))}
                         </div>

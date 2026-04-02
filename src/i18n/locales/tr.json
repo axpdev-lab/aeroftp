@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "MEGAcmd aracını köprü olarak kullanır. MEGAcmd'nin ayrıca kurulması gerekir.",
             "megaNativeNotice": "Önerilen: Yerel API",
-            "megaNativeNoticeDesc": "Yerel API, harici bağımlılıklar olmadan doğrudan MEGA'ya bağlanır. Ek yazılım gerekmez."
+            "megaNativeNoticeDesc": "Yerel API, harici bağımlılıklar olmadan doğrudan MEGA'ya bağlanır. Ek yazılım gerekmez.",
+            "connectTo": "{provider} ile bağlan"
         },
         "browser": {
             "remote": "Uzak",
@@ -1203,7 +1204,7 @@
             "region": "Bölge",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Özel Uç Nokta",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Yol stili URL'ler",
             "webdavNote": "WebDAV yolu tam yolu içermelidir.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "{name} Belgeleri",
             "webdavExampleLabel": "Örnek:",
             "webdavBasePath": "Temel yol: {path}",
+            "connectVia": "{protocol} ile {name} bağlantısı kur",
             "webdavConnectVia": "WebDAV ile {name} bağlantısı kur",
             "s3Endpoint": "Uç Nokta",
             "azureBlobStorage": "Azure Blob Depolama",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Bulut hesabınızla oturum açın. Bazı hizmetler OAuth (tek tıkla giriş) kullanır, diğerleri hesap ayarlarınızdan API anahtarı veya uygulama şifresi gerektirir.",
             "cloudInfoLine2": "Ücretsiz depolama sağlayıcıya göre değişir - ayrıntılar için her hizmeti kontrol edin.",
             "developerInfoLine1": "Geliştirme iş akışları için entegrasyonlar. Depoları göz atın, sürümleri yönetin ve dosyaları doğrudan barındırma platformlarına yükleyin.",
-            "developerInfoLine2": "Kimlik doğrulama için kişisel erişim belirteci (PAT) veya SSH anahtarı gerektirir."
+            "developerInfoLine2": "Kimlik doğrulama için kişisel erişim belirteci (PAT) veya SSH anahtarı gerektirir.",
+            "independentProject": "AeroFTP bağımsız bir projedir. {provider} entegrasyonu resmi dokümantasyon aracılığıyla sürdürülmektedir.",
+            "independentProjectContact": "AeroFTP, guvenilir entegrasyon ve dogrudan destek saglamak icin {provider} ile dogrudan iletisim halinde olan bagimsiz bir projedir.",
+            "advanced": "Gelişmiş",
+            "advancedWarning": "Bu alanlar bu saglayici icin onceden yapilandirilmistir. Degistirmek baglantinin duzgun calishmasini engelleyebilir.",
+            "advancedUnlock": "Yine de duzenle",
+            "directContact": "{provider} ile dogrudan iletisim halinde oncelikli destek ve guncellemeler icin."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

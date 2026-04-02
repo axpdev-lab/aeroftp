@@ -1362,9 +1362,10 @@ impl StorageProvider for S3Provider {
     }
     
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        // For S3, delete the directory marker
-        let key = format!("{}/", path.trim_matches('/'));
-        self.delete(&key).await
+        // In S3, directories are virtual (just key prefixes). MinIO and some
+        // S3-compatible providers may not create/delete marker objects reliably.
+        // Use rmdir_recursive to clean up the marker AND any lingering objects.
+        self.rmdir_recursive(path).await
     }
     
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1373,7 +1374,21 @@ impl StorageProvider for S3Provider {
         }
 
         let prefix = format!("{}/", path.trim_matches('/'));
-        let keys = self.list_keys_with_prefix(&prefix).await?;
+        let mut keys = self.list_keys_with_prefix(&prefix).await?;
+
+        // Always include the directory marker itself (key with trailing slash).
+        // MinIO and some S3-compatible providers create this marker on mkdir
+        // but list_keys_with_prefix may not return it as a regular key.
+        if !keys.contains(&prefix) {
+            keys.push(prefix.clone());
+        }
+        // Also try without trailing slash (some providers use both)
+        let no_slash = path.trim_matches('/').to_string();
+        if !keys.contains(&no_slash) {
+            keys.push(no_slash);
+        }
+
+        tracing::info!("rmdir_recursive: deleting {} keys under prefix '{}'", keys.len(), prefix);
 
         // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per request
         for chunk in keys.chunks(1000) {

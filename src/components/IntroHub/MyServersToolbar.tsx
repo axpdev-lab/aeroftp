@@ -74,8 +74,8 @@ export function MyServersToolbar({
                     >
                         {chip.id === 'favorites' && <Star size={10} />}
                         <span>{t(chip.labelKey)}</span>
-                        <span className={`text-[10px] tabular-nums ${
-                            activeFilter === chip.id ? 'text-blue-500 dark:text-blue-300' : 'text-gray-400 dark:text-gray-500'
+                        <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
+                            activeFilter === chip.id ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
                         }`}>{count}</span>
                     </button>
                 );

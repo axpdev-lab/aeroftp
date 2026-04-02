@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Sử dụng công cụ MEGAcmd làm cầu nối. Yêu cầu cài đặt MEGAcmd riêng.",
             "megaNativeNotice": "Khuyên dùng: API gốc",
-            "megaNativeNoticeDesc": "API gốc kết nối trực tiếp với MEGA mà không cần phụ thuộc bên ngoài. Không cần cài đặt phần mềm bổ sung."
+            "megaNativeNoticeDesc": "API gốc kết nối trực tiếp với MEGA mà không cần phụ thuộc bên ngoài. Không cần cài đặt phần mềm bổ sung.",
+            "connectTo": "Kết nối tới {provider}"
         },
         "browser": {
             "remote": "Từ xa",
@@ -1203,7 +1204,7 @@
             "region": "Khu vực",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint tùy chỉnh",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URL kiểu đường dẫn",
             "webdavNote": "Đường dẫn WebDAV phải bao gồm đường dẫn đầy đủ.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "Tài liệu {name}",
             "webdavExampleLabel": "Ví dụ:",
             "webdavBasePath": "Đường dẫn gốc: {path}",
+            "connectVia": "Kết nối tới {name} qua {protocol}",
             "webdavConnectVia": "Kết nối tới {name} qua WebDAV",
             "s3Endpoint": "Điểm cuối",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Đăng nhập bằng tài khoản đám mây của bạn. Một số dịch vụ sử dụng OAuth (đăng nhập một lần nhấp), số khác yêu cầu khóa API hoặc mật khẩu ứng dụng từ cài đặt tài khoản.",
             "cloudInfoLine2": "Dung lượng miễn phí khác nhau tùy nhà cung cấp - kiểm tra từng dịch vụ để biết chi tiết.",
             "developerInfoLine1": "Tích hợp cho quy trình phát triển. Duyệt kho lưu trữ, quản lý bản phát hành và tải tệp trực tiếp lên nền tảng lưu trữ.",
-            "developerInfoLine2": "Yêu cầu mã thông báo truy cập cá nhân (PAT) hoặc khóa SSH để xác thực."
+            "developerInfoLine2": "Yêu cầu mã thông báo truy cập cá nhân (PAT) hoặc khóa SSH để xác thực.",
+            "independentProject": "AeroFTP là một dự án độc lập. Tích hợp {provider} được duy trì thông qua tài liệu chính thức.",
+            "independentProjectContact": "AeroFTP la mot du an doc lap lien he truc tiep voi {provider} de dam bao tich hop dang tin cay va ho tro truc tiep.",
+            "advanced": "Nâng cao",
+            "advancedWarning": "Cac truong nay da duoc cau hinh truoc cho nha cung cap nay. Thay doi chung co the khien ket noi khong hoat dong dung.",
+            "advancedUnlock": "Van chinh sua",
+            "directContact": "Lien he truc tiep voi {provider} de ho tro uu tien va cap nhat."
         },
         "shortcuts": {
             "title": "Phím tắt",

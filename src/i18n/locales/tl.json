@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Gumagamit ng MEGAcmd tool bilang tulay. Kailangang i-install ang MEGAcmd nang hiwalay.",
             "megaNativeNotice": "Inirerekomenda: Native API",
-            "megaNativeNoticeDesc": "Ang Native API ay direktang kumokonekta sa MEGA nang walang panlabas na dependency. Hindi kailangan ng karagdagang software."
+            "megaNativeNoticeDesc": "Ang Native API ay direktang kumokonekta sa MEGA nang walang panlabas na dependency. Hindi kailangan ng karagdagang software.",
+            "connectTo": "Kumonekta sa {provider}"
         },
         "browser": {
             "remote": "Remote",
@@ -1203,7 +1204,7 @@
             "region": "Rehiyon",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Custom Endpoint",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URLs",
             "webdavNote": "Dapat buo ang WebDAV path.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "Dokumentasyon ng {name}",
             "webdavExampleLabel": "Halimbawa:",
             "webdavBasePath": "Base path: {path}",
+            "connectVia": "Kumonekta sa {name} sa pamamagitan ng {protocol}",
             "webdavConnectVia": "Kumonekta sa {name} sa pamamagitan ng WebDAV",
             "s3Endpoint": "Endpoint",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Mag-sign in gamit ang iyong cloud account. Ang ilang serbisyo ay gumagamit ng OAuth (one-click login), ang iba naman ay nangangailangan ng API key o app password mula sa mga setting ng iyong account.",
             "cloudInfoLine2": "Ang libreng storage ay iba-iba sa bawat provider - tingnan ang bawat serbisyo para sa mga detalye.",
             "developerInfoLine1": "Mga integrasyon para sa mga workflow ng development. Mag-browse ng mga repository, pamahalaan ang mga release, at mag-upload ng mga file nang direkta sa mga hosting platform.",
-            "developerInfoLine2": "Nangangailangan ng personal access token (PAT) o SSH key para sa authentication."
+            "developerInfoLine2": "Nangangailangan ng personal access token (PAT) o SSH key para sa authentication.",
+            "independentProject": "Ang AeroFTP ay isang independiyenteng proyekto. Ang {provider} integration ay pinananatili sa pamamagitan ng opisyal na dokumentasyon.",
+            "independentProjectContact": "Ang AeroFTP ay isang independiyenteng proyekto na direktang nakikipag-ugnayan sa {provider} upang matiyak ang maaasahang integrasyon at direktang suporta.",
+            "advanced": "Advanced",
+            "advancedWarning": "Ang mga field na ito ay na-pre-configure para sa provider na ito. Ang pagbabago sa mga ito ay maaaring pumigil sa koneksyon na gumana nang tama.",
+            "advancedUnlock": "I-edit pa rin",
+            "directContact": "Sa direktang pakikipag-ugnayan sa {provider} para sa priority na suporta at mga update."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

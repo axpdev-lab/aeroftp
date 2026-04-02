@@ -37,7 +37,7 @@ const COMMON_FIELDS = {
         label: 'Server',
         type: 'url' as const,
         required: true,
-        placeholder: 'https://example.com',
+        placeholder: 'es. https://example.com',
         group: 'server' as const,
     },
     port: {
@@ -67,7 +67,7 @@ const COMMON_FIELDS = {
         label: 'S3 Endpoint',
         type: 'url' as const,
         required: true,
-        placeholder: 'https://s3.example.com',
+        placeholder: 'es. https://s3.example.com',
         group: 'server' as const,
     },
     accessKeyId: {
@@ -107,7 +107,7 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.accessKeyId, placeholder: 'Your Access Key ID' },
             { ...COMMON_FIELDS.secretAccessKey },
             { ...COMMON_FIELDS.bucket, placeholder: 'my-bucket' },
-            { ...COMMON_FIELDS.endpoint, placeholder: 'https://s3.region.provider.com' },
+            { ...COMMON_FIELDS.endpoint, placeholder: 'es. https://s3.region.provider.com' },
             { ...COMMON_FIELDS.region, defaultValue: 'auto' },
             {
                 key: 'pathStyle',
@@ -175,7 +175,7 @@ export const PROVIDERS: ProviderConfig[] = [
         isGeneric: true,
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.server, placeholder: 'https://webdav.yourserver.com/', helpText: 'Full WebDAV URL with https://' },
+            { ...COMMON_FIELDS.server, placeholder: 'es. https://webdav.yourserver.com/', helpText: 'Full WebDAV URL with https://' },
             { ...COMMON_FIELDS.username },
             { ...COMMON_FIELDS.password },
             {
@@ -255,6 +255,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://s3.amazonaws.com',
         helpUrl: 'https://docs.aws.amazon.com/s3/',
         signupUrl: 'https://aws.amazon.com/free/',
     },
@@ -270,18 +271,18 @@ export const PROVIDERS: ProviderConfig[] = [
         fields: [
             {
                 ...COMMON_FIELDS.accessKeyId,
-                label: 'keyID',
+                label: 'Key ID',
                 placeholder: '003d90ca9d33900000000001',
                 helpText: 'Your B2 Application Key ID (starts with 003...)',
             },
             {
                 ...COMMON_FIELDS.secretAccessKey,
-                label: 'applicationKey',
+                label: 'Application Key',
                 helpText: 'Your B2 Application Key (hidden after creation)',
             },
             {
                 ...COMMON_FIELDS.bucket,
-                label: 'bucketName',
+                label: 'Bucket Name',
                 placeholder: 'my-b2-bucket',
                 helpText: 'The exact name of your B2 bucket',
             },
@@ -290,7 +291,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Endpoint',
                 type: 'url',
                 required: true,
-                placeholder: 's3.eu-central-003.backblazeb2.com',
+                placeholder: 'es. s3.eu-central-003.backblazeb2.com',
                 helpText: 'Bucket Settings → S3 Endpoint (without https://)',
                 group: 'server',
             },
@@ -303,6 +304,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://s3.us-west-004.backblazeb2.com',
         helpUrl: 'https://www.backblaze.com/b2/docs/',
         signupUrl: 'https://www.backblaze.com/sign-up/cloud-storage',
     },
@@ -315,6 +317,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#D9272E',
         stable: true,
+        contactVerified: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, helpText: 'S4 Dashboard → Access Keys → Access Key ID' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'S4 Dashboard → Access Keys → Secret Access Key' },
@@ -341,6 +344,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://s3.eu-central-1.s4.mega.io',
         helpUrl: 'https://help.mega.io/megas4/setup-guides/s3-browser-setup-guide-for-mega-s4',
         signupUrl: 'https://mega.nz/register',
     },
@@ -376,6 +380,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://www.cloudflare.com',
         helpUrl: 'https://developers.cloudflare.com/r2/',
         signupUrl: 'https://dash.cloudflare.com/sign-up',
     },
@@ -388,6 +393,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#1A73E8',
         stable: true,
+        contactVerified: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, helpText: 'e2 Dashboard → Access Keys → Access Key ID' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'e2 Dashboard → Access Keys → Secret Access Key' },
@@ -397,7 +403,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Region Endpoint',
                 type: 'url',
                 required: true,
-                placeholder: 'l4g4.ch11.idrivee2-2.com',
+                placeholder: 'es. l4g4.ch11.idrivee2-2.com',
                 helpText: 'e2 Dashboard → Regions → your region endpoint (without https://)',
                 group: 'server',
             },
@@ -410,8 +416,9 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://www.idrive.com',
         helpUrl: 'https://www.idrive.com/s3-storage-e2/',
-        signupUrl: 'https://www.idrive.com/e2/sign-up',
+        signupUrl: 'https://console.idrivee2.com/signup',
     },
     {
         id: 'wasabi',
@@ -459,6 +466,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://s3.wasabisys.com',
         helpUrl: 'https://docs.wasabi.com/',
         signupUrl: 'https://console.wasabisys.com/signup',
     },
@@ -471,6 +479,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#2683FF',
         stable: true,
+        contactVerified: true,
         fields: [
             { ...COMMON_FIELDS.accessKeyId, helpText: 'S3 Gateway access grant → Access Key' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'S3 Gateway access grant → Secret Key' },
@@ -496,6 +505,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://gateway.storjshare.io',
         helpUrl: 'https://storj.dev/dcs/api/s3/s3-compatible-gateway',
         signupUrl: 'https://www.storj.io/signup',
     },
@@ -537,6 +547,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://oss-us-west-1.aliyuncs.com',
         helpUrl: 'https://www.alibabacloud.com/help/en/oss/developer-reference/use-aws-sdks-to-access-oss',
         signupUrl: 'https://account.alibabacloud.com/register/intl_register.htm',
     },
@@ -582,6 +593,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://cos.ap-guangzhou.myqcloud.com',
         helpUrl: 'https://www.tencentcloud.com/document/product/436/32537',
         signupUrl: 'https://www.tencentcloud.com/account/register',
     },
@@ -594,6 +606,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Database',
         color: '#8B5CF6',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 ...COMMON_FIELDS.accessKeyId,
@@ -632,6 +645,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/account/',
         signupUrl: 'https://filelu.com/5253515355.html',
     },
@@ -658,6 +672,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://storage.yandexcloud.net',
         helpUrl: 'https://yandex.cloud/en/docs/storage/',
         signupUrl: 'https://console.yandex.cloud/',
     },
@@ -698,6 +713,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://nyc3.digitaloceanspaces.com',
         helpUrl: 'https://docs.digitalocean.com/products/spaces/',
         signupUrl: 'https://cloud.digitalocean.com/registrations/new',
     },
@@ -719,7 +735,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'S3 Endpoint',
                 type: 'url',
                 required: true,
-                placeholder: '<namespace>.compat.objectstorage.<region>.oraclecloud.com',
+                placeholder: 'es. <namespace>.compat.objectstorage.<region>.oraclecloud.com',
                 helpText: 'Format: namespace.compat.objectstorage.region.oraclecloud.com',
                 group: 'server',
             },
@@ -732,6 +748,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://objectstorage.us-ashburn-1.oraclecloud.com',
         helpUrl: 'https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/s3compatibleapi.htm',
         signupUrl: 'https://signup.cloud.oracle.com/',
     },
@@ -752,7 +769,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.endpoint,
                 label: 'MinIO Endpoint',
-                placeholder: 'minio.example.com:9000',
+                placeholder: 'es. minio.example.com:9000',
                 helpText: 'Your MinIO server address (without https://)',
             },
         ],
@@ -766,6 +783,45 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         helpUrl: 'https://min.io/docs/minio/linux/index.html',
         signupUrl: 'https://min.io/download',
+    },
+    {
+        id: 'quotaless-s3',
+        name: 'Quotaless S3',
+        description: 'Quotaless cloud storage via S3-compatible API (MinIO)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Database',
+        color: '#2563EB',
+        stable: true,
+        contactVerified: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.accessKeyId,
+                helpText: 'Client Area → S3 Account Details → Access Key ID',
+            },
+            {
+                ...COMMON_FIELDS.secretAccessKey,
+                helpText: 'Client Area → S3 Account Details → Secret Access Key',
+            },
+            {
+                ...COMMON_FIELDS.bucket,
+                placeholder: 'personal-files',
+                helpText: 'Your Quotaless bucket name',
+            },
+        ],
+        defaults: {
+            pathStyle: true,
+            region: 'us-east-1',
+            endpoint: 'https://io.quotaless.cloud:8000',
+            basePath: '/personal-files',
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://io.quotaless.cloud:8000',
+        helpUrl: 'https://quotaless.cloud/',
+        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/store/s3-storage',
     },
 
     // =========================================================================
@@ -786,6 +842,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://webdav.4shared.com',
         helpUrl: 'https://www.4shared.com/developer/docs/index.jsp',
         signupUrl: 'https://www.4shared.com/reg0.jsp',
     },
@@ -810,6 +867,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://webdav.cloudme.com',
         helpUrl: 'https://www.cloudme.com/en/webdav',
         signupUrl: 'https://www.cloudme.com/signup',
     },
@@ -834,6 +892,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false, // DriveHQ has separate API for sharing
             sync: true,
         },
+        healthCheckUrl: 'https://webdav.drivehq.com',
         helpUrl: 'https://www.drivehq.com/help/',
         signupUrl: 'https://www.drivehq.com/secure/SignUp.aspx',
     },
@@ -863,6 +922,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://app.koofr.net/dav/Koofr',
         helpUrl: 'https://app.koofr.net/help/webdav',
         signupUrl: 'https://app.koofr.net/registrations/new',
     },
@@ -896,6 +956,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://dav.jianguoyun.com',
         helpUrl: 'https://help.jianguoyun.com/?p=2064',
         signupUrl: 'https://www.jianguoyun.com/d/signup',
     },
@@ -912,7 +973,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.server,
                 label: 'WebDAV URL',
-                placeholder: 'https://<node>.teracloud.jp',
+                placeholder: 'es. https://<node>.teracloud.jp',
                 helpText: 'My Page → Apps Connection → your personal WebDAV URL',
             },
             {
@@ -934,6 +995,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://infini-cloud.net',
         helpUrl: 'https://infini-cloud.net/en/developer_webdav.html',
         signupUrl: 'https://infini-cloud.net/en/entry.html',
     },
@@ -947,7 +1009,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#E86C00',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.server, placeholder: 'https://your-server.com/seafdav/' },
+            { ...COMMON_FIELDS.server, placeholder: 'es. https://your-server.com/seafdav/' },
             { ...COMMON_FIELDS.username, placeholder: 'Your Seafile email' },
             { ...COMMON_FIELDS.password },
         ],
@@ -959,7 +1021,8 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
-        helpUrl: 'https://manual.seafile.com/extension/webdav/',
+        healthCheckUrl: 'https://cloud.seafile.com',
+        helpUrl: 'https://manual.seafile.com/latest/',
         signupUrl: 'https://cloud.seafile.com/accounts/register/',
     },
     {
@@ -983,7 +1046,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Server',
                 type: 'text' as const,
                 required: true,
-                placeholder: 'u123456.your-storagebox.de',
+                placeholder: 'es. u123456.your-storagebox.de',
                 helpText: 'Format: {username}.your-storagebox.de',
                 group: 'server' as const,
             },
@@ -994,8 +1057,8 @@ export const PROVIDERS: ProviderConfig[] = [
         features: {
             sync: true,
         },
-        helpUrl: 'https://docs.hetzner.com/robot/storage-box/',
-        signupUrl: 'https://www.hetzner.com/storage/storage-box',
+        helpUrl: 'https://www.hetzner.com/storage/storage-box/',
+        signupUrl: 'https://accounts.hetzner.com/login',
     },
     {
         id: 'sourceforge',
@@ -1006,6 +1069,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Package',
         color: '#FF6600',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 ...COMMON_FIELDS.username,
@@ -1025,6 +1089,7 @@ export const PROVIDERS: ProviderConfig[] = [
         features: {
             sync: false,
         },
+        healthCheckUrl: 'https://sourceforge.net',
         helpUrl: 'https://docs.aeroftp.app/protocols/sourceforge',
         signupUrl: 'https://sourceforge.net/user/registration',
     },
@@ -1037,6 +1102,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Globe',
         color: '#8B5CF6',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 key: 'username',
@@ -1063,8 +1129,35 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/account/',
         signupUrl: 'https://filelu.com/5253515355.html',
+    },
+    {
+        id: 'quotaless-webdav',
+        name: 'Quotaless WebDAV',
+        description: 'Quotaless cloud storage via WebDAV (ownCloud)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Globe',
+        color: '#2563EB',
+        stable: true,
+        contactVerified: true,
+        fields: [
+            { ...COMMON_FIELDS.username, placeholder: 'Your Quotaless username' },
+            { ...COMMON_FIELDS.password },
+        ],
+        defaults: {
+            server: 'https://io.quotaless.cloud:8080/webdav',
+            port: 8080,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://io.quotaless.cloud:8000',
+        helpUrl: 'https://quotaless.cloud/',
+        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/store/s3-storage',
     },
     {
         id: 'nextcloud',
@@ -1079,7 +1172,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.server,
                 label: 'Nextcloud URL',
-                placeholder: 'https://cloud.example.com'
+                placeholder: 'es. https://cloud.example.com'
             },
             { ...COMMON_FIELDS.username },
             {
@@ -1113,6 +1206,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#2196F3',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 ...COMMON_FIELDS.username,
@@ -1140,6 +1234,7 @@ export const PROVIDERS: ProviderConfig[] = [
             versioning: true,
             trash: true,
         },
+        healthCheckUrl: 'https://cloud.felicloud.com',
         helpUrl: 'https://felicloud.com/en/',
         signupUrl: 'https://felicloud.com/en/',
     },
@@ -1179,8 +1274,9 @@ export const PROVIDERS: ProviderConfig[] = [
             versioning: false,
             trash: false,
         },
-        helpUrl: 'https://blomp.com',
-        signupUrl: 'https://blomp.com',
+        healthCheckUrl: 'https://authenticate.blomp.com',
+        helpUrl: 'https://www.blomp.com/faq/',
+        signupUrl: 'https://www.blomp.com/sign-up/',
     },
     {
         id: 'mega',
@@ -1191,6 +1287,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud', // Or specific icon if available
         color: '#D9231E', // MEGA Red
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 key: 'username',
@@ -1225,6 +1322,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
             thumbnails: true, // Special feature
         },
+        healthCheckUrl: 'https://g.api.mega.co.nz',
         helpUrl: 'https://mega.io/help',
         signupUrl: 'https://mega.nz/register',
     },
@@ -1241,6 +1339,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#8B5CF6',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 key: 'password',
@@ -1257,6 +1356,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: true,
             sync: true,
         },
+        healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/pages/api',
         signupUrl: 'https://filelu.com/5253515355.html',
     },
@@ -1269,6 +1369,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Server',
         color: '#8B5CF6',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 key: 'username',
@@ -1296,6 +1397,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/account/',
         signupUrl: 'https://filelu.com/5253515355.html',
     },
@@ -1308,6 +1410,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Lock',
         color: '#8B5CF6',
         stable: true,
+        contactVerified: true,
         fields: [
             {
                 key: 'username',
@@ -1336,6 +1439,7 @@ export const PROVIDERS: ProviderConfig[] = [
             shareLink: false,
             sync: true,
         },
+        healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/account/',
         signupUrl: 'https://filelu.com/5253515355.html',
     },

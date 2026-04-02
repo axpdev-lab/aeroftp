@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "使用MEGAcmd工具作为桥接。需要单独安装MEGAcmd。",
             "megaNativeNotice": "推荐: 原生API",
-            "megaNativeNoticeDesc": "原生API无需外部依赖即可直接连接到MEGA。无需安装额外软件。"
+            "megaNativeNoticeDesc": "原生API无需外部依赖即可直接连接到MEGA。无需安装额外软件。",
+            "connectTo": "连接到 {provider}"
         },
         "browser": {
             "remote": "远程",
@@ -1203,7 +1204,7 @@
             "region": "区域",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "自定义端点",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "路径样式URL",
             "webdavNote": "WebDAV路径必须包含完整路径。",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "{name} 文档",
             "webdavExampleLabel": "示例：",
             "webdavBasePath": "基本路径：{path}",
+            "connectVia": "通过 {protocol} 连接到 {name}",
             "webdavConnectVia": "通过 WebDAV 连接到 {name}",
             "s3Endpoint": "端点",
             "azureBlobStorage": "Azure Blob 存储",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "使用您的云账户登录。某些服务使用 OAuth（一键登录），其他服务需要从账户设置中获取 API 密钥或应用密码。",
             "cloudInfoLine2": "免费存储空间因提供商而异 - 请查看每项服务了解详情。",
             "developerInfoLine1": "用于开发工作流的集成。浏览仓库、管理发布并将文件直接上传到托管平台。",
-            "developerInfoLine2": "需要个人访问令牌 (PAT) 或 SSH 密钥进行身份验证。"
+            "developerInfoLine2": "需要个人访问令牌 (PAT) 或 SSH 密钥进行身份验证。",
+            "independentProject": "AeroFTP 是一个独立项目。{provider} 集成通过官方文档进行维护。",
+            "independentProjectContact": "AeroFTP 是一个独立项目，与 {provider} 保持直接联系，以确保可靠的集成和直接支持。",
+            "advanced": "高级",
+            "advancedWarning": "这些字段已为此提供商预配置。更改可能会导致连接无法正常工作。",
+            "advancedUnlock": "仍然编辑",
+            "directContact": "与 {provider} 直接联系，提供优先支持和更新。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

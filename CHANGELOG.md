@@ -5,41 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.3.2] - 2026-04-01
+## [3.3.3] - 2026-04-02
 
-### GitLab integration, UX personalization & UI polish
+### GitLab integration, provider dashboard & form polish
 
 #### Added
 
-- **GitLab provider**: Full repository browsing via REST API v4. Connect to gitlab.com or self-hosted instances with Personal/Project Access Tokens. Supports browse, upload, download, mkdir, delete, rename with atomic batch commits via native REST (no GraphQL needed). Includes branch selector, commit dialog, write mode indicator, and context menu with tanuki icon (#73 follow-up)
+- **GitLab provider**: Full repository browsing via REST API v4. Connect to gitlab.com or self-hosted instances with Personal/Project Access Tokens. Supports browse, upload, download, mkdir, delete, rename with atomic batch commits via native REST (no GraphQL needed). Includes branch selector, commit dialog, write mode indicator, and context menu with tanuki icon
 - **GitLab in CLI**: `gitlab://` URL scheme support in `aeroftp-cli`, agent `server_exec` support, protocol dispatch
+- **Provider health check dashboard**: Progressive wave scan of provider endpoints (S3, WebDAV, API) via Rust HEAD requests. Green/amber/red status dots on Discover service cards. Per-tab scanning with manual "Check" button. 5-minute cache, offline-safe, no retry loops
+- **Quotaless integration**: S3 (MinIO path-style) and WebDAV (ownCloud) presets with health check, pre-configured endpoints, and `contactVerified` status
+- **Provider logos in connect buttons**: All OAuth and API provider buttons show official logo instead of generic Cloud icon (MEGA, Google Drive, Dropbox, FileLu, etc.)
+- **AWS theme-aware logo**: Dark mode uses white-text SVG, light mode uses dark-text SVG
+- **Hetzner Storage Box logo**: PNG logo added to Discover and Saved Servers
+- **S3 Advanced Options**: Endpoint and path-style fields hidden behind collapsible Advanced for all preset S3 providers (Backblaze, IDrive e2, Wasabi, Tencent, etc.). Edit button with warning modal to unlock preset fields
+- **WebDAV Advanced Options**: Server/port fields locked with Edit + warning modal for preset WebDAV providers (Koofr, DriveHQ, CloudMe, Jianguoyun)
+- **Card footer**: Provider connectVia + Create Account + Docs links in a full-width footer bar at bottom of form card with subtle background
+- **Provider disclaimer redesign**: Two-line format - info icon + documentation line for all, green shield + direct contact line for verified providers
+- **Form tab context menu**: Right-click on form tabs for Close, Close Others, Close All
+- **Form tab origin memory**: Closing a form tab returns to the tab that opened it (Discover or My Servers)
+- **Badge counters**: Pill-style badges on tab counters, sidebar categories, and filter chips
+- **Clock icon**: Timer icon next to last-connected time in server cards
 - **Developer filter chip**: New "Dev" filter in My Servers toolbar to quickly find GitHub/GitLab connections
-- **Font family selector**: Choose interface font from presets (Inter, FiraGO, JetBrains Mono, Noto Sans, system-ui) or enter any custom font. Live preview in settings. Supports multi-script users (Latin, Cyrillic, Georgian) (#73 - user feedback from Ar-Paramir)
-- **Font size slider**: Continuous 10-22px range replaces the old 3-preset system (small/medium/large). All UI elements scale proportionally including toolbar, tabs, badges, and status bar (#73 - user feedback)
-- **Font reset button**: One-click "Reset to defaults (Inter, 16px)" appears when font settings differ from defaults
-- **Window state persistence**: Window size, position, and maximized state saved automatically between sessions using `tauri-plugin-window-state`. Splash screen excluded from state tracking. Restore happens after splash teardown to avoid visual glitch (#73 - user feedback)
-- **Provider identity in forms**: Quick Connect header now shows provider logo and name aligned right (e.g. tanuki + "GitLab", FileLu logo + "FILELU")
-- **Roadmap Appendix Q**: Developer Services integration plan - 8 services across 3 tiers (GitLab, Bitbucket, Gitea/Forgejo, Docker Registry, npm, Artifactory, Netlify, Vercel) with detailed API analysis and executive plan
-- **Roadmap Appendix R**: UX Personalization plan - font customization and window state persistence
+- **Font family selector**: Choose interface font from presets or custom. Live preview in settings
+- **Font size slider**: Continuous 10-22px range replaces the old 3-preset system
+- **Window state persistence**: Window size, position, and maximized state saved between sessions
+- **Roadmap Appendix Q**: Developer Services integration plan
+- **Roadmap Appendix R**: UX Personalization plan
+- **Roadmap Appendix T**: Provider Landing Pages plan and 33 setup guides on docs.aeroftp.app
 
 #### Changed
 
-- **FTP/FTPS unified in Discover**: Single "FTP / FTPS" entry replaces separate FTP and FTPS cards
-- **FileLu brand color**: Changed from violet to sky blue across all UI (ProtocolSelector, SessionTabs, SavedServers, ConnectionScreen) to match actual logo color
-- **Server cards floating style**: Lighter borders with subtle shadow at rest and elevated shadow on hover for a floating card effect. Applied to both My Servers and Discover service cards
-- **Discover category persistence**: Last visited category remembered in localStorage
-- **Discover search removed**: Redundant search bar removed from services panel (sidebar categories are sufficient)
-- **Command Palette removed**: Ctrl+K search overlay removed from IntroHub (redundant with filter chips and server search)
-- **Status bar truncation**: Server info and write mode badges gracefully truncate on narrow windows. Button labels hide below 1100px width, leaving only icons
-- **Discover Services count**: 49 to 50 (+GitLab)
+- **Form card styling**: Calibrated border and shadow matching Discover/Saved Server mini-cards. Removed heavy `shadow-xl` in favor of subtle `shadow-[0_1px_3px]`
+- **Provider header removed in IntroHub**: Redundant logo+name+description card removed; info moved to header right corner with description
+- **Input field heights unified**: All fields (credentials, paths, connection name) use consistent `py-2.5` matching OAuth reference
+- **URL placeholders prefixed**: All endpoint/server placeholders now show "es." prefix to distinguish from entered values
+- **Connect button styling**: Removed colored glow effects, added calibrated shadow, cursor-pointer on all buttons
+- **S3 provider ordering**: S3 Compatible and MinIO first, then major providers, Asian providers last
+- **Cloud Storage ordering**: Zoho before kDrive, Koofr before Jotta, Yandex last
+- **Tab styling unified**: My Servers, Discover, and form tabs all share border+shadow style on active/hover
+- **Dashed border on + buttons**: New connection buttons in IntroHub, session tabs, and local tabs use dashed border style
+- **pCloud button color**: Changed from green to sky/cyan to match logo
+- **Backblaze B2 labels**: Fixed camelCase labels (keyID/applicationKey/bucketName) to readable format
+- **MyServers filter persistence**: Active filter tab saved in localStorage
+- **Discover Services count**: 49 to 51 (+GitLab, +Quotaless)
+- **Documentation reorganized**: docs.aeroftp.app split into "Technical Reference" (6 protocol pages) and "Setup Guides" (33 provider pages)
 
 #### Fixed
 
-- **Font scaling consistency**: All UI elements now scale with font size setting via `html` root font-size. Previous implementation only affected inherited text; Tailwind rem-based classes (toolbar, tabs, badges) were fixed at browser default
-- **File list font size**: Added explicit `text-sm` to remote and local file tables to prevent oversized text at default 16px root
-- **Write mode badge wrapping**: "Direct push" / "Private" / "Read-only" badges no longer wrap to two lines on narrow windows
-- **Missing i18n key**: `activity.insecure_cert_enabled` now properly translated in 47 languages (was showing raw key in activity log for FTP connections with certificate verification disabled)
-- **Clippy warnings**: Resolved dead_code warnings in GitLab provider models
+- **S3 folder delete on MinIO**: `rmdir` now delegates to `rmdir_recursive` which batch-deletes all prefix objects including the directory marker. Fixes phantom folders on Quotaless and MinIO after delete
+- **Form tab switching**: Added `key={activeFormTab.id}` to force fresh component state when switching between form tabs
+- **S3 defaults not applied in IntroHub**: `pathStyle`, `region`, `endpoint` from provider defaults now injected into form tab options at creation
+- **pathStyle checkbox fallback**: Uses `provider.defaults.pathStyle` when options not yet populated
+- **Missing i18n key `protocol.advanced`**: Added and propagated to 47 languages
+- **Font scaling consistency**: All UI elements scale with font size via `html` root font-size
+- **IDrive e2 health check**: Changed from region-specific endpoint to `www.idrive.com`
+- **IDrive e2 signup URL**: Updated to `console.idrivee2.com/signup`
+- **Seafile docs URL**: Updated to `manual.seafile.com/latest/`
+- **Blomp URLs**: Updated helpUrl and signupUrl to specific pages
+- **Sigstore verification**: Errors no longer block auto-update; graceful fallback to SHA-256 integrity check
+- **Settings vault regression**: Restored vault save variable name after settings migration refactor
+- **normalizedSettings references**: Replaced remaining references with `settings` after the settings refactor
 
 ## [3.3.0] - 2026-04-01
 

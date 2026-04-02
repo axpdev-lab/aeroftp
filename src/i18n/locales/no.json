@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Bruker MEGAcmd-verktøyet som bro. Krever at MEGAcmd er installert separat.",
             "megaNativeNotice": "Anbefalt: Nativt API",
-            "megaNativeNoticeDesc": "Nativt API kobler direkte til MEGA uten eksterne avhengigheter. Ingen ekstra programvare nødvendig."
+            "megaNativeNoticeDesc": "Nativt API kobler direkte til MEGA uten eksterne avhengigheter. Ingen ekstra programvare nødvendig.",
+            "connectTo": "Koble til {provider}"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1203,7 +1204,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Egendefinert endepunkt",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URL-er",
             "webdavNote": "WebDAV-stien må være fullstendig.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "{name}-dokumentasjon",
             "webdavExampleLabel": "Eksempel:",
             "webdavBasePath": "Basissti: {path}",
+            "connectVia": "Koble til {name} via {protocol}",
             "webdavConnectVia": "Koble til {name} via WebDAV",
             "s3Endpoint": "Endepunkt",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Logg inn med skykontoen din. Noen tjenester bruker OAuth (ett-klikks pålogging), andre krever en API-nøkkel eller app-passord fra kontoinnstillingene dine.",
             "cloudInfoLine2": "Gratis lagring varierer etter leverandør - sjekk hver tjeneste for detaljer.",
             "developerInfoLine1": "Integrasjoner for utviklingsarbeidsflyter. Bla gjennom repositorier, administrer utgivelser og last opp filer direkte til vertingsplattformer.",
-            "developerInfoLine2": "Krever et personlig tilgangstoken (PAT) eller SSH-nøkkel for autentisering."
+            "developerInfoLine2": "Krever et personlig tilgangstoken (PAT) eller SSH-nøkkel for autentisering.",
+            "independentProject": "AeroFTP er et uavhengig prosjekt. {provider}-integrasjonen vedlikeholdes gjennom offisiell dokumentasjon.",
+            "independentProjectContact": "AeroFTP er et uavhengig prosjekt i direkte kontakt med {provider} for a sikre palitelig integrasjon og direkte stotte.",
+            "advanced": "Avansert",
+            "advancedWarning": "Disse feltene er forhondskonfigurert for denne leverandoren. Endring av dem kan hindre tilkoblingen fra a fungere riktig.",
+            "advancedUnlock": "Rediger likevel",
+            "directContact": "I direkte kontakt med {provider} for prioritert stotte og oppdateringer."
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

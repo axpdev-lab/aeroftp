@@ -20,6 +20,7 @@ import {
     ExternalLink,
     Pencil,
     Info,
+    Settings,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
@@ -663,6 +664,9 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const t = useTranslation();
     const providerConfig = selectedProviderId ? getProviderById(selectedProviderId) : null;
     const [showInsecureCertModal, setShowInsecureCertModal] = useState(false);
+    const [showS3Advanced, setShowS3Advanced] = useState(false);
+    const [s3AdvancedUnlocked, setS3AdvancedUnlocked] = useState(false);
+    const [showS3AdvancedWarning, setShowS3AdvancedWarning] = useState(false);
 
     if (protocol === 'sftp') {
         const isSourceForge = selectedProviderId === 'sourceforge';
@@ -802,12 +806,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             onChange(updatedOptions);
         };
 
-        // Endpoint locked state (disabled + Edit button for preset endpoints)
-        const endpointLocked = hasPresetEndpoint && !presetUnlocked['endpoint'] && !isEditing;
+        // Providers where endpoint must stay visible (user-specific or self-hosted)
+        const VISIBLE_ENDPOINT_PROVIDERS = new Set(['minio', 'oracle-cloud', 'storj']);
+        // Endpoint in Advanced: all non-generic providers except those needing visible endpoint
+        const endpointInAdvanced = !providerConfig?.isGeneric && !!providerConfig?.id
+            && !VISIBLE_ENDPOINT_PROVIDERS.has(providerConfig.id)
+            && (hasPresetEndpoint || hasUserEndpointField);
+        // Preset endpoints are disabled in Advanced until unlocked
+        const endpointDisabled = hasPresetEndpoint && !presetUnlocked['endpoint'];
 
         // Endpoint placeholder: use template pattern when available
         const endpointPlaceholder = endpointField?.placeholder
-            || providerConfig?.defaults?.endpointTemplate?.replace(/\{(\w+)\}/g, '<$1>')
+            || (providerConfig?.defaults?.endpointTemplate ? `es. ${providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>')}` : null)
             || t('protocol.endpointPlaceholder');
 
         return (
@@ -930,30 +940,20 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             )}
                         </div>
 
-                        {/* Endpoint next to region (when both present) */}
-                        {showEndpoint && (
+                        {/* Endpoint next to region — only when NOT hidden in Advanced */}
+                        {showEndpoint && !endpointInAdvanced && (
                             <div>
                                 <div className="flex items-center gap-2 mb-1.5">
                                     <label className="block text-sm font-medium">
                                         {endpointField?.label || t('protocol.s3Endpoint')}
                                     </label>
-                                    {endpointLocked && onPresetUnlock && (
-                                        <button
-                                            type="button"
-                                            onClick={() => onPresetUnlock('endpoint')}
-                                            className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
-                                        >
-                                            <Pencil size={10} />
-                                            {t('common.edit')}
-                                        </button>
-                                    )}
                                 </div>
                                 {endpointField?.type === 'select' && endpointField.options ? (
                                     <select
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                        disabled={disabled || !!endpointLocked}
-                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        disabled={disabled}
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                     >
                                         <option value="">{t('protocol.selectRegion')}</option>
                                         {endpointField.options.map(opt => (
@@ -965,8 +965,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         type="text"
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                        disabled={disabled || !!endpointLocked}
-                                        className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        disabled={disabled}
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                         placeholder={endpointPlaceholder}
                                     />
                                 )}
@@ -978,30 +978,20 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     </div>
                 )}
 
-                {/* Endpoint standalone (when no region field) */}
-                {showEndpoint && !regionField && (
+                {/* Endpoint standalone — only when NOT hidden in Advanced */}
+                {showEndpoint && !regionField && !endpointInAdvanced && (
                     <div>
                         <div className="flex items-center gap-2 mb-1.5">
                             <label className="block text-sm font-medium">
                                 {endpointField?.label || t('protocol.s3Endpoint')}
                             </label>
-                            {endpointLocked && onPresetUnlock && (
-                                <button
-                                    type="button"
-                                    onClick={() => onPresetUnlock('endpoint')}
-                                    className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-0.5"
-                                >
-                                    <Pencil size={10} />
-                                    {t('common.edit')}
-                                </button>
-                            )}
                         </div>
                         {endpointField?.type === 'select' && endpointField.options ? (
                             <select
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                disabled={disabled || !!endpointLocked}
-                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                             >
                                 <option value="">{t('protocol.selectRegion')}</option>
                                 {endpointField.options.map(opt => (
@@ -1013,8 +1003,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 type="text"
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
-                                disabled={disabled || !!endpointLocked}
-                                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg ${endpointLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                disabled={disabled}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                 placeholder={endpointPlaceholder}
                             />
                         )}
@@ -1024,37 +1014,87 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     </div>
                 )}
 
-                {(showEndpoint || hasAccountIdTemplate) && (
+                {/* Path style — only visible when endpoint is NOT preset */}
+                {(showEndpoint || hasAccountIdTemplate) && !endpointInAdvanced && (
                     <Checkbox
-                        checked={options.pathStyle || false}
+                        checked={options.pathStyle ?? providerConfig?.defaults?.pathStyle ?? false}
                         onChange={(v) => onChange({ ...options, pathStyle: v })}
                         disabled={disabled}
                         label={<span className="text-sm">{t('protocol.pathStyle')}</span>}
                     />
                 )}
-                {!isEditing && (providerConfig?.helpUrl || providerConfig?.signupUrl) && (
-                    <div className="flex items-center gap-3 mt-1">
-                        {providerConfig.signupUrl && (
-                            <a
-                                href={providerConfig.signupUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                            >
-                                <ExternalLink size={12} />
-                                {t('connection.createAccount')}
-                            </a>
-                        )}
-                        {providerConfig.helpUrl && (
-                            <a
-                                href={providerConfig.helpUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                            >
-                                <ExternalLink size={12} />
-                                {t('protocol.providerDocumentation', { name: providerConfig.name })}
-                            </a>
+
+                {/* Advanced Options — endpoint + pathStyle for preset S3 providers */}
+                {endpointInAdvanced && (
+                    <div className="pt-1">
+                        <button
+                            type="button"
+                            onClick={() => setShowS3Advanced(!showS3Advanced)}
+                            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 transition-colors"
+                        >
+                            <Settings size={12} />
+                            <span>{t('protocol.advanced')}</span>
+                            <ChevronDown size={12} className={`transition-transform duration-200 ${showS3Advanced ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showS3Advanced && (
+                            <div className="mt-2 space-y-2">
+                                <div>
+                                    <label className="block text-xs font-medium mb-1 text-gray-500">
+                                        {endpointField?.label || t('protocol.s3Endpoint')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={options.endpoint || providerConfig?.defaults?.endpoint || ''}
+                                        onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
+                                        disabled={disabled || (endpointDisabled && !s3AdvancedUnlocked)}
+                                        className={`w-full px-3 py-2 border rounded-lg text-sm ${(endpointDisabled && !s3AdvancedUnlocked) ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}
+                                        placeholder={endpointPlaceholder}
+                                    />
+                                    {!isEditing && endpointField?.helpText && (
+                                        <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                    )}
+                                </div>
+                                <Checkbox
+                                    checked={options.pathStyle ?? providerConfig?.defaults?.pathStyle ?? false}
+                                    onChange={(v) => onChange({ ...options, pathStyle: v })}
+                                    disabled={disabled || (endpointDisabled && !s3AdvancedUnlocked)}
+                                    label={<span className="text-sm">{t('protocol.pathStyle')}</span>}
+                                />
+                                {endpointDisabled && !s3AdvancedUnlocked && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowS3AdvancedWarning(true)}
+                                        className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 mt-1"
+                                    >
+                                        <Pencil size={10} />
+                                        {t('common.edit')}
+                                    </button>
+                                )}
+                                {showS3AdvancedWarning && (
+                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg">
+                                        <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                                            <ShieldAlert size={12} className="inline mr-1 -mt-0.5" />
+                                            {t('protocol.advancedWarning')}
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { setS3AdvancedUnlocked(true); setShowS3AdvancedWarning(false); }}
+                                                className="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors"
+                                            >
+                                                {t('protocol.advancedUnlock')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowS3AdvancedWarning(false)}
+                                                className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                                            >
+                                                {t('common.cancel')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 )}
@@ -1079,42 +1119,6 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             {t('protocol.webdavExampleLabel')} <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
                         </p>
                     </>
-                )}
-                {providerConfig && !isCustomOrGeneric && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                        <Cloud size={14} />
-                        <span>
-                            {providerConfig.defaults?.basePath
-                                ? t('protocol.webdavBasePath', { path: providerConfig.defaults.basePath })
-                                : t('protocol.webdavConnectVia', { name: providerConfig.name })}
-                        </span>
-                    </div>
-                )}
-                {!isEditing && (providerConfig?.helpUrl || providerConfig?.signupUrl) && (
-                    <div className="flex items-center gap-3 mt-1">
-                        {providerConfig.signupUrl && (
-                            <a
-                                href={providerConfig.signupUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                            >
-                                <ExternalLink size={12} />
-                                {t('connection.createAccount')}
-                            </a>
-                        )}
-                        {providerConfig.helpUrl && (
-                            <a
-                                href={providerConfig.helpUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                            >
-                                <ExternalLink size={12} />
-                                {t('protocol.providerDocumentation', { name: providerConfig.name })}
-                            </a>
-                        )}
-                    </div>
                 )}
             </div>
         );

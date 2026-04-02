@@ -398,10 +398,10 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
             {/* New tab button */}
             <button
                 onClick={onNewTab}
-                className="shrink-0 p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                className="shrink-0 p-1.5 ml-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors text-gray-400 dark:text-gray-500"
                 title={t('ui.session.newConnection')}
             >
-                <Plus size={16} />
+                <Plus size={13} />
             </button>
 
             {/* AeroFile local tabs — right-aligned */}
@@ -449,7 +449,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                     {localTabs.length < maxLocalTabs && (
                         <button
                             onClick={onLocalNewTab}
-                            className="shrink-0 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+                            className="shrink-0 p-1.5 ml-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
                             title={t('localTabs.newTab')}
                         >
                             <Plus size={13} />

@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Používa nástroj MEGAcmd ako most. Vyžaduje samostatne nainštalovaný MEGAcmd.",
             "megaNativeNotice": "Odporúčané: Natívne API",
-            "megaNativeNoticeDesc": "Natívne API sa pripája priamo k MEGA bez externých závislostí. Nie je potrebný žiadny ďalší softvér."
+            "megaNativeNoticeDesc": "Natívne API sa pripája priamo k MEGA bez externých závislostí. Nie je potrebný žiadny ďalší softvér.",
+            "connectTo": "Pripojiť sa k {provider}"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -1203,7 +1204,7 @@
             "region": "Región",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Vlastný koncový bod",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URL v štýle cesty",
             "webdavNote": "Cesta WebDAV musí byť úplná.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "Dokumentacia {name}",
             "webdavExampleLabel": "Priklad:",
             "webdavBasePath": "Zakladna cesta: {path}",
+            "connectVia": "Pripojit sa k {name} cez {protocol}",
             "webdavConnectVia": "Pripojit sa k {name} cez WebDAV",
             "s3Endpoint": "Koncovy bod",
             "azureBlobStorage": "Ulozisko Azure Blob",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Prihláste sa do svojho cloudového účtu. Niektoré služby používajú OAuth (prihlásenie jedným kliknutím), iné vyžadujú API kľúč alebo heslo aplikácie z nastavení účtu.",
             "cloudInfoLine2": "Bezplatné úložisko sa líši podľa poskytovateľa - skontrolujte každú službu pre podrobnosti.",
             "developerInfoLine1": "Integrácie pre vývojové pracovné postupy. Prehliadať repozitáre, spravovať vydánia a nahrávať súbory priamo na hostingové platformy.",
-            "developerInfoLine2": "Vyžaduje osobný prístupový token (PAT) alebo SSH kľúč na overenie."
+            "developerInfoLine2": "Vyžaduje osobný prístupový token (PAT) alebo SSH kľúč na overenie.",
+            "independentProject": "AeroFTP je nezávislý projekt. Integrácia {provider} je udržiavaná prostredníctvom oficiálnej dokumentácie.",
+            "independentProjectContact": "AeroFTP je nezavisly projekt v priamom kontakte s {provider} na zabezpecenie spolahlivej integracie a priamej podpory.",
+            "advanced": "Pokročilé",
+            "advancedWarning": "Tieto polia su predkonfigurovane pre tohto poskytovatela. Ich zmena moze zabranit spravnemu fungovaniu pripojenia.",
+            "advancedUnlock": "Napriek tomu upravit",
+            "directContact": "V priamom kontakte s {provider} pre prioritnu podporu a aktualizacie."
         },
         "shortcuts": {
             "title": "Klávesové skratky",

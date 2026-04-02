@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Inatumia zana ya MEGAcmd kama daraja. Inahitaji MEGAcmd kusakinishwa kando.",
             "megaNativeNotice": "Inapendekezwa: API Asilia",
-            "megaNativeNoticeDesc": "API Asilia inaunganisha moja kwa moja na MEGA bila utegemezi wa nje. Hakuna programu ya ziada inayohitajika."
+            "megaNativeNoticeDesc": "API Asilia inaunganisha moja kwa moja na MEGA bila utegemezi wa nje. Hakuna programu ya ziada inayohitajika.",
+            "connectTo": "Unganisha na {provider}"
         },
         "browser": {
             "remote": "Mbali",
@@ -1203,7 +1204,7 @@
             "region": "Mkoa",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Kituo Maalum",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URL za mtindo wa njia",
             "webdavNote": "Njia ya WebDAV lazima iwe kamili.",
@@ -1224,6 +1225,7 @@
             "providerDocumentation": "Nyaraka za {name}",
             "webdavExampleLabel": "Mfano:",
             "webdavBasePath": "Njia ya msingi: {path}",
+            "connectVia": "Unganisha na {name} kupitia {protocol}",
             "webdavConnectVia": "Unganisha na {name} kupitia WebDAV",
             "s3Endpoint": "Mwisho",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Ingia kwa akaunti yako ya wingu. Huduma fulani hutumia OAuth (kuingia kwa kubofya mara moja), nyingine zinahitaji ufunguo wa API au nenosiri la programu kutoka mipangilio ya akaunti yako.",
             "cloudInfoLine2": "Hifadhi ya bure hutofautiana kwa mtoa huduma - angalia kila huduma kwa maelezo.",
             "developerInfoLine1": "Muunganisho kwa mtiririko wa kazi za maendeleo. Vinjari hazina, simamia matoleo na pakia faili moja kwa moja kwenye majukwaa ya kupangisha.",
-            "developerInfoLine2": "Inahitaji tokeni ya ufikiaji binafsi (PAT) au ufunguo wa SSH kwa uthibitishaji."
+            "developerInfoLine2": "Inahitaji tokeni ya ufikiaji binafsi (PAT) au ufunguo wa SSH kwa uthibitishaji.",
+            "independentProject": "AeroFTP ni mradi huru. Muunganisho wa {provider} unadumishwa kupitia nyaraka rasmi.",
+            "independentProjectContact": "AeroFTP ni mradi huru ulio katika mawasiliano ya moja kwa moja na {provider} ili kuhakikisha muunganisho wa kuaminika na msaada wa moja kwa moja.",
+            "advanced": "Kina zaidi",
+            "advancedWarning": "Sehemu hizi zimesanidiwa mapema kwa mtoa huduma huyu. Kuzibadilisha kunaweza kuzuia muunganisho kufanya kazi ipasavyo.",
+            "advancedUnlock": "Hariri hata hivyo",
+            "directContact": "Katika mawasiliano ya moja kwa moja na {provider} kwa msaada wa kipaumbele na masasisho."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

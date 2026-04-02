@@ -65,6 +65,7 @@ mod totp;
 mod chat_history;
 mod file_tags;
 pub mod agent_memory_db;
+mod health_check;
 #[cfg(not(target_os = "macos"))]
 mod speech;
 #[cfg(target_os = "macos")]
@@ -8544,6 +8545,8 @@ pub fn run() {
             agent_memory_db::agent_memory_store,
             agent_memory_db::agent_memory_search,
             agent_memory_db::agent_memory_delete,
+            // Provider health check
+            health_check::start_health_scan,
             speech::speech_model_status,
             speech::download_speech_model,
             speech::speech_to_text,

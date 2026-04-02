@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Använder verktyget MEGAcmd som brygga. Kräver att MEGAcmd installeras separat.",
             "megaNativeNotice": "Rekommenderat: Nativt API",
-            "megaNativeNoticeDesc": "Nativt API ansluter direkt till MEGA utan externa beroenden. Ingen ytterligare programvara krävs."
+            "megaNativeNoticeDesc": "Nativt API ansluter direkt till MEGA utan externa beroenden. Ingen ytterligare programvara krävs.",
+            "connectTo": "Anslut till {provider}"
         },
         "browser": {
             "remote": "Fjärr",
@@ -1203,7 +1204,7 @@
             "region": "Region",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Anpassad slutpunkt",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Sökvägsbaserade URL:er",
             "webdavNote": "WebDAV-sökvägen måste vara fullständig.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "{name}-dokumentation",
             "webdavExampleLabel": "Exempel:",
             "webdavBasePath": "Bassökväg: {path}",
+            "connectVia": "Anslut till {name} via {protocol}",
             "webdavConnectVia": "Anslut till {name} via WebDAV",
             "s3Endpoint": "Slutpunkt",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Logga in med ditt molnkonto. Vissa tjänster använder OAuth (inloggning med ett klick), andra kräver en API-nyckel eller applösenord från dina kontoinställningar.",
             "cloudInfoLine2": "Gratis lagring varierar beroende på leverantör - kontrollera varje tjänst för detaljer.",
             "developerInfoLine1": "Integrationer för utvecklingsarbetsflöden. Bläddra bland repositorier, hantera utgivningar och ladda upp filer direkt till värdplattformar.",
-            "developerInfoLine2": "Kräver en personlig åtkomsttoken (PAT) eller SSH-nyckel för autentisering."
+            "developerInfoLine2": "Kräver en personlig åtkomsttoken (PAT) eller SSH-nyckel för autentisering.",
+            "independentProject": "AeroFTP är ett oberoende projekt. {provider}-integrationen underhålls genom officiell dokumentation.",
+            "independentProjectContact": "AeroFTP ar ett oberoende projekt i direkt kontakt med {provider} for att sakerstalla palitlig integration och direkt support.",
+            "advanced": "Avancerat",
+            "advancedWarning": "Dessa falt ar forkonfigurerade for den har leverantoren. Att andra dem kan forhindra att anslutningen fungerar korrekt.",
+            "advancedUnlock": "Redigera anda",
+            "directContact": "I direkt kontakt med {provider} for prioriterad support och uppdateringar."
         },
         "shortcuts": {
             "title": "Kortkommandon",

@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Uporablja orodje MEGAcmd kot most. Zahteva ločeno nameščen MEGAcmd.",
             "megaNativeNotice": "Priporočeno: Izvorni API",
-            "megaNativeNoticeDesc": "Izvorni API se neposredno poveže z MEGA brez zunanjih odvisnosti. Dodatna programska oprema ni potrebna."
+            "megaNativeNoticeDesc": "Izvorni API se neposredno poveže z MEGA brez zunanjih odvisnosti. Dodatna programska oprema ni potrebna.",
+            "connectTo": "Poveži se z {provider}"
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -1203,7 +1204,7 @@
             "region": "Regija",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Končna točka po meri",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "Path-style URL-ji",
             "webdavNote": "WebDAV pot mora biti popolna.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "Dokumentacija {name}",
             "webdavExampleLabel": "Primer:",
             "webdavBasePath": "Osnovna pot: {path}",
+            "connectVia": "Poveži se z {name} prek {protocol}",
             "webdavConnectVia": "Poveži se z {name} prek WebDAV",
             "s3Endpoint": "Končna točka",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Prijavite se s svojim oblačnim računom. Nekatere storitve uporabljajo OAuth (prijava z enim klikom), druge zahtevajo API ključ ali geslo aplikacije iz nastavitev računa.",
             "cloudInfoLine2": "Brezplačna shramba se razlikuje glede na ponudnika - preverite vsako storitev za podrobnosti.",
             "developerInfoLine1": "Integracije za razvojne delovne procese. Brskajte po repozitorijih, upravljajte izdaje in nalažite datoteke neposredno na gostovalne platforme.",
-            "developerInfoLine2": "Zahteva osebni dostopni žeton (PAT) ali SSH ključ za preverjanje pristnosti."
+            "developerInfoLine2": "Zahteva osebni dostopni žeton (PAT) ali SSH ključ za preverjanje pristnosti.",
+            "independentProject": "AeroFTP je neodvisen projekt. Integracija {provider} se vzdržuje prek uradne dokumentacije.",
+            "independentProjectContact": "AeroFTP je neodvisen projekt v neposrednem stiku z {provider} za zagotovitev zanesljive integracije in neposredne podpore.",
+            "advanced": "Napredno",
+            "advancedWarning": "Ta polja so vnaprej konfigurirana za tega ponudnika. Njihova sprememba lahko prepeci pravilno delovanje povezave.",
+            "advancedUnlock": "Vseeno uredi",
+            "directContact": "V neposrednem stiku z {provider} za prednostno podporo in posodobitve."
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

@@ -234,7 +234,8 @@
             "megaModeCmd": "MEGAcmd",
             "megaModeCmdDesc": "Utiliza a ferramenta MEGAcmd como ponte. Requer MEGAcmd instalado separadamente.",
             "megaNativeNotice": "Recomendado: API nativa",
-            "megaNativeNoticeDesc": "A API nativa conecta-se diretamente ao MEGA sem dependências externas. Nenhum software adicional necessário."
+            "megaNativeNoticeDesc": "A API nativa conecta-se diretamente ao MEGA sem dependências externas. Nenhum software adicional necessário.",
+            "connectTo": "Conectar ao {provider}"
         },
         "browser": {
             "remote": "Remoto",
@@ -1203,7 +1204,7 @@
             "region": "Região",
             "regionPlaceholder": "us-east-1",
             "customEndpoint": "Endpoint Personalizado",
-            "endpointPlaceholder": "s3.example.com",
+            "endpointPlaceholder": "es. s3.example.com",
             "endpointHelp": "For MinIO, Wasabi, R2, etc.",
             "pathStyle": "URLs estilo caminho",
             "webdavNote": "Caminho WebDAV deve ser completo.",
@@ -1225,6 +1226,7 @@
             "providerDocumentation": "Documentação do {name}",
             "webdavExampleLabel": "Exemplo:",
             "webdavBasePath": "Caminho base: {path}",
+            "connectVia": "Conectar ao {name} via {protocol}",
             "webdavConnectVia": "Conectar ao {name} via WebDAV",
             "s3Endpoint": "Endpoint",
             "azureBlobStorage": "Azure Blob Storage",
@@ -1316,7 +1318,13 @@
             "cloudInfoLine1": "Inicie sessão com a sua conta de nuvem. Alguns serviços usam OAuth (login com um clique), outros requerem uma chave API ou palavra-passe de aplicação das definições da sua conta.",
             "cloudInfoLine2": "O armazenamento gratuito varia por fornecedor - verifique cada serviço para detalhes.",
             "developerInfoLine1": "Integrações para fluxos de trabalho de desenvolvimento. Navegue por repositórios, gira lançamentos e carregue ficheiros diretamente para plataformas de alojamento.",
-            "developerInfoLine2": "Requer um token de acesso pessoal (PAT) ou chave SSH para autenticação."
+            "developerInfoLine2": "Requer um token de acesso pessoal (PAT) ou chave SSH para autenticação.",
+            "independentProject": "O AeroFTP é um projeto independente. A integração com o {provider} é mantida através da documentação oficial.",
+            "independentProjectContact": "O AeroFTP e um projeto independente em contacto direto com {provider} para garantir uma integracao confiavel e suporte direto.",
+            "advanced": "Avançado",
+            "advancedWarning": "Estes campos estao pre-configurados para este fornecedor. Altera-los pode impedir que a conexao funcione corretamente.",
+            "advancedUnlock": "Editar mesmo assim",
+            "directContact": "Em contacto direto com {provider} para suporte prioritario e atualizacoes."
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",
