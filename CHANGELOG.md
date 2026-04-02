@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.5] - Unreleased
+
+### Post-update polish
+
+#### Fixed
+
+- **Post-restart log**: Activity log now shows clean "Update completed via .deb (Verified)" instead of "Verified: false, Mode: VerificationUnavailable"
+- **Post-restart toast**: Shows "SHA-256 Verified" or "Sigstore Verified" instead of blank
+- **Update marker**: SHA-256 verified updates now marked as `verified: true` in marker file
+
 ## [3.3.4] - 2026-04-03
 
 ### Ollama fix, update verification & restart reliability

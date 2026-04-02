@@ -1003,7 +1003,7 @@ fn spawn_detached_relaunch(exe_path: &str) {
 }
 
 fn write_update_marker(app: &AppHandle, from: &str, to: &str, format: &str, verification_mode: &str) {
-    let verified = verification_mode == "SigstoreVerified";
+    let verified = verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
     if let Ok(config_dir) = app.path().app_config_dir() {
         let marker = config_dir.join("last-update.json");
         let data = serde_json::json!({

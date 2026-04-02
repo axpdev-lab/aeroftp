@@ -1635,14 +1635,14 @@ interface UpdateVerificationInfo {
         const markerJson = await invoke<string | null>('read_update_marker');
         if (markerJson) {
            const data = JSON.parse(markerJson);
-           // Show green success toast with verification info
+           // Show green success toast
            toast.success(
              t('ui.updateSuccess', { version: data.updated_from }),
-             `AeroFTP is now updated. ${data.verification_mode === 'sigstore' ? '✅ Sigstore Verified' : ''}`
+             `AeroFTP is now updated.${data.verification_mode === 'SigstoreVerified' ? ' Sigstore Verified' : data.verified ? ' SHA-256 Verified' : ''}`
            );
-           
+
            activityLog.log('INFO',
-               `Post-restart check: Update completed via .${data.install_format} (Verified: ${data.verified}, Mode: ${data.verification_mode})`,
+               `Post-restart check: Update completed via .${data.install_format}${data.verified ? ' (Verified)' : ''}`,
                'success'
            );
 
