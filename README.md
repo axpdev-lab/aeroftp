@@ -52,14 +52,12 @@
   <a href="https://aur.archlinux.org/packages/aeroftp-bin"><img src="https://img.shields.io/badge/AUR-aeroftp--bin-1793D1?logo=archlinux&logoColor=white" alt="AUR" /></a>
   <a href="https://launchpad.net/aeroftp"><img src="https://img.shields.io/badge/Launchpad-aeroftp-F8C300?logo=launchpad&logoColor=black" alt="Launchpad" /></a>
   <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
-  <a href="https://appimage.github.io/AeroFTP/"><img src="https://img.shields.io/badge/AppImageHub-AeroFTP-blue?logo=linux&logoColor=white" alt="AppImageHub" /></a>
+  <a href="https://sourceforge.net/projects/aeroftp/"><img src="https://img.shields.io/badge/SourceForge-AeroFTP-FF6600?logo=sourceforge&logoColor=white" alt="SourceForge" /></a>
 </p>
 
 <!-- Row 3: Community & Listings -->
 <p align="center">
   <a href="https://openinventionnetwork.com/"><img src="https://img.shields.io/badge/OIN-Community%20Member-E87722" alt="OIN Community Member" /></a>
-  <a href="https://github.com/tauri-apps/awesome-tauri"><img src="https://img.shields.io/badge/awesome--tauri-listed-blue?logo=tauri&logoColor=white" alt="Awesome Tauri" /></a>
-  <a href="https://gitster.dev/repo/axpnet/aeroftp"><img src="https://gitster.dev/api/repositories/badge/cmn4y8x4k00003b6si7kn6uyl" alt="Gitster" /></a>
   <a href="https://alternativeto.net/software/aeroftp/"><img src="https://img.shields.io/badge/AlternativeTo-AeroFTP-orange" alt="AlternativeTo" /></a>
   <a href="https://buymeacoffee.com/AXPNetwork"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
   <a href="https://github.com/sponsors/axpnet"><img src="https://img.shields.io/badge/sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
