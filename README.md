@@ -84,6 +84,67 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ---
 
+## Integrations
+
+Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAuth2, and native APIs.
+
+<table align="center">
+  <tr>
+    <td align="center" width="72"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /><br><sub>AWS S3</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/Google_Drive.png" width="36" /><br><sub>Google Drive</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/dropbox.png" width="36" /><br><sub>Dropbox</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/onedrive.png" width="36" /><br><sub>OneDrive</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/mega.png" width="36" /><br><sub>MEGA</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/box.png" width="36" /><br><sub>Box</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/pcloud.png" width="36" /><br><sub>pCloud</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/azure.png" width="36" /><br><sub>Azure</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/github.png" width="36" /><br><sub>GitHub</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/gitlab.png" width="36" /><br><sub>GitLab</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="72"><img src="public/icons/providers/grid/filen.png" width="36" /><br><sub>Filen</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/internxt.png" width="36" /><br><sub>Internxt</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/kdrive.png" width="36" /><br><sub>kDrive</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/jottacloud.png" width="36" /><br><sub>Jottacloud</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /><br><sub>Zoho</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/4shared.png" width="36" /><br><sub>4shared</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/Koofr.png" width="36" /><br><sub>Koofr</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/filelu.png" width="36" /><br><sub>FileLu</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/YandexDisk.png" width="36" /><br><sub>Yandex Disk</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/drime.png" width="36" /><br><sub>Drime</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="72"><img src="public/icons/providers/grid/nextcloud.png" width="36" /><br><sub>Nextcloud</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/felicloud.png" width="36" /><br><sub>Felicloud</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/sourceforge.png" width="36" /><br><sub>SourceForge</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/hetzner.png" width="36" /><br><sub>Hetzner</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/backblaze.png" width="36" /><br><sub>Backblaze</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/wasabi.png" width="36" /><br><sub>Wasabi</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/cloudfare.png" width="36" /><br><sub>Cloudflare R2</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/digitalocean.png" width="36" /><br><sub>DigitalOcean</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/tencent.png" width="36" /><br><sub>Tencent COS</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /><br><sub>Oracle</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="72"><img src="public/icons/providers/grid/storj.png" width="36" /><br><sub>Storj</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/idrive_e2.png" width="36" /><br><sub>IDrive e2</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/quotaless.png" width="36" /><br><sub>Quotaless</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/cloudme.png" width="36" /><br><sub>CloudMe</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /><br><sub>InfiniCLOUD</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/jianguoyun.png" width="36" /><br><sub>Jianguoyun</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/seafile.png" width="36" /><br><sub>Seafile</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/drivehq.png" width="36" /><br><sub>DriveHQ</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /><br><sub>Yandex Cloud</sub></td>
+    <td align="center" width="72"><img src="public/icons/providers/grid/drivehqx.png" width="36" /><br><sub>DriveHQ X</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>+ FTP, FTPS, SFTP, WebDAV, Swift protocols</sub></p>
+
+> See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+
+---
+
 ## The Aero Family
 
 ```
@@ -105,36 +166,6 @@ AeroFTP
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
 Turn **any server** into a private personal cloud. Connect to 27 protocols with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
-
-<p align="center">
-  <img src="public/icons/providers/grid/Amazon_Web_Services.png" width="48" alt="S3" title="S3 (AWS, MinIO, Backblaze, Wasabi, R2)" />
-  <img src="public/icons/providers/grid/Google_Drive.png" width="48" alt="Google Drive" title="Google Drive" />
-  <img src="public/icons/providers/grid/dropbox.png" width="48" alt="Dropbox" title="Dropbox" />
-  <img src="public/icons/providers/grid/onedrive.png" width="48" alt="OneDrive" title="OneDrive" />
-  <img src="public/icons/providers/grid/mega.png" width="48" alt="MEGA" title="MEGA.nz" />
-  <img src="public/icons/providers/grid/box.png" width="48" alt="Box" title="Box" />
-  <img src="public/icons/providers/grid/pcloud.png" width="48" alt="pCloud" title="pCloud" />
-  <img src="public/icons/providers/grid/azure.png" width="48" alt="Azure" title="Azure Blob Storage" />
-  <img src="public/icons/providers/grid/github.png" width="48" alt="GitHub" title="GitHub" />
-  <img src="public/icons/providers/grid/gitlab.png" width="48" alt="GitLab" title="GitLab" />
-  <img src="public/icons/providers/grid/filen.png" width="48" alt="Filen" title="Filen (E2E encrypted)" />
-  <img src="public/icons/providers/grid/internxt.png" width="48" alt="Internxt" title="Internxt Drive" />
-  <img src="public/icons/providers/grid/kdrive.png" width="48" alt="kDrive" title="kDrive (Infomaniak)" />
-  <img src="public/icons/providers/grid/jottacloud.png" width="48" alt="Jottacloud" title="Jottacloud" />
-  <img src="public/icons/providers/grid/ZohoWorkDrive.png" width="48" alt="Zoho WorkDrive" title="Zoho WorkDrive" />
-  <img src="public/icons/providers/grid/4shared.png" width="48" alt="4shared" title="4shared" />
-  <img src="public/icons/providers/grid/Koofr.png" width="48" alt="Koofr" title="Koofr" />
-  <img src="public/icons/providers/grid/filelu.png" width="48" alt="FileLu" title="FileLu" />
-  <img src="public/icons/providers/grid/YandexDisk.png" width="48" alt="Yandex Disk" title="Yandex Disk" />
-  <img src="public/icons/providers/grid/drime.png" width="48" alt="DrimeCloud" title="DrimeCloud" />
-  <img src="public/icons/providers/grid/nextcloud.png" width="48" alt="Nextcloud" title="Nextcloud (WebDAV)" />
-  <img src="public/icons/providers/grid/felicloud.png" width="48" alt="Felicloud" title="Felicloud" />
-  <img src="public/icons/providers/grid/sourceforge.png" width="48" alt="SourceForge" title="SourceForge" />
-  <img src="public/icons/providers/grid/hetzner.png" width="48" alt="Hetzner" title="Hetzner Storage Box" />
-</p>
-<p align="center">
-  <sub>+ FTP, FTPS, SFTP, WebDAV, Swift, and 10+ S3-compatible providers</sub>
-</p>
 
 ---
 
