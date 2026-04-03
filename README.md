@@ -41,9 +41,9 @@
   <img src="https://img.shields.io/badge/rust-backend-B7410E?logo=rust&logoColor=white" alt="Rust" />
   <img src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
   <img src="https://img.shields.io/badge/typescript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black" alt="Linux" />
-  <img src="https://img.shields.io/badge/Windows-0078D4?logoColor=white" alt="Windows" />
-  <img src="https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white" alt="macOS" />
+  <img src="https://img.shields.io/badge/Linux-stable-FCC624?logo=linux&logoColor=black" alt="Linux - Stable" />
+  <img src="https://img.shields.io/badge/Windows-stable-0078D4?logoColor=white" alt="Windows - Stable" />
+  <img src="https://img.shields.io/badge/macOS-beta-F5A623?logo=apple&logoColor=white" alt="macOS - Beta" />
 </p>
 
 <!-- Row 3: Package Managers -->
@@ -64,6 +64,19 @@
   <a href="https://buymeacoffee.com/AXPNetwork"><img src="https://img.shields.io/badge/buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
   <a href="https://github.com/sponsors/axpnet"><img src="https://img.shields.io/badge/sponsor-EA4AAA?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors" /></a>
 </p>
+
+---
+
+## Platform Status
+
+| Platform | Status | Packages | Notes |
+|----------|--------|----------|-------|
+| **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | Native target, fully tested |
+| **Windows** | Stable | `.msi`, `.exe`, `.zip` portable, winget | Fully tested, not Microsoft Store signed |
+| **macOS (Apple Silicon)** | Beta | `.dmg` (aarch64) | Not code-signed, requires `xattr` workaround |
+| **macOS (Intel)** | Beta | `.dmg` (x86_64) | Not code-signed, requires `xattr` workaround |
+
+> **macOS note:** The `.dmg` is not yet signed with an Apple Developer ID certificate. macOS Gatekeeper will block it. After installing, run: `sudo xattr -rd com.apple.quarantine /Applications/AeroFTP.app`
 
 ---
 
@@ -562,6 +575,15 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 </p>
 
 ---
+
+<!-- Platform Status Badges -->
+<p align="center">
+  <img src="https://img.shields.io/badge/Linux-stable-brightgreen?logo=linux&logoColor=black" alt="Linux - Stable" />
+  <img src="https://img.shields.io/badge/Windows-stable-brightgreen?logoColor=white" alt="Windows - Stable" />
+  <img src="https://img.shields.io/badge/macOS-beta-F5A623?logo=apple&logoColor=white" alt="macOS - Beta" />
+  <img src="https://img.shields.io/badge/macOS_signing-pending-lightgrey?logo=apple&logoColor=white" alt="macOS Signing - Pending" />
+  <img src="https://img.shields.io/badge/MS_Store-not_signed-lightgrey?logoColor=white" alt="MS Store - Not Signed" />
+</p>
 
 <p align="center">
   <sub>
