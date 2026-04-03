@@ -1594,3 +1594,9 @@ html.cyber .markdown-renderer .text-purple-300 {
 .dark .custom-scroll-area::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.4) !important;
 }
+
+/* Disable hover effects during scroll for performance */
+.custom-scroll-area.is-scrolling > * {
+  pointer-events: none !important;
+}
+

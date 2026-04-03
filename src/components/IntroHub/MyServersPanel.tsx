@@ -128,13 +128,20 @@ export function MyServersPanel({
     });
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
-    const [isScrolling, setIsScrolling] = useState(false);
     const scrollTimeout = useRef<number | null>(null);
-    const handleScroll = useCallback(() => {
-        if (!isScrolling) setIsScrolling(true);
-        if (scrollTimeout.current) window.clearTimeout(scrollTimeout.current);
-        scrollTimeout.current = window.setTimeout(() => setIsScrolling(false), 800);
-    }, [isScrolling]);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // Passive scroll listener — runs on compositor thread, no React re-renders
+    useEffect(() => {
+        const el = scrollContainerRef.current;
+        if (!el) return;
+        const onScroll = () => {
+            if (!el.classList.contains('is-scrolling')) el.classList.add('is-scrolling');
+            if (scrollTimeout.current) window.clearTimeout(scrollTimeout.current);
+            scrollTimeout.current = window.setTimeout(() => el.classList.remove('is-scrolling'), 600);
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        return () => el.removeEventListener('scroll', onScroll);
+    }, [viewMode]); // re-attach when container swaps between grid/list
 
     useEffect(() => {
         setServers(getSavedServers());
@@ -153,6 +160,8 @@ export function MyServersPanel({
             return next;
         });
     }, []);
+
+    const handleToggleFavorite = useCallback((s: ServerProfile) => toggleFavorite(s.id), [toggleFavorite]);
 
     // Drag & reorder: only works on full list (no search/filter active)
     const canDrag = !searchQuery.trim() && activeFilter === 'all';
@@ -446,11 +455,12 @@ export function MyServersPanel({
                     )}
                 </div>
             ) : viewMode === 'grid' ? (
-                <div 
-                    className={`flex-1 overflow-y-auto pr-3 custom-scroll-area ${isScrolling ? 'is-scrolling' : ''}`}
-                    onScroll={handleScroll}
+                <div
+                    ref={scrollContainerRef}
+                    className="flex-1 overflow-y-auto pr-3 custom-scroll-area"
+                    style={{ willChange: 'scroll-position', transform: 'translateZ(0)' }}
                 >
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" style={{ contain: 'layout style' }}>
                         {filteredServers.map((server, idx) => {
                             const realIdx = canDrag ? idx : -1;
                             return (
@@ -464,7 +474,7 @@ export function MyServersPanel({
                                     onEdit={onEdit}
                                     onDuplicate={handleDuplicate}
                                     onDelete={handleDelete}
-                                    onToggleFavorite={(s) => toggleFavorite(s.id)}
+                                    onToggleFavorite={handleToggleFavorite}
                                     onContextMenu={handleContextMenu}
                                     viewMode="grid"
                                     isDraggable={canDrag}
@@ -481,9 +491,9 @@ export function MyServersPanel({
                     </div>
                 </div>
             ) : (
-                <div 
-                    className={`flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area ${isScrolling ? 'is-scrolling' : ''}`}
-                    onScroll={handleScroll}
+                <div
+                    ref={scrollContainerRef}
+                    className="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area"
                 >
                     {filteredServers.map((server, idx) => {
                         const realIdx = canDrag ? idx : -1;
@@ -498,7 +508,7 @@ export function MyServersPanel({
                                 onEdit={onEdit}
                                 onDuplicate={handleDuplicate}
                                 onDelete={handleDelete}
-                                onToggleFavorite={(s) => toggleFavorite(s.id)}
+                                onToggleFavorite={handleToggleFavorite}
                                 onContextMenu={handleContextMenu}
                                 viewMode="list"
                                 index={idx}
