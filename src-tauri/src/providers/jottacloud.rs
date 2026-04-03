@@ -1293,36 +1293,10 @@ impl StorageProvider for JottacloudProvider {
         })
     }
 
-    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
-        let resolved = self.resolve_path(path);
-        let url = format!("{}?mode=enableShare", self.jfs_url(&resolved));
-
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "Share link failed ({}): {}", status, sanitize_api_error(&body)
-            )));
-        }
-
-        // Parse XML response for publicURI
-        let xml = resp.text().await.unwrap_or_default();
-        // Look for <publicURI> tag
-        if let Some(start) = xml.find("<publicURI>") {
-            if let Some(end) = xml[start..].find("</publicURI>") {
-                let uri = &xml[start + 11..start + end];
-                let _ = &options; // acknowledge options
-                return Ok(ShareLinkResult {
-                    url: format!("https://www.jottacloud.com{}", uri),
-                    password: None,
-                    expires_at: None,
-                });
-            }
-        }
-
-        Err(ProviderError::ServerError("Share link created but publicURI not found in response".to_string()))
+    async fn create_share_link(&mut self, _path: &str, _options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
+        Err(ProviderError::NotSupported(
+            "share links for Jottacloud are not yet verified against the live API".to_string(),
+        ))
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
@@ -1378,7 +1352,7 @@ impl StorageProvider for JottacloudProvider {
     }
 
     fn supports_find(&self) -> bool { true }
-    fn supports_share_links(&self) -> bool { true }
+    fn supports_share_links(&self) -> bool { false }
     fn supports_versions(&self) -> bool { false }
 }
 

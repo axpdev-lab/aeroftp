@@ -3224,10 +3224,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                     </div>
                                 ) : protocol === 'gitlab' ? (
-                                    /* GitLab Form — Host/Project + Access Token */
+                                    /* GitLab Form — single-column like GitHub */
                                     <div className="space-y-4 pt-2">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">Project Path</label>
+                                            <label className="block text-sm font-medium mb-1.5">{t('gitlab.projectPath')}</label>
                                             <input
                                                 type="text"
                                                 value={connectionParams.server}
@@ -3236,16 +3236,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     server: e.target.value,
                                                     port: 443,
                                                 })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                                                placeholder="gitlab.com/owner/repo"
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                                placeholder={t('gitlab.projectPathPlaceholder')}
                                                 autoFocus
                                             />
                                             <p className="text-xs text-gray-400 mt-1.5">
-                                                Use <code className="text-gray-300">owner/repo</code> for gitlab.com, or <code className="text-gray-300">self-hosted.com/owner/repo</code> for self-hosted instances
+                                                {t('gitlab.projectPathHint')}
                                             </p>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">Access Token</label>
+                                            <label className="block text-sm font-medium mb-1.5">{t('gitlab.accessToken')}</label>
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -3255,7 +3255,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         password: e.target.value,
                                                         port: 443,
                                                     })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                                                     placeholder="glpat-xxxxxxxxxxxx"
                                                 />
                                                 <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -3263,10 +3263,110 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                             <p className="text-xs text-gray-400 mt-1.5">
-                                                Personal or Project Access Token with <code className="text-gray-300">api</code> scope
+                                                {t('gitlab.tokenHint')}{' '}
+                                                <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-orange-400">{t('gitlab.createToken')}</a>
                                             </p>
                                         </div>
-                                        {renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password, buttonColorClass: 'bg-orange-600 hover:bg-orange-700' })}
+
+                                        {/* Optional: Branch + Remote/Local Path + Self-hosted TLS */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.options?.githubBranch || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        options: { ...connectionParams.options, githubBranch: e.target.value },
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('gitlab.branchPlaceholder')}
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                                {/* Self-hosted TLS toggle — only show when host looks self-hosted */}
+                                                {connectionParams.server && !connectionParams.server.includes('gitlab.com') && connectionParams.server.includes('.') && (
+                                                    <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={connectionParams.options?.verifyCert === false}
+                                                            onChange={(e) => onConnectionParamsChange({
+                                                                ...connectionParams,
+                                                                options: { ...connectionParams.options, verifyCert: e.target.checked ? false : undefined },
+                                                            })}
+                                                            className="rounded border-gray-300 dark:border-gray-600"
+                                                        />
+                                                        {t('gitlab.acceptSelfSignedCerts')}
+                                                    </label>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <Checkbox
+                                                checked={saveConnection}
+                                                onChange={setSaveConnection}
+                                                label={
+                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                        <Save size={14} />
+                                                        {t('connection.saveToServers')}
+                                                    </span>
+                                                }
+                                            />
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNameOptional')}
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                                    />
+                                                    {renderIconPicker()}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Connect Button */}
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.server || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <>{ConnectIcon} {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : protocol === 'swift' ? (
                                     /* Blomp / OpenStack Swift Form */

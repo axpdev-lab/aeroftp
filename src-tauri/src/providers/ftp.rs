@@ -1071,8 +1071,60 @@ impl StorageProvider for FtpProvider {
         super::TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
+            supports_range_download: true,
             ..Default::default()
         }
+    }
+
+    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::AsyncReadExt;
+
+        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+        if len > MAX_READ_RANGE {
+            return Err(ProviderError::Other(
+                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
+            ));
+        }
+
+        let stream = self.stream_mut()?;
+
+        stream.transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        // REST sets the byte offset for the next RETR
+        stream.resume_transfer(offset as usize)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
+
+        let mut data_stream = stream.retr_as_stream(path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        // Read exactly `len` bytes (or until EOF if file is shorter)
+        let mut buf = vec![0u8; len as usize];
+        let mut total_read = 0usize;
+        while total_read < len as usize {
+            let n = data_stream.read(&mut buf[total_read..])
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
+            if n == 0 { break; }
+            total_read += n;
+        }
+        buf.truncate(total_read);
+
+        // Bounded FTP reads intentionally stop before EOF. Some servers will report an
+        // error while finalizing that partial RETR; when that happens we proactively
+        // disconnect so the disposable chunk connection cannot be reused in a bad state.
+        let finalize_result = {
+            let stream = self.stream.as_mut().ok_or(ProviderError::NotConnected)?;
+            stream.finalize_retr_stream(data_stream).await
+        };
+        if finalize_result.is_err() {
+            let _ = self.disconnect().await;
+        }
+
+        Ok(buf)
     }
 }
 

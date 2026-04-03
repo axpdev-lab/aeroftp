@@ -44,8 +44,8 @@ while kill -0 "$PARENT_PID" 2>/dev/null; do
     SECONDS_WAITED=$((SECONDS_WAITED + 1))
 done
 
-# Parent process exited. Grace period for any postinst hooks (e.g. dpkg completing).
-sleep 1
+# Parent process exited. Grace period for DBus name release and postinst hooks.
+sleep 3
 
 # Relaunch the application via exec (replaces current process)
 exec "$BINARY"

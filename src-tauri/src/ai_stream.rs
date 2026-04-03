@@ -8,12 +8,28 @@ use serde::Serialize;
 use reqwest::Client;
 use tauri::AppHandle;
 use futures_util::StreamExt;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, sanitize_error_message, AI_STREAM_CLIENT};
 use crate::ai_core::EventSink;
 
+/// Registry of active streams that can be cancelled by stream_id.
+static ACTIVE_STREAMS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Maximum SSE buffer size (50 MB) to prevent unbounded memory growth
 const MAX_BUFFER_SIZE: usize = 50 * 1024 * 1024;
+
+/// Polls the cancel flag every 200ms. Resolves when cancellation is requested.
+/// Used inside `tokio::select!` so that a stuck `stream.next().await` does not
+/// block cancellation indefinitely (the exact Ollama-hangs scenario).
+async fn wait_for_cancel(cancel: &AtomicBool) {
+    while !cancel.load(Ordering::Relaxed) {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+}
 
 /// Stream chunk emitted to frontend
 #[derive(Debug, Clone, Serialize)]
@@ -37,6 +53,15 @@ pub struct StreamChunk {
     pub cache_read_input_tokens: Option<u32>,
 }
 
+/// Cancel an active stream by its ID.
+#[tauri::command]
+pub async fn ai_cancel_stream(stream_id: String) -> Result<(), String> {
+    if let Some(cancel) = ACTIVE_STREAMS.lock().unwrap().get(&stream_id) {
+        cancel.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
 /// Start streaming AI response, emitting chunks via Tauri events (GUI wrapper)
 #[tauri::command]
 pub async fn ai_chat_stream(
@@ -54,6 +79,10 @@ pub async fn ai_chat_stream_with_sink(
     request: AIRequest,
     stream_id: &str,
 ) -> Result<(), String> {
+    // Register a cancellation flag for this stream
+    let cancel = Arc::new(AtomicBool::new(false));
+    ACTIVE_STREAMS.lock().unwrap().insert(stream_id.to_string(), Arc::clone(&cancel));
+
     // Clamp top_p to [0.0, 1.0], top_k to [1, 500], and thinking_budget to [0, 128000]
     let request = AIRequest {
         top_p: request.top_p.map(|v| v.clamp(0.0, 1.0)),
@@ -65,12 +94,15 @@ pub async fn ai_chat_stream_with_sink(
     let client = &*AI_STREAM_CLIENT;
 
     let result = match request.provider_type {
-        AIProviderType::Google => stream_gemini(client, &request, sink, stream_id).await,
-        AIProviderType::Anthropic => stream_anthropic(client, &request, sink, stream_id).await,
-        AIProviderType::Ollama => stream_ollama(client, &request, sink, stream_id).await,
+        AIProviderType::Google => stream_gemini(client, &request, sink, stream_id, &cancel).await,
+        AIProviderType::Anthropic => stream_anthropic(client, &request, sink, stream_id, &cancel).await,
+        AIProviderType::Ollama => stream_ollama(client, &request, sink, stream_id, &cancel).await,
         // OpenAI, xAI, OpenRouter, Custom all use OpenAI-compatible SSE
-        _ => stream_openai(client, &request, sink, stream_id).await,
+        _ => stream_openai(client, &request, sink, stream_id, &cancel).await,
     };
+
+    // Deregister stream
+    ACTIVE_STREAMS.lock().unwrap().remove(stream_id);
 
     match result {
         Ok(()) => Ok(()),
@@ -99,6 +131,7 @@ async fn stream_openai(
     request: &AIRequest,
     sink: &dyn EventSink,
     stream_id: &str,
+    cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("{}/chat/completions", request.base_url);
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
@@ -275,7 +308,13 @@ async fn stream_openai(
     let mut stream_input_tokens: Option<u32> = None;
     let mut stream_output_tokens: Option<u32> = None;
 
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            c = stream.next() => c,
+            _ = wait_for_cancel(cancel) => break,
+        };
+        let Some(chunk) = chunk else { break; };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -489,16 +528,25 @@ async fn stream_anthropic(
     request: &AIRequest,
     sink: &dyn EventSink,
     stream_id: &str,
+    cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
     let url = format!("{}/messages", request.base_url);
 
     let tools: Option<Vec<serde_json::Value>> = request.tools.as_ref().map(|defs| {
-        defs.iter().map(|d| serde_json::json!({
-            "name": d.name,
-            "description": d.description,
-            "input_schema": d.parameters,
-        })).collect()
+        let len = defs.len();
+        defs.iter().enumerate().map(|(i, d)| {
+            let mut tool = serde_json::json!({
+                "name": d.name,
+                "description": d.description,
+                "input_schema": d.parameters,
+            });
+            // Cache breakpoint on last tool — caches the entire tools array (~4-5K tokens)
+            if i == len - 1 {
+                tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+            }
+            tool
+        }).collect()
     });
 
     // Extract system message for top-level system parameter with cache_control
@@ -528,6 +576,25 @@ async fn stream_anthropic(
             "text": sys,
             "cache_control": { "type": "ephemeral" }
         }]);
+    }
+
+    // Multi-turn caching: cache_control on last user message caches the conversation history
+    if let Some(messages) = body["messages"].as_array_mut() {
+        if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
+            let is_string = last_user["content"].is_string();
+            if is_string {
+                let text = last_user["content"].as_str().unwrap_or_default().to_string();
+                last_user["content"] = serde_json::json!([{
+                    "type": "text",
+                    "text": text,
+                    "cache_control": { "type": "ephemeral" }
+                }]);
+            } else if let Some(blocks) = last_user["content"].as_array_mut() {
+                if let Some(last_block) = blocks.last_mut() {
+                    last_block["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+                }
+            }
+        }
     }
 
     // Extended thinking support: inject thinking config + force temperature 1.0
@@ -580,7 +647,13 @@ async fn stream_anthropic(
     let mut is_thinking = false;
     let mut done_emitted = false;
 
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            c = stream.next() => c,
+            _ = wait_for_cancel(cancel) => break,
+        };
+        let Some(chunk) = chunk else { break; };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -829,6 +902,7 @@ async fn stream_gemini(
     request: &AIRequest,
     sink: &dyn EventSink,
     stream_id: &str,
+    cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
     // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter (`key=`).
@@ -914,7 +988,13 @@ async fn stream_gemini(
     let mut gemini_was_thinking = false;
     let mut output_tokens: Option<u32> = None;
 
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            c = stream.next() => c,
+            _ = wait_for_cancel(cancel) => break,
+        };
+        let Some(chunk) = chunk else { break; };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -1169,6 +1249,7 @@ async fn stream_ollama(
     request: &AIRequest,
     sink: &dyn EventSink,
     stream_id: &str,
+    cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let url = format!("{}/api/chat", request.base_url);
 
@@ -1201,7 +1282,13 @@ async fn stream_ollama(
     let mut raw_buffer: Vec<u8> = Vec::new();
     let mut done_emitted = false;
 
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            c = stream.next() => c,
+            _ = wait_for_cancel(cancel) => break,
+        };
+        let Some(chunk) = chunk else { break; };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {

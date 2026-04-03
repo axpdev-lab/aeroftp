@@ -1687,6 +1687,64 @@ impl StorageProvider for WebDavProvider {
             }
         }
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_range_download: true,
+            ..Default::default()
+        }
+    }
+
+    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+        if len > MAX_READ_RANGE {
+            return Err(ProviderError::Other(
+                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
+            ));
+        }
+
+        let end = offset + len - 1; // HTTP Range is inclusive
+        let range_header = format!("bytes={}-{}", offset, end);
+
+        let response = self.request(Method::GET, path)
+            .header("Range", &range_header)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        match status {
+            StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+                let bytes = response.bytes().await
+                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                // If server ignores Range and returns full content, slice to requested range
+                if status == StatusCode::OK {
+                    if offset >= bytes.len() as u64 {
+                        Ok(Vec::new())
+                    } else {
+                        let start = offset as usize;
+                        let end = std::cmp::min(start.saturating_add(len as usize), bytes.len());
+                        Ok(bytes[start..end].to_vec())
+                    }
+                } else {
+                    Ok(bytes.to_vec())
+                }
+            }
+            StatusCode::NOT_FOUND => {
+                Err(ProviderError::NotFound(path.to_string()))
+            }
+            StatusCode::RANGE_NOT_SATISFIABLE => {
+                Err(ProviderError::NotSupported("Server does not support range requests".to_string()))
+            }
+            status => {
+                Err(ProviderError::TransferFailed(format!("Range download failed with status: {}", status)))
+            }
+        }
+    }
 }
 
 // ─── Nextcloud Tauri Commands ────────────────────────────────────────────

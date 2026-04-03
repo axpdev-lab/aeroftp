@@ -161,12 +161,14 @@ pub async fn list_releases(
     owner: &str,
     repo: &str,
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    log::info!("GitHub: listing releases for {}/{}", owner, repo);
     let path = format!("/repos/{owner}/{repo}/releases?per_page=100");
     let releases: Vec<GitHubRelease> = client
         .get_paginated_json_array(&path)
         .await
         .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+    log::info!("GitHub: found {} releases", releases.len());
     Ok(releases.iter().map(release_to_entry).collect())
 }
 
@@ -204,6 +206,7 @@ pub async fn download_release_asset(
     asset_name: &str,
     local_path: &str,
 ) -> Result<(), ProviderError> {
+    log::info!("GitHub: downloading release asset '{}' from tag '{}' to '{}'", asset_name, tag, local_path);
     let release = get_release_by_tag(client, owner, repo, tag).await?;
 
     // Check for auto-generated source archives first (not in assets[])
@@ -260,6 +263,7 @@ pub async fn download_release_asset(
     }
 
     atomic.commit().await.map_err(ProviderError::IoError)?;
+    log::info!("GitHub: asset '{}' downloaded to '{}'", asset_name, local_path);
     Ok(())
 }
 
@@ -274,6 +278,7 @@ pub async fn upload_release_asset(
     local_path: &str,
     asset_name: &str,
 ) -> Result<(), ProviderError> {
+    log::info!("GitHub: uploading release asset '{}' to tag '{}'", asset_name, tag);
     let release = get_release_by_tag(client, owner, repo, tag).await?;
     let upload_base = strip_upload_template(&release.upload_url);
     let content_type = guess_content_type(asset_name);
@@ -282,9 +287,15 @@ pub async fn upload_release_asset(
         .await
         .map_err(ProviderError::IoError)?;
 
+    log::info!("GitHub: uploading {} bytes as '{}'", body.len(), asset_name);
+
     match do_upload(client, &upload_base, asset_name, content_type, &body).await {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            log::info!("GitHub: asset '{}' uploaded successfully", asset_name);
+            Ok(())
+        }
         Err(GitHubError::DuplicateAsset(_)) => {
+            log::info!("GitHub: duplicate asset '{}', replacing existing", asset_name);
             // Delete the existing asset, then retry
             if let Some(existing) = release.assets.iter().find(|a| a.name == asset_name) {
                 let delete_path =
@@ -319,6 +330,7 @@ pub async fn create_release(
     params: &CreateReleaseParams<'_>,
 ) -> Result<GitHubRelease, ProviderError> {
     let CreateReleaseParams { owner, repo, tag, name, body, draft, prerelease } = params;
+    log::info!("GitHub: creating release '{}' (tag: {}) for {}/{}", name, tag, owner, repo);
     let path = format!("/repos/{owner}/{repo}/releases");
     let payload = json!({
         "tag_name": tag,
@@ -333,6 +345,7 @@ pub async fn create_release(
         .await
         .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+    log::info!("GitHub: release '{}' created (id: {})", tag, release.id);
     Ok(release)
 }
 
@@ -344,6 +357,7 @@ pub async fn delete_release_asset(
     tag: &str,
     asset_name: &str,
 ) -> Result<(), ProviderError> {
+    log::info!("GitHub: deleting asset '{}' from release '{}'", asset_name, tag);
     let release = get_release_by_tag(client, owner, repo, tag).await?;
     let asset = find_asset(&release, asset_name)?;
 
@@ -353,6 +367,7 @@ pub async fn delete_release_asset(
         .await
         .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+    log::info!("GitHub: asset '{}' deleted from release '{}'", asset_name, tag);
     Ok(())
 }
 
@@ -363,6 +378,7 @@ pub async fn delete_release(
     repo: &str,
     tag: &str,
 ) -> Result<(), ProviderError> {
+    log::info!("GitHub: deleting release '{}'", tag);
     let release = get_release_by_tag(client, owner, repo, tag).await?;
     let path = format!("/repos/{owner}/{repo}/releases/{}", release.id);
     client
@@ -370,6 +386,7 @@ pub async fn delete_release(
         .await
         .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+    log::info!("GitHub: release '{}' deleted", tag);
     Ok(())
 }
 

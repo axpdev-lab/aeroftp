@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.3.4"
+version = "3.3.5"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -45,6 +45,7 @@ base64 = "0.22"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 portable-pty = "0.9"
 reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 notify = { version = "8", default-features = true }                          # Filesystem watcher (v8 required by debouncer-full 0.6)
 notify-debouncer-full = "0.6"                                               # Debouncer with rename tracking, event dedup, quiet-period batching
 tauri-plugin-single-instance = "2.3.6"

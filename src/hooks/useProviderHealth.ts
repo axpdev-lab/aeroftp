@@ -30,25 +30,46 @@ export interface HealthTarget {
 /** Cache duration: 5 minutes */
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+/** Safety timeout: max time a scan can take before auto-reset (30s) */
+const SCAN_SAFETY_TIMEOUT_MS = 30_000;
+
 /** Module-level cache (survives re-renders and re-mounts) */
 const healthCache: Map<string, { state: ProviderHealthState; timestamp: number }> = new Map();
+
+/** Generation counter — increments each scan, used to ignore stale events */
+let scanGeneration = 0;
 let scanInProgress = false;
+let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resetScanState() {
+    scanInProgress = false;
+    if (safetyTimer) {
+        clearTimeout(safetyTimer);
+        safetyTimer = null;
+    }
+}
 
 export function useProviderHealth() {
     const [results, setResults] = useState<Map<string, ProviderHealthState>>(new Map());
     const [scanning, setScanning] = useState(false);
     const unlistenRef = useRef<UnlistenFn[]>([]);
+    const mountedRef = useRef(true);
 
-    // Cleanup listeners on unmount
+    // Cleanup listeners on unmount + reset scan lock
     useEffect(() => {
+        mountedRef.current = true;
         return () => {
+            mountedRef.current = false;
             unlistenRef.current.forEach(fn => fn());
             unlistenRef.current = [];
+            // Critical: reset the module-level lock so future mounts can scan
+            resetScanState();
         };
     }, []);
 
     // Build current view from cache
     const syncFromCache = useCallback(() => {
+        if (!mountedRef.current) return;
         const now = Date.now();
         const view = new Map<string, ProviderHealthState>();
         for (const [id, entry] of healthCache) {
@@ -92,17 +113,28 @@ export function useProviderHealth() {
             return;
         }
 
+        // Capture generation for this scan
+        const gen = ++scanGeneration;
         scanInProgress = true;
-        setScanning(true);
+        if (mountedRef.current) setScanning(true);
+
+        // Safety timeout: auto-reset if scan hangs
+        safetyTimer = setTimeout(() => {
+            if (scanInProgress && scanGeneration === gen) {
+                resetScanState();
+                if (mountedRef.current) setScanning(false);
+            }
+        }, SCAN_SAFETY_TIMEOUT_MS);
 
         // Cleanup previous listeners
         unlistenRef.current.forEach(fn => fn());
         unlistenRef.current = [];
 
-        // Listen for progressive results
+        // Listen for progressive results (only accept events from current generation)
         const unlisten1 = await listen<{ id: string; status: string; latency_ms: number }>(
             'health-scan-result',
             (event) => {
+                if (scanGeneration !== gen) return; // stale event
                 const { id, status, latency_ms } = event.payload;
                 healthCache.set(id, {
                     state: { status: status as HealthStatus, latencyMs: latency_ms },
@@ -113,8 +145,9 @@ export function useProviderHealth() {
         );
 
         const unlisten2 = await listen('health-scan-complete', () => {
-            scanInProgress = false;
-            setScanning(false);
+            if (scanGeneration !== gen) return; // stale event
+            resetScanState();
+            if (mountedRef.current) setScanning(false);
         });
 
         unlistenRef.current.push(unlisten1, unlisten2);
@@ -125,8 +158,10 @@ export function useProviderHealth() {
                 targets: toScan.map(t => ({ id: t.id, url: t.url })),
             });
         } catch {
-            scanInProgress = false;
-            setScanning(false);
+            if (scanGeneration === gen) {
+                resetScanState();
+                if (mountedRef.current) setScanning(false);
+            }
         }
     }, [syncFromCache]);
 

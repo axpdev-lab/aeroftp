@@ -1090,7 +1090,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: false,
         },
         healthCheckUrl: 'https://sourceforge.net',
-        helpUrl: 'https://docs.aeroftp.app/protocols/sourceforge',
+        helpUrl: 'https://docs.aeroftp.app/providers/sourceforge',
         signupUrl: 'https://sourceforge.net/user/registration',
     },
     {

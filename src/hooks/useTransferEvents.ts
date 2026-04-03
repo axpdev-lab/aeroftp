@@ -60,6 +60,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const lastFileSpeedRef = useRef<number>(0);
   // Debounce timer for clearing activeTransfer — prevents flicker between consecutive files
   const clearToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether a streaming scan is still discovering directories (don't dismiss toast on file_start)
+  const streamingScanActive = useRef(false);
 
   useEffect(() => {
     const joinPath = (base: string, name: string): string => {
@@ -118,6 +120,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (logId && data.message) {
           activityLog.updateEntry(logId, { message: data.message });
         }
+        // Track streaming scan state: if message contains "dirs queued", scan is still active
+        const stillScanning = data.message?.includes('dirs queued') && !data.message?.includes('0 dirs queued');
+        streamingScanActive.current = !!stillScanning;
         // Notify ScanningToast
         const scanOp = data.direction === 'remote' ? 'delete' as const
           : data.direction === 'upload' ? 'upload' as const
@@ -129,8 +134,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           operation: scanOp,
         });
       } else if (data.event_type === 'file_start') {
-        // Dismiss scanning toast — actual file transfer has started
-        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
+        // In streaming mode (scan + transfer interleaved), keep the toast visible
+        // so it doesn't flicker between scan and transfer phases.
+        // Only dismiss when scan is fully complete (no dirs queued).
+        if (!streamingScanActive.current) {
+          optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
+        }
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         // Use full path from event if available, otherwise fall back to filename
         const displayName = data.path || data.filename;
@@ -220,7 +229,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           }
         }
       } else if (data.event_type === 'complete') {
-        // Dismiss scanning toast when transfer completes
+        // Dismiss scanning toast when transfer completes and reset streaming scan state
+        streamingScanActive.current = false;
         optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
         completedTransferIds.current.add(data.transfer_id);
         // Prevent unbounded growth: trim oldest entries when exceeding cap
@@ -307,6 +317,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         notify.error(t('transfer.failed'), data.message);
       } else if (data.event_type === 'cancelled') {
+        streamingScanActive.current = false;
+        optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
         setActiveTransfer(null);
         dispatchTransferToast(null);
 

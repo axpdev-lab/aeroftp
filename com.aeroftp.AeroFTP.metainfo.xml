@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.5" date="2026-04-03">
+      <description>
+        <p>CLI serve HTTP/WebDAV: expose any remote as local HTTP (read-only, range requests) or WebDAV (read-write with PROPFIND/PUT/DELETE/MKCOL/MOVE/COPY). Native MCP server for Claude Desktop/Cursor/VS Code integration. AI stream cancellation, Anthropic prompt caching (90% cost reduction). GitLab Tier 1: releases, merge requests, write mode, self-hosted TLS. Streaming folder transfers (10-30x faster first-byte). Provider range downloads for FTP/S3/WebDAV. 13 bug fixes including auto-restart and health check reliability.</p>
+      </description>
+    </release>
     <release version="3.3.4" date="2026-04-03">
       <description>
         <p>Ollama local AI fix: models now appear in chat dropdown, status indicator shows green, tool calls work correctly. Update verification shows green SHA-256 badge instead of amber warning. Reliable app restart after update using PID-polling instead of fixed timeout. Auto-imported AI models now have tools enabled by default.</p>

@@ -682,10 +682,15 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                 >
                     <ChevronDown size={14} className={`transition-transform duration-200 ${sshOpen ? '' : '-rotate-90'}`} />
                     <Lock size={14} />
-                    {t('protocol.sshAuth')}
-                    <span className={`text-xs font-normal ${isSourceForge ? 'text-amber-500' : 'text-gray-400'}`}>
-                        ({isSourceForge ? t('common.required') : t('common.optional')})
-                    </span>
+                    {isSourceForge
+                        ? t('protocol.sshAuth').replace(/\s*\(.*?\)\s*$/, '')
+                        : t('protocol.sshAuth')
+                    }
+                    {isSourceForge && (
+                        <span className="text-xs font-normal text-amber-500">
+                            ({t('common.required')})
+                        </span>
+                    )}
                 </button>
                 {sshOpen && (
                     <div className="space-y-3 animate-fade-in-down">
@@ -700,7 +705,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     <code className="bg-amber-100 dark:bg-amber-900/30 px-1 rounded text-[11px]">ssh-keygen -t ed25519</code>{' '}
                                     and upload it to{' '}
                                     <a href="https://sourceforge.net/auth/shell_services" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">SSH Settings</a>.{' '}
-                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/protocols/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a>
+                                    <a href={providerConfig?.helpUrl || 'https://docs.aeroftp.app/providers/sourceforge'} target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-600 dark:hover:text-amber-300">Full guide</a>
                                 </span>
                             </div>
                         )}

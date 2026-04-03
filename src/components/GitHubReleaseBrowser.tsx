@@ -65,6 +65,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   onError,
 }) => {
   const t = useTranslation();
+  const humanLog = useHumanizedLog();
   const [view, setView] = useState<View>('list');
   const [releases, setReleases] = useState<Release[]>([]);
   const [loading, setLoading] = useState(false);
@@ -228,52 +229,72 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       if (!selected) return;
       const filePath = typeof selected === 'string' ? selected : (selected as { path: string }).path;
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
-      await invoke('github_upload_release_asset', {
-        tag,
-        localPath: filePath,
-        assetName: fileName,
-      });
+      const logId = humanLog.logRaw('activity.release_upload_start', 'UPLOAD', { provider: 'GitHub', filename: fileName }, 'running');
+      try {
+        await invoke('github_upload_release_asset', {
+          tag,
+          localPath: filePath,
+          assetName: fileName,
+        });
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.release_upload_success', { provider: 'GitHub', filename: fileName }) });
+      } catch (err) {
+        humanLog.updateEntry(logId, { status: 'error', message: t('activity.release_upload_error', { provider: 'GitHub', filename: fileName }) });
+        throw err;
+      }
       // Refresh assets for this tag
       const result = await invoke<{ assets: Asset[]; count: number; tag: string }>('github_list_release_assets', { tag });
       setAssets(prev => ({ ...prev, [tag]: result.assets }));
     } catch (err) {
       if (onError) onError('Upload Asset', String(err));
     }
-  }, [onError, t]);
+  }, [onError, t, humanLog]);
 
   const executeDelete = useCallback(async () => {
     if (!confirmDelete) return;
     const { type, tag, assetName } = confirmDelete;
     setConfirmDelete(null);
+    const isRelease = type === 'release';
+    const logId = humanLog.logRaw(
+      isRelease ? 'activity.release_delete_start' : 'activity.release_asset_delete_start',
+      'DELETE',
+      { provider: 'GitHub', tag, filename: assetName || '' },
+      'running',
+    );
     try {
-      if (type === 'release') {
+      if (isRelease) {
         await invoke('github_delete_release', { tag });
         setReleases(prev => prev.filter(r => r.tag !== tag));
         if (expandedTag === tag) setExpandedTag(null);
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.release_delete_success', { provider: 'GitHub', tag }) });
       } else if (type === 'asset' && assetName) {
         await invoke('github_delete_release_asset', { tag, assetName });
         setAssets(prev => ({
           ...prev,
           [tag]: (prev[tag] || []).filter(a => a.name !== assetName),
         }));
+        humanLog.updateEntry(logId, { status: 'success', message: t('activity.release_asset_delete_success', { provider: 'GitHub', filename: assetName }) });
       }
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.release_delete_error', { provider: 'GitHub', error: String(err) }) });
       setError(String(err));
     }
-  }, [confirmDelete, expandedTag]);
+  }, [confirmDelete, expandedTag, humanLog, t]);
 
   const handleCreate = useCallback(async () => {
     if (!formTag.trim()) return;
     setCreating(true);
     setError(null);
+    const tagValue = formTag.trim();
+    const logId = humanLog.logRaw('activity.release_create_start', 'UPDATE', { provider: 'GitHub', tag: tagValue }, 'running');
     try {
       await invoke('github_create_release', {
-        tag: formTag.trim(),
-        name: formName.trim() || formTag.trim(),
+        tag: tagValue,
+        name: formName.trim() || tagValue,
         body: formBody.trim(),
         draft: formDraft,
         prerelease: formPrerelease,
       });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.release_create_success', { provider: 'GitHub', tag: tagValue }) });
       setFormTag('');
       setFormName('');
       setFormBody('');
@@ -282,6 +303,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       setView('list');
       fetchReleases();
     } catch (err) {
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.release_create_error', { provider: 'GitHub', tag: tagValue }) });
       console.error('[GitHubReleaseBrowser] create failed:', err);
       setError(String(err));
     } finally {
@@ -673,16 +695,16 @@ const ReleaseList: React.FC<ReleaseListProps> = ({
                                         title: `Download ${asset.name}`,
                                       });
                                       if (savePath) {
-                                        const logId = humanLog.logRaw('activity.provider_operation', 'DOWNLOAD', { provider: 'GitHub' }, 'running');
+                                        const logId = humanLog.logRaw('activity.release_asset_download_start', 'DOWNLOAD', { provider: 'GitHub', filename: asset.name }, 'running');
                                         try {
                                           await invoke('github_download_release_asset', {
                                             tag: release.tag,
                                             assetName: asset.name,
                                             localPath: savePath,
                                           });
-                                          humanLog.updateEntry(logId, { status: 'success', message: `[GitHub] Downloaded release asset ${asset.name}` });
+                                          humanLog.updateEntry(logId, { status: 'success', message: t('activity.release_asset_download_success', { provider: 'GitHub', filename: asset.name }) });
                                         } catch (dlErr) {
-                                          humanLog.updateEntry(logId, { status: 'error', message: `[GitHub] Failed to download release asset ${asset.name}` });
+                                          humanLog.updateEntry(logId, { status: 'error', message: t('activity.release_asset_download_error', { provider: 'GitHub', filename: asset.name }) });
                                           throw dlErr;
                                         }
                                       }

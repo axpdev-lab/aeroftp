@@ -940,6 +940,7 @@ impl StorageProvider for SftpProvider {
         super::TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
+            supports_range_download: true,
             supports_compression: true,
             supports_delta_sync: true,
             ..Default::default()

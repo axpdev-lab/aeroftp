@@ -230,6 +230,22 @@ impl ProviderConnectionParams {
             }
         }
 
+        if provider_type == ProviderType::GitHub || provider_type == ProviderType::GitLab {
+            // Branch override — shared by both GitHub and GitLab
+            if let Some(ref branch) = self.github_branch {
+                if !branch.is_empty() {
+                    extra.insert("branch".to_string(), branch.clone());
+                }
+            }
+        }
+
+        // GitLab: accept_invalid_certs for self-hosted instances
+        if provider_type == ProviderType::GitLab {
+            if let Some(verify) = self.verify_cert {
+                extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+        }
+
         if provider_type == ProviderType::GitHub {
             if let Some(ref auth_mode) = self.github_auth_mode {
                 if !auth_mode.is_empty() {
@@ -254,11 +270,6 @@ impl ProviderConnectionParams {
             if let Some(ref expires_at) = self.github_token_expires_at {
                 if !expires_at.is_empty() {
                     extra.insert("github_token_expires_at".to_string(), expires_at.clone());
-                }
-            }
-            if let Some(ref branch) = self.github_branch {
-                if !branch.is_empty() {
-                    extra.insert("branch".to_string(), branch.clone());
                 }
             }
         }
@@ -720,25 +731,63 @@ async fn provider_download_folder_inner(
     tokio::fs::create_dir_all(local_path).await
         .map_err(|e| format!("Failed to create local folder: {}", e))?;
 
-    // ── Phase 1: Scan all folders/files (single lock acquisition) ──
-    let mut all_files: Vec<DownloadEntry> = Vec::new();
-    {
-        let mut provider_lock = state.provider.lock().await;
-        let provider = provider_lock.as_mut()
-            .ok_or("Not connected to any provider")?;
+    // ── Streaming scan + transfer: directory-by-directory interleaving ──
+    //
+    // Instead of scanning ALL files first, then downloading ALL files,
+    // we scan one directory at a time and download its files immediately.
+    // This means the first file starts downloading after scanning just the
+    // root directory, not after the entire recursive scan completes.
+    //
+    // Pattern (like an audio player buffer):
+    //   scan dir A → transfer files from A
+    //   scan dir B → transfer files from B
+    //   ...until all directories are exhausted.
 
-        let mut folders_to_scan: Vec<(String, String)> = vec![(remote_path.to_string(), local_path.to_string())];
+    let mut folders_to_scan: Vec<(String, String)> = vec![(remote_path.to_string(), local_path.to_string())];
+    let mut files_downloaded = 0u32;
+    let mut files_skipped = 0u32;
+    let mut files_errored = 0u32;
+    let mut total_files_discovered = 0u32;
+    let mut dirs_scanned = 0u32;
+    let mut file_global_index = 0u32;
+    let mut last_scan_emit = std::time::Instant::now();
+    let max_retries: u32 = 3;
+    let base_delay_ms: u64 = 500;
+    let base_local = std::path::Path::new(local_path);
 
-        while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
+    while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
+        // ── Check cancel before scanning next directory ──
+        {
+            let cancel = state.cancel_flag.lock().await;
+            if *cancel {
+                info!("Provider folder download cancelled by user after {} files", files_downloaded);
+                let _ = app.emit("transfer_event", crate::TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download cancelled after {} files", files_downloaded)),
+                    progress: None,
+                    path: None,
+                });
+                return Ok(format!("Download cancelled after {} files", files_downloaded));
+            }
+        }
+
+        // ── Scan this directory (acquire lock, list, release) ──
+        let mut dir_files: Vec<DownloadEntry> = Vec::new();
+        {
+            let mut provider_lock = state.provider.lock().await;
+            let provider = provider_lock.as_mut()
+                .ok_or("Not connected to any provider")?;
+
             provider.cd(&remote_folder).await
                 .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
 
             let files = provider.list(".").await
                 .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
 
-            let base_local = std::path::Path::new(local_path);
             for file in files {
-                // H7 fix: Sanitize remote filename to prevent path traversal
                 let safe_name = match sanitize_remote_filename(&file.name) {
                     Ok(n) => n,
                     Err(e) => {
@@ -758,17 +807,15 @@ async fn provider_download_folder_inner(
                 if file.is_dir {
                     tokio::fs::create_dir_all(&local_file_path).await
                         .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
-                    // Verify directory is still within base after creation
                     verify_path_containment(base_local, &local_file_path_buf)?;
                     folders_to_scan.push((remote_file_path, local_file_path));
                 } else {
-                    // Verify target file path is within base directory
                     if let Some(parent) = local_file_path_buf.parent() {
                         if parent.exists() {
                             verify_path_containment(base_local, &local_file_path_buf)?;
                         }
                     }
-                    all_files.push(DownloadEntry {
+                    dir_files.push(DownloadEntry {
                         remote_path: remote_file_path,
                         local_path: local_file_path,
                         name: safe_name,
@@ -777,152 +824,163 @@ async fn provider_download_folder_inner(
                     });
                 }
             }
-        }
-    } // ← provider lock released here
+        } // ← provider lock released — ready to transfer this batch
 
-    let total_files = all_files.len() as u32;
-    info!("Phase 1 complete: {} files to download in {}", total_files, folder_name);
+        dirs_scanned += 1;
+        total_files_discovered += dir_files.len() as u32;
 
-    // ── Phase 2: Download each file with per-file lock acquire/release ──
-    let mut files_downloaded = 0u32;
-    let mut files_skipped = 0u32;
-    let mut files_errored = 0u32;
-    let max_retries: u32 = 3;
-    let base_delay_ms: u64 = 500;
-
-    for (file_index, entry) in all_files.iter().enumerate() {
-        // Check cancel flag before each file
-        {
-            let cancel = state.cancel_flag.lock().await;
-            if *cancel {
-                info!("Provider folder download cancelled by user after {} files", files_downloaded);
-                let _ = app.emit("transfer_event", crate::TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Download cancelled after {} files", files_downloaded)),
-                    progress: None,
-                    path: None,
-                });
-                return Ok(format!("Download cancelled after {} files", files_downloaded));
-            }
+        // Emit scanning progress
+        if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
+            let _ = app.emit("transfer_event", crate::TransferEvent {
+                event_type: "scanning".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!(
+                    "Scanning... {} files found, {} downloaded ({} dirs queued)",
+                    total_files_discovered, files_downloaded, folders_to_scan.len()
+                )),
+                progress: None,
+                path: None,
+            });
+            last_scan_emit = std::time::Instant::now();
         }
 
-        // Check if local file exists and should be skipped
-        if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-            let local_p = std::path::Path::new(&entry.local_path);
-            if let Ok(local_meta) = std::fs::metadata(local_p) {
-                if local_meta.is_file() {
-                    let remote_modified = entry.modified.as_ref().and_then(|s| {
-                        let clean = s.strip_suffix('Z').unwrap_or(s);
-                        chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
-                            .ok()
-                            .map(|ndt| ndt.and_utc())
+        // ── Transfer files from this directory immediately ──
+        for entry in &dir_files {
+            // Check cancel before each file
+            {
+                let cancel = state.cancel_flag.lock().await;
+                if *cancel {
+                    info!("Provider folder download cancelled by user after {} files", files_downloaded);
+                    let _ = app.emit("transfer_event", crate::TransferEvent {
+                        event_type: "cancelled".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Download cancelled after {} files", files_downloaded)),
+                        progress: None,
+                        path: None,
                     });
-                    if crate::should_skip_file_download(&file_exists_action, remote_modified, entry.size, &local_meta) {
-                        files_skipped += 1;
-                        let _ = app.emit("transfer_event", crate::TransferEvent {
-                            event_type: "file_skip".to_string(),
-                            transfer_id: format!("{}-{}", transfer_id, file_index),
-                            filename: entry.name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!("Skipped (identical): {}", entry.name)),
-                            progress: None,
-                            path: Some(entry.remote_path.clone()),
+                    return Ok(format!("Download cancelled after {} files", files_downloaded));
+                }
+            }
+
+            file_global_index += 1;
+
+            // Check if local file exists and should be skipped
+            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+                let local_p = std::path::Path::new(&entry.local_path);
+                if let Ok(local_meta) = std::fs::metadata(local_p) {
+                    if local_meta.is_file() {
+                        let remote_modified = entry.modified.as_ref().and_then(|s| {
+                            let clean = s.strip_suffix('Z').unwrap_or(s);
+                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                                .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                                .ok()
+                                .map(|ndt| ndt.and_utc())
                         });
-                        continue;
+                        if crate::should_skip_file_download(&file_exists_action, remote_modified, entry.size, &local_meta) {
+                            files_skipped += 1;
+                            let _ = app.emit("transfer_event", crate::TransferEvent {
+                                event_type: "file_skip".to_string(),
+                                transfer_id: format!("{}-{}", transfer_id, file_global_index),
+                                filename: entry.name.clone(),
+                                direction: "download".to_string(),
+                                message: Some(format!("Skipped (identical): {}", entry.name)),
+                                progress: None,
+                                path: Some(entry.remote_path.clone()),
+                            });
+                            continue;
+                        }
                     }
                 }
             }
-        }
 
-        let file_transfer_id = format!("{}-{}", transfer_id, file_index);
+            let file_transfer_id = format!("{}-{}", transfer_id, file_global_index);
 
-        // Emit file_start event
-        let _ = app.emit("transfer_event", crate::TransferEvent {
-            event_type: "file_start".to_string(),
-            transfer_id: file_transfer_id.clone(),
-            filename: entry.name.clone(),
-            direction: "download".to_string(),
-            message: Some(format!("Downloading ({}/{}): {}", file_index + 1, total_files, entry.remote_path)),
-            progress: Some(crate::TransferProgress {
+            // Emit file_start — use total_files_discovered as denominator (grows as scan progresses)
+            let _ = app.emit("transfer_event", crate::TransferEvent {
+                event_type: "file_start".to_string(),
                 transfer_id: file_transfer_id.clone(),
                 filename: entry.name.clone(),
-                transferred: 0,
-                total: entry.size,
-                percentage: 0,
-                speed_bps: 0,
-                eta_seconds: 0,
                 direction: "download".to_string(),
-                total_files: Some(total_files as u64),
-                path: None,
-            }),
-            path: Some(entry.remote_path.clone()),
-        });
-
-        // Download with retry and per-file lock acquire/release
-        let mut downloaded = false;
-        let mut last_error = String::new();
-
-        for attempt in 0..=max_retries {
-            if attempt > 0 {
-                let delay = base_delay_ms * 2u64.pow(attempt - 1);
-                info!("Retry {}/{} for {} after {}ms", attempt, max_retries, entry.name, delay);
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-            }
-
-            // Acquire lock for this single file download
-            // Acquire lock for this single file download
-            let download_result: Result<(), String> = {
-                let mut provider_lock = state.provider.lock().await;
-                match provider_lock.as_mut() {
-                    Some(provider) => provider.download(&entry.remote_path, &entry.local_path, None).await
-                        .map_err(|e| e.to_string()),
-                    None => Err("Provider disconnected".to_string()),
-                }
-            }; // ← lock released immediately after each file
-
-            match download_result {
-                Ok(()) => {
-                    downloaded = true;
-                    break;
-                }
-                Err(e) => {
-                    last_error = e;
-                    warn!("Download attempt {} failed for {}: {}", attempt + 1, entry.remote_path, last_error);
-                }
-            }
-        }
-
-        if downloaded {
-            // Preserve remote mtime on the downloaded file
-            crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
-
-            files_downloaded += 1;
-            let _ = app.emit("transfer_event", crate::TransferEvent {
-                event_type: "file_complete".to_string(),
-                transfer_id: file_transfer_id,
-                filename: entry.name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Downloaded: {} ({}/{})", entry.name, files_downloaded, total_files)),
-                progress: None,
+                message: Some(format!("Downloading ({}/{}+): {}", file_global_index, total_files_discovered, entry.remote_path)),
+                progress: Some(crate::TransferProgress {
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.name.clone(),
+                    transferred: 0,
+                    total: entry.size,
+                    percentage: 0,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "download".to_string(),
+                    total_files: Some(total_files_discovered as u64),
+                    path: None,
+                }),
                 path: Some(entry.remote_path.clone()),
             });
-        } else {
-            files_errored += 1;
-            let _ = app.emit("transfer_event", crate::TransferEvent {
-                event_type: "file_error".to_string(),
-                transfer_id: file_transfer_id,
-                filename: entry.name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Failed after {} retries: {}", max_retries, last_error)),
-                progress: None,
-                path: Some(entry.remote_path.clone()),
-            });
+
+            // Download with retry and per-file lock acquire/release
+            let mut downloaded = false;
+            let mut last_error = String::new();
+
+            for attempt in 0..=max_retries {
+                if attempt > 0 {
+                    let delay = base_delay_ms * 2u64.pow(attempt - 1);
+                    info!("Retry {}/{} for {} after {}ms", attempt, max_retries, entry.name, delay);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+
+                let download_result: Result<(), String> = {
+                    let mut provider_lock = state.provider.lock().await;
+                    match provider_lock.as_mut() {
+                        Some(provider) => provider.download(&entry.remote_path, &entry.local_path, None).await
+                            .map_err(|e| e.to_string()),
+                        None => Err("Provider disconnected".to_string()),
+                    }
+                };
+
+                match download_result {
+                    Ok(()) => {
+                        downloaded = true;
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = e;
+                        warn!("Download attempt {} failed for {}: {}", attempt + 1, entry.remote_path, last_error);
+                    }
+                }
+            }
+
+            if downloaded {
+                crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                files_downloaded += 1;
+                let _ = app.emit("transfer_event", crate::TransferEvent {
+                    event_type: "file_complete".to_string(),
+                    transfer_id: file_transfer_id,
+                    filename: entry.name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Downloaded: {} ({}/{})", entry.name, files_downloaded, total_files_discovered)),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                });
+            } else {
+                files_errored += 1;
+                let _ = app.emit("transfer_event", crate::TransferEvent {
+                    event_type: "file_error".to_string(),
+                    transfer_id: file_transfer_id,
+                    filename: entry.name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Failed after {} retries: {}", max_retries, last_error)),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                });
+            }
         }
     }
+
+    info!("Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)", folder_name, files_downloaded, files_skipped, files_errored);
 
     // Emit complete event
     let _ = app.emit("transfer_event", crate::TransferEvent {
@@ -1034,17 +1092,35 @@ pub async fn provider_delete_file(
 /// Delete a directory
 #[tauri::command]
 pub async fn provider_delete_dir(
+    app: AppHandle,
     state: State<'_, ProviderState>,
     path: String,
     recursive: bool,
     commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
+
     let provider = provider_lock.as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     info!("Deleting directory: {} (recursive: {})", path, recursive);
+
+    // Emit scanning event for folder deletes so the ScanningToast appears
+    if recursive {
+        let folder_name = std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        let _ = app.emit("transfer_event", crate::TransferEvent {
+            event_type: "scanning".to_string(),
+            transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
+            filename: folder_name,
+            direction: "delete".to_string(),
+            message: Some("Scanning folder for deletion...".to_string()),
+            progress: None,
+            path: Some(path.clone()),
+        });
+    }
 
     if provider.provider_type() == ProviderType::GitHub {
         // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
@@ -1060,7 +1136,24 @@ pub async fn provider_delete_dir(
         provider.rmdir(&path).await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     }
-    
+
+    // Emit delete_complete so ScanningToast dismisses
+    if recursive {
+        let folder_name = std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        let _ = app.emit("transfer_event", crate::TransferEvent {
+            event_type: "delete_complete".to_string(),
+            transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
+            filename: folder_name,
+            direction: "delete".to_string(),
+            message: Some("Directory deleted".to_string()),
+            progress: None,
+            path: Some(path),
+        });
+    }
+
     Ok(())
 }
 
@@ -4399,15 +4492,23 @@ pub async fn gitlab_get_info(
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let write_mode_kind = if gitlab.can_push() { "direct" } else { "readonly" };
+    let on_non_default = gitlab.active_branch_name() != gitlab.default_branch_name();
+    let (write_mode, write_mode_kind, working_branch) = if !gitlab.can_push() {
+        ("ReadOnly", "readonly", serde_json::Value::Null)
+    } else if on_non_default {
+        // On a non-default branch with push access → branch mode (MR available)
+        ("Branch", "branch", serde_json::Value::String(gitlab.active_branch_name().to_string()))
+    } else {
+        ("Direct", "direct", serde_json::Value::Null)
+    };
 
     Ok(serde_json::json!({
         "owner": gitlab.project_path(),
         "repo": gitlab.project_path(),
         "branch": gitlab.active_branch_name(),
-        "writeMode": if gitlab.can_push() { "Direct" } else { "ReadOnly" },
+        "writeMode": write_mode,
         "writeModeKind": write_mode_kind,
-        "workingBranch": serde_json::Value::Null,
+        "workingBranch": working_branch,
         "repoPrivate": gitlab.is_private(),
     }))
 }
@@ -4518,6 +4619,261 @@ pub async fn gitlab_batch_delete(
         "commit_sha": commit.id,
         "deletions_count": paths.len(),
     }))
+}
+
+// ── GitLab: Releases ───────────────────────────────────────────────
+
+/// List all releases of the connected GitLab repository
+#[tauri::command]
+pub async fn gitlab_list_releases(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let releases = gitlab.list_releases().await
+        .map_err(|e| format!("Failed to list releases: {}", e))?;
+
+    Ok(releases.iter().map(|r| {
+        serde_json::json!({
+            "tag_name": r.tag_name,
+            "name": r.name,
+            "description": r.description,
+            "created_at": r.created_at,
+            "released_at": r.released_at,
+            "author": r.author.username,
+            "assets_count": r.assets.count,
+            "sources": r.assets.sources.iter().map(|s| serde_json::json!({
+                "format": s.format,
+                "url": s.url,
+            })).collect::<Vec<_>>(),
+        })
+    }).collect())
+}
+
+/// List asset links for a GitLab release
+#[tauri::command]
+pub async fn gitlab_list_release_assets(
+    state: State<'_, ProviderState>,
+    tag: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let links = gitlab.list_release_links(&tag).await
+        .map_err(|e| format!("Failed to list release assets: {}", e))?;
+
+    Ok(links.iter().map(|l| {
+        serde_json::json!({
+            "id": l.id,
+            "name": l.name,
+            "url": l.url,
+            "direct_asset_url": l.direct_asset_url,
+            "link_type": l.link_type,
+            "external": l.external,
+        })
+    }).collect())
+}
+
+/// Create a new GitLab release
+#[tauri::command]
+pub async fn gitlab_create_release(
+    state: State<'_, ProviderState>,
+    tag: String,
+    name: String,
+    description: String,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let release = gitlab.create_release(&tag, &name, &description).await
+        .map_err(|e| format!("Failed to create release: {}", e))?;
+
+    Ok(serde_json::json!({
+        "tag_name": release.tag_name,
+        "name": release.name,
+    }))
+}
+
+/// Delete a GitLab release
+#[tauri::command]
+pub async fn gitlab_delete_release(
+    state: State<'_, ProviderState>,
+    tag: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.delete_release(&tag).await
+        .map_err(|e| format!("Failed to delete release: {}", e))
+}
+
+/// Upload a file as release asset on GitLab.
+/// `link_type`: "other" (default), "package", "image", "runbook".
+#[tauri::command]
+pub async fn gitlab_upload_release_asset(
+    state: State<'_, ProviderState>,
+    tag: String,
+    local_path: String,
+    asset_name: String,
+    link_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    let link = gitlab.upload_release_asset(
+        &tag, &local_path, &asset_name, link_type.as_deref(),
+    ).await
+        .map_err(|e| format!("Failed to upload release asset: {}", e))?;
+
+    Ok(serde_json::json!({
+        "id": link.id,
+        "name": link.name,
+        "url": link.url,
+        "link_type": link.link_type,
+    }))
+}
+
+/// Delete a release asset link on GitLab
+#[tauri::command]
+pub async fn gitlab_delete_release_asset(
+    state: State<'_, ProviderState>,
+    tag: String,
+    link_id: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.delete_release_link(&tag, link_id).await
+        .map_err(|e| format!("Failed to delete release asset: {}", e))
+}
+
+/// Read a file from the connected GitLab repository as UTF-8 text
+#[tauri::command]
+pub async fn gitlab_read_file(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.read_file_content(&path).await
+        .map_err(|e| format!("Failed to read file: {}", e))
+}
+
+/// Download a release asset via authenticated backend (works for private repos)
+#[tauri::command]
+pub async fn gitlab_download_release_asset(
+    state: State<'_, ProviderState>,
+    url: String,
+    local_path: String,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.download_release_asset(&url, &local_path).await
+        .map_err(|e| format!("Failed to download asset: {}", e))
+}
+
+// ── GitLab: Merge Requests ─────────────────────────────────────────
+
+/// Create a merge request on the connected GitLab repository
+#[tauri::command]
+pub async fn gitlab_create_merge_request(
+    state: State<'_, ProviderState>,
+    title: String,
+    body: String,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    gitlab.create_merge_request(&title, &body).await
+        .map_err(|e| format!("Failed to create merge request: {}", e))
+}
+
+// ── GitLab: Web URLs ───────────────────────────────────────────────
+
+/// Get web URL for a file or directory on GitLab
+#[tauri::command]
+pub async fn gitlab_get_web_url(
+    state: State<'_, ProviderState>,
+    path: String,
+    is_dir: bool,
+) -> Result<String, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard.as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    if provider.provider_type() != ProviderType::GitLab {
+        return Err("This operation is only available for GitLab".to_string());
+    }
+    let gitlab = provider.as_any_mut()
+        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
+        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
+
+    Ok(gitlab.web_url(&path, is_dir))
 }
 
 /// Create a pull request on the connected GitHub repository
@@ -4929,7 +5285,7 @@ pub async fn github_create_release(
     }))
 }
 
-/// Read a text file from the connected GitHub repository
+/// Read a text file from the connected GitHub repository (always from repo root).
 #[tauri::command]
 pub async fn github_read_file(
     state: State<'_, ProviderState>,
@@ -4940,8 +5296,16 @@ pub async fn github_read_file(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
+    // Prefix with "/" to force resolve_path to treat as absolute (from root),
+    // regardless of the user's current navigation directory.
+    let root_path = if path.starts_with('/') {
+        path
+    } else {
+        format!("/{}", path)
+    };
+
     let bytes = provider
-        .download_to_bytes(&path)
+        .download_to_bytes(&root_path)
         .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
 

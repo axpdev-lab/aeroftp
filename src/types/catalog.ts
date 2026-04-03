@@ -110,13 +110,18 @@ export interface FilterChip {
 }
 
 const DEV_PROTOCOLS = ['github', 'gitlab'];
+/** Provider IDs that are developer services even though they use a base protocol (e.g. SFTP) */
+const DEV_PROVIDER_IDS = ['sourceforge'];
+
+const isDevService = (protocol: string, providerId?: string): boolean =>
+    DEV_PROTOCOLS.includes(protocol) || DEV_PROVIDER_IDS.includes(providerId || '');
 
 export const FILTER_CHIPS: FilterChip[] = [
     { id: 'all', labelKey: 'introHub.filter.all', matchFn: () => true },
-    { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p) => ['ftp', 'ftps', 'sftp'].includes(p) },
+    { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p, pid) => ['ftp', 'ftps', 'sftp'].includes(p) && !isDevService(p, pid) },
     { id: 's3', labelKey: 'introHub.filter.s3', matchFn: (p) => p === 's3' },
     { id: 'webdav', labelKey: 'introHub.filter.webdav', matchFn: (p) => p === 'webdav' },
-    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', ...DEV_PROTOCOLS].includes(p) },
-    { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p) => DEV_PROTOCOLS.includes(p) },
+    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', ...DEV_PROTOCOLS].includes(p) && !isDevService(p, pid) },
+    { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p, pid) => isDevService(p, pid) },
     { id: 'favorites', labelKey: 'introHub.filter.favorites', matchFn: () => true }, // Filtered by isFavorite in MyServersPanel
 ];

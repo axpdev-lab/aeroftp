@@ -58,6 +58,7 @@ import { GitHubActionsIcon } from './components/icons/GitHubActionsIcon';
 import { GitHubReleaseIcon } from './components/icons/GitHubReleaseIcon';
 import { GitHubPagesIcon } from './components/icons/GitHubPagesIcon';
 import { GitHubReleaseBrowser } from './components/GitHubReleaseBrowser';
+import { GitLabReleaseBrowser } from './components/GitLabReleaseBrowser';
 import { GitHubPagesBrowser } from './components/GitHubPagesBrowser';
 import { GitHubActionsBrowser } from './components/GitHubActionsBrowser';
 import { JottacloudTrashManager } from './components/JottacloudTrashManager';
@@ -397,6 +398,7 @@ const App: React.FC = () => {
   } | null>(null);
   const [gitHubBranches, setGitHubBranches] = useState<Array<{ name: string; protected: boolean }>>([]);
   const [showGitHubReleaseBrowser, setShowGitHubReleaseBrowser] = useState(false);
+  const [showGitLabReleaseBrowser, setShowGitLabReleaseBrowser] = useState(false);
   const [showGitHubPages, setShowGitHubPages] = useState(false);
   const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
@@ -2206,7 +2208,8 @@ interface UpdateVerificationInfo {
       setHasGitHubPages(false);
       setHasActiveGitHubActions(false);
     }
-  }, [activeSessionId, connectionParams.protocol, isConnected, sessions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, connectionParams.protocol, isConnected]);
 
   // Poll GitHub Actions status every 60s when connected to GitHub
   useEffect(() => {
@@ -2306,7 +2309,8 @@ interface UpdateVerificationInfo {
     }
 
     void refreshGitHubContext(true);
-  }, [activeSessionId, connectionParams.protocol, isConnected, refreshGitHubContext, sessions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, connectionParams.protocol, isConnected, refreshGitHubContext]);
 
   const logConnectionSteps = async (
     server: string,
@@ -3711,7 +3715,12 @@ interface UpdateVerificationInfo {
             }
           };
 
-          await processFolder(localFilePath, remoteRootForFolder);
+          setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
+          try {
+            await processFolder(localFilePath, remoteRootForFolder);
+          } finally {
+            setScanningState(INITIAL_SCANNING_STATE);
+          }
 
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
@@ -5518,26 +5527,28 @@ interface UpdateVerificationInfo {
 
     // Add Share Link for FTP/SFTP/WebDAV servers with publicUrlBase configured
     const sessionPublicUrl = activeSession?.publicUrlBase;
-    if (sessionPublicUrl && (!currentProtocol || !supportsNativeShareLink(currentProtocol))) {
-      if (count === 1) {
-        items.push({
-          label: t('contextMenu.copyShareLink'),
-          icon: <Share2 size={14} />,
-          action: async () => {
-            try {
-              const shareUrl = await invoke<string>('generate_server_share_link', {
-                publicUrlBase: sessionPublicUrl,
-                initialPath: activeSession?.serverInitialPath || '',
-                remotePath: file.path,
-              });
-              await invoke('copy_to_clipboard', { text: shareUrl });
-              notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
-            } catch (err) {
-              notify.error(t('contextMenu.shareLinkFailed'), String(err));
-            }
+    const hasConfiguredServerShareLink = !!sessionPublicUrl
+      && count === 1
+      && !!currentProtocol
+      && ['ftp', 'ftps', 'sftp', 'webdav'].includes(currentProtocol);
+    if (hasConfiguredServerShareLink) {
+      items.push({
+        label: t('contextMenu.copyShareLink'),
+        icon: <Share2 size={14} />,
+        action: async () => {
+          try {
+            const shareUrl = await invoke<string>('generate_server_share_link', {
+              publicUrlBase: sessionPublicUrl,
+              initialPath: activeSession?.serverInitialPath || '',
+              remotePath: file.path,
+            });
+            await invoke('copy_to_clipboard', { text: shareUrl });
+            notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
+          } catch (err) {
+            notify.error(t('contextMenu.shareLinkFailed'), String(err));
           }
-        });
-      }
+        }
+      });
     }
 
     // Add native Share Link for providers that support it (OAuth + S3 pre-signed URLs + MEGA)
@@ -6948,6 +6959,11 @@ interface UpdateVerificationInfo {
           onClose={() => setShowGitHubReleaseBrowser(false)}
           onError={(title, msg) => notify.error(title, msg)}
         />
+        <GitLabReleaseBrowser
+          isOpen={showGitLabReleaseBrowser}
+          onClose={() => setShowGitLabReleaseBrowser(false)}
+          onError={(title, msg) => notify.error(title, msg)}
+        />
         <FilenNotesPanel
           isOpen={showFilenNotes}
           onClose={() => setShowFilenNotes(false)}
@@ -7985,16 +8001,22 @@ interface UpdateVerificationInfo {
                         onRefresh={() => void refreshGitHubContext(true)}
                       />
                     )}
-                    {isConnected && getActiveProviderProtocol() === 'github' && gitHubRepoInfo && (
+                    {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && (
                       <>
                         <button
-                          onClick={() => setShowGitHubReleaseBrowser(true)}
-                          className="flex-shrink-0 p-1.5 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
+                          onClick={() => {
+                            if (getActiveProviderProtocol() === 'gitlab') setShowGitLabReleaseBrowser(true);
+                            else setShowGitHubReleaseBrowser(true);
+                          }}
+                          className={`flex-shrink-0 p-1.5 rounded transition-colors ${getActiveProviderProtocol() === 'gitlab' ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10' : 'text-green-400 hover:text-green-300 hover:bg-green-500/10'}`}
                           title="Releases"
                         >
-                          <GitHubReleaseIcon size={13} className="text-green-400" />
+                          {getActiveProviderProtocol() === 'gitlab'
+                            ? <Tag size={13} className="text-orange-400" />
+                            : <GitHubReleaseIcon size={13} className="text-green-400" />
+                          }
                         </button>
-                        {hasGitHubPages && (
+                        {hasGitHubPages && getActiveProviderProtocol() === 'github' && (
                           <button
                             onClick={() => setShowGitHubPages(true)}
                             className="flex-shrink-0 p-1.5 rounded text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors"
@@ -8003,6 +8025,7 @@ interface UpdateVerificationInfo {
                             <GitHubPagesIcon size={13} />
                           </button>
                         )}
+                        {getActiveProviderProtocol() === 'github' && (
                         <button
                           onClick={() => setShowGitHubActions(true)}
                           className={`relative flex-shrink-0 p-1.5 rounded transition-colors ${
@@ -8017,6 +8040,7 @@ interface UpdateVerificationInfo {
                             <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
                           )}
                         </button>
+                        )}
                       </>
                     )}
                     {isConnected && getActiveProviderProtocol() === 'filen' && (
@@ -8794,6 +8818,7 @@ interface UpdateVerificationInfo {
                 workingBranch={gitHubRepoInfo.workingBranch || undefined}
                 isPrivate={gitHubRepoInfo.repoPrivate}
                 onError={(title, msg) => notify.error(title, msg)}
+                protocol={getActiveProviderProtocol()}
               />
             ) : undefined}
             connectionSecurity={isConnected ? (() => {

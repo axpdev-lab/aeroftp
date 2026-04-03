@@ -290,10 +290,25 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 - Path validation blocks traversal, null bytes, and sensitive paths (`~/.ssh/`, vault files)
 - The agent cannot read the vault database directly — path validator blocks it
 
+### Native MCP Server
+
+External MCP clients can now connect directly through AeroFTP without wrapping CLI text output:
+
+```bash
+aeroftp-cli agent --mcp
+```
+
+Current MCP mode exposes:
+- 16 curated remote tools only (no local shell/file tools)
+- resources for saved profiles, status, capabilities, and pooled connections
+- prompt templates for deploy, backup, sync, and clean workflows
+- async stdio transport, connection pooling, request cancellation, rate limiting, and audit logging
+
+Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that can spawn a stdio server.
+
 ### Coming Soon
 
 - **Mutative server_exec**: `put`, `rm`, `mv`, `mkdir` via CLI agent with headless grant model
-- **MCP server mode**: `aeroftp-cli agent --mcp` for native Claude Code / Cursor integration
 - **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` for programmatic agent-to-agent integration
 - **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
 - **Agent session tokens**: Pre-authorized scoped sessions for headless automation

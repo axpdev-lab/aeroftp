@@ -988,6 +988,32 @@ mod anthropic {
             }]);
         }
 
+        // Tool caching: cache_control on last tool definition caches the entire tools array
+        if let Some(tools_arr) = body["tools"].as_array_mut() {
+            if let Some(last_tool) = tools_arr.last_mut() {
+                last_tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+            }
+        }
+
+        // Multi-turn caching: cache_control on last user message caches the conversation history
+        if let Some(messages) = body["messages"].as_array_mut() {
+            if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
+                let is_string = last_user["content"].is_string();
+                if is_string {
+                    let text = last_user["content"].as_str().unwrap_or_default().to_string();
+                    last_user["content"] = serde_json::json!([{
+                        "type": "text",
+                        "text": text,
+                        "cache_control": { "type": "ephemeral" }
+                    }]);
+                } else if let Some(blocks) = last_user["content"].as_array_mut() {
+                    if let Some(last_block) = blocks.last_mut() {
+                        last_block["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+                    }
+                }
+            }
+        }
+
         // Extended thinking support: inject thinking config + force temperature 1.0
         if let Some(budget) = request.thinking_budget {
             if budget > 0 {

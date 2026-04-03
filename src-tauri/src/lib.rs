@@ -65,6 +65,7 @@ mod totp;
 mod chat_history;
 mod file_tags;
 pub mod agent_memory_db;
+pub mod mcp;
 mod health_check;
 #[cfg(not(target_os = "macos"))]
 mod speech;
@@ -957,7 +958,7 @@ fn spawn_detached_relaunch(exe_path: &str) {
     // Fallback: inline PID-polling via sh (same logic as helper script).
     // Waits until parent PID exits, then relaunches. Works on fast and slow PCs.
     // Arguments passed via $0/$1 to prevent shell injection.
-    let script = r#"i=0; while kill -0 "$1" 2>/dev/null; do sleep 1; i=$((i+1)); [ "$i" -ge 60 ] && exit 1; done; sleep 1; exec "$0""#;
+    let script = r#"i=0; while kill -0 "$1" 2>/dev/null; do sleep 1; i=$((i+1)); [ "$i" -ge 60 ] && exit 1; done; sleep 3; exec "$0""#;
 
     // Try setsid --fork first (fully detached from parent session)
     if std::process::Command::new("setsid")
@@ -1096,10 +1097,9 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String, verifi
     write_update_marker(&app, &from_version, "unknown", "appimage", &verification_mode);
     let _ = app.emit("update_install_phase", "restart");
 
-    #[cfg(unix)]
-    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
-    app.exit(0);
-    Ok(())
+    // Release DBus single-instance lock before restart to prevent race condition
+    tauri_plugin_single_instance::destroy(&app);
+    app.restart();
 }
 
 /// Install a .deb package via pkexec with branded Polkit dialog and restart the app.
@@ -1131,17 +1131,13 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String, verificatio
         return Err(format!(".deb installation failed with exit status {:?}", status.code()));
     }
 
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
-        
     let from_version = app.package_info().version.to_string();
     write_update_marker(&app, &from_version, "unknown", "deb", &verification_mode);
     let _ = app.emit("update_install_phase", "restart");
 
-    #[cfg(unix)]
-    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
-    app.exit(0);
-    Ok(())
+    // Release DBus single-instance lock before restart to prevent race condition
+    tauri_plugin_single_instance::destroy(&app);
+    app.restart();
 }
 
 /// Install an .rpm package via pkexec with branded Polkit dialog and restart the app.
@@ -1172,17 +1168,13 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String, verificatio
         return Err(format!(".rpm installation failed with exit status {:?}", status.code()));
     }
 
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("Failed to resolve current executable: {}", error))?;
-        
     let from_version = app.package_info().version.to_string();
     write_update_marker(&app, &from_version, "unknown", "rpm", &verification_mode);
     let _ = app.emit("update_install_phase", "restart");
 
-    #[cfg(unix)]
-    spawn_detached_relaunch(current_exe.to_string_lossy().as_ref());
-    app.exit(0);
-    Ok(())
+    // Release DBus single-instance lock before restart to prevent race condition
+    tauri_plugin_single_instance::destroy(&app);
+    app.restart();
 }
 
 /// Launch Windows installer (.msi or .exe) and exit the app
@@ -1742,131 +1734,37 @@ async fn download_folder(
     let mut ftp_manager = state.ftp_manager.lock().await;
     let original_path = ftp_manager.current_path();
     
-    // First, collect all files recursively using a stack-based approach
-    // This avoids deep recursion and collects full inventory first
-    
+    // ── Streaming scan + transfer: directory-by-directory interleaving ──
+    //
+    // Instead of scanning ALL directories first then downloading ALL files,
+    // we interleave: scan one directory → immediately download its files →
+    // scan next directory → download its files → etc.
+    //
+    // On a single FTP connection, scan and transfer cannot run concurrently
+    // (same TCP control/data channel), but interleaving means the first file
+    // starts downloading after listing just the root directory (~1-2s), not
+    // after the entire recursive scan (~30-40s for deep trees).
+
     #[derive(Debug, Clone)]
     struct DownloadItem {
-        remote_path: String,      // Full remote path
-        local_path: PathBuf,      // Full local path
-        is_dir: bool,
+        remote_path: String,
+        local_path: PathBuf,
         size: u64,
         name: String,
         modified: Option<chrono::DateTime<chrono::Utc>>,
     }
-    
-    let mut items_to_download: Vec<DownloadItem> = Vec::new();
+
     let mut dirs_to_scan: Vec<(String, PathBuf)> = vec![(params.remote_path.clone(), local_folder_path.clone())];
-    let mut scan_counter: u64 = 0;
-    let mut last_scan_emit = std::time::Instant::now();
-    
-    // Scan phase: collect all files and directories recursively
-    while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
-        // Change to remote directory
-        if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
-            warn!("Cannot access remote directory {}: {}", remote_dir, e);
-            continue;
-        }
-        
-        // List files
-        let files = match ftp_manager.list_files().await {
-            Ok(f) => f,
-            Err(e) => {
-                warn!("Cannot list files in {}: {}", remote_dir, e);
-                continue;
-            }
-        };
-        
-        for file in files {
-            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
-            let local_file_path = local_dir.join(&file.name);
-            
-            if file.is_dir {
-                // Add directory to scan queue
-                dirs_to_scan.push((remote_file_path.clone(), local_file_path.clone()));
-                // Also add it as an item so we create the local directory
-                items_to_download.push(DownloadItem {
-                    remote_path: remote_file_path,
-                    local_path: local_file_path,
-                    is_dir: true,
-                    size: 0,
-                    name: file.name,
-                    modified: None,
-                });
-            } else {
-                // Add file to download list
-                let modified_dt = file.modified.as_ref().and_then(|s| {
-                    let clean = s.strip_suffix('Z').unwrap_or(s);
-                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
-                        .ok()
-                        .map(|ndt| ndt.and_utc())
-                });
-                items_to_download.push(DownloadItem {
-                    remote_path: remote_file_path,
-                    local_path: local_file_path,
-                    is_dir: false,
-                    size: file.size.unwrap_or(0),
-                    name: file.name,
-                    modified: modified_dt,
-                });
-            }
-            
-            scan_counter += 1;
-            
-            // Emit scan progress every 500ms or every 100 files
-            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
-                let files_found = items_to_download.iter().filter(|i| !i.is_dir).count();
-                let dirs_found = items_to_download.iter().filter(|i| i.is_dir).count();
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "scanning".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Scanning... {} files, {} folders found", files_found, dirs_found)),
-                    progress: None,
-                    path: None,
-                });
-                last_scan_emit = std::time::Instant::now();
-            }
-        }
-    }
-    
-    // Sort items: directories first (to create them), then files
-    items_to_download.sort_by(|a, b| {
-        match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.remote_path.cmp(&b.remote_path),
-        }
-    });
-    
-    let total_files = items_to_download.iter().filter(|i| !i.is_dir).count();
-    let total_dirs = items_to_download.iter().filter(|i| i.is_dir).count();
-    let total_size: u64 = items_to_download.iter().map(|i| i.size).sum();
-    
-    info!("Found {} files and {} directories to download (total size: {} bytes)", 
-          total_files, total_dirs, total_size);
-    
-    // Emit scan complete event
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "scanning".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "download".to_string(),
-        message: Some(format!("Scan complete: {} files in {} folders", total_files, total_dirs)),
-        progress: None,
-        path: None,
-    });
-    
-    // Download phase: process all items
-    let mut downloaded_files = 0;
+    let mut downloaded_files: usize = 0;
+    let mut total_files_discovered: usize = 0;
+    let mut dirs_scanned: usize = 0;
     let mut skipped_files = 0u64;
     let mut errors = 0;
+    let mut last_scan_emit = std::time::Instant::now();
     let file_exists_action = params.file_exists_action.as_str();
 
-    for item in &items_to_download {
-        // Check cancel flag before each item
+    while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
+        // ── Check cancel ──
         if state.cancel_flag.load(Ordering::Relaxed) {
             info!("Folder download cancelled by user after {} files", downloaded_files);
             let _ = app.emit("transfer_event", TransferEvent {
@@ -1878,24 +1776,98 @@ async fn download_folder(
                 progress: None,
                 path: None,
             });
-            // Restore original directory
             let _ = ftp_manager.change_dir(&original_path).await;
             return Ok(format!("Download cancelled after {} files", downloaded_files));
         }
 
-        if item.is_dir {
-            // Create local directory
-            if let Err(e) = tokio::fs::create_dir_all(&item.local_path).await {
-                warn!("Failed to create directory {}: {}", item.local_path.display(), e);
-                errors += 1;
+        // ── Scan this directory ──
+        if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
+            warn!("Cannot access remote directory {}: {}", remote_dir, e);
+            continue;
+        }
+
+        let files = match ftp_manager.list_files().await {
+            Ok(f) => f,
+            Err(e) => {
+                warn!("Cannot list files in {}: {}", remote_dir, e);
+                continue;
             }
-        } else {
+        };
+
+        dirs_scanned += 1;
+        let mut dir_files: Vec<DownloadItem> = Vec::new();
+
+        for file in files {
+            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
+            let local_file_path = local_dir.join(&file.name);
+
+            if file.is_dir {
+                // Create local subdir and queue for scanning
+                if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
+                    warn!("Failed to create directory {}: {}", local_file_path.display(), e);
+                    errors += 1;
+                }
+                dirs_to_scan.push((remote_file_path, local_file_path));
+            } else {
+                let modified_dt = file.modified.as_ref().and_then(|s| {
+                    let clean = s.strip_suffix('Z').unwrap_or(s);
+                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                        .ok()
+                        .map(|ndt| ndt.and_utc())
+                });
+                dir_files.push(DownloadItem {
+                    remote_path: remote_file_path,
+                    local_path: local_file_path,
+                    size: file.size.unwrap_or(0),
+                    name: file.name,
+                    modified: modified_dt,
+                });
+            }
+        }
+
+        total_files_discovered += dir_files.len();
+
+        // Emit scanning progress
+        if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
+            let _ = app.emit("transfer_event", TransferEvent {
+                event_type: "scanning".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!(
+                    "Scanning... {} files found, {} downloaded ({} dirs queued)",
+                    total_files_discovered, downloaded_files, dirs_to_scan.len()
+                )),
+                progress: None,
+                path: None,
+            });
+            last_scan_emit = std::time::Instant::now();
+        }
+
+        // ── Download files from this directory immediately ──
+        for item in &dir_files {
+            // Check cancel before each file
+            if state.cancel_flag.load(Ordering::Relaxed) {
+                info!("Folder download cancelled by user after {} files", downloaded_files);
+                let _ = app.emit("transfer_event", TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download cancelled after {} files", downloaded_files)),
+                    progress: None,
+                    path: None,
+                });
+                let _ = ftp_manager.change_dir(&original_path).await;
+                return Ok(format!("Download cancelled after {} files", downloaded_files));
+            }
+
             // Check if local file exists and should be skipped
             if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
                 if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
                     if local_meta.is_file() && should_skip_file_download(file_exists_action, item.modified, item.size, &local_meta) {
                         skipped_files += 1;
-                        // Emit file_skip event
                         let _ = app.emit("transfer_event", TransferEvent {
                             event_type: "file_skip".to_string(),
                             transfer_id: transfer_id.clone(),
@@ -1910,39 +1882,42 @@ async fn download_folder(
                 }
             }
 
-            // Download file
-            // First, change to the file's parent directory on the server
+            // cd to file's parent directory on server
             if let Some(parent) = PathBuf::from(&item.remote_path).parent() {
                 let parent_str = parent.to_string_lossy().to_string();
                 if !parent_str.is_empty() {
                     let _ = ftp_manager.change_dir(&parent_str).await;
                 }
             }
-            
-            // Emit file start event
+
             let file_transfer_id = format!("{}-{}", transfer_id, downloaded_files);
+            let folder_pct = if total_files_discovered > 0 {
+                ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
+            } else { 0 };
+
+            // Emit file_start
             let _ = app.emit("transfer_event", TransferEvent {
                 event_type: "file_start".to_string(),
                 transfer_id: file_transfer_id.clone(),
                 filename: item.name.clone(),
                 direction: "download".to_string(),
-                message: Some(format!("Downloading: {}", item.remote_path)),
+                message: Some(format!("Downloading ({}/{}+): {}", downloaded_files + 1, total_files_discovered, item.remote_path)),
                 progress: Some(TransferProgress {
                     transfer_id: file_transfer_id.clone(),
                     filename: item.name.clone(),
                     transferred: 0,
                     total: item.size,
-                    percentage: 0,
+                    percentage: folder_pct,
                     speed_bps: 0,
                     eta_seconds: 0,
                     direction: "download".to_string(),
-                    total_files: None,
+                    total_files: Some(total_files_discovered as u64),
                     path: None,
                 }),
                 path: Some(item.remote_path.clone()),
             });
-            
-            // Download the file (streaming with real progress)
+
+            // Download file with streaming progress
             let file_name_only = PathBuf::from(&item.remote_path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
@@ -1987,28 +1962,23 @@ async fn download_folder(
                         }),
                         path: None,
                     });
-                    true // no cancel from sync (uses cancel_flag directly)
+                    true
                 }
             ).await {
                 Ok(_) => {
-                    // Preserve remote mtime on the downloaded file
                     preserve_remote_mtime_dt(&item.local_path, item.modified);
-
                     downloaded_files += 1;
 
-                    let percentage = if total_files > 0 {
-                        ((downloaded_files as f64 / total_files as f64) * 100.0) as u8
-                    } else {
-                        100
-                    };
+                    let percentage = if total_files_discovered > 0 {
+                        ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
+                    } else { 100 };
 
-                    // Emit file complete event
                     let _ = app.emit("transfer_event", TransferEvent {
                         event_type: "file_complete".to_string(),
                         transfer_id: file_transfer_id.clone(),
                         filename: item.name.clone(),
                         direction: "download".to_string(),
-                        message: Some(format!("Downloaded: {} ({}/{})", item.name, downloaded_files, total_files)),
+                        message: Some(format!("Downloaded: {} ({}/{}+)", item.name, downloaded_files, total_files_discovered)),
                         progress: Some(TransferProgress {
                             transfer_id: transfer_id.clone(),
                             filename: item.name.clone(),
@@ -2024,35 +1994,33 @@ async fn download_folder(
                         path: Some(item.remote_path.clone()),
                     });
 
-                    // Emit folder progress event (for folder row counter in queue)
+                    // Emit folder progress (for folder row counter in queue)
                     let _ = app.emit("transfer_event", TransferEvent {
                         event_type: "progress".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: folder_name.clone(),
                         direction: "download".to_string(),
-                        message: Some(format!("Downloaded {}/{} files", downloaded_files, total_files)),
+                        message: Some(format!("Downloaded {}/{}+ files", downloaded_files, total_files_discovered)),
                         progress: Some(TransferProgress {
                             transfer_id: transfer_id.clone(),
                             filename: folder_name.clone(),
                             transferred: downloaded_files as u64,
-                            total: total_files as u64,
+                            total: total_files_discovered as u64,
                             percentage,
                             speed_bps: 0,
                             eta_seconds: 0,
                             direction: "download".to_string(),
-                            total_files: Some(total_files as u64),
+                            total_files: Some(total_files_discovered as u64),
                             path: Some(params.remote_path.clone()),
                         }),
                         path: Some(params.remote_path.clone()),
                     });
 
-                    info!("Downloaded: {} ({}/{})", item.name, downloaded_files, total_files);
+                    info!("Downloaded: {} ({}/{}+)", item.name, downloaded_files, total_files_discovered);
                 }
                 Err(e) => {
                     errors += 1;
                     warn!("Failed to download {}: {}", item.name, e);
-                    
-                    // Emit file error event
                     let _ = app.emit("transfer_event", TransferEvent {
                         event_type: "file_error".to_string(),
                         transfer_id: file_transfer_id,
@@ -2066,6 +2034,9 @@ async fn download_folder(
             }
         }
     }
+
+    info!("Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
+          folder_name, downloaded_files, skipped_files, errors);
     
     // Return to original directory
     let _ = ftp_manager.change_dir(&original_path).await;
@@ -8624,6 +8595,7 @@ pub fn run() {
             cryptomator::cryptomator_encrypt_file,
             cryptomator::cryptomator_create,
             ai_stream::ai_chat_stream,
+            ai_stream::ai_cancel_stream,
             ai::ollama_pull_model,
             ai::gemini_create_cache,
             ai::ollama_list_running,
@@ -8800,6 +8772,16 @@ pub fn run() {
             provider_commands::gitlab_switch_branch,
             provider_commands::gitlab_batch_upload,
             provider_commands::gitlab_batch_delete,
+            provider_commands::gitlab_list_releases,
+            provider_commands::gitlab_list_release_assets,
+            provider_commands::gitlab_create_release,
+            provider_commands::gitlab_delete_release,
+            provider_commands::gitlab_upload_release_asset,
+            provider_commands::gitlab_delete_release_asset,
+            provider_commands::gitlab_read_file,
+            provider_commands::gitlab_download_release_asset,
+            provider_commands::gitlab_create_merge_request,
+            provider_commands::gitlab_get_web_url,
             // Filen Encrypted Notes
             provider_commands::filen_notes_list,
             provider_commands::filen_notes_create,

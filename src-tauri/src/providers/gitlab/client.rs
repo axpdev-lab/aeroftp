@@ -56,10 +56,11 @@ impl GitLabHttpClient {
     ///
     /// `api_base` should be e.g. `https://gitlab.com/api/v4` or
     /// `https://self-hosted.example.com/api/v4`.
-    pub fn new(token: SecretString, api_base: String) -> Result<Self, ProviderError> {
+    pub fn new(token: SecretString, api_base: String, accept_invalid_certs: bool) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .user_agent(USER_AGENT)
+            .danger_accept_invalid_certs(accept_invalid_certs)
             .build()
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("Failed to build HTTP client: {}", e))
@@ -258,8 +259,30 @@ impl GitLabHttpClient {
         }
     }
 
+    /// PUT raw bytes (for Generic Packages upload).
+    /// No retry: body bytes cannot be cloned by reqwest, so retry would fail silently.
+    pub async fn put_bytes(
+        &mut self,
+        path: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<Response, ProviderError> {
+        let url = self.resolve_url(path);
+        let builder = self.request(Method::PUT, &url)
+            .header("Content-Type", content_type)
+            .body(bytes);
+        self.execute(builder).await
+    }
+
+    /// DELETE request.
+    pub async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        let url = self.resolve_url(path);
+        let builder = self.request(Method::DELETE, &url);
+        self.execute_with_retry(builder).await?;
+        Ok(())
+    }
+
     /// API base URL.
-    #[allow(dead_code)]
     pub fn api_base(&self) -> &str {
         &self.api_base
     }

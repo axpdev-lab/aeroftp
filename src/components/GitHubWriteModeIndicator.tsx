@@ -19,6 +19,7 @@ interface GitHubWriteModeIndicatorProps {
   workingBranch?: string;
   isPrivate?: boolean;
   onError?: (title: string, message: string) => void;
+  protocol?: string;
 }
 
 export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> = ({
@@ -26,6 +27,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
   workingBranch,
   isPrivate,
   onError,
+  protocol,
 }) => {
   const t = useTranslation();
   const [showPrPrompt, setShowPrPrompt] = useState(false);
@@ -37,7 +39,8 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
     if (!prTitle.trim()) return;
     setCreating(true);
     try {
-      const url = await invoke<string>('github_create_pr', {
+      const command = protocol === 'gitlab' ? 'gitlab_create_merge_request' : 'github_create_pr';
+      const url = await invoke<string>(command, {
         title: prTitle.trim(),
         body: prBody.trim(),
       });
@@ -53,7 +56,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
     } finally {
       setCreating(false);
     }
-  }, [prTitle, prBody]);
+  }, [prTitle, prBody, protocol, onError]);
 
   const visibilityBadge = (
     <span
@@ -106,7 +109,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
               title={t('github.createPr') || 'Create Pull Request'}
             >
               <GitPullRequest size={10} />
-              <span>PR</span>
+              <span>{protocol === 'gitlab' ? 'MR' : 'PR'}</span>
             </button>
           </span>
           </span>
@@ -118,7 +121,10 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
               <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg shadow-xl p-4 w-96 animate-scale-in">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                   <GitPullRequest size={16} />
-                  {t('github.createPr') || 'Create Pull Request'}
+                  {protocol === 'gitlab'
+                    ? (t('gitlab.createMergeRequest') || 'Create Merge Request')
+                    : (t('github.createPr') || 'Create Pull Request')
+                  }
                 </h3>
 
                 <input

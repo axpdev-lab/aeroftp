@@ -367,9 +367,21 @@ impl S3Provider {
         query_params: Option<&[(&str, &str)]>,
         body: Option<Vec<u8>>,
     ) -> Result<reqwest::Response, ProviderError> {
+        self.s3_request_ext(method, key, query_params, body, &[]).await
+    }
+
+    /// Make a signed request to S3 with extra headers included in the signature
+    async fn s3_request_ext(
+        &self,
+        method: Method,
+        key: &str,
+        query_params: Option<&[(&str, &str)]>,
+        body: Option<Vec<u8>>,
+        extra_headers: &[(&str, &str)],
+    ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Sha256, Digest};
         use tracing::{debug, warn};
-        
+
         let mut url = self.build_url(key);
         if let Some(params) = query_params {
             let query: String = params.iter()
@@ -380,28 +392,32 @@ impl S3Provider {
                 url = format!("{}?{}", url, query);
             }
         }
-        
+
         debug!("S3 Request: {} {}", method, url);
-        debug!("S3 Bucket: {}, Region: {}, Path-style: {}", 
+        debug!("S3 Bucket: {}, Region: {}, Path-style: {}",
                self.config.bucket, self.config.region, self.config.path_style);
-        
+
         let payload = body.as_deref().unwrap_or(&[]);
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(payload);
             hex::encode(hasher.finalize())
         };
-        
+
         let mut headers = HashMap::new();
+        // Insert extra headers before signing so they become part of the canonical request
+        for (k, v) in extra_headers {
+            headers.insert(k.to_string(), v.to_string());
+        }
         let authorization = self.sign_request(method.as_str(), &url, &mut headers, &payload_hash)?;
-        
+
         let mut request = self.client.request(method.clone(), &url);
-        
+
         for (key, value) in headers.iter() {
             request = request.header(key, value);
         }
         request = request.header("Authorization", &authorization);
-        
+
         // SEC-06: Redact sensitive headers before logging
         {
             let redacted: HashMap<&String, String> = headers.iter().map(|(k, v)| {
@@ -429,12 +445,12 @@ impl S3Provider {
             built_request,
             &super::HttpRetryConfig::default(),
         ).await.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         let status = response.status();
         if !status.is_success() {
             warn!("S3 Response Status: {} for {} {}", status, method, url);
         }
-        
+
         Ok(response)
     }
     
@@ -1960,9 +1976,49 @@ impl StorageProvider for S3Provider {
             multipart_threshold: Self::MULTIPART_THRESHOLD as u64,
             multipart_part_size: Self::MULTIPART_PART_SIZE as u64,
             multipart_max_parallel: 4,
+            supports_range_download: true,
             supports_server_checksum: true,
             preferred_checksum_algo: Some("ETag".to_string()),
             ..Default::default()
+        }
+    }
+
+    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+        if len > MAX_READ_RANGE {
+            return Err(ProviderError::Other(
+                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
+            ));
+        }
+
+        let key = path.trim_start_matches('/');
+        let end = offset + len - 1; // HTTP Range is inclusive
+        let range_value = format!("bytes={}-{}", offset, end);
+
+        let response = self.s3_request_ext(
+            Method::GET, key, None, None,
+            &[("range", &range_value)],
+        ).await?;
+
+        match response.status() {
+            StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
+                let bytes = response.bytes().await
+                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                Ok(bytes.to_vec())
+            }
+            StatusCode::NOT_FOUND => {
+                Err(ProviderError::NotFound(path.to_string()))
+            }
+            StatusCode::RANGE_NOT_SATISFIABLE => {
+                Err(ProviderError::NotSupported("Server does not support range requests".to_string()))
+            }
+            status => {
+                Err(ProviderError::TransferFailed(format!("Range download failed with status: {}", status)))
+            }
         }
     }
 

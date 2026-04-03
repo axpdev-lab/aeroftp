@@ -641,6 +641,8 @@ impl GitHubProvider {
             )
         })?;
 
+        log::info!("GitHub: creating PR '{}' ({} -> {})", title, working_branch, self.active_branch());
+
         let payload = serde_json::json!({
             "title": title,
             "head": format!("{}:{}", self.owner, working_branch),
@@ -650,10 +652,13 @@ impl GitHubProvider {
             "maintainer_can_modify": true,
         });
 
-        self.client
+        let pr = self.client
             .post_json::<GitHubPullRequest>(&format!("{}/pulls", self.repo_url()), &payload)
             .await
-            .map_err(ProviderError::from)
+            .map_err(ProviderError::from)?;
+
+        log::info!("GitHub: PR #{} created: {}", pr.number, pr.html_url);
+        Ok(pr)
     }
 
     /// Reuse an existing open pull request for the working branch, or create one.
@@ -684,6 +689,7 @@ impl GitHubProvider {
             .map_err(ProviderError::from)?;
 
         if let Some(pr) = existing.into_iter().next() {
+            log::info!("GitHub: found existing PR #{}: {}", pr.number, pr.html_url);
             return Ok(pr);
         }
 

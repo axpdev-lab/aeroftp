@@ -52,7 +52,7 @@ export const supportsStorageQuota = (type: ProviderType): boolean => {
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'jottacloud', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'webdav', 'azure', 'kdrive', 'drime'].includes(type);
+  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'webdav', 'azure', 'kdrive', 'drime'].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode

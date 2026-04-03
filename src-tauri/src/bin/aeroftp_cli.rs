@@ -3,7 +3,7 @@
 //! Usage:
 //!   aeroftp connect <url>                     Test connection
 //!   aeroftp ls <url> [path] [-l]              List files
-//!   aeroftp get <url> <remote> [local] [-r]   Download file(s) (glob: "*.csv")
+//!   aeroftp get <url> <remote> [local] [-r] [--segments N]  Download file(s)
 //!   aeroftp put <url> <local> [remote] [-r]   Upload file(s) (glob: "*.csv")
 //!   aeroftp mkdir <url> <path>                Create directory
 //!   aeroftp rm <url> <path> [-rf]             Delete file/directory
@@ -26,6 +26,8 @@
 //!   aeroftp sync <url> <local> <remote>       Sync directories
 //!   aeroftp batch <file>                      Execute .aeroftp script
 //!   aeroftp rcat <url> <remote>               Upload stdin directly to remote file
+//!   aeroftp serve http <url> [path]           Serve remote files over local HTTP
+//!   aeroftp serve webdav <url> [path]          Serve remote files over local WebDAV (read-write)
 //!
 //! URL format: protocol://user:pass@host:port/path
 //! Add --json for machine-readable output.
@@ -46,21 +48,35 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use base64::Engine as _;
+use axum::{
+    body::{Body, Bytes},
+    extract::{DefaultBodyLimit, Path as AxumPath, State},
+    http::{
+        header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE},
+        HeaderMap, HeaderValue, Method, StatusCode,
+    },
+    response::{Html, IntoResponse, Response},
+    routing::{any, get},
+    Router,
+};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
-    ShareLinkOptions,
+    ShareLinkOptions, MAX_DOWNLOAD_TO_BYTES,
 };
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{self, IsTerminal, Read, Write as IoWrite};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tempfile::NamedTempFile;
+use tokio::sync::Mutex as AsyncMutex;
 
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
@@ -80,6 +96,10 @@ struct Cli {
     /// Shorthand for --format json
     #[arg(long, global = true)]
     json: bool,
+
+    /// Restrict JSON output fields (comma-separated, e.g. name,size,modified)
+    #[arg(long, global = true)]
+    json_fields: Option<String>,
 
     /// Read password from stdin (pipe: echo "pass" | aeroftp ...)
     #[arg(long, global = true)]
@@ -262,6 +282,9 @@ enum Commands {
         /// Recursive download (directories)
         #[arg(short, long)]
         recursive: bool,
+        /// Segmented parallel download: split file into N chunks (2-16, default: 1 = off)
+        #[arg(long, default_value_t = 1)]
+        segments: usize,
     },
     /// Upload file(s) to remote server (supports glob patterns like "*.csv")
     Put {
@@ -472,6 +495,21 @@ enum Commands {
         #[arg(default_value = "_")]
         url: String,
     },
+    /// Measure upload/download throughput against a writable remote
+    Speed {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Test file size (e.g. 1M, 8M, 64M)
+        #[arg(long, default_value = "8M")]
+        test_size: String,
+        /// Number of upload/download iterations
+        #[arg(long, default_value = "1")]
+        iterations: u32,
+        /// Remote path override for the temporary benchmark file
+        #[arg(long)]
+        remote_path: Option<String>,
+    },
     /// Find and resolve duplicate files by content hash
     Dedupe {
         /// Server URL (omit when using --profile)
@@ -548,6 +586,11 @@ enum Commands {
         /// Remote destination path
         #[arg(default_value = "")]
         remote: String,
+    },
+    /// Serve a remote over a local protocol
+    Serve {
+        #[command(subcommand)]
+        command: ServeCommands,
     },
     /// Manage CLI aliases stored in config.toml
     Alias {
@@ -646,6 +689,35 @@ enum AliasCommands {
     List,
 }
 
+#[derive(Subcommand)]
+enum ServeCommands {
+    /// Serve a remote over local HTTP (read-only)
+    Http {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote base path to expose (default: / or the URL/profile initial path)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Local bind address
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        addr: String,
+    },
+    /// Serve a remote over local WebDAV (read-write)
+    #[command(name = "webdav")]
+    WebDav {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote base path to expose (default: / or the URL/profile initial path)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Local bind address
+        #[arg(long, default_value = "127.0.0.1:8080")]
+        addr: String,
+    },
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct CliConfigFile {
     #[serde(default)]
@@ -667,6 +739,17 @@ struct CliDefaults {
     bwlimit: Option<String>,
 }
 
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct CliUpdateCache {
+    checked_at: Option<String>,
+    latest_version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubReleaseInfo {
+    tag_name: String,
+}
+
 // ── Serializable Output Types ──────────────────────────────────────
 
 #[derive(Serialize)]
@@ -681,14 +764,6 @@ struct CliConnectResult {
 }
 
 #[derive(Serialize)]
-struct CliLsResult {
-    status: &'static str,
-    path: String,
-    entries: Vec<CliFileEntry>,
-    summary: LsSummary,
-}
-
-#[derive(Serialize)]
 struct CliFileEntry {
     name: String,
     path: String,
@@ -697,14 +772,6 @@ struct CliFileEntry {
     modified: Option<String>,
     permissions: Option<String>,
     owner: Option<String>,
-}
-
-#[derive(Serialize)]
-struct LsSummary {
-    total: usize,
-    files: usize,
-    dirs: usize,
-    total_bytes: u64,
 }
 
 #[derive(Serialize)]
@@ -718,9 +785,14 @@ struct CliTransferResult {
 }
 
 #[derive(Serialize)]
-struct CliStatResult {
+struct CliSpeedResult {
     status: &'static str,
-    entry: CliFileEntry,
+    remote_path: String,
+    test_size: u64,
+    iterations: u32,
+    upload_speed_bps: u64,
+    download_speed_bps: u64,
+    elapsed_secs: f64,
 }
 
 #[derive(Serialize)]
@@ -791,6 +863,15 @@ fn cli_config_path() -> Result<PathBuf, String> {
     Ok(base.join("aeroftp").join("config.toml"))
 }
 
+fn cli_state_dir() -> Result<PathBuf, String> {
+    let base = dirs::config_dir().ok_or_else(|| "Cannot resolve config directory".to_string())?;
+    Ok(base.join("aeroftp"))
+}
+
+fn cli_update_cache_path() -> Result<PathBuf, String> {
+    Ok(cli_state_dir()?.join("update-check.toml"))
+}
+
 fn load_cli_config() -> Result<CliConfigFile, String> {
     let path = cli_config_path()?;
     if !path.exists() {
@@ -815,6 +896,200 @@ fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
     std::fs::write(&path, content)
         .map_err(|e| format!("Cannot write config '{}': {}", path.display(), e))?;
     Ok(path)
+}
+
+fn load_update_cache() -> CliUpdateCache {
+    let Ok(path) = cli_update_cache_path() else {
+        return CliUpdateCache::default();
+    };
+    if !path.exists() {
+        return CliUpdateCache::default();
+    }
+
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return CliUpdateCache::default();
+    };
+
+    toml::from_str(&raw).unwrap_or_default()
+}
+
+fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
+    let path = cli_update_cache_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Cannot create config directory '{}': {}", parent.display(), e))?;
+    }
+
+    let content = toml::to_string_pretty(cache)
+        .map_err(|e| format!("Cannot serialize update cache: {}", e))?;
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Cannot write update cache '{}': {}", path.display(), e))?;
+    Ok(path)
+}
+
+fn parse_json_fields(cli: &Cli) -> Option<std::collections::HashSet<String>> {
+    cli.json_fields.as_ref().and_then(|raw| {
+        let fields: std::collections::HashSet<String> = raw
+            .split(',')
+            .map(str::trim)
+            .filter(|field| !field.is_empty())
+            .map(|field| field.to_string())
+            .collect();
+        if fields.is_empty() {
+            None
+        } else {
+            Some(fields)
+        }
+    })
+}
+
+fn filter_json_object_fields(
+    mut object: serde_json::Map<String, serde_json::Value>,
+    allowed: &std::collections::HashSet<String>,
+    preserve: &[&str],
+) -> serde_json::Value {
+    object.retain(|key, _| allowed.contains(key) || preserve.contains(&key.as_str()));
+    serde_json::Value::Object(object)
+}
+
+fn cli_entry_to_filtered_json(entry: &CliFileEntry, cli: &Cli) -> serde_json::Value {
+    let value = serde_json::to_value(entry).unwrap_or_else(|_| serde_json::json!({}));
+    let Some(allowed) = parse_json_fields(cli) else {
+        return value;
+    };
+    match value {
+        serde_json::Value::Object(object) => filter_json_object_fields(object, &allowed, &[]),
+        other => other,
+    }
+}
+
+fn remote_entry_to_filtered_json(entry: &RemoteEntry, cli: &Cli) -> serde_json::Value {
+    cli_entry_to_filtered_json(&remote_entry_to_cli(entry), cli)
+}
+
+fn apply_top_level_json_field_filter(
+    value: serde_json::Value,
+    cli: &Cli,
+    preserve: &[&str],
+) -> serde_json::Value {
+    let Some(allowed) = parse_json_fields(cli) else {
+        return value;
+    };
+    if let serde_json::Value::Object(object) = value {
+        filter_json_object_fields(object, &allowed, preserve)
+    } else {
+        value
+    }
+}
+
+fn estimate_ai_cost_usd(provider: &str, input_tokens: u64, output_tokens: u64) -> f64 {
+    let (input_per_million, output_per_million) = match provider {
+        "anthropic" => (3.0, 15.0),
+        "openai" => (5.0, 15.0),
+        "gemini" | "google" => (0.35, 1.05),
+        "xai" => (5.0, 15.0),
+        "groq" => (0.59, 0.79),
+        "mistral" => (2.0, 6.0),
+        "deepseek" => (0.27, 1.10),
+        "perplexity" => (1.0, 1.0),
+        "cohere" => (3.0, 15.0),
+        "together" => (0.88, 0.88),
+        "fireworks" => (0.90, 0.90),
+        "cerebras" => (0.85, 1.20),
+        "sambanova" => (0.90, 0.90),
+        "openrouter" => (5.0, 15.0),
+        "kimi" | "moonshot" => (2.0, 10.0),
+        "qwen" => (0.60, 0.60),
+        "ai21" => (2.0, 8.0),
+        "ollama" => (0.0, 0.0),
+        _ => (5.0, 15.0),
+    };
+    (input_tokens as f64 / 1_000_000.0) * input_per_million
+        + (output_tokens as f64 / 1_000_000.0) * output_per_million
+}
+
+fn normalize_release_version(raw: &str) -> Option<Version> {
+    let normalized = raw.trim().trim_start_matches(['v', 'V']);
+    if normalized.is_empty() {
+        return None;
+    }
+    Version::parse(normalized).ok()
+}
+
+fn is_newer_release(latest: &str, current: &str) -> bool {
+    match (normalize_release_version(latest), normalize_release_version(current)) {
+        (Some(latest), Some(current)) => latest > current,
+        _ => false,
+    }
+}
+
+fn update_check_due(cache: &CliUpdateCache, now: chrono::DateTime<chrono::Utc>) -> bool {
+    let Some(checked_at) = &cache.checked_at else {
+        return true;
+    };
+
+    let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(checked_at) else {
+        return true;
+    };
+
+    now.signed_duration_since(parsed.with_timezone(&chrono::Utc)) >= chrono::Duration::hours(24)
+}
+
+async fn fetch_latest_release_version() -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .map_err(|e| format!("Cannot build HTTP client: {}", e))?;
+
+    let release = client
+        .get("https://api.github.com/repos/axpdev-lab/aeroftp/releases/latest")
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .header(
+            reqwest::header::USER_AGENT,
+            format!("aeroftp-cli/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Cannot query releases API: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("Releases API returned error: {}", e))?
+        .json::<GitHubReleaseInfo>()
+        .await
+        .map_err(|e| format!("Invalid releases API response: {}", e))?;
+
+    normalize_release_version(&release.tag_name)
+        .map(|version| version.to_string())
+        .ok_or_else(|| format!("Invalid release tag '{}'", release.tag_name))
+}
+
+async fn maybe_check_for_updates(cli: &Cli) {
+    if cli.quiet {
+        return;
+    }
+
+    let now = chrono::Utc::now();
+    let mut cache = load_update_cache();
+    if !update_check_due(&cache, now) {
+        return;
+    }
+
+    cache.checked_at = Some(now.to_rfc3339());
+    match fetch_latest_release_version().await {
+        Ok(latest_version) => {
+            cache.latest_version = Some(latest_version.clone());
+            let _ = save_update_cache(&cache);
+            if is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")) {
+                eprintln!(
+                    "Update available: v{} -> v{} (download the latest release from GitHub)",
+                    env!("CARGO_PKG_VERSION"),
+                    latest_version
+                );
+            }
+        }
+        Err(_) => {
+            let _ = save_update_cache(&cache);
+        }
+    }
 }
 
 fn arg_present(args: &[String], long: &str, short: Option<&str>) -> bool {
@@ -901,6 +1176,7 @@ fn first_command_index(args: &[String]) -> Option<usize> {
         let takes_value = matches!(
             arg.as_str(),
             "--format"
+                | "--json-fields"
                 | "--key"
                 | "--key-passphrase"
                 | "--bucket"
@@ -1581,9 +1857,11 @@ fn resolve_password(
 
     // 4. URL-embedded password
     if let Some(pass) = url_obj.password() {
-        eprintln!(
-            "Warning: password in URL is insecure. Use --password-stdin or env var instead."
-        );
+        if !cfg!(test) {
+            eprintln!(
+                "Warning: password in URL is insecure. Use --password-stdin or env var instead."
+            );
+        }
         return Ok(urlencoding::decode(pass)
             .map(|s| s.to_string())
             .unwrap_or_else(|_| pass.to_string()));
@@ -3073,6 +3351,1003 @@ async fn create_and_connect(
 
 // ── Command Handlers ───────────────────────────────────────────────
 
+#[derive(Clone)]
+struct ServeHttpState {
+    provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+    provider_label: String,
+    base_path: String,
+}
+
+fn serve_effective_base_path(path: &str, url_path: &str) -> String {
+    if path == "/" && url_path != "/" {
+        normalize_remote_path(url_path)
+    } else {
+        normalize_remote_path(path)
+    }
+}
+
+fn normalize_remote_path(path: &str) -> String {
+    let mut normalized = String::from("/");
+    let segments: Vec<&str> = path
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+
+    if !segments.is_empty() {
+        normalized.push_str(&segments.join("/"));
+    }
+
+    normalized
+}
+
+fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
+    let decoded = urlencoding::decode(path)
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .into_owned();
+
+    if decoded.contains('\0') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let mut parts = Vec::new();
+    for segment in decoded.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => return Err(StatusCode::FORBIDDEN),
+            other => parts.push(other),
+        }
+    }
+
+    Ok(parts.join("/"))
+}
+
+fn build_served_remote_path(base_path: &str, relative_path: &str) -> String {
+    if relative_path.is_empty() {
+        return normalize_remote_path(base_path);
+    }
+
+    let normalized_base = normalize_remote_path(base_path);
+    if normalized_base == "/" {
+        format!("/{}", relative_path)
+    } else {
+        format!("{}/{}", normalized_base.trim_end_matches('/'), relative_path)
+    }
+}
+
+fn encode_request_path(path: &str) -> String {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+
+    let encoded_segments: Vec<String> = trimmed
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| urlencoding::encode(segment).into_owned())
+        .collect();
+
+    let mut encoded = format!("/{}", encoded_segments.join("/"));
+    if path.ends_with('/') {
+        encoded.push('/');
+    }
+    encoded
+}
+
+fn child_request_path(current_relative_path: &str, name: &str, is_dir: bool) -> String {
+    let mut path = current_relative_path.trim_matches('/').to_string();
+    if !path.is_empty() {
+        path.push('/');
+    }
+    path.push_str(name);
+    if is_dir {
+        path.push('/');
+    }
+    path
+}
+
+fn parent_request_path(current_relative_path: &str) -> Option<String> {
+    let mut segments: Vec<&str> = current_relative_path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    if segments.is_empty() {
+        return None;
+    }
+
+    segments.pop();
+    if segments.is_empty() {
+        Some("/".to_string())
+    } else {
+        Some(format!("/{}/", segments.join("/")))
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn provider_error_to_status_code(error: &ProviderError) -> StatusCode {
+    match error {
+        ProviderError::NotFound(_) => StatusCode::NOT_FOUND,
+        ProviderError::PermissionDenied(_) => StatusCode::FORBIDDEN,
+        ProviderError::AuthenticationFailed(_) => StatusCode::UNAUTHORIZED,
+        ProviderError::NotSupported(_) => StatusCode::NOT_IMPLEMENTED,
+        ProviderError::Timeout => StatusCode::GATEWAY_TIMEOUT,
+        ProviderError::Cancelled => StatusCode::REQUEST_TIMEOUT,
+        ProviderError::InvalidPath(_) | ProviderError::InvalidConfig(_) | ProviderError::ParseError(_) => {
+            StatusCode::BAD_REQUEST
+        }
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+fn serve_error_response(status: StatusCode, message: &str) -> Response {
+    let body = Html(format!(
+        "<!doctype html><html><body><h1>{}</h1><p>{}</p></body></html>",
+        status,
+        escape_html(message)
+    ));
+    (status, body).into_response()
+}
+
+fn build_html_response(status: StatusCode, html: String, head_only: bool) -> Response {
+    let content_length = html.len().to_string();
+    let mut response = if head_only {
+        Response::new(Body::empty())
+    } else {
+        Response::new(Body::from(html))
+    };
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    if let Ok(length) = HeaderValue::from_str(&content_length) {
+        response.headers_mut().insert(CONTENT_LENGTH, length);
+    }
+    response
+}
+
+fn guess_content_type(entry: &RemoteEntry) -> String {
+    entry
+        .mime_type
+        .as_deref()
+        .map(str::to_string)
+        .or_else(|| {
+            mime_guess::from_path(&entry.name)
+                .first_raw()
+                .map(|mime| mime.to_string())
+        })
+        .unwrap_or_else(|| "application/octet-stream".to_string())
+}
+
+fn build_file_head_response(entry: &RemoteEntry) -> Response {
+    let content_type = guess_content_type(entry);
+    let mut response = Response::new(Body::empty());
+    *response.status_mut() = StatusCode::OK;
+    if let Ok(value) = HeaderValue::from_str(&content_type) {
+        response.headers_mut().insert(CONTENT_TYPE, value);
+    }
+    if let Ok(length) = HeaderValue::from_str(&entry.size.to_string()) {
+        response.headers_mut().insert(CONTENT_LENGTH, length);
+    }
+    response
+        .headers_mut()
+        .insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    response
+}
+
+fn build_file_get_response(
+    entry: &RemoteEntry,
+    bytes: Vec<u8>,
+    range: Option<&HeaderValue>,
+) -> Response {
+    let content_type = guess_content_type(entry);
+    let total = bytes.len();
+
+    if let Some(range_val) = range {
+        if let Some((start, end)) = parse_range_header(range_val.to_str().unwrap_or(""), total) {
+            let sliced = bytes[start..=end].to_vec();
+            let content_range = format!("bytes {}-{}/{}", start, end, total);
+            let mut response = Response::new(Body::from(sliced));
+            *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+            if let Ok(value) = HeaderValue::from_str(&content_type) {
+                response.headers_mut().insert(CONTENT_TYPE, value);
+            }
+            if let Ok(cl) = HeaderValue::from_str(&(end - start + 1).to_string()) {
+                response.headers_mut().insert(CONTENT_LENGTH, cl);
+            }
+            if let Ok(cr) = HeaderValue::from_str(&content_range) {
+                response.headers_mut().insert(CONTENT_RANGE, cr);
+            }
+            response
+                .headers_mut()
+                .insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+            return response;
+        }
+    }
+
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = StatusCode::OK;
+    if let Ok(value) = HeaderValue::from_str(&content_type) {
+        response.headers_mut().insert(CONTENT_TYPE, value);
+    }
+    if let Ok(length) = HeaderValue::from_str(&total.to_string()) {
+        response.headers_mut().insert(CONTENT_LENGTH, length);
+    }
+    response
+        .headers_mut()
+        .insert(ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    response
+}
+
+/// Parse an HTTP Range header value like "bytes=0-499" or "bytes=-500" or "bytes=9500-".
+fn parse_range_header(value: &str, file_size: usize) -> Option<(usize, usize)> {
+    let bytes_spec = value.strip_prefix("bytes=")?;
+
+    if file_size == 0 {
+        return None;
+    }
+
+    let (start_str, end_str) = bytes_spec.split_once('-')?;
+
+    if start_str.is_empty() {
+        // Suffix range: "-500" means last 500 bytes
+        let suffix_len: usize = end_str.parse().ok()?;
+        if suffix_len == 0 {
+            return None;
+        }
+        let start = file_size.saturating_sub(suffix_len);
+        return Some((start, file_size - 1));
+    }
+
+    let start: usize = start_str.parse().ok()?;
+    let end = if end_str.is_empty() {
+        file_size - 1
+    } else {
+        end_str.parse::<usize>().ok()?
+    };
+
+    if start > end || start >= file_size {
+        return None;
+    }
+    Some((start, end.min(file_size - 1)))
+}
+
+fn render_directory_listing(
+    provider_label: &str,
+    current_relative_path: &str,
+    remote_path: &str,
+    entries: &[RemoteEntry],
+) -> String {
+    let title = if current_relative_path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", current_relative_path.trim_matches('/'))
+    };
+
+    let mut html = String::new();
+    html.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    html.push_str(&format!("<title>{}</title>", escape_html(&title)));
+    html.push_str("<style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f6f6f2;color:#171717;margin:2rem;}h1{font-size:1.4rem;margin-bottom:.25rem;}p{color:#555;}table{width:100%;border-collapse:collapse;margin-top:1.5rem;background:#fff;}th,td{text-align:left;padding:.7rem .85rem;border-bottom:1px solid #ece7df;}th{font-size:.85rem;letter-spacing:.04em;text-transform:uppercase;color:#6a6257;}a{color:#004f59;text-decoration:none;}a:hover{text-decoration:underline;}.dir a{font-weight:700;}</style>");
+    html.push_str("</head><body>");
+    html.push_str(&format!("<h1>{}</h1>", escape_html(&title)));
+    html.push_str(&format!("<p>{} · base remote: {}</p>", escape_html(provider_label), escape_html(remote_path)));
+    html.push_str("<table><thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead><tbody>");
+
+    if let Some(parent) = parent_request_path(current_relative_path) {
+        html.push_str(&format!(
+            "<tr class=\"dir\"><td><a href=\"{}\">../</a></td><td>-</td><td>-</td></tr>",
+            encode_request_path(&parent)
+        ));
+    }
+
+    for entry in entries {
+        let request_path = child_request_path(current_relative_path, &entry.name, entry.is_dir);
+        let size = if entry.is_dir {
+            "-".to_string()
+        } else {
+            format_size(entry.size)
+        };
+        let modified = entry.modified.as_deref().unwrap_or("-");
+        let label = if entry.is_dir {
+            format!("{}/", entry.name)
+        } else {
+            entry.name.clone()
+        };
+        let row_class = if entry.is_dir { "dir" } else { "file" };
+        html.push_str(&format!(
+            "<tr class=\"{}\"><td><a href=\"{}\">{}</a></td><td>{}</td><td>{}</td></tr>",
+            row_class,
+            encode_request_path(&request_path),
+            escape_html(&label),
+            escape_html(&size),
+            escape_html(modified)
+        ));
+    }
+
+    html.push_str("</tbody></table></body></html>");
+    html
+}
+
+async fn serve_http_response(
+    state: ServeHttpState,
+    relative_path: String,
+    head_only: bool,
+    range: Option<&HeaderValue>,
+) -> Response {
+    let relative_path = match sanitize_served_relative_path(&relative_path) {
+        Ok(path) => path,
+        Err(status) => return serve_error_response(status, "Invalid request path"),
+    };
+
+    let remote_path = build_served_remote_path(&state.base_path, &relative_path);
+    let mut provider = state.provider.lock().await;
+
+    let stat_result = if relative_path.is_empty() {
+        Ok(RemoteEntry::directory("/".to_string(), remote_path.clone()))
+    } else {
+        provider.stat(&remote_path).await
+    };
+
+    match stat_result {
+        Ok(entry) if entry.is_dir => {
+            let mut entries = match provider.list(&remote_path).await {
+                Ok(entries) => entries,
+                Err(error) => {
+                    return serve_error_response(
+                        provider_error_to_status_code(&error),
+                        &error.to_string(),
+                    )
+                }
+            };
+            entries.sort_by(|left, right| match (left.is_dir, right.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+            });
+            let html = render_directory_listing(
+                &state.provider_label,
+                &relative_path,
+                &remote_path,
+                &entries,
+            );
+            build_html_response(StatusCode::OK, html, head_only)
+        }
+        Ok(entry) => {
+            if head_only {
+                return build_file_head_response(&entry);
+            }
+
+            if entry.size > MAX_DOWNLOAD_TO_BYTES {
+                return serve_error_response(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    &format!(
+                        "File too large for serve http MVP ({} > {} bytes)",
+                        entry.size, MAX_DOWNLOAD_TO_BYTES
+                    ),
+                );
+            }
+
+            let bytes = match provider.download_to_bytes(&remote_path).await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return serve_error_response(
+                        provider_error_to_status_code(&error),
+                        &error.to_string(),
+                    )
+                }
+            };
+
+            build_file_get_response(&entry, bytes, range)
+        }
+        Err(ProviderError::NotFound(_)) => match provider.list(&remote_path).await {
+            Ok(mut entries) => {
+                entries.sort_by(|left, right| match (left.is_dir, right.is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+                });
+                let html = render_directory_listing(
+                    &state.provider_label,
+                    &relative_path,
+                    &remote_path,
+                    &entries,
+                );
+                build_html_response(StatusCode::OK, html, head_only)
+            }
+            Err(error) => serve_error_response(provider_error_to_status_code(&error), &error.to_string()),
+        },
+        Err(error) => serve_error_response(provider_error_to_status_code(&error), &error.to_string()),
+    }
+}
+
+async fn serve_http_root(
+    State(state): State<ServeHttpState>,
+    headers: HeaderMap,
+) -> Response {
+    let range = headers.get(axum::http::header::RANGE);
+    serve_http_response(state, String::new(), false, range).await
+}
+
+async fn serve_http_root_head(State(state): State<ServeHttpState>) -> Response {
+    serve_http_response(state, String::new(), true, None).await
+}
+
+async fn serve_http_path(
+    State(state): State<ServeHttpState>,
+    AxumPath(path): AxumPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    let range = headers.get(axum::http::header::RANGE);
+    serve_http_response(state, path, false, range).await
+}
+
+async fn serve_http_path_head(
+    State(state): State<ServeHttpState>,
+    AxumPath(path): AxumPath<String>,
+) -> Response {
+    serve_http_response(state, path, true, None).await
+}
+
+async fn cmd_serve_http(url: &str, path: &str, addr: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(value) => value,
+        Err(code) => return code,
+    };
+
+    let bind_addr = match addr.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(error) => {
+            print_error(format, &format!("Invalid --addr '{}': {}", addr, error), 5);
+            return 5;
+        }
+    };
+
+    let base_path = serve_effective_base_path(path, &url_path);
+    let provider_label = if let Some(profile) = &cli.profile {
+        format!("profile {}", profile)
+    } else {
+        provider.display_name()
+    };
+
+    let state = ServeHttpState {
+        provider: Arc::new(AsyncMutex::new(provider)),
+        provider_label,
+        base_path: base_path.clone(),
+    };
+
+    let app = Router::new()
+        .route("/", get(serve_http_root).head(serve_http_root_head))
+        .route("/{*path}", get(serve_http_path).head(serve_http_path_head))
+        .with_state(state.clone());
+
+    let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            print_error(format, &format!("Failed to bind {}: {}", addr, error), 1);
+            return 1;
+        }
+    };
+
+    if matches!(format, OutputFormat::Json) {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "serving",
+                "protocol": "http",
+                "addr": addr,
+                "base_path": base_path,
+            })
+        );
+    } else if !cli.quiet {
+        eprintln!("Serving HTTP on http://{}", addr);
+        eprintln!("Remote base path: {}", state.base_path);
+        eprintln!("Press Ctrl+C to stop.");
+    }
+
+    let result = axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await;
+
+    let mut provider = state.provider.lock().await;
+    let _ = provider.disconnect().await;
+
+    match result {
+        Ok(()) => 0,
+        Err(error) => {
+            print_error(format, &format!("HTTP server failed: {}", error), 1);
+            1
+        }
+    }
+}
+
+// ── WebDAV serve ──────────────────────────────────────────────────
+
+/// Maximum upload size for WebDAV PUT (512 MB).
+const WEBDAV_MAX_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
+
+fn webdav_xml_entry(href: &str, entry: &RemoteEntry) -> String {
+    let mut props = String::new();
+    if entry.is_dir {
+        props.push_str("<D:resourcetype><D:collection/></D:resourcetype>");
+    } else {
+        props.push_str("<D:resourcetype/>");
+        props.push_str(&format!(
+            "<D:getcontentlength>{}</D:getcontentlength>",
+            entry.size
+        ));
+    }
+    props.push_str(&format!(
+        "<D:displayname>{}</D:displayname>",
+        escape_html(&entry.name)
+    ));
+    if let Some(ref modified) = entry.modified {
+        props.push_str(&format!(
+            "<D:getlastmodified>{}</D:getlastmodified>",
+            escape_html(modified)
+        ));
+    }
+    if !entry.is_dir {
+        let ct = guess_content_type(entry);
+        props.push_str(&format!("<D:getcontenttype>{}</D:getcontenttype>", ct));
+    }
+    format!(
+        "<D:response><D:href>{}</D:href><D:propstat><D:prop>{}</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>",
+        escape_html(href),
+        props
+    )
+}
+
+fn build_propfind_xml(
+    base_path: &str,
+    relative_path: &str,
+    self_entry: &RemoteEntry,
+    children: Option<&[RemoteEntry]>,
+) -> String {
+    let self_href = if relative_path.is_empty() {
+        "/".to_string()
+    } else {
+        encode_request_path(&format!("/{}", relative_path.trim_matches('/')))
+    };
+
+    let mut xml = String::from(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<D:multistatus xmlns:D=\"DAV:\">\n",
+    );
+    xml.push_str(&webdav_xml_entry(
+        &if self_entry.is_dir {
+            format!("{}/", self_href.trim_end_matches('/'))
+        } else {
+            self_href.clone()
+        },
+        self_entry,
+    ));
+    xml.push('\n');
+
+    if let Some(entries) = children {
+        let _ = base_path; // used for context, href is relative to serve root
+        for entry in entries {
+            let child = child_request_path(relative_path, &entry.name, entry.is_dir);
+            let child_href = encode_request_path(&format!("/{}", child.trim_start_matches('/')));
+            xml.push_str(&webdav_xml_entry(&child_href, entry));
+            xml.push('\n');
+        }
+    }
+
+    xml.push_str("</D:multistatus>\n");
+    xml
+}
+
+fn webdav_multistatus_response(xml: String) -> Response {
+    let mut response = Response::new(Body::from(xml));
+    *response.status_mut() = StatusCode::MULTI_STATUS;
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/xml; charset=utf-8"),
+    );
+    response
+}
+
+fn extract_destination_relative(headers: &HeaderMap) -> Result<String, StatusCode> {
+    let dest = headers
+        .get("Destination")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    // Destination is a full URI like http://127.0.0.1:8080/path
+    // Extract the path portion
+    let path_part = if let Some(idx) = dest.find("://") {
+        let after_scheme = &dest[idx + 3..];
+        after_scheme.find('/').map_or("/", |i| &after_scheme[i..])
+    } else {
+        dest
+    };
+
+    sanitize_served_relative_path(path_part).map_err(|_| StatusCode::BAD_REQUEST)
+}
+
+async fn webdav_dispatch(
+    state: ServeHttpState,
+    method: Method,
+    path: String,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let relative_path = match sanitize_served_relative_path(&path) {
+        Ok(p) => p,
+        Err(status) => return serve_error_response(status, "Invalid path"),
+    };
+    let remote_path = build_served_remote_path(&state.base_path, &relative_path);
+
+    match method.as_str() {
+        "OPTIONS" => {
+            let mut response = Response::new(Body::empty());
+            *response.status_mut() = StatusCode::OK;
+            response.headers_mut().insert(
+                "Allow",
+                HeaderValue::from_static(
+                    "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND",
+                ),
+            );
+            response.headers_mut().insert(
+                "DAV",
+                HeaderValue::from_static("1"),
+            );
+            response
+        }
+
+        "PROPFIND" => {
+            let depth = headers
+                .get("Depth")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("1");
+
+            let mut provider = state.provider.lock().await;
+
+            // Stat the target
+            let self_entry = if relative_path.is_empty() {
+                RemoteEntry::directory("/".to_string(), remote_path.clone())
+            } else {
+                match provider.stat(&remote_path).await {
+                    Ok(e) => e,
+                    Err(ProviderError::NotFound(_)) => {
+                        // Might be a directory that doesn't support stat
+                        RemoteEntry::directory(
+                            remote_path
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("")
+                                .to_string(),
+                            remote_path.clone(),
+                        )
+                    }
+                    Err(e) => {
+                        return serve_error_response(
+                            provider_error_to_status_code(&e),
+                            &e.to_string(),
+                        )
+                    }
+                }
+            };
+
+            let children = if self_entry.is_dir && depth != "0" {
+                match provider.list(&remote_path).await {
+                    Ok(mut entries) => {
+                        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                            (true, false) => std::cmp::Ordering::Less,
+                            (false, true) => std::cmp::Ordering::Greater,
+                            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                        });
+                        Some(entries)
+                    }
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            let xml = build_propfind_xml(
+                &state.base_path,
+                &relative_path,
+                &self_entry,
+                children.as_deref(),
+            );
+            webdav_multistatus_response(xml)
+        }
+
+        "GET" => {
+            let range = headers.get(axum::http::header::RANGE);
+            serve_http_response(state, path, false, range).await
+        }
+
+        "HEAD" => serve_http_response(state, path, true, None).await,
+
+        "PUT" => {
+            if body.len() > WEBDAV_MAX_UPLOAD_BYTES {
+                return serve_error_response(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    &format!(
+                        "Upload too large ({} > {} bytes)",
+                        body.len(),
+                        WEBDAV_MAX_UPLOAD_BYTES
+                    ),
+                );
+            }
+
+            // Write body to temp file, then upload
+            let temp = match NamedTempFile::new() {
+                Ok(t) => t,
+                Err(e) => {
+                    return serve_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("Cannot create temp file: {}", e),
+                    )
+                }
+            };
+            if let Err(e) = std::fs::write(temp.path(), &body) {
+                return serve_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("Cannot write temp file: {}", e),
+                );
+            }
+
+            let mut provider = state.provider.lock().await;
+            match provider
+                .upload(&temp.path().to_string_lossy(), &remote_path, None)
+                .await
+            {
+                Ok(()) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::CREATED;
+                    response
+                }
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
+            }
+        }
+
+        "MKCOL" => {
+            let mut provider = state.provider.lock().await;
+            match provider.mkdir(&remote_path).await {
+                Ok(()) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::CREATED;
+                    response
+                }
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
+            }
+        }
+
+        "DELETE" => {
+            let mut provider = state.provider.lock().await;
+            // Try file delete first; on any failure try rmdir (target may be a directory)
+            match provider.delete(&remote_path).await {
+                Ok(()) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::NO_CONTENT;
+                    response
+                }
+                Err(_file_err) => match provider.rmdir(&remote_path).await {
+                    Ok(()) => {
+                        let mut response = Response::new(Body::empty());
+                        *response.status_mut() = StatusCode::NO_CONTENT;
+                        response
+                    }
+                    Err(_) => match provider.rmdir_recursive(&remote_path).await {
+                        Ok(()) => {
+                            let mut response = Response::new(Body::empty());
+                            *response.status_mut() = StatusCode::NO_CONTENT;
+                            response
+                        }
+                        Err(e) => serve_error_response(
+                            provider_error_to_status_code(&e),
+                            &e.to_string(),
+                        ),
+                    },
+                },
+            }
+        }
+
+        "MOVE" => {
+            let dest_relative = match extract_destination_relative(&headers) {
+                Ok(d) => d,
+                Err(status) => {
+                    return serve_error_response(status, "Invalid or missing Destination header")
+                }
+            };
+            let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            let mut provider = state.provider.lock().await;
+            match provider.rename(&remote_path, &dest_remote).await {
+                Ok(()) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::NO_CONTENT;
+                    response
+                }
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
+            }
+        }
+
+        "COPY" => {
+            let dest_relative = match extract_destination_relative(&headers) {
+                Ok(d) => d,
+                Err(status) => {
+                    return serve_error_response(status, "Invalid or missing Destination header")
+                }
+            };
+            let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
+            let mut provider = state.provider.lock().await;
+            if provider.supports_server_copy() {
+                match provider.server_copy(&remote_path, &dest_remote).await {
+                    Ok(()) => {
+                        let mut response = Response::new(Body::empty());
+                        *response.status_mut() = StatusCode::CREATED;
+                        response
+                    }
+                    Err(e) => {
+                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
+                    }
+                }
+            } else {
+                // Fallback: download then upload
+                match provider.download_to_bytes(&remote_path).await {
+                    Ok(data) => {
+                        let temp = match NamedTempFile::new() {
+                            Ok(t) => t,
+                            Err(e) => {
+                                return serve_error_response(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    &format!("Temp file error: {}", e),
+                                )
+                            }
+                        };
+                        if let Err(e) = std::fs::write(temp.path(), &data) {
+                            return serve_error_response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                &format!("Write error: {}", e),
+                            );
+                        }
+                        match provider
+                            .upload(&temp.path().to_string_lossy(), &dest_remote, None)
+                            .await
+                        {
+                            Ok(()) => {
+                                let mut response = Response::new(Body::empty());
+                                *response.status_mut() = StatusCode::CREATED;
+                                response
+                            }
+                            Err(e) => serve_error_response(
+                                provider_error_to_status_code(&e),
+                                &e.to_string(),
+                            ),
+                        }
+                    }
+                    Err(e) => {
+                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
+                    }
+                }
+            }
+        }
+
+        _ => serve_error_response(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed"),
+    }
+}
+
+async fn webdav_root_handler(
+    State(state): State<ServeHttpState>,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    webdav_dispatch(state, method, String::new(), headers, body).await
+}
+
+async fn webdav_path_handler(
+    State(state): State<ServeHttpState>,
+    method: Method,
+    AxumPath(path): AxumPath<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    webdav_dispatch(state, method, path, headers, body).await
+}
+
+async fn cmd_serve_webdav(
+    url: &str,
+    path: &str,
+    addr: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(value) => value,
+        Err(code) => return code,
+    };
+
+    let bind_addr = match addr.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(error) => {
+            print_error(
+                format,
+                &format!("Invalid --addr '{}': {}", addr, error),
+                5,
+            );
+            return 5;
+        }
+    };
+
+    let base_path = serve_effective_base_path(path, &url_path);
+    let provider_label = if let Some(profile) = &cli.profile {
+        format!("profile {}", profile)
+    } else {
+        provider.display_name()
+    };
+
+    let state = ServeHttpState {
+        provider: Arc::new(AsyncMutex::new(provider)),
+        provider_label,
+        base_path: base_path.clone(),
+    };
+
+    let app = Router::new()
+        .route("/", any(webdav_root_handler))
+        .route("/{*path}", any(webdav_path_handler))
+        .layer(DefaultBodyLimit::max(WEBDAV_MAX_UPLOAD_BYTES))
+        .with_state(state.clone());
+
+    let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            print_error(format, &format!("Failed to bind {}: {}", addr, error), 1);
+            return 1;
+        }
+    };
+
+    if matches!(format, OutputFormat::Json) {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "serving",
+                "protocol": "webdav",
+                "addr": addr,
+                "base_path": base_path,
+            })
+        );
+    } else if !cli.quiet {
+        eprintln!("Serving WebDAV on http://{}", addr);
+        eprintln!("Remote base path: {}", state.base_path);
+        eprintln!("Read-write mode. Press Ctrl+C to stop.");
+    }
+
+    let result = axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await;
+
+    let mut provider = state.provider.lock().await;
+    let _ = provider.disconnect().await;
+
+    match result {
+        Ok(()) => 0,
+        Err(error) => {
+            print_error(
+                format,
+                &format!("WebDAV server failed: {}", error),
+                1,
+            );
+            1
+        }
+    }
+}
+
 async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let start = Instant::now();
     let spinner = if matches!(format, OutputFormat::Text) && !cli.quiet {
@@ -3263,17 +4538,21 @@ async fn cmd_ls(
             }
         }
         OutputFormat::Json => {
-            print_json(&CliLsResult {
-                status: "ok",
-                path: effective_path.to_string(),
-                entries: entries.iter().map(remote_entry_to_cli).collect(),
-                summary: LsSummary {
-                    total: entries.len(),
-                    files: file_count,
-                    dirs: dir_count,
-                    total_bytes,
-                },
-            });
+            let entries_json: Vec<serde_json::Value> = entries
+                .iter()
+                .map(|entry| remote_entry_to_filtered_json(entry, cli))
+                .collect();
+            print_json(&serde_json::json!({
+                "status": "ok",
+                "path": effective_path,
+                "entries": entries_json,
+                "summary": {
+                    "total": entries.len(),
+                    "files": file_count,
+                    "dirs": dir_count,
+                    "total_bytes": total_bytes,
+                }
+            }));
         }
     }
 
@@ -3281,11 +4560,13 @@ async fn cmd_ls(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_get(
     url: &str,
     remote: &str,
     local: Option<&str>,
     recursive: bool,
+    segments: usize,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -3315,6 +4596,24 @@ async fn cmd_get(
 
     // Get file size for progress bar
     let total_size = provider.size(remote).await.unwrap_or(0);
+
+    // ── Segmented parallel download (pget) ──
+    let segments = segments.clamp(1, 16);
+    if segments > 1 && total_size > 0 {
+        let hints = provider.transfer_optimization_hints();
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        if hints.supports_range_download && total_size >= PGET_MIN_FILE_SIZE {
+            let _ = provider.disconnect().await;
+            return pget_segmented_download(url, remote, local_path, segments, total_size, cli, format).await;
+        } else if !quiet {
+            let reason = if !hints.supports_range_download {
+                "provider does not support range downloads"
+            } else {
+                &format!("file too small (< {})", format_size(PGET_MIN_FILE_SIZE))
+            };
+            eprintln!("pget: falling back to single download ({})", reason);
+        }
+    }
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     let pb = if !quiet && total_size > 0 {
@@ -3391,6 +4690,351 @@ async fn cmd_get(
             print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+// ── Segmented Parallel Download (pget) ────────────────────────────────
+
+const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented download
+const PGET_MIN_CHUNK_SIZE: u64 = 1024 * 1024; // 1 MB minimum per chunk
+const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
+
+struct PgetChunk {
+    index: usize,
+    offset: u64,
+    length: u64,
+}
+
+fn plan_pget_chunks(file_size: u64, segments: usize) -> Vec<PgetChunk> {
+    if file_size == 0 || segments == 0 {
+        return Vec::new();
+    }
+
+    let segments = segments.clamp(1, 16);
+
+    // Reduce segment count if chunks would be too small
+    let actual_segments = {
+        let chunk = file_size / segments as u64;
+        if chunk < PGET_MIN_CHUNK_SIZE {
+            (file_size / PGET_MIN_CHUNK_SIZE).max(1) as usize
+        } else {
+            segments
+        }
+    };
+
+    let base = file_size / actual_segments as u64;
+    let remainder = file_size % actual_segments as u64;
+
+    let mut chunks = Vec::with_capacity(actual_segments);
+    let mut offset = 0u64;
+    for i in 0..actual_segments {
+        let length = base + if (i as u64) < remainder { 1 } else { 0 };
+        chunks.push(PgetChunk { index: i, offset, length });
+        offset += length;
+    }
+    chunks
+}
+
+/// RAII guard that removes a temp directory on drop
+struct PgetTempGuard(String);
+impl Drop for PgetTempGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+async fn pget_segmented_download(
+    url: &str,
+    remote_path: &str,
+    local_path: &str,
+    segments: usize,
+    file_size: u64,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let chunks = plan_pget_chunks(file_size, segments);
+    let actual_segments = chunks.len();
+
+    if actual_segments <= 1 {
+        // Degenerate: only 1 segment, fall through to normal download would be redundant
+        // but we already disconnected the initial provider, so reconnect and do single download
+        return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+    }
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    if !quiet {
+        eprintln!(
+            "pget: {} in {} segments ({} each)",
+            format_size(file_size),
+            actual_segments,
+            format_size(file_size / actual_segments as u64),
+        );
+    }
+
+    // Create temp directory for chunk files
+    let temp_dir = format!("{}.aeroftp-pget-{}", local_path, uuid::Uuid::new_v4());
+    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+        print_error(format, &format!("pget: failed to create temp dir: {}", e), 4);
+        return 4;
+    }
+    let _temp_guard = PgetTempGuard(temp_dir.clone());
+
+    // Progress bar
+    let filename = remote_path.rsplit('/').next().unwrap_or("download");
+    let pb = if !quiet {
+        Some(create_progress_bar(&format!("{} (pget x{})", filename, actual_segments), file_size))
+    } else {
+        None
+    };
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let start = Instant::now();
+
+    // Download all chunks concurrently, each with its own connection
+    let workers = effective_parallel_workers(cli).min(actual_segments);
+    let results: Vec<Result<(), String>> = futures_util::stream::iter(chunks.iter().map(|chunk| {
+        let url = url.to_string();
+        let remote = remote_path.to_string();
+        let temp_dir = temp_dir.clone();
+        let aggregate = aggregate.clone();
+        let pb = pb.clone();
+        let offset = chunk.offset;
+        let length = chunk.length;
+        let idx = chunk.index;
+        async move {
+            pget_download_chunk(&url, &remote, &temp_dir, idx, offset, length, aggregate, pb, cli, format).await
+        }
+    }))
+    .buffer_unordered(workers)
+    .collect()
+    .await;
+
+    // Check for chunk errors
+    let errors: Vec<&String> = results.iter().filter_map(|r| r.as_ref().err()).collect();
+    if !errors.is_empty() {
+        if let Some(ref pb) = pb { pb.finish_and_clear(); }
+        for err in &errors {
+            print_error(format, &format!("pget: {}", err), 4);
+        }
+        // _temp_guard cleans up
+        return 4;
+    }
+
+    // Assemble chunks into final file
+    if let Err(e) = pget_assemble_chunks(&temp_dir, local_path, actual_segments).await {
+        if let Some(ref pb) = pb { pb.finish_and_clear(); }
+        print_error(format, &format!("pget assembly failed: {}", e), 4);
+        return 4;
+    }
+
+    if let Some(pb) = pb { pb.finish_and_clear(); }
+
+    let elapsed = start.elapsed();
+    let speed = if elapsed.as_secs_f64() > 0.0 {
+        (file_size as f64 / elapsed.as_secs_f64()) as u64
+    } else {
+        0
+    };
+
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!(
+                    "{} → {} ({}, {}, {:.1}s, {} segments)",
+                    remote_path, local_path,
+                    format_size(file_size), format_speed(speed),
+                    elapsed.as_secs_f64(), actual_segments,
+                );
+            }
+        }
+        OutputFormat::Json => {
+            print_json(&CliTransferResult {
+                status: "ok",
+                operation: "download".to_string(),
+                path: remote_path.to_string(),
+                bytes: file_size,
+                elapsed_secs: elapsed.as_secs_f64(),
+                speed_bps: speed,
+            });
+        }
+    }
+
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn pget_download_chunk(
+    url: &str,
+    remote_path: &str,
+    temp_dir: &str,
+    chunk_index: usize,
+    offset: u64,
+    length: u64,
+    aggregate: Arc<AtomicU64>,
+    pb: Option<ProgressBar>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+
+    let (mut provider, _) = create_and_connect(url, cli, format)
+        .await
+        .map_err(|code| format!("chunk {}: connection failed (exit code {})", chunk_index, code))?;
+
+    let chunk_path = format!("{}/chunk_{:04}", temp_dir, chunk_index);
+    let mut file = tokio::fs::File::create(&chunk_path)
+        .await
+        .map_err(|e| format!("chunk {}: create file failed: {}", chunk_index, e))?;
+
+    // Stream range data in sub-reads to bound memory usage
+    let mut downloaded = 0u64;
+    while downloaded < length {
+        let remaining = length - downloaded;
+        let read_size = remaining.min(PGET_SUB_READ_SIZE);
+        let data = provider.read_range(remote_path, offset + downloaded, read_size)
+            .await
+            .map_err(|e| format!("chunk {}: read_range at offset {} failed: {}", chunk_index, offset + downloaded, e))?;
+
+        if data.is_empty() {
+            break;
+        }
+
+        file.write_all(&data)
+            .await
+            .map_err(|e| format!("chunk {}: write failed: {}", chunk_index, e))?;
+
+        downloaded += data.len() as u64;
+        let new_total = aggregate.fetch_add(data.len() as u64, Ordering::Relaxed) + data.len() as u64;
+        if let Some(ref pb) = pb {
+            pb.set_position(new_total);
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("chunk {}: flush failed: {}", chunk_index, e))?;
+    let _ = provider.disconnect().await;
+    Ok(())
+}
+
+async fn pget_assemble_chunks(temp_dir: &str, dest_path: &str, num_chunks: usize) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let temp_dest = format!("{}.aeroftp-assemble-{}.tmp", dest_path, uuid::Uuid::new_v4());
+    let mut dest = tokio::fs::File::create(&temp_dest)
+        .await
+        .map_err(|e| format!("failed to create destination temp file: {}", e))?;
+
+    let mut buf = vec![0u8; 256 * 1024]; // 256 KB copy buffer
+
+    for i in 0..num_chunks {
+        let chunk_path = format!("{}/chunk_{:04}", temp_dir, i);
+        let mut src = tokio::fs::File::open(&chunk_path)
+            .await
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&temp_dest);
+                format!("failed to open chunk {}: {}", i, e)
+            })?;
+
+        loop {
+            let n = src.read(&mut buf)
+                .await
+                .map_err(|e| {
+                    let _ = std::fs::remove_file(&temp_dest);
+                    format!("failed to read chunk {}: {}", i, e)
+                })?;
+            if n == 0 { break; }
+            dest.write_all(&buf[..n])
+                .await
+                .map_err(|e| {
+                    let _ = std::fs::remove_file(&temp_dest);
+                    format!("failed to write chunk {}: {}", i, e)
+                })?;
+        }
+    }
+
+    dest.flush().await.map_err(|e| {
+        let _ = std::fs::remove_file(&temp_dest);
+        format!("failed to flush destination: {}", e)
+    })?;
+    drop(dest);
+
+    if Path::new(dest_path).exists() {
+        std::fs::remove_file(dest_path).map_err(|e| {
+            let _ = std::fs::remove_file(&temp_dest);
+            format!("failed to replace destination: {}", e)
+        })?;
+    }
+    std::fs::rename(&temp_dest, dest_path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp_dest);
+        format!("failed to finalize destination: {}", e)
+    })?;
+    Ok(())
+}
+
+/// Fallback to a normal single-stream download (used when pget degrades)
+async fn pget_fallback_single(
+    url: &str,
+    remote_path: &str,
+    local_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    if !quiet {
+        eprintln!("pget: using single download (only 1 effective segment)");
+    }
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let filename = remote_path.rsplit('/').next().unwrap_or("download");
+    let total_size = provider.size(remote_path).await.unwrap_or(0);
+    let start = Instant::now();
+
+    let pb = if !quiet && total_size > 0 {
+        Some(create_progress_bar(filename, total_size))
+    } else {
+        None
+    };
+
+    let pb_clone = pb.clone();
+    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = pb_clone.map(|pb| {
+        Box::new(move |transferred: u64, total: u64| {
+            if total > 0 { pb.set_length(total); }
+            pb.set_position(transferred);
+        }) as Box<dyn Fn(u64, u64) + Send>
+    });
+
+    match download_with_resume(&mut *provider, remote_path, local_path, cli, progress_cb).await {
+        Ok(()) => {
+            let elapsed = start.elapsed();
+            let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+            let speed = if elapsed.as_secs_f64() > 0.0 { (file_size as f64 / elapsed.as_secs_f64()) as u64 } else { 0 };
+            if let Some(pb) = pb { pb.finish_and_clear(); }
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        println!("{} → {} ({}, {}, {:.1}s)", remote_path, local_path, format_size(file_size), format_speed(speed), elapsed.as_secs_f64());
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&CliTransferResult {
+                        status: "ok", operation: "download".to_string(), path: remote_path.to_string(),
+                        bytes: file_size, elapsed_secs: elapsed.as_secs_f64(), speed_bps: speed,
+                    });
+                }
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            if let Some(pb) = pb { pb.finish_and_clear(); }
+            if !cli.partial { let _ = std::fs::remove_file(local_path); }
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Download failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            code
         }
     }
 }
@@ -4622,10 +6266,10 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                     }
                 }
                 OutputFormat::Json => {
-                    print_json(&CliStatResult {
-                        status: "ok",
-                        entry: remote_entry_to_cli(&entry),
-                    });
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "entry": remote_entry_to_filtered_json(&entry, cli),
+                    }));
                 }
             }
             let _ = provider.disconnect().await;
@@ -4716,17 +6360,21 @@ async fn cmd_find(
             let file_count = results.iter().filter(|e| !e.is_dir).count();
             let dir_count = results.iter().filter(|e| e.is_dir).count();
             let total_bytes: u64 = results.iter().filter(|e| !e.is_dir).map(|e| e.size).sum();
-            print_json(&CliLsResult {
-                status: "ok",
-                path: path.to_string(),
-                entries: results.iter().map(remote_entry_to_cli).collect(),
-                summary: LsSummary {
-                    total: results.len(),
-                    files: file_count,
-                    dirs: dir_count,
-                    total_bytes,
-                },
-            });
+            let entries_json: Vec<serde_json::Value> = results
+                .iter()
+                .map(|entry| remote_entry_to_filtered_json(entry, cli))
+                .collect();
+            print_json(&serde_json::json!({
+                "status": "ok",
+                "path": path,
+                "entries": entries_json,
+                "summary": {
+                    "total": results.len(),
+                    "files": file_count,
+                    "dirs": dir_count,
+                    "total_bytes": total_bytes,
+                }
+            }));
         }
     }
 
@@ -4828,10 +6476,164 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                     if info.total > 0 { (info.used as f64 / info.total as f64) * 100.0 } else { 0.0 }
                 );
             }
-            print_json(&result);
+            print_json(&apply_top_level_json_field_filter(result, cli, &["status"]));
         }
     }
     let _ = provider.disconnect().await;
+    0
+}
+
+fn write_speed_test_file(path: &Path, size: u64) -> Result<(), String> {
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("Cannot create speed test payload: {}", e))?;
+    let chunk = vec![0u8; 1024 * 1024];
+    let mut remaining = size;
+    while remaining > 0 {
+        let next = remaining.min(chunk.len() as u64) as usize;
+        file.write_all(&chunk[..next])
+            .map_err(|e| format!("Cannot write speed test payload: {}", e))?;
+        remaining -= next as u64;
+    }
+    file.flush()
+        .map_err(|e| format!("Cannot flush speed test payload: {}", e))?;
+    Ok(())
+}
+
+async fn cmd_speed(
+    url: &str,
+    test_size: &str,
+    iterations: u32,
+    remote_path: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let iterations = iterations.clamp(1, 10);
+    let size = match parse_size_filter(test_size) {
+        Ok(size) if size > 0 => size,
+        Ok(_) => {
+            print_error(format, "Speed test size must be greater than zero", 5);
+            return 5;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let remote_test_path = remote_path
+        .map(|path| path.to_string())
+        .unwrap_or_else(|| format!("/aeroftp_speed_test_{}.bin", uuid::Uuid::new_v4()));
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let local_upload = match NamedTempFile::new() {
+        Ok(file) => file,
+        Err(e) => {
+            print_error(format, &format!("Cannot create temp file: {}", e), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+    };
+    if let Err(e) = write_speed_test_file(local_upload.path(), size) {
+        print_error(format, &e, 5);
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let mut upload_total = 0u64;
+    let mut download_total = 0u64;
+    let start = Instant::now();
+
+    for iteration in 0..iterations {
+        let upload_start = Instant::now();
+        if let Err(e) = provider
+            .upload(
+                local_upload.path().to_string_lossy().as_ref(),
+                &remote_test_path,
+                None,
+            )
+            .await
+        {
+            print_error(
+                format,
+                &format!("speed test upload failed on iteration {}: {}", iteration + 1, e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.delete(&remote_test_path).await;
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+        let upload_elapsed = upload_start.elapsed().as_secs_f64();
+        if upload_elapsed > 0.0 {
+            upload_total += (size as f64 / upload_elapsed) as u64;
+        }
+
+        let local_download = match NamedTempFile::new() {
+            Ok(file) => file,
+            Err(e) => {
+                print_error(format, &format!("Cannot create temp file: {}", e), 5);
+                let _ = provider.delete(&remote_test_path).await;
+                let _ = provider.disconnect().await;
+                return 5;
+            }
+        };
+
+        let download_start = Instant::now();
+        if let Err(e) = provider
+            .download(
+                &remote_test_path,
+                local_download.path().to_string_lossy().as_ref(),
+                None,
+            )
+            .await
+        {
+            print_error(
+                format,
+                &format!("speed test download failed on iteration {}: {}", iteration + 1, e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.delete(&remote_test_path).await;
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+        let download_elapsed = download_start.elapsed().as_secs_f64();
+        if download_elapsed > 0.0 {
+            download_total += (size as f64 / download_elapsed) as u64;
+        }
+    }
+
+    let _ = provider.delete(&remote_test_path).await;
+    let _ = provider.disconnect().await;
+
+    let upload_speed = upload_total / iterations as u64;
+    let download_speed = download_total / iterations as u64;
+    let elapsed = start.elapsed().as_secs_f64();
+
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!("Speed test complete ({} iteration(s), {})", iterations, format_size(size));
+                println!("  Upload:   {}", format_speed(upload_speed));
+                println!("  Download: {}", format_speed(download_speed));
+                println!("  Remote:   {}", remote_test_path);
+            }
+        }
+        OutputFormat::Json => {
+            print_json(&CliSpeedResult {
+                status: "ok",
+                remote_path: remote_test_path,
+                test_size: size,
+                iterations,
+                upload_speed_bps: upload_speed,
+                download_speed_bps: download_speed,
+                elapsed_secs: elapsed,
+            });
+        }
+    }
+
     0
 }
 
@@ -5310,46 +7112,156 @@ async fn cmd_sync(
         return 0;
     }
 
-    // Execute sync
+    // Execute sync transfers
     let mut uploaded: u32 = 0;
     let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
 
-    for path in &to_upload {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        let local_path = format!("{}/{}", local, path);
-        let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
-        // Ensure remote parent dir
-        if let Some(parent) = Path::new(&remote_path).parent() {
-            let _ = provider.mkdir(&parent.to_string_lossy()).await;
-        }
-        match provider.upload(&local_path, &remote_path, None).await {
-            Ok(()) => uploaded += 1,
-            Err(e) => errors.push(format!("upload {}: {}", path, e)),
-        }
-    }
+    let upload_jobs: Vec<(String, String, String, u64)> = to_upload
+        .iter()
+        .map(|path| {
+            let relative = (*path).to_string();
+            let local_path = Path::new(local).join(path).to_string_lossy().to_string();
+            let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
+            let size = local_map.get(*path).map(|(size, _)| *size).unwrap_or(0);
+            (relative, local_path, remote_path, size)
+        })
+        .collect();
 
+    let mut download_jobs: Vec<(String, String, String, u64)> = Vec::new();
     for path in &to_download {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
-        }
-        // Path traversal protection for remote-originated paths
         if validate_relative_path(path).is_none() {
             errors.push(format!("download {}: unsafe path (traversal rejected)", path));
             continue;
         }
+        let relative = (*path).to_string();
         let local_path = Path::new(local).join(path).to_string_lossy().to_string();
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
-        if let Some(parent) = Path::new(&local_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
+        let size = remote_map.get(*path).map(|(size, _)| *size).unwrap_or(0);
+        download_jobs.push((relative, local_path, remote_path, size));
+    }
+
+    let total_transfer_files = upload_jobs.len() + download_jobs.len();
+    let total_transfer_bytes: u64 = upload_jobs
+        .iter()
+        .map(|(_, _, _, size)| *size)
+        .sum::<u64>()
+        + download_jobs.iter().map(|(_, _, _, size)| *size).sum::<u64>();
+
+    if !quiet && total_transfer_files > 0 {
+        eprintln!(
+            "Executing {} transfer(s) with {} workers",
+            total_transfer_files,
+            effective_parallel_workers(cli)
+        );
+    }
+
+    let mut upload_dirs: Vec<String> = upload_jobs
+        .iter()
+        .filter_map(|(_, _, remote_path, _)| {
+            Path::new(remote_path)
+                .parent()
+                .map(|parent| parent.to_string_lossy().to_string())
+        })
+        .filter(|dir| !dir.is_empty() && dir != "/")
+        .collect();
+    upload_dirs.sort_by(|left, right| {
+        let left_depth = left.matches('/').count();
+        let right_depth = right.matches('/').count();
+        left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
+    });
+    upload_dirs.dedup();
+    for dir in &upload_dirs {
+        let _ = provider.mkdir(dir).await;
+    }
+
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let overall_pb = if !quiet && total_transfer_bytes > 0 {
+        Some(create_overall_progress_bar(total_transfer_files, total_transfer_bytes))
+    } else {
+        None
+    };
+
+    let upload_results = futures_util::stream::iter(upload_jobs.into_iter().map(
+        |(path, local_path, remote_path, _size)| {
+            let cancelled = cancelled.clone();
+            let aggregate = aggregate.clone();
+            let overall_pb = overall_pb.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err(format!("upload {}: cancelled", path));
+                }
+                match upload_transfer_task(
+                    url,
+                    local_path,
+                    remote_path,
+                    cli,
+                    format,
+                    Some(aggregate),
+                    overall_pb,
+                )
+                .await
+                {
+                    Ok(()) => Ok(path),
+                    Err(err) => Err(format!("upload {}: {}", path, err)),
+                }
+            }
+        },
+    ))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
+
+    for result in upload_results {
+        match result {
+            Ok(_) => uploaded += 1,
+            Err(err) => errors.push(err),
         }
-        match provider.download(&remote_path, &local_path, None).await {
-            Ok(()) => downloaded += 1,
-            Err(e) => errors.push(format!("download {}: {}", path, e)),
+    }
+
+    let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
+        |(path, local_path, remote_path, _size)| {
+            let cancelled = cancelled.clone();
+            let aggregate = aggregate.clone();
+            let overall_pb = overall_pb.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err(format!("download {}: cancelled", path));
+                }
+                if let Some(parent) = Path::new(&local_path).parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                match download_transfer_task(
+                    url,
+                    remote_path,
+                    local_path,
+                    cli,
+                    format,
+                    Some(aggregate),
+                    overall_pb,
+                )
+                .await
+                {
+                    Ok(()) => Ok(path),
+                    Err(err) => Err(format!("download {}: {}", path, err)),
+                }
+            }
+        },
+    ))
+    .buffer_unordered(effective_parallel_workers(cli))
+    .collect::<Vec<_>>()
+    .await;
+
+    for result in download_results {
+        match result {
+            Ok(_) => downloaded += 1,
+            Err(err) => errors.push(err),
         }
+    }
+
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
     }
 
     // Execute renames (--track-renames)
@@ -6473,7 +8385,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 let local = if parts.len() > 2 { Some(parts[2]) } else { None };
-                exit_code = cmd_get(&url, parts[1], local, false, cli, format, cancelled.clone()).await;
+                exit_code = cmd_get(&url, parts[1], local, false, 1, cli, format, cancelled.clone()).await;
                 if let Some(code) = check_exit(exit_code, line_num, "GET", on_error_continue, &mut failed_commands) {
                     return code;
                 }
@@ -7010,6 +8922,47 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
         }),
         // === Server operations (vault-backed) ===
         tool!("server_list_saved", "List all saved server profiles from the encrypted vault. Returns names, protocols, hosts. Passwords are never exposed. Use this to discover which servers are available before using server_exec.", {}),
+        tool!("remote_list", "List files on a saved remote server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Remote path (default: /)", false)
+        }),
+        tool!("remote_read", "Read a remote text file from a saved server profile (truncated for safety).", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Remote file path", true)
+        }),
+        tool!("remote_info", "Get metadata for a remote file or directory from a saved server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Remote path", true)
+        }),
+        tool!("remote_search", "Search a saved remote server profile by path and pattern.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Base remote path", false),
+            "pattern" => ("string", "Search pattern (default: *)", false)
+        }),
+        tool!("remote_upload", "Upload content or a local file to a saved remote server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "remote_path" => ("string", "Destination remote path", true),
+            "local_path" => ("string", "Optional local file path to upload", false),
+            "content" => ("string", "Optional inline text content to upload", false)
+        }),
+        tool!("remote_download", "Download a file from a saved remote server profile to a local path.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "remote_path" => ("string", "Source remote path", true),
+            "local_path" => ("string", "Destination local path", true)
+        }),
+        tool!("remote_mkdir", "Create a directory on a saved remote server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Remote directory path", true)
+        }),
+        tool!("remote_delete", "Delete a file or directory on a saved remote server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "path" => ("string", "Remote path to delete", true)
+        }),
+        tool!("remote_rename", "Rename or move a path on a saved remote server profile.", {
+            "server" => ("string", "Server name from server_list_saved", true),
+            "from" => ("string", "Current remote path", true),
+            "to" => ("string", "New remote path", true)
+        }),
         tool!("server_exec", "Execute a file operation on a saved server. Creates a temporary connection using credentials from the vault, executes the operation, then disconnects. Passwords are resolved internally and never exposed. Operations: ls (list files), cat (read file content), stat (file metadata), find (search by pattern), df (disk usage/quota).", {
             "server" => ("string", "Server name from server_list_saved (exact or partial match)", true),
             "operation" => ("string", "Operation: ls, cat, stat, find, df", true),
@@ -7891,6 +9844,209 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             }))
         }
 
+        "remote_list" => {
+            let server_query = get_str("server")?;
+            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let entries = provider.list(&path).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            let entries = entries?;
+            let items: Vec<serde_json::Value> = entries.iter().take(200).map(|e| json!({
+                "name": e.name,
+                "path": e.path,
+                "is_dir": e.is_dir,
+                "size": e.size,
+                "modified": e.modified,
+            })).collect();
+            Ok(json!({
+                "server": server_query,
+                "path": path,
+                "entries": items,
+                "total": entries.len(),
+                "truncated": entries.len() > 200,
+            }))
+        }
+
+        "remote_read" => {
+            let server_query = get_str("server")?;
+            let path = get_str("path")?;
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let data = provider.download_to_bytes(&path).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            let data = data?;
+            let truncated = data.len() > 5 * 1024;
+            let preview = if truncated { &data[..5 * 1024] } else { &data };
+            let content = String::from_utf8_lossy(preview).to_string();
+            Ok(json!({
+                "server": server_query,
+                "path": path,
+                "content": content,
+                "size": data.len(),
+                "truncated": truncated,
+            }))
+        }
+
+        "remote_info" => {
+            let server_query = get_str("server")?;
+            let path = get_str("path")?;
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let entry = provider.stat(&path).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            let entry = entry?;
+            Ok(json!({
+                "server": server_query,
+                "path": path,
+                "name": entry.name,
+                "is_dir": entry.is_dir,
+                "size": entry.size,
+                "modified": entry.modified,
+                "permissions": entry.permissions,
+                "owner": entry.owner,
+            }))
+        }
+
+        "remote_search" => {
+            let server_query = get_str("server")?;
+            let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
+            let pattern = get_str_opt("pattern").unwrap_or_else(|| "*".to_string());
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let entries = provider.find(&path, &pattern).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            let entries = entries?;
+            let items: Vec<serde_json::Value> = entries.iter().take(100).map(|e| json!({
+                "name": e.name,
+                "path": e.path,
+                "is_dir": e.is_dir,
+                "size": e.size,
+            })).collect();
+            Ok(json!({
+                "server": server_query,
+                "path": path,
+                "pattern": pattern,
+                "results": items,
+                "total": entries.len(),
+                "truncated": entries.len() > 100,
+            }))
+        }
+
+        "remote_upload" => {
+            let server_query = get_str("server")?;
+            let remote_path = get_str("remote_path")?;
+            if remote_path.contains('\0') {
+                return Err("remote_path contains null bytes".to_string());
+            }
+            let local_path = get_str_opt("local_path");
+            let content = get_str_opt("content");
+            if local_path.is_none() && content.is_none() {
+                return Err("Provide either 'local_path' or 'content'".to_string());
+            }
+
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let upload_source = if let Some(local_path) = local_path {
+                let resolved = resolve_path(&local_path);
+                validate_path(&resolved, "local_path")?;
+                resolved
+            } else {
+                let mut temp = NamedTempFile::new()
+                    .map_err(|e| format!("Cannot create temp upload file: {}", e))?;
+                temp.write_all(content.as_deref().unwrap_or_default().as_bytes())
+                    .map_err(|e| format!("Cannot write temp upload file: {}", e))?;
+                temp.flush()
+                    .map_err(|e| format!("Cannot flush temp upload file: {}", e))?;
+                let temp_path = temp.path().to_string_lossy().to_string();
+                match provider.upload(&temp_path, &remote_path, None).await {
+                    Ok(()) => {
+                        let _ = provider.disconnect().await;
+                        return Ok(json!({
+                            "server": server_query,
+                            "remote_path": remote_path,
+                            "uploaded": true,
+                            "bytes": content.as_deref().unwrap_or_default().len(),
+                        }));
+                    }
+                    Err(e) => {
+                        let _ = provider.disconnect().await;
+                        return Err(e.to_string());
+                    }
+                }
+            };
+
+            let bytes = std::fs::metadata(&upload_source).map(|m| m.len()).unwrap_or(0);
+            let result = provider.upload(&upload_source, &remote_path, None).await;
+            let _ = provider.disconnect().await;
+            result.map_err(|e| e.to_string())?;
+            Ok(json!({
+                "server": server_query,
+                "remote_path": remote_path,
+                "uploaded": true,
+                "bytes": bytes,
+            }))
+        }
+
+        "remote_download" => {
+            let server_query = get_str("server")?;
+            let remote_path = get_str("remote_path")?;
+            let local_path = resolve_path(&get_str("local_path")?);
+            validate_path(&local_path, "local_path")?;
+            if let Some(parent) = Path::new(&local_path).parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Cannot create local parent directory: {}", e))?;
+            }
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let result = provider
+                .download(&remote_path, &local_path, None)
+                .await
+                .map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            result?;
+            Ok(json!({
+                "server": server_query,
+                "remote_path": remote_path,
+                "local_path": local_path,
+                "downloaded": true,
+            }))
+        }
+
+        "remote_mkdir" => {
+            let server_query = get_str("server")?;
+            let path = get_str("path")?;
+            if path.contains('\0') {
+                return Err("path contains null bytes".to_string());
+            }
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let result = provider.mkdir(&path).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            result?;
+            Ok(json!({ "server": server_query, "path": path, "created": true }))
+        }
+
+        "remote_delete" => {
+            let server_query = get_str("server")?;
+            let path = get_str("path")?;
+            if path.contains('\0') {
+                return Err("path contains null bytes".to_string());
+            }
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let result = provider.delete(&path).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            result?;
+            Ok(json!({ "server": server_query, "path": path, "deleted": true }))
+        }
+
+        "remote_rename" => {
+            let server_query = get_str("server")?;
+            let from = get_str("from")?;
+            let to = get_str("to")?;
+            if from.contains('\0') || to.contains('\0') {
+                return Err("remote path contains null bytes".to_string());
+            }
+            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let result = provider.rename(&from, &to).await.map_err(|e| e.to_string());
+            let _ = provider.disconnect().await;
+            result?;
+            Ok(json!({ "server": server_query, "from": from, "to": to, "renamed": true }))
+        }
+
         "server_exec" => {
             let server_query = get_str("server")?;
             let operation = get_str("operation")?;
@@ -8100,6 +10256,30 @@ async fn agent_tool_loop(
             .await
             .map_err(|e| e.to_string())?;
 
+        {
+            let mut usage = cfg.usage.lock().map_err(|_| "Agent usage lock poisoned".to_string())?;
+            usage.input_tokens += response.input_tokens.unwrap_or(0) as u64;
+            usage.output_tokens += response.output_tokens.unwrap_or(0) as u64;
+            usage.total_tokens += response.tokens_used.unwrap_or(0) as u64;
+
+            if let Some(limit) = cfg.cost_limit {
+                let estimated = estimate_ai_cost_usd(
+                    &cfg.provider_name,
+                    usage.input_tokens,
+                    usage.output_tokens,
+                );
+                if estimated > limit {
+                    return Err(format!(
+                        "Estimated AI cost limit exceeded: ${:.4} > ${:.4} (input tokens: {}, output tokens: {})",
+                        estimated,
+                        limit,
+                        usage.input_tokens,
+                        usage.output_tokens,
+                    ));
+                }
+            }
+        }
+
         // Check if model wants to call tools
         let tool_calls = response.tool_calls.as_ref()
             .filter(|tc| !tc.is_empty());
@@ -8110,6 +10290,23 @@ async fn agent_tool_loop(
                 return Ok(response.content);
             }
             Some(calls) => {
+                if cfg.plan_only {
+                    let plan_lines: Vec<String> = calls.iter().map(|tc| {
+                        format!(
+                            "- {} {}",
+                            tc.name,
+                            serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
+                        )
+                    }).collect();
+                    let mut output = response.content.clone();
+                    if !output.is_empty() {
+                        output.push_str("\n\n");
+                    }
+                    output.push_str("Planned tool calls:\n");
+                    output.push_str(&plan_lines.join("\n"));
+                    return Ok(output);
+                }
+
                 steps += 1;
                 if steps > cfg.max_steps {
                     if !response.content.is_empty() {
@@ -8228,17 +10425,6 @@ async fn cmd_agent(
     format: OutputFormat,
     _cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    // Warn about unimplemented flags
-    if connect_url.is_some() {
-        eprintln!("Warning: --connect is not yet implemented in agent mode. Ignoring.");
-    }
-    if plan_only {
-        eprintln!("Warning: --plan-only is not yet implemented. Ignoring.");
-    }
-    if cost_limit.is_some() {
-        eprintln!("Warning: --cost-limit is not yet implemented. Ignoring.");
-    }
-
     // Detect provider
     let (prov_name, api_key, base_url) = if let Some(ref name) = provider_name {
         let env_key = format!("{}_API_KEY", name.to_uppercase());
@@ -8291,7 +10477,39 @@ async fn cmd_agent(
     let model = model_override.unwrap_or_else(|| default_model(&prov_name).to_string());
     let provider_type = provider_type_from_name(&prov_name);
     let approve_level = parse_approve_level(&auto_approve);
-    let system = build_agent_system_prompt(&system_prompt);
+    let mut system = build_agent_system_prompt(&system_prompt);
+
+    if let Some(target) = connect_url {
+        let summary = if target.contains("://") {
+            match create_and_connect(&target, _cli, format).await {
+                Ok((mut provider, initial_path)) => {
+                    let provider_label = provider.provider_type().to_string();
+                    let display = provider.display_name();
+                    let _ = provider.disconnect().await;
+                    format!("Pre-validated remote target: {} ({}) path {}", display, provider_label, initial_path)
+                }
+                Err(code) => {
+                    print_error(format, &format!("agent pre-connect failed for '{}'", target), code);
+                    return code;
+                }
+            }
+        } else {
+            match create_and_connect_for_agent(&target).await {
+                Ok((mut provider, initial_path)) => {
+                    let provider_label = provider.provider_type().to_string();
+                    let display = provider.display_name();
+                    let _ = provider.disconnect().await;
+                    format!("Pre-validated saved server: {} ({}) path {}", display, provider_label, initial_path)
+                }
+                Err(e) => {
+                    print_error(format, &format!("agent pre-connect failed: {}", e), 6);
+                    return 6;
+                }
+            }
+        };
+        system.push_str("\n- ");
+        system.push_str(&summary);
+    }
 
     let cfg = AgentConfig {
         provider_name: prov_name,
@@ -8302,6 +10520,9 @@ async fn cmd_agent(
         approve_level,
         max_steps,
         system,
+        plan_only,
+        cost_limit,
+        usage: Arc::new(Mutex::new(AgentUsage::default())),
     };
 
     // MCP server mode
@@ -8349,6 +10570,16 @@ struct AgentConfig {
     approve_level: u8,
     max_steps: u32,
     system: String,
+    plan_only: bool,
+    cost_limit: Option<f64>,
+    usage: Arc<Mutex<AgentUsage>>,
+}
+
+#[derive(Default)]
+struct AgentUsage {
+    input_tokens: u64,
+    output_tokens: u64,
+    total_tokens: u64,
 }
 
 /// One-shot agent mode
@@ -8492,8 +10723,21 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                     eprintln!("  Conversation cleared.\n");
                 }
                 "/cost" => {
-                    eprintln!("  Messages: {}", conversation.len());
-                    eprintln!("  (Detailed token tracking coming in next release)\n");
+                    match cfg.usage.lock() {
+                        Ok(usage) => {
+                            let estimated = estimate_ai_cost_usd(
+                                &cfg.provider_name,
+                                usage.input_tokens,
+                                usage.output_tokens,
+                            );
+                            eprintln!("  Messages:      {}", conversation.len());
+                            eprintln!("  Input tokens:  {}", usage.input_tokens);
+                            eprintln!("  Output tokens: {}", usage.output_tokens);
+                            eprintln!("  Total tokens:  {}", usage.total_tokens);
+                            eprintln!("  Est. cost:     ${:.4}\n", estimated);
+                        }
+                        Err(_) => eprintln!("  Token usage unavailable.\n"),
+                    }
                 }
                 "/quit" | "/exit" | "/q" => break,
                 other => {
@@ -8721,326 +10965,12 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
     0
 }
 
-/// MCP server mode
-/// Validate that an MCP tool path is safe to access.
-/// Rejects sensitive system paths, traversal, and null bytes.
-fn validate_mcp_path(path: &str) -> Result<(), String> {
-    // Reject null bytes
-    if path.contains('\0') {
-        return Err("Path contains null bytes".into());
-    }
-    // Reject paths starting with dash (option injection)
-    if path.starts_with('-') {
-        return Err("Path must not start with '-'".into());
-    }
-    // Reject .. components (path traversal)
-    for component in std::path::Path::new(path).components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err("Path traversal ('..') is not allowed".into());
-        }
-    }
-    // Sensitive absolute paths — check both raw and canonicalized path
-    // Check raw path first
-    for prefix in CLI_DENIED_SYSTEM_PREFIXES {
-        if path_matches_prefix(path, prefix) {
-            return Err(format!("Access denied: {}", prefix));
-        }
-    }
-    // Resolve symlinks and re-check (prevents /tmp/evil -> /etc/shadow bypass).
-    // For non-existent paths, canonicalize the parent to cover write targets too.
-    let resolved = std::fs::canonicalize(path).or_else(|_| {
-        std::path::Path::new(path)
-            .parent()
-            .map(std::fs::canonicalize)
-            .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
-    });
-    if let Ok(canonical) = resolved {
-        let resolved = canonical.to_string_lossy();
-        for prefix in CLI_DENIED_SYSTEM_PREFIXES {
-            if path_matches_prefix(&resolved, prefix) {
-                return Err(format!("Access denied (resolved): {}", prefix));
-            }
-        }
-        // Sensitive home-relative paths (resolved)
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = home.to_string_lossy().to_string();
-            for dir in CLI_DENIED_HOME_RELATIVE_PREFIXES {
-                let full = format!("{}/{}", home, dir);
-                if path_matches_prefix(&resolved, &full) {
-                    return Err(format!("Access denied: ~/{}", dir));
-                }
-            }
-        }
-    }
-    // Also check raw home-relative paths (for non-existent paths)
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = home.to_string_lossy().to_string();
-        for dir in CLI_DENIED_HOME_RELATIVE_PREFIXES {
-            let full = format!("{}/{}", home, dir);
-            if path_matches_prefix(path, &full) {
-                return Err(format!("Access denied: ~/{}", dir));
-            }
-        }
-    }
-    if path_matches_prefix(path, "/run/secrets") {
-        return Err("Access denied: /run/secrets".into());
-    }
-    Ok(())
-}
-
-fn is_mcp_path_key(key: &str) -> bool {
-    matches!(
-        key,
-        "path"
-            | "local_path"
-            | "remote_path"
-            | "from"
-            | "to"
-            | "destination"
-            | "working_dir"
-            | "archive_path"
-            | "output_dir"
-            | "output_path"
-            | "path_a"
-            | "path_b"
-            | "project_path"
-    )
-}
-
-fn is_mcp_path_array_key(key: &str) -> bool {
-    matches!(key, "paths")
-}
-
-fn validate_mcp_value(key: Option<&str>, value: &serde_json::Value) -> Result<(), String> {
-    match value {
-        serde_json::Value::String(path) => {
-            if key.is_some_and(is_mcp_path_key) {
-                validate_mcp_path(path)?;
-            }
-        }
-        serde_json::Value::Array(values) => {
-            for item in values {
-                match item {
-                    serde_json::Value::String(path) if key.is_some_and(is_mcp_path_array_key) => {
-                        validate_mcp_path(path)?;
-                    }
-                    _ => validate_mcp_value(None, item)?,
-                }
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for (nested_key, nested_value) in map {
-                validate_mcp_value(Some(nested_key), nested_value)?;
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-fn validate_mcp_args(args: &serde_json::Value) -> Result<(), String> {
-    validate_mcp_value(None, args)
-}
-
-fn mcp_tool_name(name: &str) -> String {
-    format!("aeroftp_{}", name)
-}
-
-const MCP_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
-
-async fn cmd_agent_mcp(provider_name: &str, cli: &Cli) -> i32 {
-    use std::io::BufRead;
-
-    let (safe_profiles, vault_error) = match safe_vault_profiles(cli) {
-        Ok(profiles) => (profiles, None),
-        Err(error) => (vec![], Some(error)),
-    };
-    let resources: Vec<serde_json::Value> = safe_profiles
-        .iter()
-        .map(|profile| {
-            let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-            let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or(name);
-            serde_json::json!({
-                "uri": format!("aeroftp://profiles/{}", id),
-                "name": format!("AeroFTP profile: {}", name),
-                "description": format!("Saved AeroFTP profile for {}", name),
-                "mimeType": "application/json",
-            })
-        })
-        .collect();
-    let profiles_catalog = serde_json::json!({
-        "uri": "aeroftp://profiles",
-        "name": "AeroFTP saved profiles",
-        "description": "Safe list of saved AeroFTP profiles without credentials",
-        "mimeType": "application/json",
-    });
-    let profiles_status = serde_json::json!({
-        "uri": "aeroftp://profiles/status",
-        "name": "AeroFTP profiles status",
-        "description": "Availability status for saved profile resources",
-        "mimeType": "application/json",
-    });
-
-    // MCP initialization
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
-        if line.len() > MCP_MAX_LINE_BYTES {
-            println!("{}", serde_json::json!({
-                "jsonrpc": "2.0", "id": null,
-                "error": { "code": -32600, "message": "Line exceeds 1 MB limit" }
-            }));
-            continue;
-        }
-        let line = line.trim().to_string();
-        if line.is_empty() {
-            continue;
-        }
-
-        let req: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(e) => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": null,
-                    "error": { "code": -32700, "message": format!("Parse error: {}", e) }
-                }));
-                continue;
-            }
-        };
-
-        let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
-        let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
-
-        match method {
-            "initialize" => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": { "listChanged": false },
-                            "resources": { "subscribe": false, "listChanged": false }
-                        },
-                        "serverInfo": {
-                            "name": "aeroftp-agent",
-                            "version": env!("CARGO_PKG_VERSION"),
-                        }
-                    }
-                }));
-            }
-
-            "notifications/initialized" => {
-                // Client acknowledged — ready
-            }
-
-            "tools/list" => {
-                let tools: Vec<serde_json::Value> = cli_tool_definitions().iter().map(|tool| {
-                    serde_json::json!({
-                        "name": mcp_tool_name(&tool.name),
-                        "description": tool.description,
-                        "inputSchema": tool.parameters,
-                    })
-                }).collect();
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": { "tools": tools }
-                }));
-            }
-
-            "resources/list" => {
-                let mut listed = vec![profiles_catalog.clone(), profiles_status.clone()];
-                listed.extend(resources.clone());
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": { "resources": listed }
-                }));
-            }
-
-            "resources/read" => {
-                let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
-                let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
-                let content = if uri == "aeroftp://profiles" {
-                    Some(serde_json::to_string_pretty(&serde_json::json!({
-                        "status": if vault_error.is_some() { "unavailable" } else { "ok" },
-                        "error": vault_error.clone(),
-                        "profiles": safe_profiles,
-                    })).unwrap_or_default())
-                } else if uri == "aeroftp://profiles/status" {
-                    Some(serde_json::to_string_pretty(&serde_json::json!({
-                        "status": if vault_error.is_some() { "unavailable" } else { "ok" },
-                        "error": vault_error.clone(),
-                        "count": safe_profiles.len(),
-                    })).unwrap_or_default())
-                } else if let Some(profile_id) = uri.strip_prefix("aeroftp://profiles/") {
-                    safe_profiles
-                        .iter()
-                        .find(|profile| {
-                            profile.get("id").and_then(|v| v.as_str()) == Some(profile_id)
-                        })
-                        .map(|profile| serde_json::to_string_pretty(profile).unwrap_or_default())
-                } else {
-                    None
-                };
-
-                match content {
-                    Some(text) => println!("{}", serde_json::json!({
-                        "jsonrpc": "2.0", "id": id,
-                        "result": {
-                            "contents": [{
-                                "uri": uri,
-                                "mimeType": "application/json",
-                                "text": text
-                            }]
-                        }
-                    })),
-                    None => println!("{}", serde_json::json!({
-                        "jsonrpc": "2.0", "id": id,
-                        "error": { "code": -32002, "message": format!("Resource not found: {}", uri) }
-                    })),
-                }
-            }
-
-            "tools/call" => {
-                let params = req.get("params").cloned().unwrap_or(serde_json::json!({}));
-                let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-
-                // Strip aeroftp_ prefix for internal dispatch
-                let internal_name = tool_name.strip_prefix("aeroftp_").unwrap_or(tool_name);
-
-                let result = match validate_mcp_args(&args) {
-                    Ok(_) => match execute_cli_tool(internal_name, &args).await {
-                        Ok(value) => value,
-                        Err(e) => serde_json::json!({ "error": e }),
-                    },
-                    Err(e) => serde_json::json!({ "error": e }),
-                };
-
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": {
-                        "content": [{
-                            "type": "text",
-                            "text": serde_json::to_string_pretty(&result).unwrap_or_default()
-                        }]
-                    }
-                }));
-            }
-
-            _ => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "error": { "code": -32601, "message": format!("Method not found: {}", method) }
-                }));
-            }
-        }
-    }
-
-    let _ = provider_name;
-    0
+async fn cmd_agent_mcp(_provider_name: &str, _cli: &Cli) -> i32 {
+    // Delegate to the new MCP server module (async stdio, connection pooling,
+    // curated tool set, rate limiting, audit logging).
+    let config = ftp_client_gui_lib::mcp::McpConfig::default();
+    let server = ftp_client_gui_lib::mcp::McpServer::new(config);
+    server.run().await
 }
 
 // ── Main ───────────────────────────────────────────────────────────
@@ -9059,18 +10989,28 @@ async fn main() {
         || raw_args.iter().any(|a| a == "--help" || a == "-h" || a == "help");
     if show_help {
         if use_color() {
-            eprintln!("\x1b[36m");
-            eprintln!("  \u{1F680} AeroFTP CLI");
-            eprintln!("  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}");
-            eprintln!("  Fast, Beautiful, Reliable");
-            eprintln!("  Multi-Protocol File Transfer");
-            eprintln!("\x1b[0m");
+            eprintln!("\x1b[38;2;0;255;255m  ___    __________  ____  __________ ______  ______\x1b[0m");
+            eprintln!("\x1b[38;2;0;220;255m /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/\x1b[0m");
+            eprintln!("\x1b[38;2;80;180;255m/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    \x1b[0m");
+            eprintln!("\x1b[38;2;180;120;255m/ ___ |/ /___/ _, _/ /_/ / __/ / ____/ / /   / /___  \x1b[0m");
+            eprintln!("\x1b[38;2;255;80;220m/_/  |_/_____/_/ |_|\\____/_/   /_/     /_/    \\____/  \x1b[0m");
+            eprintln!(
+                "\x1b[38;2;120;255;180m  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles\x1b[0m",
+                env!("CARGO_PKG_VERSION")
+            );
+            eprintln!("\x1b[38;2;170;170;190m  transfer engine for operators, shell users, and terminal obsessives\x1b[0m");
         } else {
             eprintln!();
-            eprintln!("  AeroFTP CLI");
-            eprintln!("  -----------------------------");
-            eprintln!("  Fast, Beautiful, Reliable");
-            eprintln!("  Multi-Protocol File Transfer");
+            eprintln!("  ___    __________  ____  __________ ______  ______");
+            eprintln!(" /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/");
+            eprintln!("/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    ");
+            eprintln!("/ ___ |/ /___/ _, _/ /_/ / __/ / ____/ / /   / /___  ");
+            eprintln!("/_/  |_/_____/_/ |_|\\____/_/   /_/     /_/    \\____/  ");
+            eprintln!(
+                "  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles",
+                env!("CARGO_PKG_VERSION")
+            );
+            eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
             eprintln!();
         }
     }
@@ -9111,6 +11051,8 @@ async fn main() {
         cancelled_clone.store(true, Ordering::Relaxed);
     });
 
+    maybe_check_for_updates(&cli).await;
+
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
         // Profile-aware positional shift: when --profile is set, the "url" positional
@@ -9136,13 +11078,14 @@ async fn main() {
             remote,
             local,
             recursive,
+            segments,
         } => {
             let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(remote.as_str()))
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            cmd_get(u, r, l, *recursive, &cli, format, cancelled).await
+            cmd_get(u, r, l, *recursive, *segments, &cli, format, cancelled).await
         }
         Commands::Put {
             url,
@@ -9232,6 +11175,24 @@ async fn main() {
             };
             cmd_rcat(u, p, &cli, format).await
         }
+        Commands::Serve { command } => match command {
+            ServeCommands::Http { url, path, addr } => {
+                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), path.as_str())
+                };
+                cmd_serve_http(u, p, addr, &cli, format).await
+            }
+            ServeCommands::WebDav { url, path, addr } => {
+                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), path.as_str())
+                };
+                cmd_serve_webdav(u, p, addr, &cli, format).await
+            }
+        },
         Commands::Head { url, path, lines } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -9345,6 +11306,19 @@ async fn main() {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url };
             cmd_about(u, &cli, format).await
         }
+        Commands::Speed {
+            url,
+            test_size,
+            iterations,
+            remote_path,
+        } => {
+            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                "_"
+            } else {
+                url.as_str()
+            };
+            cmd_speed(u, test_size, *iterations, remote_path.as_deref(), &cli, format).await
+        }
         Commands::Dedupe { url, path, mode, dry_run } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -9420,6 +11394,42 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn test_cli() -> Cli {
+        Cli {
+            format: OutputFormat::Text,
+            json: false,
+            json_fields: None,
+            password_stdin: false,
+            key: None,
+            key_passphrase: None,
+            bucket: None,
+            region: None,
+            container: None,
+            token: None,
+            tls: None,
+            insecure: false,
+            trust_host_key: false,
+            two_factor: None,
+            profile: None,
+            master_password: None,
+            verbose: 0,
+            quiet: false,
+            limit_rate: None,
+            bwlimit: None,
+            parallel: 4,
+            partial: false,
+            include: Vec::new(),
+            exclude_global: Vec::new(),
+            include_from: None,
+            exclude_from: None,
+            min_size: None,
+            max_size: None,
+            min_age: None,
+            max_age: None,
+            command: Commands::Profiles,
+        }
+    }
+
     #[test]
     fn test_parse_speed_limit_megabytes() {
         assert_eq!(parse_speed_limit("1M").unwrap(), 1024 * 1024);
@@ -9485,8 +11495,8 @@ mod tests {
 
     #[test]
     fn test_url_parsing_ftp() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "ftp://anonymous@ftp.example.com"]);
-        let (config, path) = url_to_provider_config("ftp://anonymous@ftp.example.com", &cli).unwrap();
+        let cli = test_cli();
+        let (config, path) = url_to_provider_config("ftp://anonymous:test@ftp.example.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Ftp);
         assert_eq!(config.host, "ftp.example.com");
         assert_eq!(config.username.as_deref(), Some("anonymous"));
@@ -9495,8 +11505,8 @@ mod tests {
 
     #[test]
     fn test_url_parsing_sftp_with_port() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "sftp://admin@server.com:2222/home"]);
-        let (config, path) = url_to_provider_config("sftp://admin@server.com:2222/home", &cli).unwrap();
+        let cli = test_cli();
+        let (config, path) = url_to_provider_config("sftp://admin:test@server.com:2222/home", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Sftp);
         assert_eq!(config.host, "server.com");
         assert_eq!(config.port, Some(2222));
@@ -9506,18 +11516,17 @@ mod tests {
 
     #[test]
     fn test_url_parsing_webdavs() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "webdavs://user@cloud.example.com/dav"]);
-        let (config, _path) = url_to_provider_config("webdavs://user@cloud.example.com/dav", &cli).unwrap();
+        let cli = test_cli();
+        let (config, _path) = url_to_provider_config("webdavs://user:test@cloud.example.com/dav", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::WebDav);
         assert!(config.host.starts_with("https://"));
     }
 
     #[test]
     fn test_url_parsing_s3() {
-        let cli = Cli::parse_from([
-            "aeroftp", "--bucket", "mybucket", "--region", "eu-west-1",
-            "connect", "s3://AKID:secret@s3.amazonaws.com",
-        ]);
+        let mut cli = test_cli();
+        cli.bucket = Some("mybucket".to_string());
+        cli.region = Some("eu-west-1".to_string());
         let (config, _path) = url_to_provider_config("s3://AKID:secret@s3.amazonaws.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::S3);
         assert_eq!(config.extra.get("bucket").map(|s| s.as_str()), Some("mybucket"));
@@ -9568,40 +11577,36 @@ mod tests {
 
     #[test]
     fn test_url_parsing_unsupported() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "gopher://host"]);
+        let cli = test_cli();
         assert!(url_to_provider_config("gopher://host", &cli).is_err());
     }
 
     #[test]
     fn test_url_parsing_mega() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "mega://user@mega.nz"]);
-        let (config, _) = url_to_provider_config("mega://user@mega.nz", &cli).unwrap();
+        let cli = test_cli();
+        let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Mega);
     }
 
     #[test]
     fn test_url_parsing_koofr() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "koofr://user@koofr.net"]);
-        let (config, _) = url_to_provider_config("koofr://user@koofr.net", &cli).unwrap();
+        let cli = test_cli();
+        let (config, _) = url_to_provider_config("koofr://user:test@koofr.net", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Koofr);
         assert_eq!(config.host, "app.koofr.net");
     }
 
     #[test]
     fn test_url_parsing_opendrive() {
-        let cli = Cli::parse_from(["aeroftp", "connect", "opendrive://user@dev.opendrive.com"]);
-        let (config, _) = url_to_provider_config("opendrive://user@dev.opendrive.com", &cli).unwrap();
+        let cli = test_cli();
+        let (config, _) = url_to_provider_config("opendrive://user:test@dev.opendrive.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::OpenDrive);
         assert_eq!(config.host, "dev.opendrive.com");
     }
 
     #[test]
     fn test_url_parsing_github_repo() {
-        let cli = Cli::parse_from([
-            "aeroftp",
-            "connect",
-            "github://token:secret@axpdev-lab/aeroftp-test-playground",
-        ]);
+        let cli = test_cli();
         let (config, path) = url_to_provider_config(
             "github://token:secret@axpdev-lab/aeroftp-test-playground",
             &cli,
@@ -9615,11 +11620,7 @@ mod tests {
 
     #[test]
     fn test_url_parsing_github_branch_suffix() {
-        let cli = Cli::parse_from([
-            "aeroftp",
-            "connect",
-            "github://token:secret@axpdev-lab/aeroftp-test-playground@main",
-        ]);
+        let cli = test_cli();
         let (config, _) = url_to_provider_config(
             "github://token:secret@axpdev-lab/aeroftp-test-playground@main",
             &cli,
@@ -9631,11 +11632,7 @@ mod tests {
 
     #[test]
     fn test_url_parsing_github_token_placeholder() {
-        let cli = Cli::parse_from([
-            "aeroftp",
-            "connect",
-            "github://token:secret@axpdev-lab/aeroftp-test-playground",
-        ]);
+        let cli = test_cli();
         let (config, _) = url_to_provider_config(
             "github://token:secret@axpdev-lab/aeroftp-test-playground",
             &cli,
@@ -9713,5 +11710,352 @@ mod tests {
     fn test_sanitize_filename_control_chars() {
         assert_eq!(sanitize_filename("file\x07name"), "filename");
         assert_eq!(sanitize_filename("file\ttab"), "file\ttab"); // tab preserved
+    }
+
+    #[test]
+    fn test_normalize_release_version_accepts_prefixed_tags() {
+        assert_eq!(
+            normalize_release_version("v3.3.5").map(|version| version.to_string()),
+            Some("3.3.5".to_string())
+        );
+        assert_eq!(
+            normalize_release_version("3.3.5").map(|version| version.to_string()),
+            Some("3.3.5".to_string())
+        );
+    }
+
+    #[test]
+    fn test_is_newer_release_uses_semver_ordering() {
+        assert!(is_newer_release("v3.3.5", "3.3.4"));
+        assert!(!is_newer_release("3.3.4", "3.3.4"));
+        assert!(!is_newer_release("invalid", "3.3.4"));
+    }
+
+    #[test]
+    fn test_update_check_due_after_24_hours() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-04-03T11:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let due_cache = CliUpdateCache {
+            checked_at: Some("2026-04-02T10:59:59Z".to_string()),
+            latest_version: Some("3.3.5".to_string()),
+        };
+        let fresh_cache = CliUpdateCache {
+            checked_at: Some("2026-04-02T12:00:00Z".to_string()),
+            latest_version: Some("3.3.5".to_string()),
+        };
+
+        assert!(update_check_due(&due_cache, now));
+        assert!(!update_check_due(&fresh_cache, now));
+    }
+
+    #[test]
+    fn test_update_check_due_on_invalid_timestamp() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-04-03T11:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let cache = CliUpdateCache {
+            checked_at: Some("not-a-timestamp".to_string()),
+            latest_version: None,
+        };
+
+        assert!(update_check_due(&cache, now));
+    }
+
+    // ── pget chunk planning tests ──────────────────────────────────
+
+    #[test]
+    fn test_pget_plan_basic() {
+        let chunks = plan_pget_chunks(100 * 1024 * 1024, 4); // 100 MB, 4 segments
+        assert_eq!(chunks.len(), 4);
+        assert_eq!(chunks[0].offset, 0);
+        assert_eq!(chunks[0].length, 25 * 1024 * 1024);
+        assert_eq!(chunks[1].offset, 25 * 1024 * 1024);
+        assert_eq!(chunks[3].offset, 75 * 1024 * 1024);
+        // Sum of all lengths equals file size
+        let total: u64 = chunks.iter().map(|c| c.length).sum();
+        assert_eq!(total, 100 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_pget_plan_uneven_division() {
+        let chunks = plan_pget_chunks(10_000_003, 4); // not evenly divisible
+        assert_eq!(chunks.len(), 4);
+        let total: u64 = chunks.iter().map(|c| c.length).sum();
+        assert_eq!(total, 10_000_003);
+        // Offsets are contiguous
+        for i in 1..chunks.len() {
+            assert_eq!(chunks[i].offset, chunks[i - 1].offset + chunks[i - 1].length);
+        }
+    }
+
+    #[test]
+    fn test_pget_plan_reduces_segments_for_small_files() {
+        // 3 MB file with 16 segments requested — each chunk would be < PGET_MIN_CHUNK_SIZE (1 MB)
+        let chunks = plan_pget_chunks(3 * 1024 * 1024, 16);
+        assert_eq!(chunks.len(), 3); // reduced to 3 segments
+        let total: u64 = chunks.iter().map(|c| c.length).sum();
+        assert_eq!(total, 3 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_pget_plan_single_segment() {
+        let chunks = plan_pget_chunks(500_000, 1);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].offset, 0);
+        assert_eq!(chunks[0].length, 500_000);
+    }
+
+    #[test]
+    fn test_pget_plan_zero_size() {
+        let chunks = plan_pget_chunks(0, 4);
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn test_pget_plan_clamps_segments() {
+        let chunks = plan_pget_chunks(100 * 1024 * 1024, 100); // 100 > max 16
+        assert!(chunks.len() <= 16);
+        let total: u64 = chunks.iter().map(|c| c.length).sum();
+        assert_eq!(total, 100 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_pget_plan_tiny_file() {
+        // File smaller than PGET_MIN_CHUNK_SIZE — should get 1 segment
+        let chunks = plan_pget_chunks(500_000, 8);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].length, 500_000);
+    }
+
+    #[tokio::test]
+    async fn test_pget_assemble_chunks() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+
+        // Write 3 chunk files
+        tokio::fs::write(format!("{}/chunk_0000", temp_path), b"Hello, ").await.unwrap();
+        tokio::fs::write(format!("{}/chunk_0001", temp_path), b"segmented ").await.unwrap();
+        tokio::fs::write(format!("{}/chunk_0002", temp_path), b"world!").await.unwrap();
+
+        let dest = temp_dir.path().join("assembled.bin");
+        let dest_str = dest.to_str().unwrap();
+
+        pget_assemble_chunks(temp_path, dest_str, 3).await.unwrap();
+
+        let result = tokio::fs::read(dest_str).await.unwrap();
+        assert_eq!(result, b"Hello, segmented world!");
+    }
+
+    #[tokio::test]
+    async fn test_pget_assemble_binary_integrity() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap();
+
+        // Write binary chunk data
+        let chunk0: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
+        let chunk1: Vec<u8> = (1024..2048).map(|i| (i % 256) as u8).collect();
+        tokio::fs::write(format!("{}/chunk_0000", temp_path), &chunk0).await.unwrap();
+        tokio::fs::write(format!("{}/chunk_0001", temp_path), &chunk1).await.unwrap();
+
+        let dest = temp_dir.path().join("assembled.bin");
+        let dest_str = dest.to_str().unwrap();
+
+        pget_assemble_chunks(temp_path, dest_str, 2).await.unwrap();
+
+        let result = tokio::fs::read(dest_str).await.unwrap();
+        let expected: Vec<u8> = (0..2048).map(|i| (i % 256) as u8).collect();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_pget_temp_guard_cleanup() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let guard_path = temp_dir.path().join("pget-guard-test");
+        std::fs::create_dir_all(&guard_path).unwrap();
+        std::fs::write(guard_path.join("chunk_0000"), b"data").unwrap();
+
+        let guard_str = guard_path.to_string_lossy().to_string();
+        assert!(guard_path.exists());
+
+        {
+            let _guard = PgetTempGuard(guard_str);
+            // guard goes out of scope here
+        }
+
+        assert!(!guard_path.exists(), "temp dir should be cleaned up by PgetTempGuard");
+    }
+
+    // ── serve http helper tests ──────────────────────────────────────
+
+    #[test]
+    fn test_normalize_remote_path() {
+        assert_eq!(normalize_remote_path("/"), "/");
+        assert_eq!(normalize_remote_path(""), "/");
+        assert_eq!(normalize_remote_path("/foo/bar"), "/foo/bar");
+        assert_eq!(normalize_remote_path("foo/bar/"), "/foo/bar");
+        assert_eq!(normalize_remote_path("//foo///bar//"), "/foo/bar");
+        assert_eq!(normalize_remote_path("/./foo/./bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn test_sanitize_served_relative_path_valid() {
+        assert_eq!(sanitize_served_relative_path("foo/bar").unwrap(), "foo/bar");
+        assert_eq!(sanitize_served_relative_path("/foo/bar").unwrap(), "foo/bar");
+        assert_eq!(sanitize_served_relative_path("").unwrap(), "");
+        assert_eq!(sanitize_served_relative_path("/").unwrap(), "");
+        assert_eq!(sanitize_served_relative_path("./foo").unwrap(), "foo");
+        assert_eq!(sanitize_served_relative_path("a%20b").unwrap(), "a b");
+    }
+
+    #[test]
+    fn test_sanitize_served_relative_path_traversal() {
+        assert!(sanitize_served_relative_path("..").is_err());
+        assert!(sanitize_served_relative_path("../etc/passwd").is_err());
+        assert!(sanitize_served_relative_path("foo/../../etc").is_err());
+        assert!(sanitize_served_relative_path("foo%2F..%2F..%2Fetc").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_served_relative_path_null() {
+        assert!(sanitize_served_relative_path("foo%00bar").is_err());
+    }
+
+    #[test]
+    fn test_build_served_remote_path() {
+        assert_eq!(build_served_remote_path("/data", ""), "/data");
+        assert_eq!(build_served_remote_path("/data", "sub/file.txt"), "/data/sub/file.txt");
+        assert_eq!(build_served_remote_path("/", "file.txt"), "/file.txt");
+        assert_eq!(build_served_remote_path("/", ""), "/");
+    }
+
+    #[test]
+    fn test_serve_effective_base_path() {
+        assert_eq!(serve_effective_base_path("/", "/home/user"), "/home/user");
+        assert_eq!(serve_effective_base_path("/custom", "/home/user"), "/custom");
+        assert_eq!(serve_effective_base_path("/", "/"), "/");
+    }
+
+    #[test]
+    fn test_encode_request_path() {
+        assert_eq!(encode_request_path("/"), "/");
+        assert_eq!(encode_request_path(""), "/");
+        assert_eq!(encode_request_path("foo/bar"), "/foo/bar");
+        assert_eq!(encode_request_path("a b/c d"), "/a%20b/c%20d");
+        assert_eq!(encode_request_path("foo/bar/"), "/foo/bar/");
+    }
+
+    #[test]
+    fn test_child_request_path() {
+        assert_eq!(child_request_path("", "docs", true), "docs/");
+        assert_eq!(child_request_path("", "file.txt", false), "file.txt");
+        assert_eq!(child_request_path("sub", "file.txt", false), "sub/file.txt");
+        assert_eq!(child_request_path("a/b", "c", true), "a/b/c/");
+    }
+
+    #[test]
+    fn test_parent_request_path() {
+        assert_eq!(parent_request_path(""), None);
+        assert_eq!(parent_request_path("/"), None);
+        assert_eq!(parent_request_path("foo"), Some("/".to_string()));
+        assert_eq!(parent_request_path("foo/bar"), Some("/foo/".to_string()));
+        assert_eq!(parent_request_path("a/b/c"), Some("/a/b/".to_string()));
+    }
+
+    #[test]
+    fn test_escape_html_serve() {
+        assert_eq!(escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+        assert_eq!(escape_html("a&b"), "a&amp;b");
+        assert_eq!(escape_html("\"quoted\""), "&quot;quoted&quot;");
+    }
+
+    // ── range request tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_parse_range_header_normal() {
+        assert_eq!(parse_range_header("bytes=0-499", 1000), Some((0, 499)));
+        assert_eq!(parse_range_header("bytes=500-999", 1000), Some((500, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_header_open_end() {
+        assert_eq!(parse_range_header("bytes=500-", 1000), Some((500, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_header_suffix() {
+        assert_eq!(parse_range_header("bytes=-200", 1000), Some((800, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_header_clamped() {
+        // End beyond file size is clamped
+        assert_eq!(parse_range_header("bytes=0-9999", 1000), Some((0, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_header_invalid() {
+        assert_eq!(parse_range_header("bytes=999-0", 1000), None); // start > end
+        assert_eq!(parse_range_header("bytes=1000-", 1000), None); // start >= size
+        assert_eq!(parse_range_header("chars=0-10", 1000), None); // wrong prefix
+        assert_eq!(parse_range_header("bytes=0-10", 0), None); // empty file
+    }
+
+    // ── webdav helper tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_webdav_xml_entry_file() {
+        let mut entry = RemoteEntry::file("test.txt".to_string(), "/test.txt".to_string(), 1234);
+        entry.modified = Some("2026-04-03".to_string());
+        entry.mime_type = Some("text/plain".to_string());
+        let xml = webdav_xml_entry("/test.txt", &entry);
+        assert!(xml.contains("<D:href>/test.txt</D:href>"));
+        assert!(xml.contains("<D:resourcetype/>"));
+        assert!(xml.contains("<D:getcontentlength>1234</D:getcontentlength>"));
+        assert!(xml.contains("<D:displayname>test.txt</D:displayname>"));
+        assert!(xml.contains("<D:getlastmodified>2026-04-03</D:getlastmodified>"));
+    }
+
+    #[test]
+    fn test_webdav_xml_entry_directory() {
+        let entry = RemoteEntry::directory("docs".to_string(), "/docs".to_string());
+        let xml = webdav_xml_entry("/docs/", &entry);
+        assert!(xml.contains("<D:collection/>"));
+        assert!(xml.contains("<D:displayname>docs</D:displayname>"));
+        assert!(!xml.contains("<D:getcontentlength>"));
+    }
+
+    #[test]
+    fn test_build_propfind_xml_structure() {
+        let root = RemoteEntry::directory("/".to_string(), "/".to_string());
+        let children = vec![
+            RemoteEntry::directory("sub".to_string(), "/sub".to_string()),
+            RemoteEntry::file("file.txt".to_string(), "/file.txt".to_string(), 100),
+        ];
+        let xml = build_propfind_xml("/", "", &root, Some(&children));
+        assert!(xml.contains("<D:multistatus"));
+        assert!(xml.contains("</D:multistatus>"));
+        // Root + 2 children = 3 responses
+        assert_eq!(xml.matches("<D:response>").count(), 3);
+    }
+
+    #[test]
+    fn test_extract_destination_relative() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Destination", HeaderValue::from_static("http://127.0.0.1:8080/new/path"));
+        assert_eq!(extract_destination_relative(&headers).unwrap(), "new/path");
+    }
+
+    #[test]
+    fn test_extract_destination_relative_missing() {
+        let headers = HeaderMap::new();
+        assert!(extract_destination_relative(&headers).is_err());
+    }
+
+    #[test]
+    fn test_extract_destination_relative_traversal() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Destination", HeaderValue::from_static("http://host/../etc/passwd"));
+        assert!(extract_destination_relative(&headers).is_err());
     }
 }

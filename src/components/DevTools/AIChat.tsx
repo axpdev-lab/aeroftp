@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from './AIIcons';
@@ -526,18 +526,28 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         setBudgetCheck(null);
     }, [startNewChatBase]);
 
-    // BUG-008: Wrap switchConversation — await async base, clear pending tools first
-    // A6-06: Abort any ongoing streaming before switching conversation
-    const switchConversation = useCallback(async (conv: Conversation) => {
+    // Cancel the active backend stream and clean up frontend state
+    const cancelActiveStream = useCallback(() => {
+        if (activeStreamIdRef.current) {
+            invoke('ai_cancel_stream', { streamId: activeStreamIdRef.current }).catch(() => {});
+            activeStreamIdRef.current = null;
+        }
         if (streamUnlistenRef.current) {
             streamUnlistenRef.current();
             streamUnlistenRef.current = null;
         }
+        autoStopRef.current = true;
         streamingMsgIdRef.current = null;
+    }, []);
+
+    // BUG-008: Wrap switchConversation — await async base, clear pending tools first
+    // A6-06: Abort any ongoing streaming before switching conversation
+    const switchConversation = useCallback(async (conv: Conversation) => {
+        cancelActiveStream();
         setIsLoading(false);
         setPendingToolCalls([]);
         await switchConversationBase(conv);
-    }, [switchConversationBase]);
+    }, [switchConversationBase, cancelActiveStream]);
     // AI settings cached from vault (sync init from localStorage, then async vault refresh)
     const [cachedAiSettings, setCachedAiSettings] = useState<AISettings | null>(() => {
         try {
@@ -599,6 +609,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
+    const activeStreamIdRef = useRef<string | null>(null);
     const streamUnlistenRef = useRef<(() => void) | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -2004,6 +2015,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const msgId = crypto.randomUUID();
                 streamingMsgId = msgId;
                 streamingMsgIdRef.current = msgId;
+                activeStreamIdRef.current = streamId;
                 let streamContent = '';
                 type ToolCallEntry = { id: string; name: string; arguments: unknown };
                 const streamResult: {
@@ -2108,6 +2120,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
                 unlisten();
                 streamUnlistenRef.current = null;
+                activeStreamIdRef.current = null;
 
                 // Calculate cost
                 const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
@@ -2722,22 +2735,32 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                         <>
                                             {agentMode === 'extreme' && <span className="text-red-400 font-bold animate-pulse mr-1">EXTREME</span>}
                                             <span>Step {autoStepCount}</span>
-                                            <span className="mx-1">&mdash;</span>
+                                            <span className="mx-1">-</span>
                                             <button
-                                                onClick={() => { autoStopRef.current = true; }}
+                                                onClick={() => { cancelActiveStream(); setIsLoading(false); }}
                                                 className="text-red-400 hover:text-red-300 text-xs underline"
                                             >
-                                                Stop
+                                                {t('ai.stopGeneration')}
                                             </button>
                                         </>
                                     ) : (
-                                        <span className="transition-opacity duration-300">
+                                        <span className="transition-opacity duration-300 flex items-center gap-2">
                                             {thinkingMessage}
                                             {thinkingIsTyping && (
                                                 <span className="inline-block w-[3px] h-3.5 ml-0.5 bg-purple-400 rounded-[1px] animate-[blink_0.5s_infinite] align-middle"
                                                     style={{ animationTimingFunction: 'steps(1)' }} />
                                             )}
                                         </span>
+                                    )}
+                                    {/* Stop button — visible during any streaming or loading */}
+                                    {!isAutoExecuting && (
+                                        <button
+                                            onClick={() => { cancelActiveStream(); setIsLoading(false); }}
+                                            className="ml-1 p-1 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+                                            title={t('ai.stopGeneration')}
+                                        >
+                                            <Square size={12} fill="currentColor" />
+                                        </button>
                                     )}
                                 </div>
                             </div>

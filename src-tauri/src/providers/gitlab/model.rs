@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Authenticated user (from `GET /user`)
 #[derive(Debug, Deserialize)]
@@ -95,4 +95,64 @@ pub struct GitLabBranch {
     #[serde(rename = "default")]
     pub is_default: bool,
     pub can_push: bool,
+}
+
+// ── Releases ───────────────────────────────────────────────────────
+
+/// Release (from `GET /projects/:id/releases`)
+#[derive(Debug, Deserialize, Clone)]
+pub struct GitLabRelease {
+    pub tag_name: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub released_at: Option<String>,
+    pub author: GitLabReleaseAuthor,
+    pub assets: GitLabReleaseAssets,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GitLabReleaseAuthor {
+    pub username: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GitLabReleaseAssets {
+    pub count: u32,
+    #[serde(default)]
+    pub sources: Vec<GitLabReleaseSource>,
+    #[serde(default)]
+    pub links: Vec<GitLabReleaseLink>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct GitLabReleaseSource {
+    pub format: String,
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct GitLabReleaseLink {
+    pub id: u64,
+    pub name: String,
+    pub url: String,
+    pub direct_asset_url: Option<String>,
+    pub link_type: String,
+    #[serde(default)]
+    pub external: bool,
+}
+
+// ── Merge Requests ─────────────────────────────────────────────────
+
+/// Merge Request (from `POST /projects/:id/merge_requests`)
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct GitLabMergeRequest {
+    pub iid: u64,
+    pub title: String,
+    pub state: String,
+    pub web_url: String,
+    pub source_branch: String,
+    pub target_branch: String,
 }
