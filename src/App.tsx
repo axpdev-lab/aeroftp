@@ -6957,12 +6957,12 @@ interface UpdateVerificationInfo {
         <GitHubReleaseBrowser
           isOpen={showGitHubReleaseBrowser}
           onClose={() => setShowGitHubReleaseBrowser(false)}
-          onError={(title, msg) => notify.error(title, msg)}
+          onError={(title: string, msg: string) => notify.error(title, msg)}
         />
         <GitLabReleaseBrowser
           isOpen={showGitLabReleaseBrowser}
           onClose={() => setShowGitLabReleaseBrowser(false)}
-          onError={(title, msg) => notify.error(title, msg)}
+          onError={(title: string, msg: string) => notify.error(title, msg)}
         />
         <FilenNotesPanel
           isOpen={showFilenNotes}
