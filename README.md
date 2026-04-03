@@ -41,8 +41,8 @@
   <img src="https://img.shields.io/badge/rust-backend-B7410E?logo=rust&logoColor=white" alt="Rust" />
   <img src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white" alt="React 18" />
   <img src="https://img.shields.io/badge/typescript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Linux-stable-FCC624?logo=linux&logoColor=black" alt="Linux - Stable" />
-  <img src="https://img.shields.io/badge/Windows-stable-0078D4?logoColor=white" alt="Windows - Stable" />
+  <img src="https://img.shields.io/badge/Linux-stable-brightgreen?logo=linux&logoColor=black" alt="Linux - Stable" />
+  <img src="https://img.shields.io/badge/Windows-stable-brightgreen?logoColor=white" alt="Windows - Stable" />
   <img src="https://img.shields.io/badge/macOS-beta-F5A623?logo=apple&logoColor=white" alt="macOS - Beta" />
 </p>
 
