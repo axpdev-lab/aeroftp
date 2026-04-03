@@ -185,10 +185,10 @@ jobs:
               ARTIFACTS+=(src-tauri/target/release/bundle/AeroFTP-*-portable-*.zip)
               ;;
             macos)
-              ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*.dmg)
+              ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*-beta.dmg)
               ;;
             macos-intel)
-              ARTIFACTS+=(src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg)
+              ARTIFACTS+=(src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg)
               ;;
           esac
 
@@ -273,13 +273,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Rename macOS DMG to beta
+        if: matrix.target == 'macos' || matrix.target == 'macos-intel'
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "macos-intel" ]; then
+            DMG_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
+          else
+            DMG_DIR="src-tauri/target/release/bundle/dmg"
+          fi
+          for f in "$DMG_DIR"/*.dmg; do
+            [ -f "$f" ] || continue
+            NEWNAME=$(echo "$f" | sed 's/\.dmg$/-beta.dmg/')
+            mv "$f" "$NEWNAME"
+            # Also rename sigstore bundle if present
+            [ -f "${f}.sigstore.json" ] && mv "${f}.sigstore.json" "${NEWNAME}.sigstore.json"
+            echo "Renamed: $(basename "$f") -> $(basename "$NEWNAME")"
+          done
+
       - name: Upload macOS binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos'
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           files: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/dmg/*.dmg.sigstore.json
+            src-tauri/target/release/bundle/dmg/*-beta.dmg
+            src-tauri/target/release/bundle/dmg/*-beta.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -288,8 +306,8 @@ jobs:
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           files: |
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg.sigstore.json
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
