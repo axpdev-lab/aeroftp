@@ -104,39 +104,37 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Reliable sync across the mature AeroCloud protocol set (including SFTP, S3, Azure, WebDAV, Google Drive, Dropbox, OneDrive, Jottacloud, kDrive, Koofr, and OpenDrive), plus additional provider integrations tracked in the protocol matrix. Bidirectional sync, tray background sync, selective sync, file versioning, .aeroignore, share links, and per-project local folders.
+Turn **any server** into a private personal cloud. Connect to 27 protocols with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
-| Protocol | Encryption | Features |
-|----------|-----------|----------|
-| **FTP** | None / Explicit TLS / Implicit TLS | MLSD/MLST (RFC 3659), resume transfers, TLS mode selection |
-| **FTPS** | TLS/SSL (Explicit + Implicit) | Certificate verification options, self-signed cert support |
-| **SFTP** | SSH | Key authentication, host key verification (TOFU), ed25519/RSA, hybrid upload (SCP) |
-| **WebDAV** | HTTPS | Nextcloud, Felicloud, CloudMe, Koofr, Jianguoyun, InfiniCLOUD, Seafile. HTTP Digest auth (RFC 2617), file locking (RFC 4918), OCS share links + trash for Nextcloud-based servers |
-| **S3** | HTTPS | AWS S3, MEGA S4, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Alibaba OSS, Tencent COS. Multipart upload |
-| **Google Drive** | OAuth2 PKCE | File versions, thumbnails, share links (view/comment/edit permissions), workspace export |
-| **Dropbox** | OAuth2 PKCE | File versions, thumbnails, share links (password + expiry on Pro+) |
-| **OneDrive** | OAuth2 PKCE | Resumable upload, file versions, share links (password on Personal, expiry) |
-| **MEGA.nz** | Client-side AES | 20GB free, end-to-end encrypted, zero-knowledge, share links |
-| **Box** | OAuth2 PKCE | 10GB free, enterprise-grade, file versions, share links (password + expiry on paid plans) |
-| **pCloud** | OAuth2 | 10GB free, US/EU regions, file versions, share links (password + expiry on Premium) |
-| **Azure Blob** | HMAC-SHA256 / SAS | Enterprise blob storage, container-based, XML API |
-| **4shared** | OAuth 1.0 (HMAC-SHA1) | 15GB free, native REST API, folder/file management |
-| **Filen** | Client-side AES-256-GCM | 10GB free, zero-knowledge E2E encryption, share links (password + expiry presets) |
-| **Internxt Drive** | Client-side AES-256-CTR | 1GB free, E2E encrypted, BIP39 mnemonic, optional 2FA |
-| **kDrive** | API Token (Bearer) | 15GB free, Swiss-hosted by Infomaniak, share links (password + expiry on paid plans) |
-| **Zoho WorkDrive** | OAuth2 | 5GB free, 8 regional endpoints, share links (password + expiry), team drive management |
-| **Jottacloud** | Login Token (Bearer) | 5GB free, Norwegian-hosted, share links, unlimited storage plans |
-| **Koofr** | OAuth2 PKCE | 10GB free, EU-based (Slovenia), native REST API, share links, trash management |
-| **Felicloud** | WebDAV + OCS API | 10GB free, EU/GDPR, Nextcloud-based, share links (password + expiry), trash management |
-| **FileLu** | API Key (native REST) | 1GB free, file/folder passwords, privacy toggle, share links, server clone, remote URL upload, trash management |
-| **Yandex Disk** | OAuth2 Token | 5GB free, Russian cloud storage, share links, trash management, MD5 checksums, server-side copy |
-| **OpenDrive** | Username/Password | 5GB free, session-based auth, MD5 checksums, trash management, share links (expiry) |
-| **GitHub** | PAT / Device Flow | Repository as filesystem, single-file commits plus atomic batch upload/delete flows, release assets (2 GiB), branch workflow for protected branches, auto PR creation |
-| **SourceForge** | SSH (SFTP) | SFTP preset with SourceForge project paths, file release management |
-
-**Cloud features**: Background sync via cloud provider factory (direct-auth, OAuth2, OAuth1) with maturity badges shown in the setup wizard. 4-step setup wizard with saved server profiles, selective sync (folder exclusion), .aeroignore patterns, file versioning (.aeroversions/), sync index cache for conflict detection, storage quota display where the provider exposes it, share links, and Dropbox-style conflict naming.
-
-**Native OS File Manager Badges** (v2.0.4+): Green checkmark on synced files, blue arrows on syncing files, red X on errors - directly inside Nautilus, Nemo, and GIO-based file managers on Linux. On Windows (v2.0.5), native Explorer sync icons via Cloud Filter API with Named Pipe IPC server. Tray icon with colored badge dots (checkmark/sync arrows/X mark overlays). One-click install on Linux, automatic on Windows.
+<p align="center">
+  <img src="public/icons/providers/grid/Amazon_Web_Services.png" width="48" alt="S3" title="S3 (AWS, MinIO, Backblaze, Wasabi, R2)" />
+  <img src="public/icons/providers/grid/Google_Drive.png" width="48" alt="Google Drive" title="Google Drive" />
+  <img src="public/icons/providers/grid/dropbox.png" width="48" alt="Dropbox" title="Dropbox" />
+  <img src="public/icons/providers/grid/onedrive.png" width="48" alt="OneDrive" title="OneDrive" />
+  <img src="public/icons/providers/grid/mega.png" width="48" alt="MEGA" title="MEGA.nz" />
+  <img src="public/icons/providers/grid/box.png" width="48" alt="Box" title="Box" />
+  <img src="public/icons/providers/grid/pcloud.png" width="48" alt="pCloud" title="pCloud" />
+  <img src="public/icons/providers/grid/azure.png" width="48" alt="Azure" title="Azure Blob Storage" />
+  <img src="public/icons/providers/grid/github.png" width="48" alt="GitHub" title="GitHub" />
+  <img src="public/icons/providers/grid/gitlab.png" width="48" alt="GitLab" title="GitLab" />
+  <img src="public/icons/providers/grid/filen.png" width="48" alt="Filen" title="Filen (E2E encrypted)" />
+  <img src="public/icons/providers/grid/internxt.png" width="48" alt="Internxt" title="Internxt Drive" />
+  <img src="public/icons/providers/grid/kdrive.png" width="48" alt="kDrive" title="kDrive (Infomaniak)" />
+  <img src="public/icons/providers/grid/jottacloud.png" width="48" alt="Jottacloud" title="Jottacloud" />
+  <img src="public/icons/providers/grid/ZohoWorkDrive.png" width="48" alt="Zoho WorkDrive" title="Zoho WorkDrive" />
+  <img src="public/icons/providers/grid/4shared.png" width="48" alt="4shared" title="4shared" />
+  <img src="public/icons/providers/grid/Koofr.png" width="48" alt="Koofr" title="Koofr" />
+  <img src="public/icons/providers/grid/filelu.png" width="48" alt="FileLu" title="FileLu" />
+  <img src="public/icons/providers/grid/YandexDisk.png" width="48" alt="Yandex Disk" title="Yandex Disk" />
+  <img src="public/icons/providers/grid/drime.png" width="48" alt="DrimeCloud" title="DrimeCloud" />
+  <img src="public/icons/providers/grid/nextcloud.png" width="48" alt="Nextcloud" title="Nextcloud (WebDAV)" />
+  <img src="public/icons/providers/grid/felicloud.png" width="48" alt="Felicloud" title="Felicloud" />
+  <img src="public/icons/providers/grid/sourceforge.png" width="48" alt="SourceForge" title="SourceForge" />
+  <img src="public/icons/providers/grid/hetzner.png" width="48" alt="Hetzner" title="Hetzner Storage Box" />
+</p>
+<p align="center">
+  <sub>+ FTP, FTPS, SFTP, WebDAV, Swift, and 10+ S3-compatible providers</sub>
+</p>
 
 ---
 
@@ -144,25 +142,7 @@ Turn **any server** into a private personal cloud. Reliable sync across the matu
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerofile.html)
 
-A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side.
-
-- **Places Sidebar**: Nautilus-style with user directories, custom locations, recent locations (with per-item delete), mounted drives with usage bars, GVFS network shares (SMB/SFTP/NFS/WebDAV), unmounted partition detection with one-click mount, EFI/swap/recovery hidden, and folder tree toggle (Ctrl+B)
-- **Breadcrumb Navigation**: Clickable path segments with chevron dropdown for sibling browsing, overflow collapse, and edit mode (Ctrl+L)
-- **3 View Modes**: List (detailed table), Grid (icon thumbnails), Large Icons (96px with full thumbnails). Toggle via Ctrl+1/2/3
-- **Drive Detection**: Cross-platform volume detection (internal, removable, network, optical) with filesystem type, free/total space, and colored usage bars
-- **Customizable Columns**: Show/hide Size, Type, Permissions, Modified columns per preference. Sort folders first and file extension visibility toggles
-- **Quick Look**: Press Space to preview any file - images, video, audio, code with syntax highlighting, markdown. Arrow keys navigate between files without closing
-- **Properties Dialog**: Tabbed UI with General (3 dates, symlink target), Permissions (rwx matrix, octal, owner:group), and Checksum (MD5, SHA-1, SHA-256, SHA-512)
-- **Trash Browser**: Soft delete to system trash by default. Browse trash contents, restore individual files, or empty trash. Full trash lifecycle management
-- **Duplicate File Finder**: Content-aware duplicate detection (size grouping + MD5 hash). Interactive dialog with KEEP/DELETE/SKIP per file and batch delete
-- **Disk Usage Treemap**: Visual disk space analysis with squarified treemap algorithm. Click to drill down into directories, breadcrumb navigation, hover details
-- **Batch Rename**: Find/Replace, Prefix, Suffix, Sequential numbering with live preview and conflict detection
-- **Inline Rename**: Click filename or press F2 to rename directly in file list
-- **File Clipboard**: Cut/Copy/Paste with cross-panel transfers (local-to-remote and vice versa)
-- **Drag and Drop**: Cross-panel drag for upload/download, intra-panel drag for move
-- **CompressDialog**: Unified compression UI with format selection, levels, and password protection
-- **Resizable Preview Panel**: Image thumbnails, file info, dimensions, path display
-- **20+ Keyboard Shortcuts**: Space preview, F2 rename, Delete, Ctrl+C/V, Ctrl+B sidebar, Ctrl+L edit path, Alt+Enter properties, and more
+A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side. Three view modes (list, grid, large icons), Places sidebar with drives and network shares, Quick Look preview (Space), drag-and-drop transfers, batch rename, duplicate finder, disk usage treemap, trash browser, properties dialog with checksums, and 20+ keyboard shortcuts.
 
 ---
 
@@ -170,20 +150,7 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerosync.html)
 
-Enterprise-grade file synchronization with operational reliability features built for real-world use.
-
-- **Smart Sync**: 3 intelligent conflict resolution modes - overwrite if newer, overwrite if different, skip if identical
-- **Sync Profiles**: 3 built-in presets (Mirror, Two-way, Backup) plus custom save/load. Each profile bundles direction, compare options, retry/verify policies, and delete behavior
-- **Conflict Resolution Center**: Per-file resolution strategies (keep local, keep remote, skip) with batch actions - Keep Newer for All, Keep Local for All, Keep Remote for All
-- **Bandwidth control**: Upload and download speed limits (128 KB/s to 10 MB/s) directly in the sync panel
-- **Transfer journal with checkpoint/resume**: Persistent journal tracks every sync operation. Interrupted syncs resume from where they left off. Auto-cleanup after 30 days
-- **SHA-256 checksum verification**: Content-based comparison with streaming 64KB-chunk hashing during scan phase
-- **Post-transfer verification**: 4 policies (None, Size, Size+Time, Full) confirm transfer integrity after each download
-- **Configurable retry with exponential backoff**: Per-file retry policy with base delay, max delay cap, backoff multiplier, and per-file timeout
-- **Structured error taxonomy**: 10 error categories (Network, Auth, PathNotFound, PermissionDenied, QuotaExceeded, RateLimit, Timeout, FileLocked, DiskError, Unknown) with retryability hints
-- **Error breakdown in sync report**: Post-sync report groups errors by category with dedicated icons
-- **Navigation boundary warning**: Visual amber warning when browsing outside active sync paths
-- **AeroCloud integration**: Tray background sync, share links, native OS file manager badges
+Enterprise-grade file synchronization built for real-world reliability. Three sync profiles (Mirror, Two-way, Backup), conflict resolution center with per-file strategies, SHA-256 checksum verification, transfer journal with checkpoint/resume, configurable retry with exponential backoff, bandwidth control, post-transfer verification (4 policies), and structured error taxonomy with 10 categories. Integrates with AeroCloud for background tray sync.
 
 ---
 
@@ -222,45 +189,11 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerotools.html)
 
-The integrated development panel combining three tools in a tabbed interface.
-
-- **Monaco Editor** (VS Code engine): Syntax highlighting for 50+ languages, remote file editing, 4 editor themes matching app themes
-- **Integrated Terminal**: SSH remote shell with 8 terminal themes, multiple tabs, auto-sync with app theme
-- **AeroAgent AI Chat**: Full AI assistant panel (see below)
-- **Bidirectional sync**: Editor and AI agent edits flow in both directions in real time
+Integrated development panel with three tools in a tabbed interface: **Monaco Editor** (VS Code engine, 50+ languages, remote file editing), **SSH Terminal** (8 themes, multiple tabs), and **AeroAgent AI Chat** with bidirectional editor sync.
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **47 provider-agnostic tools** that work across local files and AeroFTP's remote provider backends. 19 AI providers, vision support, RAG indexing, plugin ecosystem with GitHub registry, and command palette.
-
-**Providers**: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom
-
-**Core capabilities**:
-- **File operations**: List, read, search, create, edit, rename, delete - local and remote
-- **Batch transfers**: Multi-file upload/download with sync preview
-- **Find and replace**: Edit text in local and remote files directly from chat
-- **Native function calling**: OpenAI tools[], Anthropic tool_use, Gemini functionDeclarations
-- **Streaming responses**: Real-time incremental rendering for all providers
-- **Context-aware**: Knows your connected server, current paths, selected files, and protocol
-- **Vision/Multimodal**: Attach images for analysis - GPT-4o, Claude, Gemini, Ollama llava
-
-**Advanced features**:
-- **RAG integration**: Auto-indexes workspace files; full-text search across your codebase
-- **Plugin system**: Extend with custom tools via JSON manifest + shell scripts (sandboxed, 30s timeout). [Browse and create plugins](https://github.com/axpdev-lab/aeroftp-plugins)
-- **Multi-step autonomous tools**: Chains multiple tool calls with auto-resume after approval
-- **Ollama auto-detection**: Discovers local Ollama instances and available models
-- **Monaco bidirectional sync**: Live two-way sync between code editor and AI agent
-- **Terminal command execution**: Run terminal commands from chat with user approval
-- **Conversation export**: Export chat as Markdown or JSON
-- **Prompt template library**: 15 built-in templates with `/` prefix activation
-- **Streaming markdown**: Real-time rendered markdown with code block actions (Copy/Apply/Diff/Run)
-- **Thinking visualization**: See AI reasoning process with token count and duration
-- **Cost budget tracking**: Per-provider monthly limits with conversation-level cost display
-- **Chat search**: Ctrl+F overlay with role filter and keyboard navigation
-- **Command Palette**: Ctrl+Shift+P for quick access to all app actions
-- **Plugin ecosystem**: GitHub-based registry with SHA-256 integrity, event hooks, browser UI
-- **Context menu AI**: Right-click any file → "Ask AeroAgent" for instant analysis
-- **Drag & drop to chat**: Drop files into AeroAgent for analysis
+An AI assistant with **47 tools** that work across local files and remote providers. Supports **19 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, and 12 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode, and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -280,73 +213,17 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-A production command-line interface sharing the same Rust backend as the GUI. It provides structured JSON output, glob pattern transfers, encrypted vault profiles, batch scripting, and agent discovery across the supported URL schemes and saved-profile providers.
+Production CLI sharing the same Rust backend as the GUI. 32 subcommands, 27 protocols, encrypted vault profiles, JSON output, batch scripting, and native MCP server mode for AI integration.
 
 ```bash
-# Zero-credential connection via saved profiles
-aeroftp-cli ls --profile "My Server" /var/www/ - l
-
-# List all saved servers from encrypted vault
-aeroftp-cli profiles
-
-# URL-based connection (classic mode)
-aeroftp-cli ls sftp://user@myserver.com /var/www/ - l
-
-# Download with glob patterns
-aeroftp-cli get sftp://user@host "/data/*.csv"
-
-# Pipe-friendly: data on stdout, messages on stderr
-aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST
-
-# OAuth providers via profile (Google Drive, Dropbox, OneDrive, etc.)
-aeroftp-cli ls --profile "My Google Drive" /
+aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
+aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
+aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
+aeroftp-cli serve webdav s3://key:secret@s3.aws.com       # Serve remote as local WebDAV
+aeroftp-cli agent --mcp                                   # MCP server for Claude/Cursor/VS Code
 ```
 
-**Commands**: `connect`, `ls`, `get`, `put`, `mkdir`, `rm`, `mv`, `cat`, `head`, `tail`, `touch`, `hashsum`, `check`, `find`, `stat`, `df`, `tree`, `about`, `dedupe`, `sync`, `link`, `batch`, `profiles`
-
-**Protocols**: FTP, FTPS, SFTP, WebDAV, S3, GitHub, SourceForge, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, Felicloud + OAuth providers via `--profile` (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, kDrive, 4shared)
-
-**Features**:
-- **`--profile` vault profiles** - connect to any saved server without exposing credentials. Fuzzy name matching with disambiguation. Designed for AI agent workflows
-- `--json` structured output for all commands
-- Glob pattern transfers (`*.csv`, `*.json`)
-- `.aeroftp` batch scripts with variables, error policies, and 17 commands
-- Progress bars with speed and ETA
-- `NO_COLOR` / `CLICOLOR` compliance
-- Password via stdin, env vars, or interactive prompt
-- SSH key authentication for SFTP
-
-See the full **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** for usage, examples, profiles, and batch scripting reference.
-
-#### AI Agent & CI/CD Integration
-
-AeroFTP CLI is designed for autonomous use by AI coding agents and CI/CD pipelines. The `--profile` flag is the key enabler - agents connect to servers without ever seeing passwords:
-
-- **`--profile "Name"`** - connect via encrypted vault, zero credentials in the command line, shell history, or process list
-- **`--json` on every command** - structured output parsable by any agent (Claude Code, Codex, Cursor, Devin)
-- **Semantic exit codes** (0-8) - agents know exactly what failed without parsing text
-- **`NO_COLOR` compliant** - no ANSI escape sequences polluting agent output
-- **stderr/stdout separation** - data on stdout for piping, errors on stderr for logging
-- **Batch scripts** (`.aeroftp`) - define multi-step deployment flows as files, execute atomically
-
-```bash
-# AI agent deploys a website - no credentials anywhere
-aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
-aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
-
-# CI/CD with env-based vault unlock
-AEROFTP_MASTER_PASSWORD=$SECRET aeroftp-cli put --profile "Deploy" ./dist/ /www/ - r
-```
-
-> AeroAgent (the built-in AI assistant) can also orchestrate remote server operations via `server_exec` tool - listing files, reading configs, uploading/downloading across any saved server, with credentials resolved securely from the vault.
-
-#### Credential Isolation for AI Agents
-
-As of March 2026, no other file transfer client, cloud storage CLI, or multi-protocol transfer tool provides native credential isolation for AI agents operating on remote servers. Existing tools in this category store credentials in plaintext files, reversible encodings, or OS keystores accessible to any same-user process. Credential proxy services that have emerged for AI workflows only cover HTTP APIs - they cannot handle FTP, SFTP, WebDAV, or OAuth token refresh cycles.
-
-AeroFTP solves this at the architecture level. The `--profile` flag and AeroAgent `server_exec` tool resolve credentials exclusively inside the Rust backend process, from an AES-256-GCM encrypted vault. The credential material never crosses the IPC boundary - the agent receives only operation results, never the authentication material that produced them. This works across direct-auth, token-based, and browser-authorized cloud providers.
-
-Read the full analysis: **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** - architecture, protocol coverage, and implementation references. See also **[Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration)** for the complete orchestration guide with external agent integration and verified field test report.
+**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-8), `.aeroftp` batch scripts, `serve http/webdav`, MCP server mode, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
 ---
 
@@ -354,15 +231,7 @@ Read the full analysis: **[Credential Isolation](https://docs.aeroftp.app/creden
 
 > [Full documentation →](https://docs.aeroftp.app/features/aeroplayer.html)
 
-Built-in media player with GPU-accelerated visualizations and professional audio processing.
-
-- **14 visualizer modes**: 8 Canvas 2D + 6 WebGL 2 GPU shader modes (Wave Glitch, VHS, Mandelbrot, Raymarch Tunnel, Metaball, Particles)
-- **10-band graphic EQ**: Real Web Audio BiquadFilterNode per band (32Hz-16kHz) with 10 presets and stereo balance
-- **Beat detection**: Onset energy algorithm driving beat-reactive effects across all modes
-- **WebGL shader engine**: 6 GLSL fragment shaders - GPU-accelerated ray marching, metaballs, fractals, particles
-- **Post-processing**: Vignette, chromatic aberration, CRT scanlines, glitch effects
-- **Resilient startup buffering**: First Play now queues during prebuffer and auto-starts when ready
-- **Zero dependencies**: Native HTML5 `<audio>` + Web Audio API
+Built-in media player with 14 GPU-accelerated visualizer modes (Canvas 2D + WebGL 2 shaders), 10-band graphic EQ with presets, beat detection, and post-processing effects. Zero dependencies - native HTML5 Audio + Web Audio API.
 
 ---
 
