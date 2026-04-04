@@ -23,7 +23,7 @@ const TRACKED_DEPS: &[&str] = &[
     "reqwest",
     "quick-xml",
     "oauth2",
-    "native-tls",
+    "rustls",
     // Security
     "argon2",
     "aes-gcm",

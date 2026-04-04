@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "3.3.5"
+version = "3.3.6"
 dependencies = [
  "aerovault",
  "aes",
@@ -61,7 +61,6 @@ dependencies = [
  "log",
  "md-5",
  "mime_guess",
- "native-tls",
  "notify",
  "notify-debouncer-full",
  "num-bigint-dig",
@@ -80,6 +79,8 @@ dependencies = [
  "rusqlite",
  "russh",
  "russh-sftp",
+ "rustls",
+ "rustls-pki-types",
  "scrypt",
  "secrecy 0.10.3",
  "semver",
@@ -107,6 +108,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "toml 0.9.12+spec-1.1.0",
  "totp-rs",
@@ -118,6 +120,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "walkdir",
+ "webpki-roots 0.26.11",
  "whisper-rs",
  "windows 0.58.0",
  "xz2",
@@ -458,18 +461,6 @@ dependencies = [
  "event-listener",
  "event-listener-strategy",
  "pin-project-lite",
-]
-
-[[package]]
-name = "async-native-tls"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9343dc5acf07e79ff82d0c37899f079db3534d99f189a1837c8e549c99405bec"
-dependencies = [
- "native-tls",
- "thiserror 1.0.69",
- "tokio",
- "url",
 ]
 
 [[package]]
@@ -7933,15 +7924,16 @@ version = "8.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "939df458aae4df73ba0de3063941ec9ff85bfff67d4dac7e482c20637a52ac8a"
 dependencies = [
- "async-native-tls",
  "async-trait",
  "chrono",
  "futures-lite",
  "lazy-regex",
  "log",
  "pin-project",
+ "rustls-pki-types",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]
@@ -9621,6 +9613,24 @@ name = "webpki-root-certs"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "804f18a4ac2676ffb4e8b5b5fa9ae38af06df08162314f96a68d2a363e21a8ca"
+dependencies = [
+ "rustls-pki-types",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.6",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22cfaf3c063993ff62e73cb4311efde4db1efb31ab78a3e5c457939ad5cc0bed"
 dependencies = [
  "rustls-pki-types",
 ]

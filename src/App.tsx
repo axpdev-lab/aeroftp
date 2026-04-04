@@ -2145,7 +2145,7 @@ interface UpdateVerificationInfo {
       private_key_path: effectiveParams.options?.private_key_path || null,
       key_passphrase: effectiveParams.options?.key_passphrase || null,
       timeout: effectiveParams.options?.timeout || 30,
-      tls_mode: effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+      tls_mode: effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       github_auth_mode: effectiveParams.options?.githubAuthMode || null,
@@ -3161,7 +3161,7 @@ interface UpdateVerificationInfo {
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
-            tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : undefined),
+            tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
           };

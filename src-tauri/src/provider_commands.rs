@@ -339,6 +339,19 @@ impl ProviderConnectionParams {
             self.server.clone()
         };
 
+        // Strip port suffix from host if present (e.g. "127.0.0.1:2121" → "127.0.0.1")
+        // Users sometimes enter host:port in the server field, but port is a separate param
+        let host = if let Some(colon_idx) = host.rfind(':') {
+            let after = &host[colon_idx + 1..];
+            if after.parse::<u16>().is_ok() {
+                host[..colon_idx].to_string()
+            } else {
+                host
+            }
+        } else {
+            host
+        };
+
         Ok(ProviderConfig {
             name: format!("{}@{}", self.username, host),
             provider_type,

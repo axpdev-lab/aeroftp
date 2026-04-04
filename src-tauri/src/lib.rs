@@ -2619,7 +2619,7 @@ fn get_dependencies() -> Vec<DependencyInfo> {
         DependencyInfo { name: "reqwest".into(), version: env!("DEP_VERSION_REQWEST").into(), category: "Protocols".into() },
         DependencyInfo { name: "quick-xml".into(), version: env!("DEP_VERSION_QUICK_XML").into(), category: "Protocols".into() },
         DependencyInfo { name: "oauth2".into(), version: env!("DEP_VERSION_OAUTH2").into(), category: "Protocols".into() },
-        DependencyInfo { name: "native-tls".into(), version: env!("DEP_VERSION_NATIVE_TLS").into(), category: "Protocols".into() },
+        DependencyInfo { name: "rustls".into(), version: env!("DEP_VERSION_RUSTLS").into(), category: "Protocols".into() },
         // Security
         DependencyInfo { name: "argon2".into(), version: env!("DEP_VERSION_ARGON2").into(), category: "Security".into() },
         DependencyInfo { name: "aes-gcm".into(), version: env!("DEP_VERSION_AES_GCM").into(), category: "Security".into() },
@@ -2779,7 +2779,7 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("aes-siv".into(), env!("DEP_VERSION_AES_SIV").into());
     dep_versions.insert("scrypt".into(), env!("DEP_VERSION_SCRYPT").into());
     dep_versions.insert("blake3".into(), env!("DEP_VERSION_BLAKE3").into());
-    dep_versions.insert("native-tls".into(), env!("DEP_VERSION_NATIVE_TLS").into());
+    dep_versions.insert("rustls".into(), env!("DEP_VERSION_RUSTLS").into());
 
     SystemInfo {
         app_version: env!("CARGO_PKG_VERSION").into(),

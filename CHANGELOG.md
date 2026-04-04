@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.6] - 2026-04-04
+
+### FTPS TLS session reuse, rustls migration & server badge overhaul
+
+#### Fixed
+
+- **FTPS TLS session reuse (Issue #78)**: Servers requiring TLS session resumption (CerberusFTP, vsftpd `require_ssl_reuse=YES`, FileZilla Server, ProFTPD) now work correctly. Migrated TLS backend from `native-tls` to `rustls`, which automatically caches and resumes TLS sessions on data connections per RFC 4217. Previously failed with `522 SSL connection failed: session reuse required`
+- **Saved server host:port duplication**: Servers saved with non-default ports (e.g. 2121) had the port appended to the hostname, causing `host:port:port` double-port errors on reconnect. Backend now strips port suffix from hostname, and frontend no longer concatenates host:port in saved server params
+- **FTP TLS mode not applied from saved servers**: Saved FTP connections with "Require explicit FTP over TLS" would reconnect as plain FTP because `tls_mode` defaulted to `undefined` instead of `explicit`. Both `buildProviderParams` paths now default FTP protocol to `explicit` TLS
+- **Missing `common.duplicate` i18n key**: Added missing translation key that caused infinite warning loop in console. Propagated and translated across all 47 locales
+
+#### Improved
+
+- **Server card protocol badges**: FTP/SFTP/FTPS badges now color-coded - FTPS emerald green, SFTP teal, plain FTP amber. Previously all gray
+- **Server card TLS security indicator**: Shield icon (green) shown for verified TLS/SSH connections, alert triangle (gray) for connections with certificate verification disabled
+- **TLS mode persistence**: Encryption dropdown default (`explicit` for FTP, `implicit` for FTPS) now persisted on save even when the user doesn't touch the dropdown
+
+#### Changed
+
+- **TLS backend**: Replaced `native-tls` (OpenSSL/SChannel/SecureTransport) with `rustls` for FTP/FTPS connections. Enables TLS 1.3 session tickets and TLS 1.2 session ID resumption. Cross-platform pure-Rust implementation with no system OpenSSL dependency for FTP
+
 ## [3.3.5] - 2026-04-03
 
 ### CLI serve HTTP/WebDAV, GitLab Tier 1, rclone parity, streaming transfers & UX polish

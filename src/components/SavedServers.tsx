@@ -475,9 +475,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             // SFTP/MEGA use provider_connect which handles port separately
             const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab'].includes(server.protocol);
             const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
-            const serverString = isProviderProtocol
-                ? server.host  // S3/WebDAV/SFTP/MEGA: use host only
-                : (server.port !== defaultPort ? `${server.host}:${server.port}` : server.host);
+            const serverString = server.host;
 
             await onConnect({
                 server: serverString,

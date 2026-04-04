@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { ServerProfile, ProviderType } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -8,9 +8,28 @@ import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../../utils/pr
 import { useTranslation } from '../../i18n';
 
 function ServerBadges({ server }: { server: ServerProfile }) {
+    const t = useTranslation();
     const proto = server.protocol || 'ftp';
+    // Default tlsMode matches ProtocolSelector: ftp→'explicit', ftps→'implicit'
+    const tlsMode = server.options?.tlsMode || (proto === 'ftp' ? 'explicit' : proto === 'ftps' ? 'implicit' : undefined);
+    // FTP with any TLS mode (except 'none') is effectively FTPS
+    const displayProto = proto === 'ftp' && tlsMode && tlsMode !== 'none' ? 'ftps' : proto;
+    const isFtps = displayProto === 'ftps';
+    const isSftp = proto === 'sftp';
+    const isPlainFtp = displayProto === 'ftp' && !isSftp;
+    const hasTlsConnection = isFtps || proto === 'ftps' || isSftp;
+    const certUnverified = (isFtps || proto === 'ftps') && server.options?.verifyCert === false;
+    const certVerified = hasTlsConnection && !certUnverified;
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
+
+    const badgeClass = isFtps
+        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+        : isSftp
+            ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
+            : isPlainFtp
+                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300';
 
     return (
         <div className="flex items-center gap-1 flex-wrap">
@@ -20,8 +39,20 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                     API OCS
                 </span>
             ) : (
-                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
-                    {proto}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${badgeClass}`}>
+                    {displayProto}
+                </span>
+            )}
+            {certVerified && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400"
+                      title={t('statusBar.secureConnectionTitle', { protocol: isSftp ? 'SSH' : 'TLS' })}>
+                    <ShieldCheck size={10} />
+                </span>
+            )}
+            {certUnverified && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400"
+                      title={t('statusBar.insecureConnectionTitle')}>
+                    <AlertTriangle size={10} />
                 </span>
             )}
             {gitHubBadge && (

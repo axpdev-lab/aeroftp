@@ -683,6 +683,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             : connectionParams;
 
         const optionsToSave = { ...connectionParams.options };
+        // Persist default tlsMode for FTP/FTPS so saved servers show correct badge
+        if ((protocol === 'ftp' || protocol === 'ftps') && !optionsToSave.tlsMode) {
+            optionsToSave.tlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
+        }
 
         // Try vault first, fallback to localStorage
         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];

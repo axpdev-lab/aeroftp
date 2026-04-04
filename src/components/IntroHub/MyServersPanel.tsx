@@ -360,9 +360,7 @@ export function MyServersPanel({
             const proto = server.protocol || 'ftp';
             const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift'].includes(proto);
             const defaultPort = proto === 'sftp' ? 22 : proto === 'ftps' ? 990 : 21;
-            const serverString = isProviderProtocol
-                ? server.host
-                : (server.port !== defaultPort ? `${server.host}:${server.port}` : server.host);
+            const serverString = server.host;
 
             await onConnect({
                 server: serverString,

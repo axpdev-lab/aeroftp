@@ -6,9 +6,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use std::sync::Arc;
 use async_trait::async_trait;
 use globset::GlobBuilder;
-use suppaftp::tokio::{AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
+use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::types::FileType;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -20,7 +21,7 @@ use super::{
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
     config: FtpConfig,
-    stream: Option<AsyncNativeTlsFtpStream>,
+    stream: Option<AsyncRustlsFtpStream>,
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
@@ -45,27 +46,38 @@ impl FtpProvider {
             tls_downgraded: false,
         }
     }
-    
+
     /// Get mutable reference to the FTP stream, returning error if not connected
-    fn stream_mut(&mut self) -> Result<&mut AsyncNativeTlsFtpStream, ProviderError> {
+    fn stream_mut(&mut self) -> Result<&mut AsyncRustlsFtpStream, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
     }
 
-    /// Create a TLS connector with the configured certificate verification settings
-    fn make_tls_connector(&self) -> Result<AsyncNativeTlsConnector, ProviderError> {
-        let mut builder = native_tls::TlsConnector::builder();
-        if !self.config.verify_cert {
+    /// Create a TLS connector with rustls for TLS session reuse support (RFC 4217 §10.2).
+    /// rustls automatically caches TLS session tickets, enabling session resumption
+    /// on data connections — required by CerberusFTP, vsftpd, ProFTPD, FileZilla Server.
+    fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
+        let config = if !self.config.verify_cert {
             // M6: Log a warning when TLS certificate verification is disabled.
-            // This exposes the connection to MITM attacks — acceptable only for self-signed certs.
             tracing::warn!(
                 "[FTP] TLS certificate verification DISABLED for {}:{} — connection is vulnerable to MITM attacks",
                 self.config.host, self.config.port
             );
-            builder.danger_accept_invalid_certs(true);
-            builder.danger_accept_invalid_hostnames(true);
-        }
-        let connector = suppaftp::async_native_tls::TlsConnector::from(builder);
-        Ok(AsyncNativeTlsConnector::from(connector))
+            rustls::ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(danger::NoVerifier))
+                .with_no_client_auth()
+        } else {
+            let root_store = rustls::RootCertStore::from_iter(
+                webpki_roots::TLS_SERVER_ROOTS.iter().cloned()
+            );
+            rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        };
+
+        Ok(AsyncRustlsConnector::from(
+            tokio_rustls::TlsConnector::from(Arc::new(config))
+        ))
     }
     
     /// Parse FTP listing into RemoteEntry
@@ -325,13 +337,13 @@ impl StorageProvider for FtpProvider {
         let mut stream = match self.config.tls_mode {
             FtpTlsMode::None => {
                 // Plain FTP - no TLS
-                AsyncNativeTlsFtpStream::connect(&addr)
+                AsyncRustlsFtpStream::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             }
             FtpTlsMode::Explicit => {
                 // Explicit TLS (AUTH TLS) - connect plain, then upgrade
-                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                let stream = AsyncRustlsFtpStream::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = self.make_tls_connector()?;
@@ -341,7 +353,7 @@ impl StorageProvider for FtpProvider {
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - connect then immediately upgrade (port 990)
-                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                let stream = AsyncRustlsFtpStream::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = self.make_tls_connector()?;
@@ -353,7 +365,7 @@ impl StorageProvider for FtpProvider {
                 // A3-02: Try explicit TLS, but NEVER fall back to plaintext silently.
                 // Sending credentials over an unencrypted connection without user consent
                 // is a security risk. If TLS fails, return an error instead.
-                let stream = AsyncNativeTlsFtpStream::connect(&addr)
+                let stream = AsyncRustlsFtpStream::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = self.make_tls_connector()?;
@@ -708,7 +720,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
         // Wait for TCP to drain all TLS records before close_notify
-        // native-tls shutdown races with TCP send buffer; scale delay with file size
+        // TLS shutdown races with TCP send buffer; scale delay with file size
         let drain_ms = (total_written / 4096).clamp(100, 2000);
         tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
 
@@ -1277,5 +1289,63 @@ mod tests {
         
         assert_eq!(entry.name, "Projects");
         assert!(entry.is_dir);
+    }
+}
+
+/// Dangerous TLS certificate verifier that accepts all certificates.
+/// Used only when the user explicitly enables "Accept invalid or self-signed certificates".
+mod danger {
+    use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+    use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+    use rustls::{DigitallySignedStruct, Error, SignatureScheme};
+
+    #[derive(Debug)]
+    pub struct NoVerifier;
+
+    impl ServerCertVerifier for NoVerifier {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
+            _ocsp_response: &[u8],
+            _now: UnixTime,
+        ) -> Result<ServerCertVerified, Error> {
+            Ok(ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+            vec![
+                SignatureScheme::RSA_PKCS1_SHA256,
+                SignatureScheme::RSA_PKCS1_SHA384,
+                SignatureScheme::RSA_PKCS1_SHA512,
+                SignatureScheme::ECDSA_NISTP256_SHA256,
+                SignatureScheme::ECDSA_NISTP384_SHA384,
+                SignatureScheme::ECDSA_NISTP521_SHA512,
+                SignatureScheme::RSA_PSS_SHA256,
+                SignatureScheme::RSA_PSS_SHA384,
+                SignatureScheme::RSA_PSS_SHA512,
+                SignatureScheme::ED25519,
+                SignatureScheme::ED448,
+            ]
+        }
     }
 }

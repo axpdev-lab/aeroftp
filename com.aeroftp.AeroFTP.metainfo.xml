@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.6" date="2026-04-04">
+      <description>
+        <p>FTPS TLS session reuse: migrated from native-tls to rustls, enabling automatic TLS session resumption on data connections (RFC 4217). Fixes compatibility with CerberusFTP, vsftpd, FileZilla Server, and ProFTPD when session reuse is required. Color-coded server badges (FTPS green, SFTP teal, FTP amber) with TLS security indicators. Fixed saved server host:port duplication and TLS mode persistence.</p>
+      </description>
+    </release>
     <release version="3.3.5" date="2026-04-03">
       <description>
         <p>CLI serve HTTP/WebDAV: expose any remote as local HTTP (read-only, range requests) or WebDAV (read-write with PROPFIND/PUT/DELETE/MKCOL/MOVE/COPY). Native MCP server for Claude Desktop/Cursor/VS Code integration. AI stream cancellation, Anthropic prompt caching (90% cost reduction). GitLab Tier 1: releases, merge requests, write mode, self-hosted TLS. Streaming folder transfers (10-30x faster first-byte). Provider range downloads for FTP/S3/WebDAV. 13 bug fixes including auto-restart and health check reliability.</p>
