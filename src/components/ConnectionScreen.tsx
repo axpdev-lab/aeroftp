@@ -3846,13 +3846,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         </div>
         {/* Rebex demo server disclaimer */}
         {connectionParams.server === 'test.rebex.net' && (
-            <div className="mt-3 space-y-1">
-                <p className="text-center text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1.5">
+            <div className="mt-3">
+                <p className="text-center text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1.5 flex-wrap">
                     <Info size={12} className="shrink-0" />
                     <span>{t('protocol.rebexDemoDisclaimer')}</span>
-                </p>
-                <p className="text-center text-xs text-gray-400 dark:text-gray-500">
-                    <a href="https://www.rebex.net" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">rebex.net</a>
+                    <a href="https://www.rebex.net" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300">
+                        <ExternalLink size={10} />
+                        rebex.net
+                    </a>
                 </p>
             </div>
         )}
