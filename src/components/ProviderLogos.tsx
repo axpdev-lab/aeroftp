@@ -368,13 +368,9 @@ export const AwsLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </>
 );
 
-// MinIO — red circle with stylized storage icon
+// MinIO — official logo
 export const MinIOLogo: React.FC<LogoProps> = ({ size = 24 }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="11" fill="#C72C48"/>
-        <path d="M7.5 7.5h2v9h-2zm3.5 0h2v9h-2zm3.5 0h2v9h-2z" fill="#fff" rx="0.5"/>
-        <path d="M6 17.5h12v1.5H6z" fill="#fff" rx="0.5"/>
-    </svg>
+    <img src="/icons/providers/minio.png" width={size} height={size} alt="MinIO" style={{ objectFit: 'contain' }} />
 );
 
 const SourceForgeLogo: React.FC<LogoProps> = ({ size = 20 }) => (
