@@ -53,8 +53,13 @@ impl FtpProvider {
     }
 
     /// Create a TLS connector with rustls for TLS session reuse support (RFC 4217 §10.2).
-    /// rustls automatically caches TLS session tickets, enabling session resumption
-    /// on data connections — required by CerberusFTP, vsftpd, ProFTPD, FileZilla Server.
+    ///
+    /// Capped to TLS 1.2: TLS 1.3 tickets are single-use (`take_tls13_ticket`
+    /// consumes them), so the second data connection would resume a *different*
+    /// session than the control channel.  TLS 1.2 session-ID resumption is
+    /// non-destructive and satisfies the RFC 4217 requirement that every data
+    /// connection resumes the *same* session as the control connection.
+    /// This matches the behaviour of FileZilla, WinSCP, and CyberDuck.
     fn make_tls_connector(&self) -> Result<AsyncRustlsConnector, ProviderError> {
         let config = if !self.config.verify_cert {
             // M6: Log a warning when TLS certificate verification is disabled.
@@ -62,7 +67,7 @@ impl FtpProvider {
                 "[FTP] TLS certificate verification DISABLED for {}:{} — connection is vulnerable to MITM attacks",
                 self.config.host, self.config.port
             );
-            rustls::ClientConfig::builder()
+            rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(danger::NoVerifier))
                 .with_no_client_auth()
@@ -89,7 +94,7 @@ impl FtpProvider {
             if count > 0 {
                 tracing::debug!("[FTP] Loaded {added}/{count} native root certificates");
             }
-            rustls::ClientConfig::builder()
+            rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
                 .with_root_certificates(root_store)
                 .with_no_client_auth()
         };

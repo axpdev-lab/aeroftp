@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.9] - 2026-04-04
+
+### TLS session reuse fix for CerberusFTP & strict servers
+
+#### Fixed
+
+- **TLS session reuse on data connections**: Capped FTP TLS to version 1.2 to fix session reuse failures on CerberusFTP and other strict servers. TLS 1.3 tickets are single-use, so the second data connection would resume a different session than the control channel, violating RFC 4217 section 10.2. TLS 1.2 session-ID resumption is non-destructive and correctly resumes the same session on every data connection (#78)
+
 ## [3.3.8] - 2026-04-04
 
 ### Windows TLS certificate fix & InfiniCloud UX cleanup
