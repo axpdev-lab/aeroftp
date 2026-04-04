@@ -61,9 +61,13 @@ const CLOUD_SERVICES: DiscoverItem[] = [
 const PROTOCOL_ITEMS: DiscoverItem[] = [
     { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
-    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, source: 'protocol' },
     { id: 'rebex-ftp-demo', name: 'Rebex FTP Demo', description: 'Public read-only FTP test server', protocol: 'ftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 21, username: 'demo', password: 'password' } },
     { id: 'rebex-sftp-demo', name: 'Rebex SFTP Demo', description: 'Public read-only SFTP test server', protocol: 'sftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 22, username: 'demo', password: 'password' } },
+];
+
+/** Object storage items defined at protocol level (not in provider registry) */
+const OBJECT_STORAGE_ITEMS: DiscoverItem[] = [
+    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, source: 'protocol' },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [
@@ -103,13 +107,14 @@ function registryToDiscoverItem(p: ProviderConfig): DiscoverItem {
 const EXCLUDED_IDS = new Set(['filelu-ftp', 'filelu-ftps']);
 
 export function buildDiscoverCategories(): DiscoverCategory[] {
-    const s3Providers = getProvidersByCategory('s3').map(registryToDiscoverItem)
+    const s3Providers = [...getProvidersByCategory('s3').map(registryToDiscoverItem), ...OBJECT_STORAGE_ITEMS]
         .sort((a, b) => {
             const priority: Record<string, number> = {
                 'custom-s3': 0, 'minio': 1,
                 'amazon-s3': 2, 'cloudflare-r2': 3, 'mega-s4': 4, 'storj': 5,
                 'backblaze': 6, 'idrive-e2': 7, 'digitalocean-spaces': 8,
                 'filelu-s3': 9, 'wasabi': 10, 'oracle-cloud': 11, 'quotaless-s3': 12,
+                'azure-generic': 13,
                 // Asian providers last
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
             };
