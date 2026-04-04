@@ -37,6 +37,7 @@ impl S3Provider {
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
         let client = Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;

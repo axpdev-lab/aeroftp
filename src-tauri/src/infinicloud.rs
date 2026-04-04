@@ -103,7 +103,10 @@ async fn discover(
     password: &SecretString,
     api_key: &str,
 ) -> Result<UserInfo, String> {
-    let client = Client::new();
+    let client = Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
     let auth = build_basic_header(username, password);
 
     let resp = client
@@ -163,7 +166,10 @@ async fn get_quota(
     password: &SecretString,
     api_key: &str,
 ) -> Result<QuotaInfo, String> {
-    let client = Client::new();
+    let client = Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
     let auth = build_basic_header(username, password);
 
     let url = format!("https://{}/v2/api/ba/dataset/(capacity)", node);

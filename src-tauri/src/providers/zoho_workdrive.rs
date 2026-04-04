@@ -366,6 +366,7 @@ impl ZohoWorkdriveProvider {
             HeaderValue::from_static("application/vnd.api+json"),
         );
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .default_headers(default_headers)
             .timeout(std::time::Duration::from_secs(30))
             .build()

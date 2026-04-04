@@ -3696,7 +3696,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <>
                                             <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                                             <a
-                                                href={selectedProvider.signupUrl}
+                                                href={`${selectedProvider.signupUrl}${selectedProvider.signupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-1 text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"

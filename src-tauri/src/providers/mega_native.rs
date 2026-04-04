@@ -172,7 +172,7 @@ struct MegaApiClient {
 impl MegaApiClient {
     fn new(session_id: Option<String>) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent("AeroFTP/3.1.8")
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(Duration::from_secs(120))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());

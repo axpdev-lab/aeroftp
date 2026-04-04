@@ -118,6 +118,7 @@ pub struct SwiftProvider {
 impl SwiftProvider {
     pub fn new(config: SwiftConfig) -> Self {
         let client = Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
             .danger_accept_invalid_certs(!config.verify_cert)

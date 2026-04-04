@@ -200,6 +200,7 @@ impl WebDavProvider {
             );
         }
         let client = Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
             .timeout(std::time::Duration::from_secs(30))
             .build()

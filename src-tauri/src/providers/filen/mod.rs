@@ -219,6 +219,7 @@ const FILE_KEY_CACHE_MAX_ENTRIES: usize = 10_000;
 impl FilenProvider {
     pub fn new(config: FilenConfig) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());

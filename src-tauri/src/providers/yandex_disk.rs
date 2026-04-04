@@ -214,6 +214,7 @@ pub struct YandexDiskProvider {
 impl YandexDiskProvider {
     pub fn new(access_token: String, initial_path: Option<String>) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .unwrap_or_default();

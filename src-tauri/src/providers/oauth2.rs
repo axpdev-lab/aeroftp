@@ -51,6 +51,7 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
         Box::pin(async move {
             let client = reqwest::Client::builder()
+                .user_agent(crate::providers::AEROFTP_USER_AGENT)
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;

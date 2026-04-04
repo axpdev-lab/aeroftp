@@ -280,6 +280,7 @@ pub struct KoofrProvider {
 impl KoofrProvider {
     pub fn new(config: KoofrConfig) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::limited(10))

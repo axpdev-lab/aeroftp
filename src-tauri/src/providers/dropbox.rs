@@ -93,6 +93,7 @@ impl DropboxProvider {
             config,
             oauth_manager: OAuth2Manager::new(),
             client: reqwest::Client::builder()
+                .user_agent(crate::providers::AEROFTP_USER_AGENT)
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap_or_default(),

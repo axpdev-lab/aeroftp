@@ -263,6 +263,7 @@ pub struct FileLuProvider {
 impl FileLuProvider {
     pub fn new(config: FileLuConfig) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(300))
             .connect_timeout(std::time::Duration::from_secs(30))
             .build()

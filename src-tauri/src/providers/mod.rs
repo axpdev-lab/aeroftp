@@ -55,6 +55,10 @@ pub mod swift;
 pub mod http_retry;
 pub mod atomic_write;
 
+/// User-Agent sent with every HTTP request (auto-derived from Cargo.toml version).
+/// Used by all providers that make HTTP calls (WebDAV, S3, OAuth, REST APIs).
+pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
+
 pub use types::*;
 // GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0
 #[allow(unused_imports)]

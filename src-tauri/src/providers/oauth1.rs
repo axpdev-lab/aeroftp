@@ -245,7 +245,10 @@ pub async fn request_token(
 
     let body = format!("oauth_callback={}", percent_encode(callback_url));
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
     let resp = client
         .post(request_token_url)
         .header("Authorization", &auth)
@@ -296,7 +299,10 @@ pub async fn access_token(
         authorization_header("POST", access_token_url, &creds, &extra_with_verifier)
     };
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
     let resp = client
         .post(access_token_url)
         .header("Authorization", &auth)

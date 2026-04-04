@@ -164,6 +164,7 @@ pub struct PCloudProvider {
 impl PCloudProvider {
     pub fn new(config: PCloudConfig) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
