@@ -29,7 +29,7 @@ const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
 };
 
 interface DiscoverPanelProps {
-    onSelectProvider: (protocol: ProviderType, providerId?: string) => void;
+    onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => void;
 }
 
 const HEALTH_COLORS: Record<HealthStatus, string> = {
@@ -91,6 +91,8 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
                         ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                     : item.badge === 'Swift'
                         ? 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300'
+                    : item.badge === 'DEMO'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                 }`}>
                     {['TLS', 'SSH', 'HMAC', 'E2E'].includes(item.badge) && <ShieldCheck size={10} />}
@@ -148,7 +150,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     }, [activeItems, scanItems]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
-        onSelectProvider(item.protocol, item.providerId);
+        onSelectProvider(item.protocol, item.providerId, item.demo);
     }, [onSelectProvider]);
 
     return (

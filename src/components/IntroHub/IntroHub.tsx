@@ -114,9 +114,9 @@ export function IntroHub(props: IntroHubProps) {
     }, []);
 
     // Create a form tab from Discover (provider selection)
-    const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string) => {
+    const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => {
         const id = generateTabId();
-        const label = providerId || protocol.toUpperCase();
+        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (providerId || protocol.toUpperCase());
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
         const newTab: FormTabState = {
@@ -125,11 +125,11 @@ export function IntroHub(props: IntroHubProps) {
             protocol,
             providerId,
             connectionParams: {
-                server: provider?.defaults?.server || '',
-                username: '',
-                password: '',
+                server: demo?.server || provider?.defaults?.server || '',
+                username: demo?.username || '',
+                password: demo?.password || '',
                 protocol,
-                port: provider?.defaults?.port || undefined,
+                port: demo?.port || provider?.defaults?.port || undefined,
                 providerId,
                 options: {
                     pathStyle: provider?.defaults?.pathStyle,

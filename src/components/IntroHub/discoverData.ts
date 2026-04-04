@@ -28,6 +28,13 @@ export interface DiscoverItem {
     signupUrl?: string;
     healthCheckUrl?: string;
     source: 'registry' | 'protocol';
+    /** Pre-filled demo credentials (read-only test servers) */
+    demo?: {
+        server: string;
+        port: number;
+        username: string;
+        password: string;
+    };
 }
 
 /** Cloud services defined at protocol level (not in provider registry) */
@@ -55,6 +62,8 @@ const PROTOCOL_ITEMS: DiscoverItem[] = [
     { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
     { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, source: 'protocol' },
+    { id: 'rebex-ftp-demo', name: 'Rebex FTP Demo', description: 'Public read-only FTP test server', protocol: 'ftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 21, username: 'demo', password: 'password' } },
+    { id: 'rebex-sftp-demo', name: 'Rebex SFTP Demo', description: 'Public read-only SFTP test server', protocol: 'sftp', badge: 'DEMO', healthCheckUrl: 'https://test.rebex.net', source: 'protocol', demo: { server: 'test.rebex.net', port: 22, username: 'demo', password: 'password' } },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [
