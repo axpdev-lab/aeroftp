@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "3.3.7"
+version = "3.3.8"
 dependencies = [
  "aerovault",
  "aes",
@@ -80,6 +80,7 @@ dependencies = [
  "russh",
  "russh-sftp",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "scrypt",
  "secrecy 0.10.3",

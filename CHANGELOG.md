@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.8] - 2026-04-04
+
+### Windows TLS certificate fix & InfiniCloud UX cleanup
+
+#### Fixed
+
+- **Windows TLS certificate validation**: Fixed `UnknownIssuer` error when connecting to servers with Let's Encrypt certificates on Windows. The FTP TLS connector now loads the native OS certificate store (Windows/macOS/Linux) in addition to bundled Mozilla roots, so system-trusted CAs and enterprise certificates are properly recognized (#79)
+- **InfiniCloud form cleanup**: Hidden the API Key field from the InfiniCloud connection form until REST API access is available. WebDAV connection works without it
+- **Select field height**: Protocol-specific dropdown menus (Encryption, S3 region/endpoint) now match input field height consistently
+
 ## [3.3.7] - 2026-04-04
 
 ### Demo servers, provider URL fixes & Discover UX improvements

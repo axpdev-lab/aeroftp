@@ -67,9 +67,28 @@ impl FtpProvider {
                 .with_custom_certificate_verifier(Arc::new(danger::NoVerifier))
                 .with_no_client_auth()
         } else {
-            let root_store = rustls::RootCertStore::from_iter(
+            let mut root_store = rustls::RootCertStore::from_iter(
                 webpki_roots::TLS_SERVER_ROOTS.iter().cloned()
             );
+            // Load native OS certificate store (Windows/macOS/Linux) so that
+            // system-trusted CAs (e.g. Let's Encrypt via Windows cert store,
+            // enterprise CAs, custom roots) are accepted alongside the
+            // bundled Mozilla roots.  Errors are non-fatal: if the native
+            // store can't be read we still have webpki-roots as fallback.
+            let native = rustls_native_certs::load_native_certs();
+            if !native.errors.is_empty() {
+                tracing::warn!("[FTP] Errors loading native certificates: {:?}", native.errors);
+            }
+            let count = native.certs.len();
+            let mut added = 0u32;
+            for cert in native.certs {
+                if root_store.add(cert).is_ok() {
+                    added += 1;
+                }
+            }
+            if count > 0 {
+                tracing::debug!("[FTP] Loaded {added}/{count} native root certificates");
+            }
             rustls::ClientConfig::builder()
                 .with_root_certificates(root_store)
                 .with_no_client_auth()

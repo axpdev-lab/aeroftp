@@ -3550,25 +3550,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* InfiniCloud API Key field */}
-                                        {selectedProviderId === 'infinicloud' && (
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5">API Key</label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionParams.options?.apiKey || ''}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        options: { ...connectionParams.options, apiKey: e.target.value },
-                                                    })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
-                                                    placeholder="FEF5078EA41D182EEF89A21E034BD680"
-                                                />
-                                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                                    {t('protocol.infinicloudApiKeyHint')}
-                                                </p>
-                                            </div>
-                                        )}
+                                        {/* InfiniCloud API Key field — hidden until REST API access is granted */}
 
                                         {/* Protocol-specific fields */}
                                         <ProtocolFields

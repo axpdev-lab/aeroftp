@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.8" date="2026-04-04">
+      <description>
+        <p>Fix Windows TLS certificate validation for Let's Encrypt and system-trusted CAs. Clean up InfiniCloud connection form.</p>
+      </description>
+    </release>
     <release version="3.3.7" date="2026-04-04">
       <description>
         <p>Rebex FTP/SFTP demo servers in Discover tab for instant onboarding. InfiniCloud REST API v2 module for auto-discovery and quota (pending API key). Fixed broken signup/help URLs for 5 providers. Corrected Cryptomator capability (create + browse, not read-only). Azure Blob moved to Object Storage section. Redirect to My Servers after saving. Subtle shield badge for unverified TLS certificates.</p>
