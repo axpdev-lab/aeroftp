@@ -141,7 +141,7 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 
 <p align="center"><sub>+ FTP, FTPS, SFTP, WebDAV, Swift protocols</sub></p>
 
-<p align="center"><sub>We reached out directly to providers to ensure quality integration. Special thanks to MEGA, Koofr, FileLu, Felicloud, and Storj for their responsive technical support.</sub></p>
+<p align="center"><sub>We reached out directly to providers to ensure quality integration. Special thanks to MEGA, Koofr, FileLu, Felicloud, Storj, pCloud, IDrive, and SourceForge for their responsive technical support.</sub></p>
 
 > See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
