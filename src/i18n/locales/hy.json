@@ -1334,7 +1334,9 @@
             "advancedUnlock": "Փոփոխել ամեն դեպտում",
             "directContact": "{provider}-ի հետ ուղիղ կապի մեջ առաջնահերթ աջակցության և թարմացումների համար։",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
-            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances."
+            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
+            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
+            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -1763,7 +1765,7 @@
                 "closeAll": "Փակել բոլոր ներդիրները",
                 "transferInProgress": "Փոխանցումը ընթանում է — ներդիրի փոխարկումն անջատված է"
             },
-            "updateSuccess": "\u0539\u0561\u0580\u0574\u0561\u0581\u0578\u0582\u0574\u0568 \u0570\u0561\u057b\u0578\u0572\u057e\u0565\u056c \u0567"
+            "updateSuccess": "Թարմացումը հաջողվել է"
         },
         "update": {
             "downloadNow": "Ներբեռնել հիմա",

@@ -1341,7 +1341,9 @@
             "advancedUnlock": "แก้ไขต่อ",
             "directContact": "ติดต่อโดยตรงกับ {provider} สำหรับการสนับสนุนเร่งด่วนและการอัปเดต",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
-            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances."
+            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
+            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
+            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

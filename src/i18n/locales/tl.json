@@ -1341,7 +1341,9 @@
             "advancedUnlock": "I-edit pa rin",
             "directContact": "Sa direktang pakikipag-ugnayan sa {provider} para sa priority na suporta at mga update.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
-            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances."
+            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
+            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
+            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -1341,7 +1341,9 @@
             "advancedUnlock": "Hariri hata hivyo",
             "directContact": "Katika mawasiliano ya moja kwa moja na {provider} kwa msaada wa kipaumbele na masasisho.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
-            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances."
+            "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
+            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
+            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
         },
         "shortcuts": {
             "title": "Njia za Mkato",
