@@ -142,12 +142,13 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         ? [{ ...sfInRegistry, description: 'Open source hosting' }, ...DEVELOPER_ITEMS]
         : [...DEVELOPER_ITEMS];
 
-    // Add Hetzner to protocol items if present
+    // Build protocol items: generics first, then Hetzner, then demos last
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');
-    const protoItems = [...PROTOCOL_ITEMS];
-    if (hetzner) {
-        protoItems.push(hetzner);
-    }
+    const protoItems = [
+        ...PROTOCOL_ITEMS.filter(p => !p.demo),
+        ...(hetzner ? [hetzner] : []),
+        ...PROTOCOL_ITEMS.filter(p => !!p.demo),
+    ];
 
     const categories: DiscoverCategory[] = [
         {

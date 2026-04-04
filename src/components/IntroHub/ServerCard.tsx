@@ -65,6 +65,11 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                     {megaBadge.label}
                 </span>
             )}
+            {server.host === 'test.rebex.net' && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                    DEMO
+                </span>
+            )}
         </div>
     );
 }
