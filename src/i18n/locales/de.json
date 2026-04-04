@@ -1769,7 +1769,8 @@
                 "closeOthers": "Andere Tabs schließen",
                 "closeAll": "Alle Tabs schließen",
                 "transferInProgress": "Übertragung läuft — Tab-Wechsel deaktiviert"
-            }
+            },
+            "updateSuccess": "Update erfolgreich abgeschlossen"
         },
         "update": {
             "downloadNow": "Jetzt herunterladen",

@@ -1769,7 +1769,8 @@
                 "closeOthers": "Itxi beste fitxak",
                 "closeAll": "Itxi fitxa guztiak",
                 "transferInProgress": "Transferentzia abian — fitxa aldaketa desgaituta"
-            }
+            },
+            "updateSuccess": "Eguneraketa ondo osatu da"
         },
         "update": {
             "downloadNow": "Deskargatu orain",

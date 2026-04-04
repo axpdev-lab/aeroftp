@@ -1769,7 +1769,8 @@
                 "closeOthers": "Loka odrum flipum",
                 "closeAll": "Loka ollum flipum",
                 "transferInProgress": "Flutningur í gangi — flippa á milli flipa óvirkt"
-            }
+            },
+            "updateSuccess": "Uppfærsla tókst"
         },
         "update": {
             "downloadNow": "Sækja núna",

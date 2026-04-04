@@ -1769,7 +1769,8 @@
                 "closeOthers": "Cerrar otras pestañas",
                 "closeAll": "Cerrar todas las pestañas",
                 "transferInProgress": "Transferencia en curso — cambio de pestaña desactivado"
-            }
+            },
+            "updateSuccess": "Actualización completada con éxito"
         },
         "update": {
             "downloadNow": "Descargar ahora",

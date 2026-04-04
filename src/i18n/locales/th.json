@@ -1769,7 +1769,8 @@
                 "closeOthers": "ปิดแท็บอื่น",
                 "closeAll": "ปิดแท็บทั้งหมด",
                 "transferInProgress": "กำลังโอนไฟล์ — การสลับแท็บถูกปิดใช้งาน"
-            }
+            },
+            "updateSuccess": "อัปเดตเสร็จสมบูรณ์"
         },
         "update": {
             "downloadNow": "ดาวน์โหลดตอนนี้",

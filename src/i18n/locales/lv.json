@@ -1769,7 +1769,8 @@
                 "closeOthers": "Aizvirt parijas cilnes",
                 "closeAll": "Aizvirt visas cilnes",
                 "transferInProgress": "Pārsūtīšana notiek — ciļņu pārslēgšana atspējota"
-            }
+            },
+            "updateSuccess": "Atjaunināšana veiksmīgi pabeigta"
         },
         "update": {
             "downloadNow": "Lejupielādēt tagad",

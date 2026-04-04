@@ -1769,7 +1769,8 @@
                 "closeOthers": "अन्य टैब बंद करें",
                 "closeAll": "सभी टैब बंद करें",
                 "transferInProgress": "ट्रांसफर जारी है — टैब स्विचिंग अक्षम"
-            }
+            },
+            "updateSuccess": "अपडेट सफलतापूर्वक पूरा हुआ"
         },
         "update": {
             "downloadNow": "अभी डाउनलोड करें",

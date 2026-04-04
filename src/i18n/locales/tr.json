@@ -1769,7 +1769,8 @@
                 "closeOthers": "Diger sekmeleri kapat",
                 "closeAll": "Tum sekmeleri kapat",
                 "transferInProgress": "Aktarım devam ediyor — sekme değiştirme devre dışı"
-            }
+            },
+            "updateSuccess": "Güncelleme başarıyla tamamlandı"
         },
         "update": {
             "downloadNow": "Şimdi İndir",

@@ -1769,7 +1769,8 @@
                 "closeOthers": "Funga tabo nyingine",
                 "closeAll": "Funga tabo zote",
                 "transferInProgress": "Uhamisho unaendelea — kubadilisha kichupo kumezimwa"
-            }
+            },
+            "updateSuccess": "Sasisho limekamilika kwa mafanikio"
         },
         "update": {
             "downloadNow": "Pakua Sasa",

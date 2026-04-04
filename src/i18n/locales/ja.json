@@ -1734,7 +1734,8 @@
                 "closeOthers": "他のタブを閉じる",
                 "closeAll": "すべてのタブを閉じる",
                 "transferInProgress": "転送中 — タブの切り替えは無効です"
-            }
+            },
+            "updateSuccess": "更新が正常に完了しました"
         },
         "update": {
             "downloadNow": "今すぐダウンロード",

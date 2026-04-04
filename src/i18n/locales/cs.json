@@ -1769,7 +1769,8 @@
                 "closeOthers": "Zavřít ostatní karty",
                 "closeAll": "Zavřít všechny karty",
                 "transferInProgress": "Přenos probíhá — přepínání karet zakázáno"
-            }
+            },
+            "updateSuccess": "Aktualizace byla úspěšně dokončena"
         },
         "update": {
             "downloadNow": "Stahnout nyni",

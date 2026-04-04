@@ -1769,7 +1769,8 @@
                 "closeOthers": "Tobbi ful bezarasa",
                 "closeAll": "Osszes ful bezarasa",
                 "transferInProgress": "Átvitel folyamatban — lapváltás letiltva"
-            }
+            },
+            "updateSuccess": "A frissítés sikeresen befejeződött"
         },
         "update": {
             "downloadNow": "Letöltés most",

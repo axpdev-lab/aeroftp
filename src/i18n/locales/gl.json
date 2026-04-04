@@ -1769,7 +1769,8 @@
                 "closeOthers": "Pechar outras lapelas",
                 "closeAll": "Pechar todas as lapelas",
                 "transferInProgress": "Transferencia en curso — cambio de pestana desactivado"
-            }
+            },
+            "updateSuccess": "Actualización completada con éxito"
         },
         "update": {
             "downloadNow": "Descargar agora",

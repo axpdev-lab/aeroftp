@@ -1769,7 +1769,8 @@
                 "closeOthers": "Tutup tab lain",
                 "closeAll": "Tutup semua tab",
                 "transferInProgress": "Pemindahan sedang berlangsung — penukaran tab dinyahdayakan"
-            }
+            },
+            "updateSuccess": "Kemas kini berjaya diselesaikan"
         },
         "update": {
             "downloadNow": "Muat Turun Sekarang",

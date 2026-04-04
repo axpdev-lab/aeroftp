@@ -1769,7 +1769,8 @@
                 "closeOthers": "Sulge teised vahelehed",
                 "closeAll": "Sulge kõik vahelehed",
                 "transferInProgress": "Ülekanne käib — vahekaardi vahetamine keelatud"
-            }
+            },
+            "updateSuccess": "Värskendus edukalt lõpule viidud"
         },
         "update": {
             "downloadNow": "Laadi kohe alla",

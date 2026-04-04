@@ -1769,7 +1769,8 @@
                 "closeOthers": "Sulje muut välilehdet",
                 "closeAll": "Sulje kaikki välilehdet",
                 "transferInProgress": "Siirto käynnissä — välilehtien vaihto poistettu käytöstä"
-            }
+            },
+            "updateSuccess": "Päivitys onnistui"
         },
         "update": {
             "downloadNow": "Lataa nyt",

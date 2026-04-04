@@ -1769,7 +1769,8 @@
                 "closeOthers": "Tancar les altres pestanyes",
                 "closeAll": "Tancar totes les pestanyes",
                 "transferInProgress": "Transferència en curs — canvi de pestanya desactivat"
-            }
+            },
+            "updateSuccess": "Actualització completada correctament"
         },
         "update": {
             "downloadNow": "Descarregar ara",

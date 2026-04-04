@@ -1769,7 +1769,8 @@
                 "closeOthers": "Luk andre faner",
                 "closeAll": "Luk alle faner",
                 "transferInProgress": "Overførsel i gang — faneskift deaktiveret"
-            }
+            },
+            "updateSuccess": "Opdatering gennemført"
         },
         "update": {
             "downloadNow": "Download nu",

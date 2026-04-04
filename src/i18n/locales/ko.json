@@ -1769,7 +1769,8 @@
                 "closeOthers": "다른 탭 닫기",
                 "closeAll": "모든 탭 닫기",
                 "transferInProgress": "전송 중 — 탭 전환 비활성화"
-            }
+            },
+            "updateSuccess": "업데이트가 성공적으로 완료되었습니다"
         },
         "update": {
             "downloadNow": "지금 다운로드",

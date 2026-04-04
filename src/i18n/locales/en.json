@@ -3093,7 +3093,8 @@
       "switchToGrid": "Switch to Grid View",
       "switchToList": "Switch to List View",
       "syncing": "Syncing...",
-      "updateAvailable": "AeroFTP v{version} Available!"
+      "updateAvailable": "AeroFTP v{version} Available!",
+      "updateSuccess": "Update completed successfully"
     },
     "update": {
       "downloadComplete": "Download complete!",

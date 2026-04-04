@@ -1769,7 +1769,8 @@
                 "closeOthers": "Fermer les autres onglets",
                 "closeAll": "Fermer tous les onglets",
                 "transferInProgress": "Transfert en cours — changement d'onglet désactivé"
-            }
+            },
+            "updateSuccess": "Mise à jour terminée avec succès"
         },
         "update": {
             "downloadNow": "Telecharger maintenant",

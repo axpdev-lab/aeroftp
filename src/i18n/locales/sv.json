@@ -1769,7 +1769,8 @@
                 "closeOthers": "Stang ovriga flikar",
                 "closeAll": "Stang alla flikar",
                 "transferInProgress": "Överföring pågår — flikbyte inaktiverat"
-            }
+            },
+            "updateSuccess": "Uppdatering slutförd"
         },
         "update": {
             "downloadNow": "Ladda ner nu",

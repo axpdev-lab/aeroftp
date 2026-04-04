@@ -1769,7 +1769,8 @@
                 "closeOthers": "关闭其他标签页",
                 "closeAll": "关闭所有标签页",
                 "transferInProgress": "传输进行中 — 标签页切换已禁用"
-            }
+            },
+            "updateSuccess": "更新成功完成"
         },
         "update": {
             "downloadNow": "立即下载",

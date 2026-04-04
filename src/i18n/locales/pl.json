@@ -1769,7 +1769,8 @@
                 "closeOthers": "Zamknij inne karty",
                 "closeAll": "Zamknij wszystkie karty",
                 "transferInProgress": "Transfer w toku — przełączanie kart wyłączone"
-            }
+            },
+            "updateSuccess": "Aktualizacja zakończona pomyślnie"
         },
         "update": {
             "downloadNow": "Pobierz teraz",

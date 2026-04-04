@@ -1836,7 +1836,8 @@
                 "closeAll": "Chiudi tutte le schede",
                 "newConnection": "Nuova connessione",
                 "transferInProgress": "Trasferimento in corso — cambio scheda disabilitato"
-            }
+            },
+            "updateSuccess": "Aggiornamento completato con successo"
         },
         "update": {
             "downloadNow": "Scarica Ora",

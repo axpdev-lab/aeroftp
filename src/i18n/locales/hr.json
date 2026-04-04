@@ -1769,7 +1769,8 @@
                 "closeOthers": "Zatvori ostale kartice",
                 "closeAll": "Zatvori sve kartice",
                 "transferInProgress": "Prijenos u tijeku — prebacivanje kartica onemogućeno"
-            }
+            },
+            "updateSuccess": "Ažuriranje uspješno dovršeno"
         },
         "update": {
             "downloadNow": "Preuzmi sada",

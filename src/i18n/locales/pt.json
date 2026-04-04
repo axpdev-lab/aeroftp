@@ -1769,7 +1769,8 @@
                 "closeOthers": "Fechar outros separadores",
                 "closeAll": "Fechar todos os separadores",
                 "transferInProgress": "Transferência em andamento — troca de aba desativada"
-            }
+            },
+            "updateSuccess": "Atualização concluída com sucesso"
         },
         "update": {
             "downloadNow": "Baixar Agora",

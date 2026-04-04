@@ -1769,7 +1769,8 @@
                 "closeOthers": "Lukk andre faner",
                 "closeAll": "Lukk alle faner",
                 "transferInProgress": "Overføring pågår — fanebytting deaktivert"
-            }
+            },
+            "updateSuccess": "Oppdatering fullført"
         },
         "update": {
             "downloadNow": "Last ned nå",

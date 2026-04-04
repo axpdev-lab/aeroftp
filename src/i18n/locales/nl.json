@@ -1769,7 +1769,8 @@
                 "closeOthers": "Andere tabbladen sluiten",
                 "closeAll": "Alle tabbladen sluiten",
                 "transferInProgress": "Overdracht bezig — tabwisseling uitgeschakeld"
-            }
+            },
+            "updateSuccess": "Update succesvol voltooid"
         },
         "update": {
             "downloadNow": "Nu downloaden",

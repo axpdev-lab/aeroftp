@@ -1769,7 +1769,8 @@
                 "closeOthers": "Zavriet ostatne karty",
                 "closeAll": "Zavriet vsetky karty",
                 "transferInProgress": "Prenos prebieha — prepínanie kariet zakázané"
-            }
+            },
+            "updateSuccess": "Aktualizácia bola úspešne dokončená"
         },
         "update": {
             "downloadNow": "Stiahnut teraz",

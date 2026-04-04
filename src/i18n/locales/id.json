@@ -1769,7 +1769,8 @@
                 "closeOthers": "Tutup tab lainnya",
                 "closeAll": "Tutup semua tab",
                 "transferInProgress": "Transfer sedang berlangsung — perpindahan tab dinonaktifkan"
-            }
+            },
+            "updateSuccess": "Pembaruan berhasil diselesaikan"
         },
         "update": {
             "downloadNow": "Unduh Sekarang",

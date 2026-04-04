@@ -1769,7 +1769,8 @@
                 "closeOthers": "Inchide celelalte file",
                 "closeAll": "Inchide toate filele",
                 "transferInProgress": "Transfer în curs — comutarea filelor dezactivată"
-            }
+            },
+            "updateSuccess": "Actualizare finalizată cu succes"
         },
         "update": {
             "downloadNow": "Descarcă acum",

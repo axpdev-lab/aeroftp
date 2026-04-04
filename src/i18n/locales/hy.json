@@ -67,7 +67,7 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "պարտադիր",
-            "duplicate": "\u053f\u0580\u056f\u0576\u0561\u056f"
+            "duplicate": "Կրկնակ"
         },
         "connection": {
             "title": "Կապվել սերվերուհն",
@@ -1762,7 +1762,8 @@
                 "closeOthers": "Փակել մյուս ներդիրները",
                 "closeAll": "Փակել բոլոր ներդիրները",
                 "transferInProgress": "Փոխանցումը ընթանում է — ներդիրի փոխարկումն անջատված է"
-            }
+            },
+            "updateSuccess": "\u0539\u0561\u0580\u0574\u0561\u0581\u0578\u0582\u0574\u0568 \u0570\u0561\u057b\u0578\u0572\u057e\u0565\u056c \u0567"
         },
         "update": {
             "downloadNow": "Ներբեռնել հիմա",

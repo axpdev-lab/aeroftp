@@ -432,6 +432,9 @@ const App: React.FC = () => {
       return next;
     });
   }, []);
+
+  // AeroFile toggle handler ref — populated after loadLocalFiles is defined
+  const handleToggleAeroFileRef = useRef<() => void>(() => {});
   // Recent locations
   const [recentPaths, setRecentPaths] = useState<string[]>(() => {
     try {
@@ -1637,10 +1640,11 @@ interface UpdateVerificationInfo {
         const markerJson = await invoke<string | null>('read_update_marker');
         if (markerJson) {
            const data = JSON.parse(markerJson);
-           // Show green success toast
-           toast.success(
-             t('ui.updateSuccess', { version: data.updated_from }),
-             `AeroFTP is now updated.${data.verification_mode === 'SigstoreVerified' ? ' Sigstore Verified' : data.verified ? ' SHA-256 Verified' : ''}`
+           // Show green success toast (5s instead of default 2s)
+           toast.addToast('success',
+             t('ui.updateSuccess'),
+             `AeroFTP is now updated.${data.verification_mode === 'SigstoreVerified' ? ' Sigstore Verified' : data.verified ? ' SHA-256 Verified' : ''}`,
+             5000
            );
 
            activityLog.log('INFO',
@@ -1718,6 +1722,10 @@ interface UpdateVerificationInfo {
         case 'toggle_agent':
           // Emit event for DevToolsV2 to handle
           window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: id.replace('toggle_', '') }));
+          break;
+        case 'toggle_aerofile':
+          // Dispatch to StatusBar's AeroFile button handler
+          window.dispatchEvent(new CustomEvent('toggle-aerofile'));
           break;
         case 'check_update':
           checkForUpdate(true);
@@ -1843,6 +1851,32 @@ interface UpdateVerificationInfo {
     },
     onScanningUpdate: setScanningState,
   });
+
+  // AeroFile toggle — shared between StatusBar, IntroHub header, and View > AeroFile menu
+  const handleToggleAeroFile = useCallback(async () => {
+    if (showConnectionScreen) {
+      setShowConnectionScreen(false);
+      setActivePanel('local');
+      setShowSidebar(true);
+      await loadLocalFiles(currentLocalPath || '/');
+    } else if (isConnected) {
+      setShowRemotePanel(prev => {
+        if (prev) { setActivePanel('local'); setShowSidebar(true); }
+        else { setShowLocalPreview(false); }
+        return !prev;
+      });
+    } else {
+      toggleSidebar();
+    }
+  }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles, toggleSidebar]);
+  handleToggleAeroFileRef.current = handleToggleAeroFile;
+
+  // Listen for View > AeroFile menu event
+  useEffect(() => {
+    const handler = () => { handleToggleAeroFileRef.current(); };
+    window.addEventListener('toggle-aerofile', handler);
+    return () => window.removeEventListener('toggle-aerofile', handler);
+  }, []);
 
   const handleRemoteSearch = async (query: string) => {
     if (!query.trim()) {
@@ -7491,12 +7525,7 @@ interface UpdateVerificationInfo {
               }}
               isAeroCloudConfigured={true}
               isAeroCloudConnected={isCloudActive}
-              onAeroFile={async () => {
-                setShowConnectionScreen(false);
-                setActivePanel('local');
-                setShowSidebar(true);
-                await loadLocalFiles(currentLocalPath || '/');
-              }}
+              onAeroFile={handleToggleAeroFile}
               onSavedServerConnect={async (params, initialPath, localInitialPath) => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
@@ -8901,25 +8930,7 @@ interface UpdateVerificationInfo {
             swapPanels={swapPanels}
             devToolsOpen={devToolsOpen}
             aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
-            onToggleAeroFile={async () => {
-              if (showConnectionScreen) {
-                // On connection screen: enter AeroFile mode (same as "Local files >" button)
-                setShowConnectionScreen(false);
-                setActivePanel('local');
-                setShowSidebar(true);
-                await loadLocalFiles(currentLocalPath || '/');
-              } else if (isConnected) {
-                // Connected: toggle remote panel off/on (entering/exiting AeroFile mode)
-                setShowRemotePanel(prev => {
-                  if (prev) { setActivePanel('local'); setShowSidebar(true); }
-                  else { setShowLocalPreview(false); }
-                  return !prev;
-                });
-              } else {
-                // Already in AeroFile mode (not connected, not on connection screen) — toggle sidebar
-                toggleSidebar();
-              }
-            }}
+            onToggleAeroFile={handleToggleAeroFile}
             onToggleDevTools={() => setDevToolsOpen(!devToolsOpen)}
             aeroAgentOpen={devToolsOpen}
             onToggleAeroAgent={() => {

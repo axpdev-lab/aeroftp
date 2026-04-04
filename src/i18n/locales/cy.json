@@ -1769,7 +1769,8 @@
                 "closeOthers": "Cau tabiau eraill",
                 "closeAll": "Cau pob tab",
                 "transferInProgress": "Trosglwyddiad ar y gweill — newid tab wedi'i analluogi"
-            }
+            },
+            "updateSuccess": "Diweddariad wedi'i gwblhau'n llwyddiannus"
         },
         "update": {
             "downloadNow": "Lawrlwytho Nawr",

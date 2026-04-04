@@ -1769,7 +1769,8 @@
                 "closeOthers": "Isara ang ibang mga tab",
                 "closeAll": "Isara lahat ng mga tab",
                 "transferInProgress": "May transfer na nagaganap — hindi maaaring magpalit ng tab"
-            }
+            },
+            "updateSuccess": "Matagumpay na nakumpleto ang update"
         },
         "update": {
             "downloadNow": "I-download Ngayon",

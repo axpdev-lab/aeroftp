@@ -8140,6 +8140,8 @@ pub fn run() {
                 "View",
                 true,
                 &[
+                    &MenuItem::with_id(app, "toggle_aerofile", "AeroFile", true, accel("CmdOrCtrl+L"))?,
+                    &PredefinedMenuItem::separator(app)?,
                     &refresh,
                     &PredefinedMenuItem::separator(app)?,
                     &MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, accel("CmdOrCtrl+T"))?,

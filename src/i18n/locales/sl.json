@@ -1769,7 +1769,8 @@
                 "closeOthers": "Zapri ostale zavihke",
                 "closeAll": "Zapri vse zavihke",
                 "transferInProgress": "Prenos poteka — preklapljanje zavihkov onemogočeno"
-            }
+            },
+            "updateSuccess": "Posodobitev uspešno zaključena"
         },
         "update": {
             "downloadNow": "Prenesi zdaj",

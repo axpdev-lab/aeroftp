@@ -1769,7 +1769,8 @@
                 "closeOthers": "Uzdaryti kitus skirtukus",
                 "closeAll": "Uzdaryti visus skirtukus",
                 "transferInProgress": "Perkėlimas vyksta — kortelių perjungimas išjungtas"
-            }
+            },
+            "updateSuccess": "Atnaujinimas sėkmingai baigtas"
         },
         "update": {
             "downloadNow": "Atsisiųsti dabar",

@@ -1769,7 +1769,8 @@
                 "closeOthers": "Dong cac tab khac",
                 "closeAll": "Dong tat ca cac tab",
                 "transferInProgress": "Đang truyền tải — chuyển tab bị vô hiệu hóa"
-            }
+            },
+            "updateSuccess": "Cập nhật thành công"
         },
         "update": {
             "downloadNow": "Tải ngay",
