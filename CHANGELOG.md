@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.7] - 2026-04-04
+
+### Demo servers, provider URL fixes & Discover UX improvements
+
+#### Added
+
+- **Rebex demo servers**: Two pre-configured read-only demo servers (FTP and SFTP) in the Discover > Protocols tab with DEMO badge. Click to open a pre-filled connection form - no configuration needed to try AeroFTP immediately
+- **InfiniCloud REST API module**: Backend support for InfiniCloud REST API v2 (Muramasa) with automatic node discovery and storage quota. Dormant until API key is received from InfiniCloud (WebDAV connection works as before)
+
+#### Fixed
+
+- **Provider signup/help URLs**: Corrected broken registration and help links for InfiniCloud, FileLu, Koofr, Quotaless, and FeliCloud
+- **Cryptomator capability description**: Fixed documentation and AI knowledge base incorrectly stating Cryptomator support is read-only. AeroFTP can both create and browse Cryptomator format 8 vaults
+- **AeroFile in View menu**: Added missing AeroFile entry in the View menu
+- **Update toast i18n key**: Fixed missing translation key for update notification
+- **Unverified certificate badge**: Replaced alert triangle with subtle shield icon for TLS connections with unverified certificates
+
+#### Improved
+
+- **Redirect after save**: Saving a new connection now automatically switches to the My Servers tab
+- **Azure Blob placement**: Moved Azure Blob Storage from Protocols to S3 / Object Storage section in Discover
+- **DEMO badge in saved servers**: Rebex demo connections show an amber DEMO badge alongside the protocol badge
+
 ## [3.3.6] - 2026-04-04
 
 ### FTPS TLS session reuse, rustls migration & server badge overhaul

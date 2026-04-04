@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.3.7" date="2026-04-04">
+      <description>
+        <p>Rebex FTP/SFTP demo servers in Discover tab for instant onboarding. InfiniCloud REST API v2 module for auto-discovery and quota (pending API key). Fixed broken signup/help URLs for 5 providers. Corrected Cryptomator capability (create + browse, not read-only). Azure Blob moved to Object Storage section. Redirect to My Servers after saving. Subtle shield badge for unverified TLS certificates.</p>
+      </description>
+    </release>
     <release version="3.3.6" date="2026-04-04">
       <description>
         <p>FTPS TLS session reuse: migrated from native-tls to rustls, enabling automatic TLS session resumption on data connections (RFC 4217). Fixes compatibility with CerberusFTP, vsftpd, FileZilla Server, and ProFTPD when session reuse is required. Color-coded server badges (FTPS green, SFTP teal, FTP amber) with TLS security indicators. Fixed saved server host:port duplication and TLS mode persistence.</p>
