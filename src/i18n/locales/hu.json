@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Engedélyezi az automatikus felfedezést és a kvótát. Igényelje az infini-cloud.net fejlesztői oldalán.",
-            "infinicloudDiscovering": "InfiniCloud csomópontszerver felfedezése..."
+            "infinicloudDiscovering": "InfiniCloud csomópontszerver felfedezése...",
+            "rebexDemoDisclaimer": "Csak olvasható demókiszolgáló a Rebex-től. A Rebex .NET könyvtárakat és kiszolgálókat fejleszt biztonságos fájlátvitelhez (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

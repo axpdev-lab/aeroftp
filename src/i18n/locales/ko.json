@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "자동 검색 및 할당량을 활성화합니다. infini-cloud.net 개발자 페이지에서 신청하세요.",
-            "infinicloudDiscovering": "InfiniCloud 노드 서버를 검색하는 중..."
+            "infinicloudDiscovering": "InfiniCloud 노드 서버를 검색하는 중...",
+            "rebexDemoDisclaimer": "Rebex가 제공하는 읽기 전용 데모 서버입니다. Rebex는 안전한 파일 전송(SFTP, FTP/S, SSH)을 위한 .NET 라이브러리와 서버를 개발합니다."
         },
         "shortcuts": {
             "title": "단축키",

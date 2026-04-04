@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Omogoča samodejno odkrivanje in kvoto. Prijavite se na strani za razvijalce infini-cloud.net.",
-            "infinicloudDiscovering": "Odkrivanje vozliščnega strežnika InfiniCloud..."
+            "infinicloudDiscovering": "Odkrivanje vozliščnega strežnika InfiniCloud...",
+            "rebexDemoDisclaimer": "Demonstracijski strežnik samo za branje, ki ga zagotavlja Rebex. Rebex razvija .NET knjižnice in strežnike za varni prenos datotek (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

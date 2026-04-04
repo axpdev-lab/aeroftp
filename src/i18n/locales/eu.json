@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Aurkikuntza automatikoa eta kuota gaitzen ditu. Eskatu infini-cloud.net garatzailearen orrian.",
-            "infinicloudDiscovering": "InfiniCloud nodo zerbitzaria bilatzen..."
+            "infinicloudDiscovering": "InfiniCloud nodo zerbitzaria bilatzen...",
+            "rebexDemoDisclaimer": "Rebex-ek eskainitako irakurtzeko soilik den demo zerbitzaria. Rebex-ek fitxategi-transferentzia segurua (SFTP, FTP/S, SSH) egiteko .NET liburutegiak eta zerbitzariak garatzen ditu."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

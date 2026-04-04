@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Активира автоматичното откриване и квотата. Кандидатствайте на страницата за разработчици на infini-cloud.net.",
-            "infinicloudDiscovering": "Търсене на сървъра на InfiniCloud..."
+            "infinicloudDiscovering": "Търсене на сървъра на InfiniCloud...",
+            "rebexDemoDisclaimer": "Сървър само за четене, предоставен от Rebex. Rebex разработва .NET библиотеки и сървъри за сигурен трансфер на файлове (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

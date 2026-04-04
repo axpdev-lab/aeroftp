@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Ativa a descoberta automática e a cota. Solicite na página de desenvolvedor de infini-cloud.net.",
-            "infinicloudDiscovering": "A descobrir servidor de nó InfiniCloud..."
+            "infinicloudDiscovering": "A descobrir servidor de nó InfiniCloud...",
+            "rebexDemoDisclaimer": "Servidor de demonstração somente leitura fornecido pela Rebex. A Rebex desenvolve bibliotecas e servidores .NET para transferência segura de arquivos (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Lubab automaatse avastamise ja kvoodi. Taotlege infini-cloud.net arendajate lehelt.",
-            "infinicloudDiscovering": "InfiniCloud sõlmeserveri avastamine..."
+            "infinicloudDiscovering": "InfiniCloud sõlmeserveri avastamine...",
+            "rebexDemoDisclaimer": "Rebex'i pakutav kirjutuskaitstud demoserver. Rebex arendab .NET teeke ja servereid turvalise failiedastuse jaoks (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

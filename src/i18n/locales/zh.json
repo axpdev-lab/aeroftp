@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "启用自动发现和配额。请在 infini-cloud.net 开发者页面申请。",
-            "infinicloudDiscovering": "正在发现 InfiniCloud 节点服务器..."
+            "infinicloudDiscovering": "正在发现 InfiniCloud 节点服务器...",
+            "rebexDemoDisclaimer": "由 Rebex 提供的只读演示服务器。Rebex 开发用于安全文件传输（SFTP、FTP/S、SSH）的 .NET 库和服务器。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

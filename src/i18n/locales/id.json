@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Mengaktifkan penemuan otomatis dan kuota. Daftarkan di halaman pengembang infini-cloud.net.",
-            "infinicloudDiscovering": "Menemukan server node InfiniCloud..."
+            "infinicloudDiscovering": "Menemukan server node InfiniCloud...",
+            "rebexDemoDisclaimer": "Server demo hanya-baca yang disediakan oleh Rebex. Rebex mengembangkan pustaka dan server .NET untuk transfer file yang aman (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

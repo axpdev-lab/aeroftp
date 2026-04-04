@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Bật tính năng tự động khám phá và hạn mức. Đăng ký tại trang nhà phát triển infini-cloud.net.",
-            "infinicloudDiscovering": "Đang khám phá máy chủ nút InfiniCloud..."
+            "infinicloudDiscovering": "Đang khám phá máy chủ nút InfiniCloud...",
+            "rebexDemoDisclaimer": "Máy chủ demo chỉ đọc được cung cấp bởi Rebex. Rebex phát triển các thư viện và máy chủ .NET cho truyền tệp an toàn (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Phím tắt",

@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "स्वचालित खोज और कोटा सक्षम करता है। infini-cloud.net डेवलपर पेज पर आवेदन करें।",
-            "infinicloudDiscovering": "InfiniCloud नोड सर्वर खोजा जा रहा है..."
+            "infinicloudDiscovering": "InfiniCloud नोड सर्वर खोजा जा रहा है...",
+            "rebexDemoDisclaimer": "Rebex द्वारा प्रदान किया गया केवल-पढ़ने योग्य डेमो सर्वर। Rebex सुरक्षित फ़ाइल ट्रांसफर (SFTP, FTP/S, SSH) के लिए .NET लाइब्रेरी और सर्वर विकसित करता है।"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

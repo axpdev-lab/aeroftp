@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Inabisha ugunduzi wa kiotomatiki na kiasi. Omba kwenye ukurasa wa msanidi wa infini-cloud.net.",
-            "infinicloudDiscovering": "Inagundua seva ya nodi ya InfiniCloud..."
+            "infinicloudDiscovering": "Inagundua seva ya nodi ya InfiniCloud...",
+            "rebexDemoDisclaimer": "Seva ya maonyesho ya kusoma tu iliyotolewa na Rebex. Rebex inatengeneza maktaba na seva za .NET kwa uhamishaji salama wa faili (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

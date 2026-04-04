@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Iespējo automātisko atklāšanu un kvotu. Piesakieties infini-cloud.net izstrādātāja lapā.",
-            "infinicloudDiscovering": "Tiek meklēts InfiniCloud mezgla serveris..."
+            "infinicloudDiscovering": "Tiek meklēts InfiniCloud mezgla serveris...",
+            "rebexDemoDisclaimer": "Tikai lasīšanas demonstrācijas serveris, ko nodrošina Rebex. Rebex izstrādā .NET bibliotēkas un serverus drošai failu pārsūtīšanai (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

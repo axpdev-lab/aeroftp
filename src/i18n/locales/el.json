@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Ενεργοποιεί την αυτόματη ανακάλυψη και την ποσόστωση. Υποβάλετε αίτηση στη σελίδα προγραμματιστή του infini-cloud.net.",
-            "infinicloudDiscovering": "Ανακάλυψη διακομιστή κόμβου InfiniCloud..."
+            "infinicloudDiscovering": "Ανακάλυψη διακομιστή κόμβου InfiniCloud...",
+            "rebexDemoDisclaimer": "Διακομιστής επίδειξης μόνο για ανάγνωση από τη Rebex. Η Rebex αναπτύσσει βιβλιοθήκες και διακομιστές .NET για ασφαλή μεταφορά αρχείων (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

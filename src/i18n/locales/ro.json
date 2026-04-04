@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Activează descoperirea automată și cota. Aplicați pe pagina de dezvoltatori infini-cloud.net.",
-            "infinicloudDiscovering": "Se descoperă serverul de nod InfiniCloud..."
+            "infinicloudDiscovering": "Se descoperă serverul de nod InfiniCloud...",
+            "rebexDemoDisclaimer": "Server de demonstrație numai în citire furnizat de Rebex. Rebex dezvoltă biblioteci și servere .NET pentru transfer securizat de fișiere (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

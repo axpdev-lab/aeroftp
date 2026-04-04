@@ -1336,7 +1336,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Ակտիվացնում է ավտոմատ հայտնաբերումը և քվոտան: Դիմեք infini-cloud.net մշակողի էջում:",
-            "infinicloudDiscovering": "InfiniCloud հանգույցի սերվերի հայտնաբերում..."
+            "infinicloudDiscovering": "InfiniCloud հանգույցի սերվերի հայտնաբերում...",
+            "rebexDemoDisclaimer": "Առծինկ կարդիլու դեմո սերվեր, օրակիշված Rebex-ի կողմից: Rebex-ը մշակությանբ բանկային նկարագլության (SFTP, FTP/S, SSH) .NET գրա噊արա坯ներ և սերվերներ:"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

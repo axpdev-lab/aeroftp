@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Otomatik keşif ve kotayı etkinleştirir. infini-cloud.net geliştirici sayfasından başvurun.",
-            "infinicloudDiscovering": "InfiniCloud düğüm sunucusu keşfediliyor..."
+            "infinicloudDiscovering": "InfiniCloud düğüm sunucusu keşfediliyor...",
+            "rebexDemoDisclaimer": "Rebex tarafından sağlanan salt okunur demo sunucusu. Rebex, güvenli dosya aktarımı (SFTP, FTP/S, SSH) için .NET kütüphaneleri ve sunucuları geliştirmektedir."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

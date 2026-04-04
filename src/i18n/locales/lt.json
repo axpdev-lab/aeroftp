@@ -1343,7 +1343,8 @@
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
             "infinicloudApiKeyHint": "Įgalina automatinį aptikimą ir kvotą. Kreipkitės infini-cloud.net kūrėjų puslapyje.",
-            "infinicloudDiscovering": "Aptinkamas InfiniCloud mazgo serveris..."
+            "infinicloudDiscovering": "Aptinkamas InfiniCloud mazgo serveris...",
+            "rebexDemoDisclaimer": "Tik skaitymo demonstracinė serveris, kurį teikia Rebex. Rebex kuria .NET bibliotekas ir serverius saugiam failų perdavimui (SFTP, FTP/S, SSH)."
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
