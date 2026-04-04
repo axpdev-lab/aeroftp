@@ -314,6 +314,8 @@ export function IntroHub(props: IntroHubProps) {
                             }}
                             onFormSaved={() => {
                                 handleCloseFormTab(activeFormTab.id);
+                                setActiveTab('my-servers');
+                                onServersChanged?.();
                             }}
                             onSkipToFileManager={() => { handleCloseFormTab(activeFormTab.id); onSkipToFileManager(); }}
                             onAeroFile={onAeroFile}
