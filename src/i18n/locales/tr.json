@@ -1342,8 +1342,8 @@
             "directContact": "{provider} ile dogrudan iletisim halinde oncelikli destek ve guncellemeler icin.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "Otomatik keşif ve kotayı etkinleştirir. infini-cloud.net geliştirici sayfasından başvurun.",
+            "infinicloudDiscovering": "InfiniCloud düğüm sunucusu keşfediliyor..."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

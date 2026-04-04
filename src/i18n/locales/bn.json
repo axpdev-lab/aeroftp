@@ -1342,8 +1342,8 @@
             "directContact": "{provider}-এর সাথে সরাসরি যোগাযোগে অগ্রাধিকার সহায়তা এবং আপডেটের জন্য।",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "স্বয়ংক্রিয়-আবিষ্কার এবং কোটা সক্ষম করে। infini-cloud.net ডেভেলপার পেজে আবেদন করুন।",
+            "infinicloudDiscovering": "InfiniCloud নোড সার্ভার আবিষ্কার করা হচ্ছে..."
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

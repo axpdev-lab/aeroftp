@@ -1342,8 +1342,8 @@
             "directContact": "{provider}-თან პირდაპირ კონტაქტში პრიორიტეტული მხარდაჭერისა და განახლებებისთვის.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "ჩართავს ავტომატურ აღმოჩენას და კვოტას. მიმართეთ infini-cloud.net-ის დეველოპერის გვერდს.",
+            "infinicloudDiscovering": "InfiniCloud კვანძის სერვერის მოძიება..."
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

@@ -1342,8 +1342,8 @@
             "directContact": "Katika mawasiliano ya moja kwa moja na {provider} kwa msaada wa kipaumbele na masasisho.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "Inabisha ugunduzi wa kiotomatiki na kiasi. Omba kwenye ukurasa wa msanidi wa infini-cloud.net.",
+            "infinicloudDiscovering": "Inagundua seva ya nodi ya InfiniCloud..."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

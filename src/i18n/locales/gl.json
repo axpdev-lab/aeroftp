@@ -1342,8 +1342,8 @@
             "directContact": "En contacto directo con {provider} para soporte prioritario e actualizacions.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "Activa a detección automática e a cota. Solicítaa na páxina de desenvolvedores de infini-cloud.net.",
+            "infinicloudDiscovering": "Descubrindo servidor de nodo InfiniCloud..."
         },
         "shortcuts": {
             "title": "Atallos de teclado",

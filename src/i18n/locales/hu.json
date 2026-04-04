@@ -1342,8 +1342,8 @@
             "directContact": "Kozvetlen kapcsolatban a {provider} szolgaltatassal az elsobbsegi tamogatasert es frissitesekert.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "Engedélyezi az automatikus felfedezést és a kvótát. Igényelje az infini-cloud.net fejlesztői oldalán.",
+            "infinicloudDiscovering": "InfiniCloud csomópontszerver felfedezése..."
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

@@ -1342,8 +1342,8 @@
             "directContact": "U izravnom kontaktu s {provider} za prioritetnu podrsku i azuriranja.",
             "gitlabDesc": "[NEEDS TRANSLATION] GitLab Repository (browse, commit, self-hosted)",
             "gitlabTooltip": "[NEEDS TRANSLATION] Browse GitLab repos as filesystem. Uploads create Git commits. Supports self-hosted instances.",
-            "infinicloudApiKeyHint": "[NEEDS TRANSLATION] Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
-            "infinicloudDiscovering": "[NEEDS TRANSLATION] Discovering InfiniCloud node server..."
+            "infinicloudApiKeyHint": "Omogućuje automatsko otkrivanje i kvotu. Prijavite se na stranici za razvojne programere infini-cloud.net.",
+            "infinicloudDiscovering": "Otkrivanje čvorišnog poslužitelja InfiniCloud..."
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
