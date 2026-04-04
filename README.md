@@ -159,6 +159,12 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 
 > See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
+### Hosting Provider Integration
+
+Web hosting providers can generate encrypted `.aeroftp` connection profiles from their control panels, so customers can import pre-configured FTP/SFTP connections with a single click - no manual setup, no credentials in plaintext emails.
+
+> See the [Hosting Integration Guide](docs/HOSTING-INTEGRATION.md) for the file format specification, encryption details, and ready-to-use code examples in Python and Node.js.
+
 ---
 
 ## The Aero Family
