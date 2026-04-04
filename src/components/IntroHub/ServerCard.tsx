@@ -50,9 +50,9 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                 </span>
             )}
             {certUnverified && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400"
+                <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500"
                       title={t('statusBar.insecureConnectionTitle')}>
-                    <AlertTriangle size={10} />
+                    <ShieldCheck size={10} />
                 </span>
             )}
             {gitHubBadge && (
