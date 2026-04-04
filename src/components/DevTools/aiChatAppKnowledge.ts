@@ -167,7 +167,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
             'create vault', 'open vault', 'add files', 'extract', 'decrypt',
             'change password', '.aerovault', 'cryptomator',
         ],
-        compact: 'AeroVault: create AES-256 encrypted .aerovault containers. Create/open via vault toolbar icon. Also supports Cryptomator vaults (format 8, read-only).',
+        compact: 'AeroVault: create AES-256 encrypted .aerovault containers. Create/open via vault toolbar icon. Also supports creating and browsing Cryptomator vaults (format 8).',
         full: `AeroVault creates military-grade encrypted containers (.aerovault files).
 
 **Create a vault**:
@@ -193,7 +193,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - AES-256-GCM-SIV (content), AES-256-SIV (filenames), AES-256-KW (key wrapping)
 - Argon2id (KDF: 128 MiB), HMAC-SHA512 (header integrity), optional ChaCha20-Poly1305 cascade
 
-**Cryptomator compatibility**: AeroFTP can open Cryptomator vaults (format 8, read-only). Right-click a Cryptomator vault folder → "Open as Cryptomator Vault". Supports scrypt + AES-KW + AES-SIV + AES-GCM.`,
+**Cryptomator compatibility**: AeroFTP can create and browse Cryptomator vaults (format 8). Create via context menu "Create Cryptomator Vault", open via right-click → "Open as Cryptomator Vault". Supports scrypt + AES-KW + AES-SIV + AES-GCM.`,
     },
 
     // 6 — AeroPlayer

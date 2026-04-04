@@ -215,9 +215,9 @@ Box exposes management and collaboration features beyond generic file operations
 | **Cascade encryption** | Optional | No |
 | **Chunk size** | 64 KB | 32 KB |
 
-### Cryptomator (Format 8) — Legacy Support
+### Cryptomator (Format 8)
 
-Accessible via folder context menu "Open as Cryptomator Vault":
+Create and browse Cryptomator vaults via context menu:
 
 | Component | Algorithm |
 |-----------|-----------|
