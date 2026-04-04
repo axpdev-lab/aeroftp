@@ -646,8 +646,8 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://filelu.com/api/',
-        helpUrl: 'https://filelu.com/account/',
-        signupUrl: 'https://filelu.com/5253515355.html',
+        helpUrl: 'https://filelu.com/pages/faq/',
+        signupUrl: 'https://filelu.com/register/',
     },
     {
         id: 'yandex-storage',
@@ -821,7 +821,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://io.quotaless.cloud:8000',
         helpUrl: 'https://quotaless.cloud/',
-        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/store/s3-storage',
+        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/login',
     },
 
     // =========================================================================
@@ -924,7 +924,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://app.koofr.net/dav/Koofr',
         helpUrl: 'https://app.koofr.net/help/webdav',
-        signupUrl: 'https://app.koofr.net/registrations/new',
+        signupUrl: 'https://app.koofr.net/signup',
     },
     {
         id: 'jianguoyun',
@@ -973,7 +973,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.server,
                 label: 'WebDAV URL',
-                placeholder: 'es. https://<node>.teracloud.jp',
+                placeholder: 'https://<node>.teracloud.jp',
                 helpText: 'My Page → Apps Connection → your personal WebDAV URL',
             },
             {
@@ -997,7 +997,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://infini-cloud.net',
         helpUrl: 'https://infini-cloud.net/en/developer_webdav.html',
-        signupUrl: 'https://infini-cloud.net/en/entry.html',
+        signupUrl: 'https://account.teracloud.jp/RegistForm.php/index/',
     },
     {
         id: 'seafile',
@@ -1130,8 +1130,8 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://filelu.com/api/',
-        helpUrl: 'https://filelu.com/account/',
-        signupUrl: 'https://filelu.com/5253515355.html',
+        helpUrl: 'https://filelu.com/pages/faq/',
+        signupUrl: 'https://filelu.com/register/',
     },
     {
         id: 'quotaless-webdav',
@@ -1157,7 +1157,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://io.quotaless.cloud:8000',
         helpUrl: 'https://quotaless.cloud/',
-        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/store/s3-storage',
+        signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/login',
     },
     {
         id: 'nextcloud',
@@ -1235,8 +1235,8 @@ export const PROVIDERS: ProviderConfig[] = [
             trash: true,
         },
         healthCheckUrl: 'https://cloud.felicloud.com',
-        helpUrl: 'https://felicloud.com/en/',
-        signupUrl: 'https://felicloud.com/en/',
+        helpUrl: 'https://felicloud.com/en/help/',
+        signupUrl: 'https://felicloud.com/en/signup/',
     },
     {
         id: 'blomp',
@@ -1358,7 +1358,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/pages/api',
-        signupUrl: 'https://filelu.com/5253515355.html',
+        signupUrl: 'https://filelu.com/register/',
     },
     {
         id: 'filelu-ftp',
@@ -1398,8 +1398,8 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://filelu.com/api/',
-        helpUrl: 'https://filelu.com/account/',
-        signupUrl: 'https://filelu.com/5253515355.html',
+        helpUrl: 'https://filelu.com/pages/faq/',
+        signupUrl: 'https://filelu.com/register/',
     },
     {
         id: 'filelu-ftps',
@@ -1440,8 +1440,8 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://filelu.com/api/',
-        helpUrl: 'https://filelu.com/account/',
-        signupUrl: 'https://filelu.com/5253515355.html',
+        helpUrl: 'https://filelu.com/pages/faq/',
+        signupUrl: 'https://filelu.com/register/',
     },
 ];
 

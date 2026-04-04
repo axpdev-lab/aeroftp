@@ -1198,6 +1198,29 @@ interface UpdateVerificationInfo {
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
   const fetchStorageQuota = async (protocol?: string) => {
     const version = ++quotaVersionRef.current;
+
+    // InfiniCloud: use REST API for quota (more accurate than WebDAV PROPFIND)
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const opts = connectionParams.options || activeSession?.connectionParams?.options;
+    const pid = connectionParams.providerId || activeSession?.providerId;
+    if (pid === 'infinicloud' && opts?.apiKey && opts?.infinicloudNode) {
+      try {
+        const quota = await invoke<{ total: number; used: number; available: number }>('infinicloud_quota', {
+          node: opts.infinicloudNode,
+          username: connectionParams.username || activeSession?.connectionParams?.username || '',
+          password: connectionParams.password || activeSession?.connectionParams?.password || '',
+          apiKey: opts.apiKey,
+        });
+        if (version === quotaVersionRef.current) {
+          setStorageQuota({ used: quota.used, total: quota.total, free: quota.available });
+        }
+      } catch (e) {
+        console.warn('[StorageQuota] InfiniCloud quota failed:', e);
+        if (version === quotaVersionRef.current) setStorageQuota(null);
+      }
+      return;
+    }
+
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       try {
         const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
@@ -2157,6 +2180,35 @@ interface UpdateVerificationInfo {
       }
     }
 
+    // InfiniCloud: auto-discover node server via REST API when API key is provided
+    if (effectiveParams.providerId === 'infinicloud' && effectiveParams.options?.apiKey && !effectiveParams.server) {
+      try {
+        const discovery = await invoke<{
+          node: string;
+          webdav_url: string;
+          capacity: number;
+          user: string;
+          introduce_code: string;
+        }>('infinicloud_discover', {
+          username: effectiveParams.username || '',
+          password: effectiveParams.password || '',
+          apiKey: effectiveParams.options.apiKey,
+        });
+        effectiveParams = {
+          ...effectiveParams,
+          server: discovery.webdav_url,
+          options: {
+            ...effectiveParams.options,
+            infinicloudNode: discovery.node,
+            infinicloudCapacityGb: discovery.capacity,
+            infinicloudIntroduceCode: discovery.introduce_code,
+          },
+        };
+      } catch (e) {
+        throw new Error(`InfiniCloud discovery failed: ${e}`);
+      }
+    }
+
     const protocol = effectiveParams.protocol;
     const providerParams = {
       protocol,
@@ -2494,7 +2546,8 @@ interface UpdateVerificationInfo {
 
     // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
-      if ((!effectiveParams.server && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
+      const infinicloudWithApiKey = effectiveParams.providerId === 'infinicloud' && !!effectiveParams.options?.apiKey;
+      if ((!effectiveParams.server && !infinicloudWithApiKey && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }
@@ -2530,7 +2583,9 @@ interface UpdateVerificationInfo {
                   ? `Blomp ${effectiveParams.username}`
                   : effectiveParams.providerId === 'felicloud'
                     ? `Felicloud ${effectiveParams.username}`
-                    : effectiveParams.server.split(':')[0]);
+                    : effectiveParams.providerId === 'infinicloud'
+                      ? `InfiniCLOUD ${effectiveParams.username}`
+                      : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)

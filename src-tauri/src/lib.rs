@@ -67,6 +67,7 @@ mod file_tags;
 pub mod agent_memory_db;
 pub mod mcp;
 mod health_check;
+mod infinicloud;
 #[cfg(not(target_os = "macos"))]
 mod speech;
 #[cfg(target_os = "macos")]
@@ -8966,6 +8967,9 @@ pub fn run() {
             server_health::server_health_check_batch,
             // AeroImage
             image_edit::process_image,
+            // InfiniCloud REST API
+            infinicloud::infinicloud_discover,
+            infinicloud::infinicloud_quota,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

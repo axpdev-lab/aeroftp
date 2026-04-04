@@ -115,6 +115,12 @@ export interface ProviderOptions {
   githubPemStored?: boolean;     // true = PEM content is stored in vault (no file needed)
   githubTokenExpiresAt?: string; // ISO timestamp returned by GitHub for installation token expiry
   githubBranch?: string;         // Optional branch override for repository browsing
+
+  // InfiniCloud-specific
+  apiKey?: string;                  // InfiniCloud developer API key (128-bit hex)
+  infinicloudNode?: string;        // Discovered node server FQDN (set by discovery)
+  infinicloudCapacityGb?: number;  // Contract capacity in GB (set by discovery)
+  infinicloudIntroduceCode?: string; // Referral code (set by discovery)
 }
 
 export interface ConnectionParams {

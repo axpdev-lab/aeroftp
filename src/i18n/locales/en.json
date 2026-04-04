@@ -2046,6 +2046,8 @@
       "sshAuth": "SSH Authentication (Optional)",
       "sshAuthHelp": "Leave empty to use password authentication. For key-based auth, provide your private key path.",
       "webdavBasePath": "Base path: {path}",
+      "infinicloudApiKeyHint": "Enables auto-discovery and quota. Apply at infini-cloud.net developer page.",
+      "infinicloudDiscovering": "Discovering InfiniCloud node server...",
       "connectVia": "Connect to {name} via {protocol}",
       "independentProject": "AeroFTP is an independent project. {provider} integration is maintained through official documentation.",
       "independentProjectContact": "AeroFTP is an independent project in direct contact with {provider} to ensure reliable integration and direct support.",
