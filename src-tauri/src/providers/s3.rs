@@ -39,6 +39,7 @@ impl S3Provider {
         let client = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .timeout(std::time::Duration::from_secs(30))
+            .http1_only()
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;
 

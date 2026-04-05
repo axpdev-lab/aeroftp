@@ -50,6 +50,7 @@ export const PROTOCOL_CATEGORY_MAP: Record<string, CatalogCategoryId> = {
     'tencent-cos': 'object-storage',
     'filelu-s5': 'object-storage',
     'yandex-storage': 'object-storage',
+    'google-cloud-storage': 'object-storage',
     'digitalocean-spaces': 'object-storage',
     'oracle-cloud': 'object-storage',
     minio: 'object-storage',

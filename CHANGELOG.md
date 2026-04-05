@@ -7,20 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.4.0] - 2026-04-05
 
-### Keystore backup overhaul, privacy cleanup & Discover reorder
+### Google Cloud Storage, S3 HTTP/2 fix, translated Discover descriptions
+
+#### Added
+
+- **Google Cloud Storage provider**: Dedicated preset in Discover panel with HMAC interop endpoint, path-style URLs, multi-region selector, and official logo
+- **Translated Discover descriptions**: All 59 provider descriptions in the Discover panel and Command Palette are now translatable via i18n (46 languages)
+- **Vault category breakdown**: Backup tab shows entry composition (e.g. "87 credentials - 8 AI keys - 26 OAuth - 12 config") alongside the total count
+- **Azure Blob health check**: Added `blob.core.windows.net` endpoint for status monitoring in Discover panel
 
 #### Fixed
 
+- **S3 HTTP/2 protocol error**: Forced HTTP/1.1 on the S3 client to fix `PROTOCOL_ERROR` RST_STREAM when connecting to Google Cloud Storage and other endpoints that reject HTTP/2 on S3 interop API
 - **Keystore import now restores deleted servers**: Import with "skip existing" merges server profiles by ID instead of skipping the entire list, so deleted servers are properly restored from backup
 - **Vault entry count accurate after import**: Re-queries actual vault status instead of optimistic sum that could drift
 - **Server deletion cleans up vault credentials**: Removing a server now also deletes its orphaned `server_<id>` credential from the vault
 - **Import progress feedback**: Real-time progress bar with "Decrypting..." and "Importing 34/134..." phases via Tauri events, replacing the generic spinner
 - **Server profiles reload after keystore import**: Imported profiles are immediately visible without app restart
-
-#### Added
-
-- **Vault category breakdown**: Backup tab shows entry composition (e.g. "87 credentials - 8 AI keys - 26 OAuth - 12 config") alongside the total count
-- **Azure Blob health check**: Added `blob.core.windows.net` endpoint for status monitoring in Discover panel
 
 #### Changed
 

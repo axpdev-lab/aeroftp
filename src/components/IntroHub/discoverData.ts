@@ -75,6 +75,74 @@ const DEVELOPER_ITEMS: DiscoverItem[] = [
     { id: 'gitlab', name: 'GitLab', description: 'Repository & CI/CD platform', protocol: 'gitlab', badge: 'API', healthCheckUrl: 'https://gitlab.com', source: 'protocol' },
 ];
 
+/** Maps provider/item IDs to i18n keys for translated descriptions */
+export const DISCOVER_DESC_KEYS: Record<string, string> = {
+    // S3 registry providers
+    'custom-s3': 'protocol.discoverCustomS3',
+    'amazon-s3': 'protocol.discoverAmazonS3',
+    'google-cloud-storage': 'protocol.discoverGoogleCloudStorage',
+    'backblaze': 'protocol.discoverBackblaze',
+    'mega-s4': 'protocol.discoverMegaS4',
+    'cloudflare-r2': 'protocol.discoverCloudflareR2',
+    'idrive-e2': 'protocol.discoverIDriveE2',
+    'wasabi': 'protocol.discoverWasabi',
+    'storj': 'protocol.discoverStorj',
+    'alibaba-oss': 'protocol.discoverAlibabaOSS',
+    'tencent-cos': 'protocol.discoverTencentCOS',
+    'filelu-s3': 'protocol.discoverFileLuS3',
+    'yandex-storage': 'protocol.discoverYandexStorage',
+    'digitalocean-spaces': 'protocol.discoverDigitalOceanSpaces',
+    'oracle-cloud': 'protocol.discoverOracleCloud',
+    'minio': 'protocol.discoverMinIO',
+    'quotaless-s3': 'protocol.discoverQuotalessS3',
+    // WebDAV registry providers
+    'custom-webdav': 'protocol.discoverCustomWebdav',
+    'fourshared-webdav': 'protocol.discover4shared',
+    'cloudme': 'protocol.discoverCloudMe',
+    'drivehq': 'protocol.discoverDriveHQ',
+    'felicloud': 'protocol.discoverFelicloud',
+    'jianguoyun': 'protocol.discoverJianguoyun',
+    'infinicloud': 'protocol.discoverInfiniCloud',
+    'seafile': 'protocol.discoverSeafile',
+    'filelu-webdav': 'protocol.discoverFileLuWebdav',
+    'quotaless-webdav': 'protocol.discoverQuotalessWebdav',
+    'nextcloud': 'protocol.discoverNextcloud',
+    // FTP registry providers
+    'hetzner-storage-box': 'protocol.discoverHetzner',
+    'sourceforge': 'protocol.discoverSourceForge',
+    'filelu-ftp': 'protocol.discoverFileLuFtp',
+    'filelu-ftps': 'protocol.discoverFileLuFtps',
+    'blomp': 'protocol.discoverBlomp',
+    'filen-cloud': 'protocol.discoverFilen',
+    'filelu-cloud': 'protocol.discoverFileLu',
+    // Cloud services (protocol-level)
+    'googledrive': 'protocol.discoverGoogleDrive',
+    'onedrive': 'protocol.discoverOneDrive',
+    'dropbox': 'protocol.discoverDropbox',
+    'mega': 'protocol.discoverMega',
+    'box': 'protocol.discoverBox',
+    'pcloud': 'protocol.discoverPCloud',
+    'filen': 'protocol.discoverFilenCloud',
+    'internxt': 'protocol.discoverInternxt',
+    'zohoworkdrive': 'protocol.discoverZohoWorkDrive',
+    'kdrive': 'protocol.discoverKDrive',
+    'filelu': 'protocol.discoverFileLuCloud',
+    'koofr-cloud': 'protocol.discoverKoofr',
+    'drime': 'protocol.discoverDrimeCloud',
+    'jottacloud': 'protocol.discoverJottacloud',
+    'fourshared': 'protocol.discoverFourShared',
+    'opendrive': 'protocol.discoverOpenDrive',
+    'yandexdisk': 'protocol.discoverYandexDisk',
+    // Protocol items
+    'ftp-generic': 'protocol.discoverFtpFtps',
+    'sftp-generic': 'protocol.discoverSftp',
+    'rebex-ftp-demo': 'protocol.discoverRebexFtp',
+    'rebex-sftp-demo': 'protocol.discoverRebexSftp',
+    'azure-generic': 'protocol.discoverAzureBlob',
+    'github': 'protocol.discoverGitHub',
+    'gitlab': 'protocol.discoverGitLab',
+};
+
 /** Badge overrides for registry providers with distinctive features */
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
@@ -113,12 +181,12 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 // Row 1: generic + self-hosted + decentralized
                 'custom-s3': 0, 'minio': 1, 'storj': 2,
                 // Row 2: major cloud providers
-                'amazon-s3': 3, 'cloudflare-r2': 4, 'azure-generic': 5,
+                'amazon-s3': 3, 'google-cloud-storage': 4, 'cloudflare-r2': 5, 'azure-generic': 6,
                 // Row 3: mid-tier providers
-                'mega-s4': 6, 'backblaze': 7, 'idrive-e2': 8,
+                'mega-s4': 7, 'backblaze': 8, 'idrive-e2': 9,
                 // Row 4+: remaining
-                'digitalocean-spaces': 9, 'filelu-s3': 10, 'wasabi': 11,
-                'oracle-cloud': 12, 'quotaless-s3': 13,
+                'digitalocean-spaces': 10, 'filelu-s3': 11, 'wasabi': 12,
+                'oracle-cloud': 13, 'quotaless-s3': 14,
                 // Asian providers last
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
             };

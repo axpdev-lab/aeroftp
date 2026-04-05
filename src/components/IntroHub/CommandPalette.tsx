@@ -6,7 +6,7 @@ import { ServerProfile, ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
-import { buildDiscoverCategories, DiscoverItem } from './discoverData';
+import { buildDiscoverCategories, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
 
 interface CommandPaletteProps {
     isOpen: boolean;
@@ -106,7 +106,7 @@ export function CommandPalette({
             out.push({
                 id: `prov-${p.id}`,
                 label: p.name,
-                sublabel: p.description,
+                sublabel: DISCOVER_DESC_KEYS[p.id] ? t(DISCOVER_DESC_KEYS[p.id]) : p.description,
                 icon: getProviderIcon(p),
                 badge: p.badge ? (
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${

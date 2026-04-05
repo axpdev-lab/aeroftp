@@ -8,7 +8,7 @@ import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
-import { buildDiscoverCategories, DiscoverCategory, DiscoverItem } from './discoverData';
+import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
 import { CatalogCategoryId } from '../../types/catalog';
 import { useProviderHealth, type HealthStatus, type HealthTarget } from '../../hooks/useProviderHealth';
 
@@ -48,6 +48,7 @@ const HEALTH_LABELS: Record<HealthStatus, string> = {
 };
 
 function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onSelect: () => void; healthStatus?: HealthStatus }) {
+    const t = useTranslation();
     const LogoComponent = PROVIDER_LOGOS[item.providerId || item.id] || PROVIDER_LOGOS[item.protocol];
 
     return (
@@ -71,7 +72,7 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
                 </div>
                 {item.description && (
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                        {item.description}
+                        {DISCOVER_DESC_KEYS[item.id] ? t(DISCOVER_DESC_KEYS[item.id]) : item.description}
                     </div>
                 )}
             </div>

@@ -119,6 +119,7 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
     <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" /></a><br><sub>Seafile</sub></td>
     <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" /></a><br><sub>DriveHQ</sub></td>
     <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
+    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
     <td align="center" width="72"><a href="https://docs.aeroftp.app/protocols/azure"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure</sub></td>
     <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze</sub></td>
     <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/wasabi"><img src="public/icons/providers/grid/wasabi.png" width="36" /></a><br><sub>Wasabi</sub></td>
