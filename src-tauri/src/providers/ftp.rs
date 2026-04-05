@@ -376,12 +376,10 @@ impl StorageProvider for FtpProvider {
                     .map_err(|e| ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e)))?
             }
             FtpTlsMode::Implicit => {
-                // Implicit TLS - connect then immediately upgrade (port 990)
-                let stream = AsyncRustlsFtpStream::connect(&addr)
-                    .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
                 let connector = self.make_tls_connector()?;
-                stream.into_secure(connector, &domain)
+                #[allow(deprecated)]
+                AsyncRustlsFtpStream::connect_secure_implicit(&addr, connector, &domain)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e)))?
             }
