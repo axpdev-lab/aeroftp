@@ -114,8 +114,8 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
             probe_url: "https://dev.opendrive.com/api/v1/branding.json",
         }),
         "azure" => Some(CloudProviderInfo {
-            host: "blob.core.windows.net",
-            probe_url: "https://blob.core.windows.net/",
+            host: "login.microsoftonline.com",
+            probe_url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
         }),
         "drime" => Some(CloudProviderInfo {
             host: "api.drimecloud.com",
