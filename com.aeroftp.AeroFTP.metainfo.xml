@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.1" date="2026-04-05">
+      <description>
+        <p>Fix FTPS implicit TLS on port 990 (CerberusFTP). Fix Azure Blob health check. SourceForge links in About dialog.</p>
+      </description>
+    </release>
     <release version="3.4.0" date="2026-04-05">
       <description>
         <p>Google Cloud Storage provider with HMAC interop. Fix S3 HTTP/2 protocol error. Translated Discover panel descriptions (46 languages).</p>

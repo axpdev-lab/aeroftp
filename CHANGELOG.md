@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] - 2026-04-05
+
+### FTPS implicit fix, Azure health check, SourceForge in About
+
+#### Fixed
+
+- **FTPS implicit TLS on port 990**: Connections to CerberusFTP and other implicit FTPS servers were timing out because the client used the explicit TLS upgrade path (AUTH TLS) instead of establishing TLS immediately on connect. Switched to `connect_secure_implicit()` which wraps the connection in TLS right after TCP ([#80](https://github.com/axpdev-lab/aeroftp/issues/80))
+- **Azure Blob health check**: The probe URL `blob.core.windows.net` is not a valid hostname (requires account prefix). Replaced with Microsoft OpenID discovery endpoint in both backend and Discover panel
+
+#### Added
+
+- **SourceForge links in About dialog**: Support tab now includes SourceForge repo button and review link, matching the existing GitHub button style (47 languages)
+
 ## [3.4.0] - 2026-04-05
 
 ### Google Cloud Storage, S3 HTTP/2 fix, translated Discover descriptions
