@@ -15294,7 +15294,7 @@ async fn main() {
             { cmd_mount(u, mountpoint, p, *cache_ttl, *allow_other, *read_only, &cli, format).await }
             #[cfg(windows)]
             { cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await }
-            #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+            #[cfg(not(any(target_os = "linux", windows)))]
             { print_error(format, "Mount is not supported on this platform", 7); 7 }
         }
         Commands::Sync {
