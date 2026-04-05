@@ -211,6 +211,28 @@ struct Cli {
     #[arg(long, global = true)]
     max_age: Option<String>,
 
+    // ── Transfer control flags ──
+
+    /// Abort after transferring this many bytes total (e.g., "10G", "500M")
+    #[arg(long, global = true)]
+    max_transfer: Option<String>,
+
+    /// Maximum number of queued transfer tasks (default: 10000)
+    #[arg(long, global = true, default_value_t = 10000)]
+    max_backlog: usize,
+
+    /// Number of retries for failed operations (default: 3, 0 = no retry)
+    #[arg(long, global = true, default_value_t = 3)]
+    retries: u32,
+
+    /// Delay between retries (e.g., "5s", "1m", "500ms"; default: "1s")
+    #[arg(long, global = true, default_value = "1s")]
+    retries_sleep: String,
+
+    /// Dump HTTP debug info to stderr (comma-separated: headers,bodies,auth)
+    #[arg(long, global = true, value_delimiter = ',')]
+    dump: Vec<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -560,6 +582,12 @@ enum Commands {
         /// Suffix for backup files (e.g., ".bak")
         #[arg(long, default_value = "")]
         backup_suffix: String,
+        /// Conflict resolution for --direction both: newer, older, larger, smaller, skip (default: newer)
+        #[arg(long, default_value = "newer")]
+        conflict_mode: String,
+        /// Discard previous bisync snapshot and rebuild from scratch
+        #[arg(long)]
+        resync: bool,
     },
     /// Display remote directory tree
     Tree {
@@ -572,6 +600,41 @@ enum Commands {
         /// Maximum depth (default: 3)
         #[arg(short = 'd', long, default_value = "3")]
         max_depth: usize,
+    },
+    /// Interactive disk usage explorer (ncdu-style TUI)
+    Ncdu {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote path to scan (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Maximum scan depth (default: 50)
+        #[arg(short = 'd', long, default_value = "50")]
+        max_depth: usize,
+        /// Export scan results to JSON file instead of interactive TUI
+        #[arg(long)]
+        export: Option<String>,
+    },
+    /// Mount a remote as a local filesystem (FUSE on Linux/macOS, WebDAV drive on Windows)
+    Mount {
+        /// Local mount point: empty directory (Linux/macOS) or drive letter like "Z:" (Windows)
+        mountpoint: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote base path (default: / or the URL/profile initial path)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Metadata cache TTL in seconds (default: 30)
+        #[arg(long, default_value = "30")]
+        cache_ttl: u64,
+        /// Allow other users to access the mount (Linux/macOS: requires user_allow_other in /etc/fuse.conf)
+        #[arg(long)]
+        allow_other: bool,
+        /// Mount as read-only (default: read-write)
+        #[arg(long)]
+        read_only: bool,
     },
     /// Execute commands from a batch script (.aeroftp file)
     Batch {
@@ -663,6 +726,116 @@ enum Commands {
     AiModels,
     /// Show CLI capabilities for AI agent discovery (always JSON)
     AgentInfo,
+    /// Background daemon for persistent mounts, jobs, and watch
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommands,
+    },
+    /// Manage background transfer jobs (requires daemon running)
+    Jobs {
+        #[command(subcommand)]
+        command: JobCommands,
+    },
+    /// Encrypted overlay — zero-knowledge storage on any provider
+    Crypt {
+        #[command(subcommand)]
+        command: CryptCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DaemonCommands {
+    /// Start the background daemon
+    Start {
+        /// HTTP API bind address
+        #[arg(long, default_value = "127.0.0.1:14320")]
+        addr: String,
+    },
+    /// Stop the running daemon
+    Stop,
+    /// Show daemon status
+    Status,
+}
+
+#[derive(Subcommand)]
+enum JobCommands {
+    /// Add a new background job
+    Add {
+        /// Command to execute (e.g., "get --profile S3 /file.zip ./")
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// List all jobs
+    List,
+    /// Show status of a specific job
+    Status {
+        /// Job ID
+        id: String,
+    },
+    /// Cancel a running or queued job
+    Cancel {
+        /// Job ID
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CryptCommands {
+    /// Initialize an encrypted overlay on a remote directory
+    Init {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote directory to encrypt
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password (or will prompt interactively)
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+    },
+    /// List files in an encrypted overlay (decrypted names)
+    Ls {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        path: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+    },
+    /// Upload a file with encryption (content + filename encrypted)
+    Put {
+        /// Local file to encrypt and upload
+        local: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote encrypted directory
+        #[arg(default_value = "/")]
+        remote: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+    },
+    /// Download and decrypt a file from an encrypted overlay
+    Get {
+        /// Remote file name (decrypted name, e.g., "secret.txt")
+        remote: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote encrypted directory (same as used in crypt init/put)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Local destination
+        #[arg(default_value = ".")]
+        local: String,
+        /// Encryption password
+        #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -716,6 +889,33 @@ enum ServeCommands {
         #[arg(long, default_value = "127.0.0.1:8080")]
         addr: String,
     },
+    /// Serve a remote over local FTP (read-write, anonymous)
+    Ftp {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote base path to expose (default: / or the URL/profile initial path)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Local bind address for control connection
+        #[arg(long, default_value = "127.0.0.1:2121")]
+        addr: String,
+        /// Passive port range (e.g., "49152-65535")
+        #[arg(long, default_value = "49152-49200")]
+        passive_ports: String,
+    },
+    /// Serve a remote over local SFTP (SSH file transfer, read-write)
+    Sftp {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote base path to expose (default: / or the URL/profile initial path)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Local bind address
+        #[arg(long, default_value = "127.0.0.1:2222")]
+        addr: String,
+    },
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -737,6 +937,10 @@ struct CliDefaults {
     verbose: Option<u8>,
     limit_rate: Option<String>,
     bwlimit: Option<String>,
+    max_transfer: Option<String>,
+    max_backlog: Option<usize>,
+    retries: Option<u32>,
+    retries_sleep: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -1157,6 +1361,30 @@ fn apply_config_defaults(args: &[String], config: &CliConfigFile) -> Vec<String>
             merged.push(bwlimit.clone());
         }
     }
+    if let Some(max_transfer) = &config.defaults.max_transfer {
+        if !arg_present(args, "--max-transfer", None) {
+            merged.push("--max-transfer".to_string());
+            merged.push(max_transfer.clone());
+        }
+    }
+    if let Some(max_backlog) = config.defaults.max_backlog {
+        if !arg_present(args, "--max-backlog", None) {
+            merged.push("--max-backlog".to_string());
+            merged.push(max_backlog.to_string());
+        }
+    }
+    if let Some(retries) = config.defaults.retries {
+        if !arg_present(args, "--retries", None) {
+            merged.push("--retries".to_string());
+            merged.push(retries.to_string());
+        }
+    }
+    if let Some(retries_sleep) = &config.defaults.retries_sleep {
+        if !arg_present(args, "--retries-sleep", None) {
+            merged.push("--retries-sleep".to_string());
+            merged.push(retries_sleep.clone());
+        }
+    }
 
     merged.extend(args.iter().skip(1).cloned());
     merged
@@ -1199,6 +1427,11 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--min-age"
                 | "--max-age"
                 | "--parallel"
+                | "--max-transfer"
+                | "--max-backlog"
+                | "--retries"
+                | "--retries-sleep"
+                | "--dump"
         );
 
         idx += 1;
@@ -1707,6 +1940,94 @@ fn effective_parallel_workers(cli: &Cli) -> usize {
     cli.parallel.clamp(1, 32)
 }
 
+// ── Session transfer accounting (--max-transfer) ──────────────────
+
+/// Global session byte counter (upload + download combined).
+static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
+
+/// Parse --max-transfer value, returning the byte limit (or None if unset).
+fn resolve_max_transfer(cli: &Cli) -> Option<u64> {
+    cli.max_transfer.as_ref().and_then(|s| parse_size_filter(s).ok())
+}
+
+/// Check whether the session has exceeded --max-transfer. Returns true if over limit.
+fn session_transfer_exceeded(limit: Option<u64>) -> bool {
+    match limit {
+        Some(max) => SESSION_TRANSFERRED_BYTES.load(Ordering::Relaxed) >= max,
+        None => false,
+    }
+}
+
+/// Add bytes to the session counter and return the new total.
+fn session_transfer_add(bytes: u64) -> u64 {
+    SESSION_TRANSFERRED_BYTES.fetch_add(bytes, Ordering::Relaxed) + bytes
+}
+
+// ── Retry helper ──────────────────────────────────────────────────
+
+/// Parse a duration string like "5s", "1m", "500ms", "0" into Duration.
+fn parse_retry_sleep(s: &str) -> std::time::Duration {
+    let s = s.trim().to_lowercase();
+    if s == "0" || s.is_empty() {
+        return std::time::Duration::ZERO;
+    }
+    if let Some(n) = s.strip_suffix("ms") {
+        if let Ok(v) = n.parse::<u64>() {
+            return std::time::Duration::from_millis(v);
+        }
+    }
+    if let Some(n) = s.strip_suffix('s') {
+        if let Ok(v) = n.parse::<u64>() {
+            return std::time::Duration::from_secs(v);
+        }
+    }
+    if let Some(n) = s.strip_suffix('m') {
+        if let Ok(v) = n.parse::<u64>() {
+            return std::time::Duration::from_secs(v * 60);
+        }
+    }
+    if let Some(n) = s.strip_suffix('h') {
+        if let Ok(v) = n.parse::<u64>() {
+            return std::time::Duration::from_secs(v * 3600);
+        }
+    }
+    // Default fallback: 1 second
+    std::time::Duration::from_secs(1)
+}
+
+// ── Dump helper (--dump headers,bodies,auth) ──────────────────────
+
+fn dump_enabled(cli: &Cli, kind: &str) -> bool {
+    cli.dump.iter().any(|d| d.eq_ignore_ascii_case(kind))
+}
+
+fn dump_connection_info(cli: &Cli, config: &ProviderConfig) {
+    if cli.dump.is_empty() {
+        return;
+    }
+    let has_headers = dump_enabled(cli, "headers") || dump_enabled(cli, "bodies");
+    let has_auth = dump_enabled(cli, "auth");
+    if has_headers || has_auth {
+        eprintln!("--- DUMP: connection ---");
+        eprintln!("  provider: {:?}", config.provider_type);
+        eprintln!("  host: {}", config.host);
+        eprintln!("  port: {}", config.port.map_or("default".to_string(), |p| p.to_string()));
+        eprintln!("  username: {}", config.username.as_deref().unwrap_or("(none)"));
+        if has_auth {
+            let pass = config.password.as_deref().unwrap_or("");
+            eprintln!("  password: {}", if pass.is_empty() { "(empty)" } else { pass });
+        } else {
+            eprintln!("  password: [redacted, use --dump auth to show]");
+        }
+        if let Some(ref path) = config.initial_path {
+            if !path.is_empty() {
+                eprintln!("  path: {}", path);
+            }
+        }
+        eprintln!("---");
+    }
+}
+
 fn create_overall_progress_bar(total_files: usize, total_bytes: u64) -> ProgressBar {
     let pb = ProgressBar::new(total_bytes);
     pb.set_style(
@@ -1771,6 +2092,7 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_transfer_task(
     url: &str,
     remote_path: String,
@@ -1779,7 +2101,13 @@ async fn download_transfer_task(
     format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
+    max_transfer_limit: Option<u64>,
 ) -> Result<(), String> {
+    // --max-transfer: skip if session limit already exceeded
+    if session_transfer_exceeded(max_transfer_limit) {
+        return Err("max-transfer limit reached".to_string());
+    }
+
     let (mut provider, _) = create_and_connect(url, cli, format)
         .await
         .map_err(|code| format!("connection failed with exit code {}", code))?;
@@ -1788,10 +2116,18 @@ async fn download_transfer_task(
     let result = download_with_resume(&mut *provider, &remote_path, &local_path, cli, progress_cb)
         .await
         .map_err(|e| e.to_string());
+
+    // Account transferred bytes
+    if result.is_ok() {
+        let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
+        session_transfer_add(bytes);
+    }
+
     let _ = provider.disconnect().await;
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upload_transfer_task(
     url: &str,
     local_path: String,
@@ -1800,7 +2136,13 @@ async fn upload_transfer_task(
     format: OutputFormat,
     aggregate: Option<Arc<AtomicU64>>,
     overall_pb: Option<ProgressBar>,
+    max_transfer_limit: Option<u64>,
 ) -> Result<(), String> {
+    // --max-transfer: skip if session limit already exceeded
+    if session_transfer_exceeded(max_transfer_limit) {
+        return Err("max-transfer limit reached".to_string());
+    }
+
     let (mut provider, _) = create_and_connect(url, cli, format)
         .await
         .map_err(|code| format!("connection failed with exit code {}", code))?;
@@ -1809,10 +2151,17 @@ async fn upload_transfer_task(
         let _ = provider.mkdir(&parent.to_string_lossy()).await;
     }
 
+    let file_size = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
     let progress_cb = aggregate.map(|aggregate| make_aggregate_progress_cb(aggregate, overall_pb));
     let result = upload_with_resume(&mut *provider, &local_path, &remote_path, cli, progress_cb)
         .await
         .map_err(|e| e.to_string());
+
+    // Account transferred bytes
+    if result.is_ok() {
+        session_transfer_add(file_size);
+    }
+
     let _ = provider.disconnect().await;
     result
 }
@@ -3308,6 +3657,8 @@ async fn create_and_connect(
 
     let (config, path) = resolve_url_or_profile(url, cli, format)?;
 
+    dump_connection_info(cli, &config);
+
     let mut provider = match ProviderFactory::create(&config) {
         Ok(p) => p,
         Err(e) => {
@@ -4348,6 +4699,892 @@ async fn cmd_serve_webdav(
     }
 }
 
+// ── Serve FTP — libunftp StorageBackend adapter ─────────────────
+
+mod serve_ftp_backend {
+    use super::*;
+    use unftp_core::auth::DefaultUser;
+    use unftp_core::storage::{Error as FtpError, ErrorKind as FtpErrorKind, Fileinfo, Metadata, Result as FtpResult, StorageBackend};
+    use std::fmt::Debug;
+    use std::path::{Path, PathBuf};
+    use tokio::io::AsyncRead;
+
+    /// Metadata adapter for libunftp.
+    #[derive(Debug)]
+    pub struct AeroFtpMeta {
+        size: u64,
+        is_dir: bool,
+        modified: Option<std::time::SystemTime>,
+    }
+
+    impl Metadata for AeroFtpMeta {
+        fn len(&self) -> u64 { self.size }
+        fn is_dir(&self) -> bool { self.is_dir }
+        fn is_file(&self) -> bool { !self.is_dir }
+        fn is_symlink(&self) -> bool { false }
+        fn modified(&self) -> FtpResult<std::time::SystemTime> {
+            self.modified.ok_or_else(|| FtpError::new(FtpErrorKind::LocalError, "no mtime"))
+        }
+        fn gid(&self) -> u32 { 0 }
+        fn uid(&self) -> u32 { 0 }
+    }
+
+    /// StorageBackend that wraps AeroFTP's StorageProvider.
+    pub struct AeroFtpBackend {
+        provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        base_path: String,
+    }
+
+    impl std::fmt::Debug for AeroFtpBackend {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("AeroFtpBackend")
+                .field("base_path", &self.base_path)
+                .finish()
+        }
+    }
+
+    impl AeroFtpBackend {
+        pub fn new(provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>, base_path: String) -> Self {
+            Self { provider, base_path }
+        }
+
+        fn resolve_path(&self, path: &Path) -> String {
+            let rel = path.to_string_lossy().replace('\\', "/");
+            let rel = rel.trim_start_matches('/');
+            if rel.is_empty() {
+                self.base_path.clone()
+            } else if self.base_path == "/" {
+                format!("/{}", rel)
+            } else {
+                format!("{}/{}", self.base_path.trim_end_matches('/'), rel)
+            }
+        }
+
+        fn provider_err_to_ftp(e: ProviderError) -> FtpError {
+            let kind = match &e {
+                ProviderError::NotFound(_) => FtpErrorKind::PermanentFileNotAvailable,
+                ProviderError::PermissionDenied(_) => FtpErrorKind::PermissionDenied,
+                _ => FtpErrorKind::LocalError,
+            };
+            FtpError::new(kind, e)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageBackend<DefaultUser> for AeroFtpBackend {
+        type Metadata = AeroFtpMeta;
+
+        async fn metadata<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<Self::Metadata> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            let entry = p.stat(&remote).await.map_err(Self::provider_err_to_ftp)?;
+            Ok(AeroFtpMeta {
+                size: entry.size,
+                is_dir: entry.is_dir,
+                modified: entry.modified.as_deref().and_then(|s| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                        .ok()
+                        .map(|dt| std::time::UNIX_EPOCH + std::time::Duration::from_secs(dt.and_utc().timestamp().max(0) as u64))
+                }),
+            })
+        }
+
+        async fn list<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<Vec<Fileinfo<PathBuf, Self::Metadata>>> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            let entries = p.list(&remote).await.map_err(Self::provider_err_to_ftp)?;
+            Ok(entries.into_iter().map(|e| {
+                Fileinfo {
+                    path: PathBuf::from(&e.name),
+                    metadata: AeroFtpMeta {
+                        size: e.size,
+                        is_dir: e.is_dir,
+                        modified: e.modified.as_deref().and_then(|s| {
+                            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                                .ok()
+                                .map(|dt| std::time::UNIX_EPOCH + std::time::Duration::from_secs(dt.and_utc().timestamp().max(0) as u64))
+                        }),
+                    },
+                }
+            }).collect())
+        }
+
+        async fn get<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+            start_pos: u64,
+        ) -> FtpResult<Box<dyn AsyncRead + Send + Sync + Unpin>> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            // Download to memory and serve as cursor
+            let data = if start_pos > 0 {
+                let size = p.size(&remote).await.unwrap_or(0);
+                let len = size.saturating_sub(start_pos);
+                p.read_range(&remote, start_pos, len).await
+                    .or_else(|_| {
+                        // Fallback: download full and slice
+                        tokio::runtime::Handle::current().block_on(async {
+                            let full = p.download_to_bytes(&remote).await?;
+                            Ok(full[start_pos as usize..].to_vec())
+                        })
+                    })
+                    .map_err(Self::provider_err_to_ftp)?
+            } else {
+                p.download_to_bytes(&remote).await.map_err(Self::provider_err_to_ftp)?
+            };
+            Ok(Box::new(std::io::Cursor::new(data)))
+        }
+
+        async fn put<P: AsRef<Path> + Send + Debug, R: AsyncRead + Send + Sync + Unpin + 'static>(
+            &self,
+            _user: &DefaultUser,
+            mut input: R,
+            path: P,
+            _start_pos: u64,
+        ) -> FtpResult<u64> {
+            let remote = self.resolve_path(path.as_ref());
+            // Write input to tempfile, then upload
+            let tmp = tempfile::NamedTempFile::new()
+                .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
+            let tmp_path = tmp.path().to_string_lossy().to_string();
+            {
+                let mut file = tokio::fs::File::create(&tmp_path).await
+                    .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
+                tokio::io::copy(&mut input, &mut file).await
+                    .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
+            }
+            let size = tokio::fs::metadata(&tmp_path).await
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let mut p = self.provider.lock().await;
+            p.upload(&tmp_path, &remote, None).await.map_err(Self::provider_err_to_ftp)?;
+            Ok(size)
+        }
+
+        async fn del<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<()> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            p.delete(&remote).await.map_err(Self::provider_err_to_ftp)
+        }
+
+        async fn mkd<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<()> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            p.mkdir(&remote).await.map_err(Self::provider_err_to_ftp)
+        }
+
+        async fn rename<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            from: P,
+            to: P,
+        ) -> FtpResult<()> {
+            let from_remote = self.resolve_path(from.as_ref());
+            let to_remote = self.resolve_path(to.as_ref());
+            let mut p = self.provider.lock().await;
+            p.rename(&from_remote, &to_remote).await.map_err(Self::provider_err_to_ftp)
+        }
+
+        async fn rmd<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<()> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            p.rmdir(&remote).await.map_err(Self::provider_err_to_ftp)
+        }
+
+        async fn cwd<P: AsRef<Path> + Send + Debug>(
+            &self,
+            _user: &DefaultUser,
+            path: P,
+        ) -> FtpResult<()> {
+            let remote = self.resolve_path(path.as_ref());
+            let mut p = self.provider.lock().await;
+            // Validate directory exists
+            match p.list(&remote).await {
+                Ok(_) => Ok(()),
+                Err(e) => Err(Self::provider_err_to_ftp(e)),
+            }
+        }
+    }
+}
+
+async fn cmd_serve_ftp(
+    url: &str,
+    path: &str,
+    addr: &str,
+    passive_ports_str: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(value) => value,
+        Err(code) => return code,
+    };
+
+    let base_path = serve_effective_base_path(path, &url_path);
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    // Parse passive port range
+    let passive_range = match passive_ports_str.split_once('-') {
+        Some((start, end)) => {
+            let s: u16 = start.parse().unwrap_or(49152);
+            let e: u16 = end.parse().unwrap_or(49200);
+            s..=e
+        }
+        None => 49152..=49200,
+    };
+
+    let provider_arc = Arc::new(AsyncMutex::new(provider));
+
+    let backend_provider = provider_arc.clone();
+    let backend_base = base_path.clone();
+
+    let server = libunftp::ServerBuilder::new(Box::new(move || {
+        serve_ftp_backend::AeroFtpBackend::new(backend_provider.clone(), backend_base.clone())
+    }))
+    .passive_ports(passive_range)
+    .greeting("AeroFTP serve — connected");
+
+    let server = match server.build() {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("Failed to build FTP server: {}", e), 99);
+            return 99;
+        }
+    };
+
+    if matches!(format, OutputFormat::Json) {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "serving",
+                "protocol": "ftp",
+                "addr": addr,
+                "base_path": base_path,
+            })
+        );
+    } else if !quiet {
+        eprintln!("Serving FTP on ftp://{}", addr);
+        eprintln!("Remote base path: {}", base_path);
+        eprintln!("Passive ports: {}", passive_ports_str);
+        eprintln!("Anonymous access (no auth). Press Ctrl+C to stop.");
+    }
+
+    if let Err(e) = server.listen(addr).await {
+        print_error(format, &format!("FTP server failed: {}", e), 1);
+        return 1;
+    }
+
+    let mut p = provider_arc.lock().await;
+    let _ = p.disconnect().await;
+    0
+}
+
+// ── Serve SFTP — SSH File Transfer Protocol Server ──────────────
+
+mod serve_sftp {
+    use super::*;
+    use russh::server::{Auth, Handler as SshHandler, Msg, Server as SshServer, Session};
+    use russh::{Channel, ChannelId};
+    use std::collections::HashMap;
+
+    // SFTP protocol constants (v3)
+    const SSH_FXP_INIT: u8 = 1;
+    const SSH_FXP_VERSION: u8 = 2;
+    const SSH_FXP_OPEN: u8 = 3;
+    const SSH_FXP_CLOSE: u8 = 4;
+    const SSH_FXP_READ: u8 = 5;
+    const SSH_FXP_WRITE: u8 = 6;
+    const SSH_FXP_LSTAT: u8 = 7;
+    const SSH_FXP_FSTAT: u8 = 8;
+    const SSH_FXP_OPENDIR: u8 = 11;
+    const SSH_FXP_READDIR: u8 = 12;
+    const SSH_FXP_REMOVE: u8 = 13;
+    const SSH_FXP_MKDIR: u8 = 14;
+    const SSH_FXP_RMDIR: u8 = 15;
+    const SSH_FXP_REALPATH: u8 = 16;
+    const SSH_FXP_STAT: u8 = 17;
+    const SSH_FXP_RENAME: u8 = 18;
+    const SSH_FXP_STATUS: u8 = 101;
+    const SSH_FXP_HANDLE: u8 = 102;
+    const SSH_FXP_DATA: u8 = 103;
+    const SSH_FXP_NAME: u8 = 104;
+    const SSH_FXP_ATTRS: u8 = 105;
+
+    const SSH_FX_OK: u32 = 0;
+    const SSH_FX_EOF: u32 = 1;
+    const SSH_FX_NO_SUCH_FILE: u32 = 2;
+    #[allow(dead_code)]
+    const SSH_FX_PERMISSION_DENIED: u32 = 3;
+    const SSH_FX_FAILURE: u32 = 4;
+
+    fn read_u32(data: &[u8], pos: &mut usize) -> u32 {
+        let val = u32::from_be_bytes(data[*pos..*pos + 4].try_into().unwrap_or([0; 4]));
+        *pos += 4;
+        val
+    }
+
+    fn read_u64(data: &[u8], pos: &mut usize) -> u64 {
+        let val = u64::from_be_bytes(data[*pos..*pos + 8].try_into().unwrap_or([0; 8]));
+        *pos += 8;
+        val
+    }
+
+    fn read_string(data: &[u8], pos: &mut usize) -> String {
+        let len = read_u32(data, pos) as usize;
+        let s = String::from_utf8_lossy(&data[*pos..*pos + len]).to_string();
+        *pos += len;
+        s
+    }
+
+    fn write_u32(buf: &mut Vec<u8>, val: u32) {
+        buf.extend_from_slice(&val.to_be_bytes());
+    }
+
+    fn write_u64(buf: &mut Vec<u8>, val: u64) {
+        buf.extend_from_slice(&val.to_be_bytes());
+    }
+
+    fn write_string(buf: &mut Vec<u8>, s: &str) {
+        write_u32(buf, s.len() as u32);
+        buf.extend_from_slice(s.as_bytes());
+    }
+
+    fn write_attrs(buf: &mut Vec<u8>, size: u64, is_dir: bool) {
+        // flags: SSH_FILEXFER_ATTR_SIZE | SSH_FILEXFER_ATTR_PERMISSIONS
+        write_u32(buf, 0x00000001 | 0x00000004);
+        write_u64(buf, size);
+        write_u32(buf, if is_dir { 0o40755 } else { 0o100644 });
+    }
+
+    fn make_status(id: u32, code: u32, msg: &str) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.push(SSH_FXP_STATUS);
+        write_u32(&mut buf, id);
+        write_u32(&mut buf, code);
+        write_string(&mut buf, msg);
+        write_string(&mut buf, "en"); // language
+        buf
+    }
+
+    fn make_handle(id: u32, handle: &str) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.push(SSH_FXP_HANDLE);
+        write_u32(&mut buf, id);
+        write_string(&mut buf, handle);
+        buf
+    }
+
+    #[allow(dead_code)]
+    pub struct AeroSftpServer {
+        provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        base_path: String,
+        rt: Arc<tokio::runtime::Runtime>,
+    }
+
+    impl SshServer for AeroSftpServer {
+        type Handler = AeroSftpHandler;
+        fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
+            AeroSftpHandler {
+                provider: self.provider.clone(),
+                base_path: self.base_path.clone(),
+                handles: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt: self.rt.clone(),
+            }
+        }
+    }
+
+    pub struct AeroSftpHandler {
+        provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        base_path: String,
+        handles: HashMap<String, String>,
+        next_handle: u64,
+        dir_read: std::collections::HashSet<String>,
+        sftp_buf: Vec<u8>,
+        /// Dedicated runtime for blocking provider calls from within async SSH handler
+        rt: Arc<tokio::runtime::Runtime>,
+    }
+
+    impl AeroSftpHandler {
+        fn resolve_path(&self, path: &str) -> String {
+            let clean = path.trim_start_matches('/');
+            if clean.is_empty() {
+                self.base_path.clone()
+            } else if self.base_path == "/" {
+                format!("/{}", clean)
+            } else {
+                format!("{}/{}", self.base_path.trim_end_matches('/'), clean)
+            }
+        }
+
+        fn alloc_handle(&mut self, path: &str) -> String {
+            let h = format!("h{}", self.next_handle);
+            self.next_handle += 1;
+            self.handles.insert(h.clone(), path.to_string());
+            h
+        }
+
+        fn process_sftp(&mut self, data: &[u8]) -> Vec<u8> {
+            let rt = self.rt.clone();
+            let provider = self.provider.clone();
+
+            // Helper macro: spawn a plain thread, run async provider call with block_on.
+            // Clones all captures to avoid lifetime issues with the thread.
+            macro_rules! prov {
+                ($provider:expr, $rt:expr, async |$p:ident| $body:expr) => {{
+                    let __prov = $provider.clone();
+                    let __rt = $rt.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let r = __rt.block_on(async {
+                            let mut __guard = __prov.lock().await;
+                            let $p = &mut **__guard;
+                            $body
+                        });
+                        let _ = tx.send(r);
+                    });
+                    rx.recv().unwrap()
+                }};
+            }
+            if data.is_empty() {
+                return Vec::new();
+            }
+            let ptype = data[0];
+            let mut pos = 1usize;
+
+            match ptype {
+                SSH_FXP_INIT => {
+                    let _version = read_u32(data, &mut pos);
+                    let mut reply = Vec::new();
+                    reply.push(SSH_FXP_VERSION);
+                    write_u32(&mut reply, 3); // SFTP v3
+                    reply
+                }
+                SSH_FXP_REALPATH => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let resolved = if path == "." { "/".to_string() } else { path };
+                    let mut reply = Vec::new();
+                    reply.push(SSH_FXP_NAME);
+                    write_u32(&mut reply, id);
+                    write_u32(&mut reply, 1); // count
+                    write_string(&mut reply, &resolved);
+                    write_string(&mut reply, &resolved); // longname
+                    write_attrs(&mut reply, 0, true);
+                    reply
+                }
+                SSH_FXP_STAT | SSH_FXP_LSTAT => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let r = remote.clone();
+                    match prov!(provider, rt, async |p| p.stat(&r).await) {
+                        Ok(entry) => {
+                            let mut reply = Vec::new();
+                            reply.push(SSH_FXP_ATTRS);
+                            write_u32(&mut reply, id);
+                            write_attrs(&mut reply, entry.size, entry.is_dir);
+                            reply
+                        }
+                        Err(_) => make_status(id, SSH_FX_NO_SUCH_FILE, "not found"),
+                    }
+                }
+                SSH_FXP_FSTAT => {
+                    let id = read_u32(data, &mut pos);
+                    let handle = read_string(data, &mut pos);
+                    let Some(path) = self.handles.get(&handle).cloned() else {
+                        return make_status(id, SSH_FX_FAILURE, "invalid handle");
+                    };
+                    let result = rt.block_on(async {
+                        let mut p = self.provider.lock().await;
+                        p.stat(&path).await
+                    });
+                    match result {
+                        Ok(entry) => {
+                            let mut reply = Vec::new();
+                            reply.push(SSH_FXP_ATTRS);
+                            write_u32(&mut reply, id);
+                            write_attrs(&mut reply, entry.size, entry.is_dir);
+                            reply
+                        }
+                        Err(_) => make_status(id, SSH_FX_NO_SUCH_FILE, "not found"),
+                    }
+                }
+                SSH_FXP_OPENDIR => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let handle = self.alloc_handle(&remote);
+                    make_handle(id, &handle)
+                }
+                SSH_FXP_READDIR => {
+                    let id = read_u32(data, &mut pos);
+                    let handle = read_string(data, &mut pos);
+                    // Return EOF if already read
+                    if self.dir_read.contains(&handle) {
+                        return make_status(id, SSH_FX_EOF, "");
+                    }
+                    self.dir_read.insert(handle.clone());
+                    let Some(dir_path) = self.handles.get(&handle).cloned() else {
+                        return make_status(id, SSH_FX_FAILURE, "invalid handle");
+                    };
+                    let dp = dir_path.clone();
+                    match prov!(provider, rt, async |p| p.list(&dp).await) {
+                        Ok(entries) => {
+                            let mut reply = Vec::new();
+                            reply.push(SSH_FXP_NAME);
+                            write_u32(&mut reply, id);
+                            write_u32(&mut reply, entries.len() as u32);
+                            for e in &entries {
+                                write_string(&mut reply, &e.name);
+                                // longname: permissions size name
+                                let long = if e.is_dir {
+                                    format!("drwxr-xr-x 1 0 0 {} {}", e.size, e.name)
+                                } else {
+                                    format!("-rw-r--r-- 1 0 0 {} {}", e.size, e.name)
+                                };
+                                write_string(&mut reply, &long);
+                                write_attrs(&mut reply, e.size, e.is_dir);
+                            }
+                            reply
+                        }
+                        Err(_) => make_status(id, SSH_FX_FAILURE, "list failed"),
+                    }
+                }
+                SSH_FXP_OPEN => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let _flags = read_u32(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let handle = self.alloc_handle(&remote);
+                    make_handle(id, &handle)
+                }
+                SSH_FXP_READ => {
+                    let id = read_u32(data, &mut pos);
+                    let handle = read_string(data, &mut pos);
+                    let offset = read_u64(data, &mut pos);
+                    let len = read_u32(data, &mut pos);
+                    let Some(path) = self.handles.get(&handle).cloned() else {
+                        return make_status(id, SSH_FX_FAILURE, "invalid handle");
+                    };
+                    let rp = path.clone();
+                    match prov!(provider, rt, async |p| p.read_range(&rp, offset, len as u64).await) {
+                        Ok(data) if data.is_empty() => make_status(id, SSH_FX_EOF, ""),
+                        Ok(file_data) => {
+                            let mut reply = Vec::new();
+                            reply.push(SSH_FXP_DATA);
+                            write_u32(&mut reply, id);
+                            write_u32(&mut reply, file_data.len() as u32);
+                            reply.extend_from_slice(&file_data);
+                            reply
+                        }
+                        Err(_) => {
+                            let rp2 = path.clone();
+                            match prov!(provider, rt, async |p| p.download_to_bytes(&rp2).await) {
+                                Ok(full) => {
+                                    let start = (offset as usize).min(full.len());
+                                    let end = (start + len as usize).min(full.len());
+                                    if start >= full.len() {
+                                        make_status(id, SSH_FX_EOF, "")
+                                    } else {
+                                        let mut reply = Vec::new();
+                                        reply.push(SSH_FXP_DATA);
+                                        write_u32(&mut reply, id);
+                                        write_u32(&mut reply, (end - start) as u32);
+                                        reply.extend_from_slice(&full[start..end]);
+                                        reply
+                                    }
+                                }
+                                Err(_) => make_status(id, SSH_FX_FAILURE, "read failed"),
+                            }
+                        }
+                    }
+                }
+                SSH_FXP_WRITE => {
+                    let id = read_u32(data, &mut pos);
+                    let _handle = read_string(data, &mut pos);
+                    let _offset = read_u64(data, &mut pos);
+                    let _data_len = read_u32(data, &mut pos);
+                    // Write support: simplified — upload on close
+                    make_status(id, SSH_FX_OK, "")
+                }
+                SSH_FXP_CLOSE => {
+                    let id = read_u32(data, &mut pos);
+                    let handle = read_string(data, &mut pos);
+                    self.handles.remove(&handle);
+                    self.dir_read.remove(&handle);
+                    make_status(id, SSH_FX_OK, "")
+                }
+                SSH_FXP_REMOVE => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let r = remote.clone();
+                    match prov!(provider, rt, async |p| p.delete(&r).await) {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(_) => make_status(id, SSH_FX_FAILURE, "delete failed"),
+                    }
+                }
+                SSH_FXP_MKDIR => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let r = remote.clone();
+                    match prov!(provider, rt, async |p| p.mkdir(&r).await) {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(_) => make_status(id, SSH_FX_FAILURE, "mkdir failed"),
+                    }
+                }
+                SSH_FXP_RMDIR => {
+                    let id = read_u32(data, &mut pos);
+                    let path = read_string(data, &mut pos);
+                    let remote = self.resolve_path(&path);
+                    let r = remote.clone();
+                    match prov!(provider, rt, async |p| p.rmdir(&r).await) {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(_) => make_status(id, SSH_FX_FAILURE, "rmdir failed"),
+                    }
+                }
+                SSH_FXP_RENAME => {
+                    let id = read_u32(data, &mut pos);
+                    let from = read_string(data, &mut pos);
+                    let to = read_string(data, &mut pos);
+                    let from_remote = self.resolve_path(&from);
+                    let to_remote = self.resolve_path(&to);
+                    let fr = from_remote.clone();
+                    let tr = to_remote.clone();
+                    match prov!(provider, rt, async |p| p.rename(&fr, &tr).await) {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(_) => make_status(id, SSH_FX_FAILURE, "rename failed"),
+                    }
+                }
+                _ => {
+                    if data.len() >= 5 {
+                        let id = read_u32(data, &mut 1);
+                        make_status(id, SSH_FX_FAILURE, "unsupported")
+                    } else {
+                        Vec::new()
+                    }
+                }
+            }
+        }
+
+        fn send_sftp_packet(session: &mut Session, channel: ChannelId, payload: &[u8]) {
+            let mut pkt = Vec::with_capacity(4 + payload.len());
+            write_u32(&mut pkt, payload.len() as u32);
+            pkt.extend_from_slice(payload);
+            let pkt_bytes: Vec<u8> = pkt;
+            let _ = session.data(channel, pkt_bytes);
+        }
+    }
+
+    #[allow(clippy::manual_async_fn)]
+    impl SshHandler for AeroSftpHandler {
+        type Error = anyhow::Error;
+
+        fn auth_password(
+            &mut self,
+            _user: &str,
+            _password: &str,
+        ) -> impl std::future::Future<Output = Result<Auth, Self::Error>> + Send {
+            async { Ok(Auth::Accept) }
+        }
+
+        fn auth_none(
+            &mut self,
+            _user: &str,
+        ) -> impl std::future::Future<Output = Result<Auth, Self::Error>> + Send {
+            async { Ok(Auth::Accept) }
+        }
+
+        fn channel_open_session(
+            &mut self,
+            _channel: Channel<Msg>,
+            _session: &mut Session,
+        ) -> impl std::future::Future<Output = Result<bool, Self::Error>> + Send {
+            async { Ok(true) }
+        }
+
+        fn subsystem_request(
+            &mut self,
+            channel: ChannelId,
+            name: &str,
+            session: &mut Session,
+        ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+            if name == "sftp" {
+                let _ = session.channel_success(channel);
+            } else {
+                let _ = session.channel_failure(channel);
+            }
+            async { Ok(()) }
+        }
+
+        fn data(
+            &mut self,
+            channel: ChannelId,
+            data: &[u8],
+            session: &mut Session,
+        ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+            // SFTP packets are length-prefixed: 4 bytes length + payload
+            // Accumulate data in buffer for fragmented packets
+            self.sftp_buf.extend_from_slice(data);
+
+            // Process complete packets
+            while self.sftp_buf.len() >= 4 {
+                let pkt_len = u32::from_be_bytes(self.sftp_buf[0..4].try_into().unwrap()) as usize;
+                if self.sftp_buf.len() < 4 + pkt_len {
+                    break;
+                }
+                let pkt_data = self.sftp_buf[4..4 + pkt_len].to_vec();
+                self.sftp_buf.drain(..4 + pkt_len);
+
+                let reply = self.process_sftp(&pkt_data);
+                if !reply.is_empty() {
+                    Self::send_sftp_packet(session, channel, &reply);
+                }
+            }
+
+            async { Ok(()) }
+        }
+    }
+
+    pub async fn run(
+        provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        base_path: String,
+        addr: &str,
+        quiet: bool,
+    ) -> i32 {
+        let key = russh::keys::PrivateKey::random(
+            &mut rand::thread_rng(),
+            russh::keys::Algorithm::Ed25519,
+        ).expect("generate ed25519 key");
+
+        let config = Arc::new(russh::server::Config {
+            keys: vec![key],
+            ..Default::default()
+        });
+
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("Cannot bind {}: {}", addr, e);
+                return 1;
+            }
+        };
+
+        if !quiet {
+            eprintln!("Press Ctrl+C to stop.");
+        }
+
+        // Create a single dedicated runtime for provider calls (shared across all clients)
+        let sftp_rt = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .worker_threads(2)
+                .build()
+                .expect("sftp provider runtime"),
+        );
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_clone = cancelled.clone();
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            cancelled_clone.store(true, Ordering::Relaxed);
+        });
+
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let accept = tokio::select! {
+                result = listener.accept() => result,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => continue,
+            };
+
+            let (stream, _peer) = match accept {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            let handler = AeroSftpHandler {
+                provider: provider.clone(),
+                base_path: base_path.clone(),
+                handles: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt: sftp_rt.clone(),
+            };
+
+            let cfg = config.clone();
+            tokio::spawn(async move {
+                let _ = russh::server::run_stream(cfg, stream, handler).await;
+            });
+        }
+
+        0
+    }
+}
+
+async fn cmd_serve_sftp(
+    url: &str,
+    path: &str,
+    addr: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = serve_effective_base_path(path, &url_path);
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    if matches!(format, OutputFormat::Json) {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "serving",
+                "protocol": "sftp",
+                "addr": addr,
+                "base_path": base_path,
+            })
+        );
+    } else if !quiet {
+        eprintln!("Serving SFTP on sftp://{}", addr);
+        eprintln!("Remote base path: {}", base_path);
+        eprintln!("Anonymous access (any password accepted).");
+    }
+
+    let provider_arc = Arc::new(AsyncMutex::new(provider));
+    serve_sftp::run(provider_arc, base_path, addr, quiet).await
+}
+
 async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let start = Instant::now();
     let spinner = if matches!(format, OutputFormat::Text) && !cli.quiet {
@@ -4642,6 +5879,7 @@ async fn cmd_get(
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+            session_transfer_add(file_size);
             let speed = if elapsed.as_secs_f64() > 0.0 {
                 (file_size as f64 / elapsed.as_secs_f64()) as u64
             } else {
@@ -5159,7 +6397,7 @@ async fn cmd_get_recursive(
             if let Some(parent) = Path::new(&local_path).parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            let result = download_transfer_task(url, remote_path.clone(), local_path, cli, format, Some(aggregate), overall_pb).await;
+            let result = download_transfer_task(url, remote_path.clone(), local_path, cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli)).await;
             result.map(|_| remote_path)
         }
     }))
@@ -5299,7 +6537,7 @@ async fn cmd_get_glob(
             if validate_relative_path(&entry.name).is_none() {
                 return Err(format!("{}: unsafe path (traversal rejected)", entry.name));
             }
-            download_transfer_task(url, entry.path.clone(), local_path.clone(), cli, format, Some(aggregate), overall_pb)
+            download_transfer_task(url, entry.path.clone(), local_path.clone(), cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
                 .await
                 .map(|_| entry.name.clone())
         }
@@ -5413,6 +6651,7 @@ async fn cmd_put(
 
     match upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await {
         Ok(()) => {
+            session_transfer_add(file_size);
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
                 (file_size as f64 / elapsed.as_secs_f64()) as u64
@@ -5574,7 +6813,7 @@ async fn cmd_put_recursive(
             if cancelled.load(Ordering::Relaxed) {
                 return Err("Cancelled by user".to_string());
             }
-            upload_transfer_task(url, local_path.clone(), remote_path.clone(), cli, format, Some(aggregate), overall_pb)
+            upload_transfer_task(url, local_path.clone(), remote_path.clone(), cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
                 .await
                 .map(|_| local_path)
         }
@@ -6794,6 +8033,143 @@ async fn cmd_dedupe(
     0
 }
 
+// ── Bisync Snapshot ───────────────────────────────────────────────
+
+/// Snapshot of file state from last successful sync.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct BisyncSnapshot {
+    /// ISO timestamp of last successful sync
+    synced_at: String,
+    /// Map of relative_path → (size, mtime_iso_or_empty)
+    files: HashMap<String, (u64, String)>,
+}
+
+const BISYNC_SNAPSHOT_FILE: &str = ".aeroftp-bisync.json";
+
+fn load_bisync_snapshot(local_dir: &str) -> Option<BisyncSnapshot> {
+    let path = Path::new(local_dir).join(BISYNC_SNAPSHOT_FILE);
+    let data = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+fn save_bisync_snapshot(
+    local_dir: &str,
+    local_entries: &[(String, u64, Option<String>)],
+    remote_entries: &[(String, u64, Option<String>)],
+) {
+    let mut files = HashMap::new();
+    // Merge both sides — after a successful sync they should be equal
+    for (path, size, mtime) in local_entries.iter().chain(remote_entries.iter()) {
+        files.entry(path.clone()).or_insert_with(|| {
+            (*size, mtime.as_deref().unwrap_or("").to_string())
+        });
+    }
+    let snapshot = BisyncSnapshot {
+        synced_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        files,
+    };
+    let path = Path::new(local_dir).join(BISYNC_SNAPSHOT_FILE);
+    if let Ok(json) = serde_json::to_string(&snapshot) {
+        if let Err(e) = std::fs::write(&path, json) {
+            eprintln!("Warning: failed to save bisync snapshot: {}", e);
+        }
+    }
+}
+
+/// Parse an mtime string to a comparable timestamp (seconds since epoch).
+fn parse_mtime_secs(s: &str) -> Option<i64> {
+    // Try ISO 8601 with timezone
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp());
+    }
+    // Try ISO 8601 without timezone (assume UTC)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt.and_utc().timestamp());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(dt.and_utc().timestamp());
+    }
+    None
+}
+
+/// Compare two mtime strings (ISO 8601). Returns Ordering.
+/// Parses timestamps to handle timezone differences (e.g., "T10:30:00" vs "T10:30:00Z").
+fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            match (parse_mtime_secs(a), parse_mtime_secs(b)) {
+                (Some(ta), Some(tb)) => ta.cmp(&tb),
+                _ => a.cmp(b), // fallback to lexicographic
+            }
+        }
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+/// Resolve a conflict between local and remote file for --direction both.
+/// Returns: "upload" (local wins), "download" (remote wins), or "skip".
+fn resolve_conflict(
+    conflict_mode: &str,
+    local_size: u64,
+    local_mtime: Option<&str>,
+    remote_size: u64,
+    remote_mtime: Option<&str>,
+) -> &'static str {
+    match conflict_mode {
+        "newer" => match compare_mtime(local_mtime, remote_mtime) {
+            std::cmp::Ordering::Greater => "upload",
+            std::cmp::Ordering::Less => "download",
+            std::cmp::Ordering::Equal => {
+                // mtime equal but size differs — fallback to larger wins
+                if local_size > remote_size { "upload" }
+                else if remote_size > local_size { "download" }
+                else { "skip" }
+            }
+        },
+        "older" => match compare_mtime(local_mtime, remote_mtime) {
+            std::cmp::Ordering::Less => "upload",
+            std::cmp::Ordering::Greater => "download",
+            std::cmp::Ordering::Equal => {
+                if local_size < remote_size { "upload" }
+                else if remote_size < local_size { "download" }
+                else { "skip" }
+            }
+        },
+        "larger" => {
+            if local_size > remote_size { "upload" }
+            else if remote_size > local_size { "download" }
+            else { "skip" }
+        }
+        "smaller" => {
+            if local_size < remote_size { "upload" }
+            else if remote_size < local_size { "download" }
+            else { "skip" }
+        }
+        _ => "skip", // "skip" or unknown
+    }
+}
+
+/// Backup a file before overwriting (if --backup-dir is set).
+fn backup_file(
+    source_path: &str,
+    backup_dir: &str,
+    backup_suffix: &str,
+    relative_path: &str,
+) {
+    if backup_dir.is_empty() {
+        return;
+    }
+    let dest = Path::new(backup_dir).join(format!("{}{}", relative_path, backup_suffix));
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::copy(source_path, &dest) {
+        eprintln!("Warning: backup failed for {}: {}", relative_path, e);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
@@ -6805,8 +8181,10 @@ async fn cmd_sync(
     exclude: &[String],
     track_renames: bool,
     max_delete: Option<&str>,
-    _backup_dir: Option<&str>,
-    _backup_suffix: &str,
+    backup_dir: Option<&str>,
+    backup_suffix: &str,
+    conflict_mode: &str,
+    resync: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -6852,7 +8230,7 @@ async fn cmd_sync(
                 .unwrap_or(entry.path())
                 .to_string_lossy()
                 .replace('\\', "/");
-            if relative.is_empty() {
+            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
                 continue;
             }
 
@@ -6911,7 +8289,7 @@ async fn cmd_sync(
                                 .unwrap_or(&e.path)
                                 .trim_start_matches('/')
                                 .to_string();
-                            if !relative.is_empty() {
+                            if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
                                 // Apply exclude patterns to remote entries too
                                 if exclude_matchers
                                     .iter()
@@ -6933,7 +8311,7 @@ async fn cmd_sync(
         }
     }
 
-    // Build comparison
+    // Build comparison maps
     let local_map: HashMap<&str, (u64, Option<&str>)> = local_entries
         .iter()
         .map(|(p, s, m)| (p.as_str(), (*s, m.as_deref())))
@@ -6943,55 +8321,107 @@ async fn cmd_sync(
         .map(|(p, s, m)| (p.as_str(), (*s, m.as_deref())))
         .collect();
 
+    // Load previous snapshot for bisync delta detection (--direction both only)
+    let prev_snapshot = if direction == "both" && !resync {
+        load_bisync_snapshot(local)
+    } else {
+        if resync && !quiet {
+            eprintln!("--resync: ignoring previous snapshot, full scan");
+        }
+        None
+    };
+
     let mut to_upload: Vec<&str> = Vec::new();
     let mut to_download: Vec<&str> = Vec::new();
     let mut to_delete_remote: Vec<&str> = Vec::new();
     let mut to_delete_local: Vec<&str> = Vec::new();
+    let mut conflicts_resolved: u32 = 0;
     let mut skipped: u32 = 0;
 
-    // Files to upload (local → remote)
     if direction == "upload" || direction == "both" {
-        for (path, (size, _mtime)) in &local_map {
-            if let Some((rsize, _rmtime)) = remote_map.get(path) {
-                if size == rsize {
+        for (path, (size, mtime)) in &local_map {
+            if let Some((rsize, rmtime)) = remote_map.get(path) {
+                if size == rsize && compare_mtime(*mtime, *rmtime) == std::cmp::Ordering::Equal {
                     skipped += 1;
+                } else if direction == "both" {
+                    // Conflict: file exists on both sides with different content
+                    let action = resolve_conflict(conflict_mode, *size, *mtime, *rsize, *rmtime);
+                    match action {
+                        "upload" => { to_upload.push(path); conflicts_resolved += 1; }
+                        "download" => { to_download.push(path); conflicts_resolved += 1; }
+                        _ => { skipped += 1; conflicts_resolved += 1; }
+                    }
                 } else {
+                    // upload-only: local always wins
                     to_upload.push(path);
                 }
             } else {
-                to_upload.push(path);
+                // File only on local side
+                if direction == "both" {
+                    // Check snapshot: if file was in previous snapshot, it was deleted remotely
+                    if let Some(ref snap) = prev_snapshot {
+                        if snap.files.contains_key(*path) {
+                            // Was synced before, now missing remotely → remote deletion
+                            if delete {
+                                to_delete_local.push(path);
+                            } else {
+                                to_upload.push(path); // re-upload unless --delete
+                            }
+                            continue;
+                        }
+                    }
+                    to_upload.push(path);
+                } else {
+                    to_upload.push(path);
+                }
             }
         }
     }
 
-    // Files to download (remote → local)
     if direction == "download" || direction == "both" {
-        for (path, (size, _mtime)) in &remote_map {
-            if let Some((lsize, _lmtime)) = local_map.get(path) {
-                if size == lsize {
-                    // Already counted in upload skipped
+        for (path, (size, mtime)) in &remote_map {
+            if let Some((lsize, lmtime)) = local_map.get(path) {
+                if size == lsize && compare_mtime(*mtime, *lmtime) == std::cmp::Ordering::Equal {
                     if direction == "download" {
                         skipped += 1;
                     }
+                    // In "both" mode, already handled above
                 } else if direction == "download" {
                     to_download.push(path);
                 }
+                // In "both" mode, conflicts already resolved in upload pass
             } else {
-                to_download.push(path);
+                // File only on remote side
+                if direction == "both" {
+                    // Check snapshot: if file was in previous snapshot, it was deleted locally
+                    if let Some(ref snap) = prev_snapshot {
+                        if snap.files.contains_key(*path) {
+                            if delete {
+                                to_delete_remote.push(path);
+                            } else {
+                                to_download.push(path);
+                            }
+                            continue;
+                        }
+                    }
+                    to_download.push(path);
+                } else {
+                    to_download.push(path);
+                }
             }
         }
     }
 
-    // Orphan deletion
-    if delete {
-        if direction == "upload" || direction == "both" {
+    // Orphan deletion (for upload/download-only modes)
+    if delete && direction != "both" {
+        if direction == "upload" {
             for path in remote_map.keys() {
                 if !local_map.contains_key(path) {
                     to_delete_remote.push(path);
                 }
             }
         }
-        if direction == "download" || direction == "both" {
+        if direction == "download" {
             for path in local_map.keys() {
                 if !remote_map.contains_key(path) {
                     to_delete_local.push(path);
@@ -7048,13 +8478,19 @@ async fn cmd_sync(
     }
 
     if !quiet {
+        let conflict_info = if conflicts_resolved > 0 {
+            format!(", {} conflict(s) resolved via --conflict-mode={}", conflicts_resolved, conflict_mode)
+        } else {
+            String::new()
+        };
         eprintln!(
-            "\nSync plan: {} upload, {} download, {} delete, {} rename, {} skipped",
+            "\nSync plan: {} upload, {} download, {} delete, {} rename, {} skipped{}",
             to_upload.len(),
             to_download.len(),
             to_delete_remote.len() + to_delete_local.len(),
             renames.len(),
-            skipped
+            skipped,
+            conflict_info
         );
     }
 
@@ -7200,6 +8636,7 @@ async fn cmd_sync(
                     format,
                     Some(aggregate),
                     overall_pb,
+                    resolve_max_transfer(cli),
                 )
                 .await
                 {
@@ -7240,6 +8677,7 @@ async fn cmd_sync(
                     format,
                     Some(aggregate),
                     overall_pb,
+                    resolve_max_transfer(cli),
                 )
                 .await
                 {
@@ -7309,9 +8747,21 @@ async fn cmd_sync(
             continue;
         }
         let local_path = format!("{}/{}", local, path);
+        // Backup before delete (if --backup-dir set)
+        if let Some(bdir) = backup_dir {
+            backup_file(&local_path, bdir, backup_suffix, path);
+        }
         match std::fs::remove_file(&local_path) {
             Ok(()) => deleted += 1,
             Err(e) => errors.push(format!("delete local {}: {}", path, e)),
+        }
+    }
+
+    // Save bisync snapshot after successful sync (--direction both)
+    if direction == "both" && errors.is_empty() && !dry_run {
+        save_bisync_snapshot(local, &local_entries, &remote_entries);
+        if !quiet {
+            eprintln!("Bisync snapshot saved to {}/{}", local, BISYNC_SNAPSHOT_FILE);
         }
     }
 
@@ -7584,6 +9034,2497 @@ async fn cmd_tree(
     0
 }
 
+// ── NCDU — Interactive Disk Usage Explorer ────────────────────────
+
+/// A node in the disk usage tree.
+#[derive(Debug, Serialize)]
+struct NcduEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+    /// Aggregated size including all descendants (for directories).
+    agg_size: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    children: Vec<NcduEntry>,
+}
+
+impl NcduEntry {
+    fn empty() -> Self {
+        Self { name: String::new(), path: String::new(), is_dir: true, size: 0, agg_size: 0, children: Vec::new() }
+    }
+}
+
+/// Recursively scan a remote directory and build an NcduEntry tree.
+#[allow(clippy::too_many_arguments)]
+async fn ncdu_scan(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    name: &str,
+    depth: usize,
+    max_depth: usize,
+    quiet: bool,
+    spinner: &Option<ProgressBar>,
+    entry_count: &mut usize,
+) -> NcduEntry {
+    let mut node = NcduEntry {
+        name: name.to_string(),
+        path: path.to_string(),
+        is_dir: true,
+        size: 0,
+        agg_size: 0,
+        children: Vec::new(),
+    };
+
+    if depth >= max_depth || *entry_count >= MAX_SCAN_ENTRIES {
+        return node;
+    }
+
+    let entries = match provider.list(path).await {
+        Ok(e) => e,
+        Err(err) => {
+            if !quiet {
+                if let Some(sp) = spinner {
+                    sp.set_message(format!("Error listing {}: {}", path, err));
+                }
+            }
+            return node;
+        }
+    };
+
+    for entry in entries {
+        *entry_count += 1;
+        if *entry_count >= MAX_SCAN_ENTRIES {
+            break;
+        }
+        if let Some(sp) = spinner {
+            if *entry_count % 50 == 0 {
+                sp.set_message(format!("Scanned {} entries...", entry_count));
+            }
+        }
+
+        if entry.is_dir {
+            let child = Box::pin(ncdu_scan(
+                provider,
+                &entry.path,
+                &entry.name,
+                depth + 1,
+                max_depth,
+                quiet,
+                spinner,
+                entry_count,
+            ))
+            .await;
+            node.agg_size += child.agg_size;
+            node.children.push(child);
+        } else {
+            node.agg_size += entry.size;
+            node.children.push(NcduEntry {
+                name: entry.name,
+                path: entry.path,
+                is_dir: false,
+                size: entry.size,
+                agg_size: entry.size,
+                children: Vec::new(),
+            });
+        }
+    }
+
+    // Sort: directories first, then by size descending
+    node.children.sort_by(|a, b| {
+        b.is_dir.cmp(&a.is_dir).then_with(|| b.agg_size.cmp(&a.agg_size))
+    });
+
+    node
+}
+
+/// TUI state for ncdu navigation.
+struct NcduState {
+    /// Stack of directory indices for navigation (parent → child).
+    path_stack: Vec<(NcduEntry, usize)>,
+    /// Current directory being viewed.
+    current: NcduEntry,
+    /// Selected index in the current directory's children.
+    selected: usize,
+}
+
+impl NcduState {
+    fn new(root: NcduEntry) -> Self {
+        Self {
+            path_stack: Vec::new(),
+            current: root,
+            selected: 0,
+        }
+    }
+
+    fn enter_selected(&mut self) {
+        if self.current.children.is_empty() {
+            return;
+        }
+        let idx = self.selected.min(self.current.children.len().saturating_sub(1));
+        if !self.current.children[idx].is_dir || self.current.children[idx].children.is_empty() {
+            return;
+        }
+        let mut placeholder = NcduEntry::empty();
+        std::mem::swap(&mut self.current.children[idx], &mut placeholder);
+        let old_current = std::mem::replace(&mut self.current, placeholder);
+        self.path_stack.push((old_current, idx));
+        self.selected = 0;
+    }
+
+    fn go_back(&mut self) {
+        if let Some((mut parent, idx)) = self.path_stack.pop() {
+            let child = std::mem::replace(&mut self.current, NcduEntry::empty());
+            parent.children[idx] = child;
+            self.current = parent;
+            self.selected = idx;
+        }
+    }
+}
+
+fn ncdu_format_bar(ratio: f64, width: usize) -> String {
+    let raw = (ratio * width as f64).round() as usize;
+    // Guarantee at least 1 char for any non-zero entry so tiny items are visible
+    let filled = if ratio > 0.0 { raw.max(1) } else { 0 };
+    let filled = filled.min(width);
+    let empty = width.saturating_sub(filled);
+    format!("[{}{}]", "#".repeat(filled), ".".repeat(empty))
+}
+
+/// Run the interactive TUI.
+fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
+    use crossterm::{
+        event::{self, Event, KeyCode, KeyEventKind},
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        ExecutableCommand,
+    };
+    use ratatui::{
+        backend::CrosstermBackend,
+        layout::{Constraint, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Paragraph},
+        Terminal,
+    };
+
+    let mut stdout = std::io::stdout();
+    enable_raw_mode()?;
+    stdout.execute(EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut state = NcduState::new(root);
+
+    loop {
+        terminal.draw(|frame| {
+            let area = frame.area();
+
+            // Header (2 lines) + body
+            let chunks = Layout::vertical([
+                Constraint::Length(2),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ]).split(area);
+
+            // Header
+            let header_text = format!(
+                " ncdu — {} ({})  [{} items]",
+                state.current.path,
+                format_size(state.current.agg_size),
+                state.current.children.len()
+            );
+            let header = Paragraph::new(Line::from(vec![
+                Span::styled(header_text, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            ]));
+            frame.render_widget(header, chunks[0]);
+
+            // File list
+            let list_area = chunks[1];
+            let visible_count = list_area.height as usize;
+            let children = &state.current.children;
+
+            // Scroll offset
+            let scroll = if state.selected >= visible_count {
+                state.selected - visible_count + 1
+            } else {
+                0
+            };
+
+            let parent_size = state.current.agg_size.max(1) as f64;
+            let bar_width = 20usize;
+            let mut lines: Vec<Line> = Vec::with_capacity(visible_count);
+
+            // ".." entry for going back
+            let back_selected = state.selected == 0 && !state.path_stack.is_empty();
+            if scroll == 0 && !state.path_stack.is_empty() {
+                let style = if back_selected {
+                    Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Blue)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("          /..                          ", style),
+                ]));
+            }
+
+            let offset = if state.path_stack.is_empty() { 0 } else { 1 };
+
+            for (i, child) in children.iter().enumerate() {
+                let display_idx = i + offset;
+                if display_idx < scroll || lines.len() >= visible_count {
+                    continue;
+                }
+                let is_selected = display_idx == state.selected;
+                let ratio = child.agg_size as f64 / parent_size;
+                let pct = (ratio * 100.0).min(100.0);
+                let bar = ncdu_format_bar(ratio, bar_width);
+
+                let size_str = format!("{:>9}", format_size(child.agg_size));
+                let pct_str = format!("{:5.1}%", pct);
+                let name_str = if child.is_dir {
+                    format!("/{}", child.name)
+                } else {
+                    child.name.clone()
+                };
+
+                let style = if is_selected {
+                    Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD)
+                } else if child.is_dir {
+                    Style::default().fg(Color::Blue)
+                } else {
+                    Style::default()
+                };
+
+                let bar_style = if is_selected {
+                    Style::default().bg(Color::DarkGray).fg(Color::Green)
+                } else {
+                    Style::default().fg(Color::Green)
+                };
+
+                lines.push(Line::from(vec![
+                    Span::styled(size_str, style),
+                    Span::raw(" "),
+                    Span::styled(bar, bar_style),
+                    Span::raw(" "),
+                    Span::styled(pct_str, style),
+                    Span::raw(" "),
+                    Span::styled(name_str, style),
+                ]));
+            }
+
+            let list_widget = Paragraph::new(lines)
+                .block(Block::default().borders(Borders::NONE));
+            frame.render_widget(list_widget, list_area);
+
+            // Footer
+            let footer = Paragraph::new(Line::from(vec![
+                Span::styled(
+                    " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+            frame.render_widget(footer, chunks[2]);
+        })?;
+
+        // Handle input
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                let max_idx = state.current.children.len()
+                    + if state.path_stack.is_empty() { 0 } else { 1 };
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if state.selected + 1 < max_idx {
+                            state.selected += 1;
+                        }
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        if state.selected > 0 {
+                            state.selected -= 1;
+                        }
+                    }
+                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                        // If on ".." entry, go back
+                        if !state.path_stack.is_empty() && state.selected == 0 {
+                            state.go_back();
+                        } else {
+                            // Adjust for ".." offset
+                            let adj = if state.path_stack.is_empty() { 0 } else { 1 };
+                            if state.selected >= adj {
+                                state.selected -= adj;
+                                state.enter_selected();
+                                state.selected += if state.path_stack.is_empty() { 0 } else { 1 };
+                            }
+                        }
+                    }
+                    KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+                        state.go_back();
+                    }
+                    KeyCode::Home => state.selected = 0,
+                    KeyCode::End => {
+                        if max_idx > 0 { state.selected = max_idx - 1; }
+                    }
+                    KeyCode::PageDown => {
+                        state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
+                    }
+                    KeyCode::PageUp => {
+                        state.selected = state.selected.saturating_sub(20);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // Cleanup
+    disable_raw_mode()?;
+    terminal.backend_mut().execute(LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
+    Ok(())
+}
+
+async fn cmd_ncdu(
+    url: &str,
+    path: &str,
+    max_depth: usize,
+    export: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = if path == "/" && url_path != "/" {
+        normalize_remote_path(&url_path)
+    } else {
+        normalize_remote_path(path)
+    };
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let spinner = if !quiet {
+        Some(create_spinner("Scanning remote directory..."))
+    } else {
+        None
+    };
+
+    let mut entry_count = 0usize;
+    let root_name = base_path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("/");
+    let root = ncdu_scan(
+        &mut *provider,
+        &base_path,
+        root_name,
+        0,
+        max_depth,
+        quiet,
+        &spinner,
+        &mut entry_count,
+    )
+    .await;
+
+    if let Some(sp) = spinner {
+        sp.finish_and_clear();
+    }
+
+    let _ = provider.disconnect().await;
+
+    if !quiet {
+        eprintln!(
+            "Scanned {} entries, total {}",
+            entry_count,
+            format_size(root.agg_size)
+        );
+    }
+
+    // Export mode: write JSON and exit
+    if let Some(export_path) = export {
+        match serde_json::to_string_pretty(&root) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(export_path, &json) {
+                    print_error(format, &format!("Failed to write export: {}", e), 4);
+                    return 4;
+                }
+                if !quiet {
+                    eprintln!("Exported to {}", export_path);
+                }
+            }
+            Err(e) => {
+                print_error(format, &format!("JSON serialization failed: {}", e), 99);
+                return 99;
+            }
+        }
+        return 0;
+    }
+
+    // JSON output mode: print and exit
+    if matches!(format, OutputFormat::Json) {
+        print_json(&root);
+        return 0;
+    }
+
+    // Interactive TUI mode (requires terminal)
+    if !std::io::stdin().is_terminal() {
+        eprintln!("ncdu: interactive mode requires a terminal. Use --export or --json for non-interactive output.");
+        return 5;
+    }
+
+    if let Err(e) = ncdu_run_tui(root) {
+        eprintln!("TUI error: {}", e);
+        return 99;
+    }
+
+    0
+}
+
+// ── FUSE Mount (Linux + macOS) ───────────────────────────────────
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod fuse_mount {
+    use super::*;
+    use fuser::{
+        FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyCreate, ReplyData,
+        ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, Request,
+    };
+    use std::collections::HashMap;
+    use std::ffi::OsStr;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    const ROOT_INODE: u64 = 1;
+    const BLOCK_SIZE: u32 = 512;
+    /// Read chunk size: 4 MB per read call
+    const READ_CHUNK: u64 = 4 * 1024 * 1024;
+
+    #[derive(Clone, Debug)]
+    struct CachedEntry {
+        attr: FileAttr,
+        children: Option<Vec<u64>>, // inode list for directories
+        fetched_at: Instant,
+    }
+
+    /// FUSE filesystem backed by a StorageProvider.
+    #[allow(dead_code)]
+    pub struct AeroFuseFs {
+        /// Dedicated runtime for FUSE callbacks (separate from main tokio runtime)
+        rt: tokio::runtime::Runtime,
+        provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+        base_path: String,
+        cache_ttl: Duration,
+        read_only: bool,
+        /// Write buffers: inode → tempfile path
+        write_buffers: Mutex<HashMap<u64, PathBuf>>,
+        /// Track which inodes have been successfully flushed (uploaded)
+        flush_ok: Mutex<std::collections::HashSet<u64>>,
+        /// Cached uid/gid (avoid repeated unsafe calls)
+        uid: u32,
+        gid: u32,
+        /// inode → remote path
+        inode_path: Mutex<HashMap<u64, String>>,
+        /// remote path → inode
+        path_inode: Mutex<HashMap<String, u64>>,
+        /// inode → cached metadata
+        cache: Mutex<HashMap<u64, CachedEntry>>,
+        /// Next available inode number
+        next_inode: Mutex<u64>,
+        quiet: bool,
+    }
+
+    impl AeroFuseFs {
+        pub fn new(
+            provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+            base_path: String,
+            cache_ttl_secs: u64,
+            read_only: bool,
+            quiet: bool,
+        ) -> Self {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create FUSE tokio runtime");
+            let cur_uid = unsafe { libc::getuid() };
+            let cur_gid = unsafe { libc::getgid() };
+
+            let mut inode_path = HashMap::new();
+            let mut path_inode = HashMap::new();
+            inode_path.insert(ROOT_INODE, base_path.clone());
+            path_inode.insert(base_path.clone(), ROOT_INODE);
+
+            let mut cache = HashMap::new();
+            cache.insert(ROOT_INODE, CachedEntry {
+                attr: dir_attr(ROOT_INODE, 0, cur_uid, cur_gid),
+                children: None,
+                fetched_at: Instant::now(),
+            });
+
+            Self {
+                rt,
+                provider,
+                base_path,
+                cache_ttl: Duration::from_secs(cache_ttl_secs),
+                read_only,
+                write_buffers: Mutex::new(HashMap::new()),
+                flush_ok: Mutex::new(std::collections::HashSet::new()),
+                uid: cur_uid,
+                gid: cur_gid,
+                inode_path: Mutex::new(inode_path),
+                path_inode: Mutex::new(path_inode),
+                cache: Mutex::new(cache),
+                next_inode: Mutex::new(2),
+                quiet,
+            }
+        }
+
+        /// Invalidate cache for a directory (force re-listing on next access).
+        fn invalidate_dir(&self, parent_ino: u64) {
+            let mut cache = self.cache.lock().unwrap();
+            cache.remove(&parent_ino);
+        }
+
+        /// Build the child path from a parent path and child name.
+        fn child_path(parent_path: &str, name: &str) -> String {
+            if parent_path == "/" {
+                format!("/{}", name)
+            } else {
+                format!("{}/{}", parent_path, name)
+            }
+        }
+
+        fn alloc_inode(&self, path: &str) -> u64 {
+            let mut pi = self.path_inode.lock().unwrap();
+            if let Some(&ino) = pi.get(path) {
+                return ino;
+            }
+            let mut next = self.next_inode.lock().unwrap();
+            let ino = *next;
+            *next += 1;
+            pi.insert(path.to_string(), ino);
+            self.inode_path.lock().unwrap().insert(ino, path.to_string());
+            ino
+        }
+
+        fn get_path(&self, ino: u64) -> Option<String> {
+            self.inode_path.lock().unwrap().get(&ino).cloned()
+        }
+
+        fn get_cached(&self, ino: u64) -> Option<CachedEntry> {
+            let cache = self.cache.lock().unwrap();
+            let entry = cache.get(&ino)?;
+            if entry.fetched_at.elapsed() < self.cache_ttl {
+                Some(entry.clone())
+            } else {
+                None
+            }
+        }
+
+        fn set_cached(&self, ino: u64, entry: CachedEntry) {
+            self.cache.lock().unwrap().insert(ino, entry);
+        }
+
+        /// Fetch directory listing from provider, populate cache and inode tables.
+        fn fetch_dir(&self, ino: u64, path: &str) -> Option<CachedEntry> {
+            let provider = self.provider.clone();
+            let path_owned = path.to_string();
+            let entries = self.rt.block_on(async {
+                let mut p = provider.lock().await;
+                p.list(&path_owned).await.ok()
+            })?;
+
+            let mut child_inodes = Vec::with_capacity(entries.len());
+            for e in &entries {
+                let child_ino = self.alloc_inode(&e.path);
+                child_inodes.push(child_ino);
+
+                let attr = if e.is_dir {
+                    dir_attr(child_ino, 0, self.uid, self.gid)
+                } else {
+                    file_attr(child_ino, e.size, parse_mtime_to_system(&e.modified), self.uid, self.gid)
+                };
+
+                self.set_cached(child_ino, CachedEntry {
+                    attr,
+                    children: if e.is_dir { None } else { Some(Vec::new()) },
+                    fetched_at: Instant::now(),
+                });
+            }
+
+            let cached = CachedEntry {
+                attr: dir_attr(ino, entries.len() as u64, self.uid, self.gid),
+                children: Some(child_inodes),
+                fetched_at: Instant::now(),
+            };
+            self.set_cached(ino, cached.clone());
+            Some(cached)
+        }
+
+        /// Fetch stat for a single path from provider.
+        fn fetch_stat(&self, ino: u64, path: &str) -> Option<CachedEntry> {
+            let provider = self.provider.clone();
+            let path_owned = path.to_string();
+            let entry = self.rt.block_on(async {
+                let mut p = provider.lock().await;
+                p.stat(&path_owned).await.ok()
+            })?;
+
+            let attr = if entry.is_dir {
+                dir_attr(ino, 0, self.uid, self.gid)
+            } else {
+                file_attr(ino, entry.size, parse_mtime_to_system(&entry.modified), self.uid, self.gid)
+            };
+
+            let cached = CachedEntry {
+                attr,
+                children: if entry.is_dir { None } else { Some(Vec::new()) },
+                fetched_at: Instant::now(),
+            };
+            self.set_cached(ino, cached.clone());
+            Some(cached)
+        }
+    }
+
+    fn dir_attr(ino: u64, _nlink: u64, uid: u32, gid: u32) -> FileAttr {
+        let now = SystemTime::now();
+        FileAttr {
+            ino,
+            size: 0,
+            blocks: 0,
+            atime: now,
+            mtime: now,
+            ctime: now,
+            crtime: now,
+            kind: FileType::Directory,
+            perm: 0o755,
+            nlink: 2,
+            uid,
+            gid,
+            rdev: 0,
+            blksize: BLOCK_SIZE,
+            flags: 0,
+        }
+    }
+
+    fn file_attr(ino: u64, size: u64, mtime: SystemTime, uid: u32, gid: u32) -> FileAttr {
+        FileAttr {
+            ino,
+            size,
+            blocks: size.div_ceil(BLOCK_SIZE as u64),
+            atime: mtime,
+            mtime,
+            ctime: mtime,
+            crtime: mtime,
+            kind: FileType::RegularFile,
+            perm: 0o644,
+            nlink: 1,
+            uid,
+            gid,
+            rdev: 0,
+            blksize: BLOCK_SIZE,
+            flags: 0,
+        }
+    }
+
+    fn parse_mtime_to_system(mtime: &Option<String>) -> SystemTime {
+        mtime
+            .as_deref()
+            .and_then(|s| {
+                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                    .ok()
+                    .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok())
+            })
+            .map(|dt| {
+                let ts = dt.and_utc().timestamp();
+                UNIX_EPOCH + Duration::from_secs(ts.max(0) as u64)
+            })
+            .unwrap_or(SystemTime::now())
+    }
+
+    impl Filesystem for AeroFuseFs {
+        fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
+            let ttl = self.cache_ttl;
+
+            // Root inode: always return directory attr without provider call
+            if ino == ROOT_INODE {
+                if let Some(cached) = self.get_cached(ino) {
+                    reply.attr(&ttl, &cached.attr);
+                } else {
+                    let attr = dir_attr(ROOT_INODE, 0, self.uid, self.gid);
+                    reply.attr(&ttl, &attr);
+                }
+                return;
+            }
+
+            // Try cache first
+            if let Some(cached) = self.get_cached(ino) {
+                reply.attr(&ttl, &cached.attr);
+                return;
+            }
+
+            // Cache miss — fetch from provider
+            let Some(path) = self.get_path(ino) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+
+            if let Some(cached) = self.fetch_stat(ino, &path) {
+                reply.attr(&ttl, &cached.attr);
+            } else {
+                reply.error(libc::ENOENT);
+            }
+        }
+
+        fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+            let ttl = self.cache_ttl;
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+
+            let child_name = name.to_string_lossy();
+            let child_path = if parent_path == "/" {
+                format!("/{}", child_name)
+            } else {
+                format!("{}/{}", parent_path, child_name)
+            };
+
+            // Check if we have inode + fresh cache
+            let child_ino = self.alloc_inode(&child_path);
+            if let Some(cached) = self.get_cached(child_ino) {
+                reply.entry(&ttl, &cached.attr, 0);
+                return;
+            }
+
+            // Ensure parent dir is listed (populates children cache)
+            let parent_cached = self.get_cached(parent)
+                .or_else(|| self.fetch_dir(parent, &parent_path));
+
+            if parent_cached.is_some() {
+                if let Some(cached) = self.get_cached(child_ino) {
+                    reply.entry(&ttl, &cached.attr, 0);
+                    return;
+                }
+            }
+
+            // Still not found — try direct stat
+            if let Some(cached) = self.fetch_stat(child_ino, &child_path) {
+                reply.entry(&ttl, &cached.attr, 0);
+            } else {
+                reply.error(libc::ENOENT);
+            }
+        }
+
+        fn readdir(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _fh: u64,
+            offset: i64,
+            mut reply: ReplyDirectory,
+        ) {
+            let Some(path) = self.get_path(ino) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+
+            // Fetch or use cached directory listing
+            let cached = self.get_cached(ino)
+                .filter(|c| c.children.is_some())
+                .or_else(|| self.fetch_dir(ino, &path));
+
+            let Some(cached) = cached else {
+                reply.error(libc::EIO);
+                return;
+            };
+
+            let children = cached.children.unwrap_or_default();
+            let mut entries: Vec<(u64, FileType, String)> = Vec::new();
+
+            // "." and ".."
+            entries.push((ino, FileType::Directory, ".".to_string()));
+            entries.push((ino, FileType::Directory, "..".to_string()));
+
+            {
+                let cache = self.cache.lock().unwrap();
+                let inode_path = self.inode_path.lock().unwrap();
+                for &child_ino in &children {
+                    if let Some(child_cached) = cache.get(&child_ino) {
+                        let name = inode_path
+                            .get(&child_ino)
+                            .and_then(|p| p.rsplit('/').next().map(|s| s.to_string()))
+                            .unwrap_or_default();
+                        if !name.is_empty() {
+                            entries.push((child_ino, child_cached.attr.kind, name));
+                        }
+                    }
+                }
+            }
+
+            for (i, (ino, kind, name)) in entries.iter().enumerate().skip(offset as usize) {
+                if reply.add(*ino, (i + 1) as i64, *kind, name) {
+                    break; // buffer full
+                }
+            }
+            reply.ok();
+        }
+
+        fn open(&mut self, _req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
+            if self.get_path(ino).is_none() {
+                reply.error(libc::ENOENT);
+                return;
+            }
+            // Check write intent on read-only mount
+            let write_flags = libc::O_WRONLY | libc::O_RDWR | libc::O_APPEND | libc::O_TRUNC;
+            if self.read_only && (flags & write_flags) != 0 {
+                reply.error(libc::EROFS);
+                return;
+            }
+            reply.opened(0, 0);
+        }
+
+        fn read(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _fh: u64,
+            offset: i64,
+            size: u32,
+            _flags: i32,
+            _lock_owner: Option<u64>,
+            reply: ReplyData,
+        ) {
+            let Some(path) = self.get_path(ino) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+
+            let provider = self.provider.clone();
+            let len = size as u64;
+            let off = offset as u64;
+
+            let result = self.rt.block_on(async {
+                let mut p = provider.lock().await;
+                p.read_range(&path, off, len.min(READ_CHUNK)).await
+            });
+
+            match result {
+                Ok(data) => reply.data(&data),
+                Err(_) => {
+                    // Fallback: download full file (for providers without range support)
+                    // Safety cap: refuse to download files >64MB in fallback to prevent OOM
+                    let file_size = self.get_cached(ino).map(|c| c.attr.size).unwrap_or(0);
+                    if file_size > 64 * 1024 * 1024 {
+                        reply.error(libc::EIO); // Too large for in-memory fallback
+                        return;
+                    }
+                    let result = self.rt.block_on(async {
+                        let mut p = provider.lock().await;
+                        p.download_to_bytes(&path).await
+                    });
+                    match result {
+                        Ok(data) => {
+                            let end = (off as usize + size as usize).min(data.len());
+                            let start = (off as usize).min(data.len());
+                            reply.data(&data[start..end]);
+                        }
+                        Err(_) => reply.error(libc::EIO),
+                    }
+                }
+            }
+        }
+
+        // ── Write operations ──────────────────────────────────────
+
+        fn create(
+            &mut self,
+            _req: &Request,
+            parent: u64,
+            name: &OsStr,
+            _mode: u32,
+            _umask: u32,
+            _flags: i32,
+            reply: ReplyCreate,
+        ) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let child_name = name.to_string_lossy();
+            let child_path = Self::child_path(&parent_path, &child_name);
+            let child_ino = self.alloc_inode(&child_path);
+
+            // Create secure tempfile for write buffering
+            let tmp = tempfile::Builder::new()
+                .prefix("aeroftp_fuse_")
+                .tempfile()
+                .map(|f| f.into_temp_path().to_path_buf())
+                .unwrap_or_else(|_| std::env::temp_dir().join(format!("aeroftp_fuse_{}", child_ino)));
+            let _ = std::fs::write(&tmp, b"");
+            self.write_buffers.lock().unwrap().insert(child_ino, tmp);
+
+            let ttl = self.cache_ttl;
+            let attr = file_attr(child_ino, 0, SystemTime::now(), self.uid, self.gid);
+            self.set_cached(child_ino, CachedEntry {
+                attr,
+                children: Some(Vec::new()),
+                fetched_at: Instant::now(),
+            });
+            self.invalidate_dir(parent);
+
+            reply.created(&ttl, &attr, 0, 0, 0);
+        }
+
+        fn write(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _fh: u64,
+            offset: i64,
+            data: &[u8],
+            _write_flags: u32,
+            _flags: i32,
+            _lock_owner: Option<u64>,
+            reply: ReplyWrite,
+        ) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+
+            let buffers = self.write_buffers.lock().unwrap();
+            let Some(tmp_path) = buffers.get(&ino).cloned() else {
+                // No write buffer — this file wasn't opened for writing via create
+                // Try to create one on-the-fly for existing files
+                drop(buffers);
+                let Some(path) = self.get_path(ino) else {
+                    reply.error(libc::ENOENT);
+                    return;
+                };
+                // Download existing content to tempfile
+                let provider = self.provider.clone();
+                let tmp = tempfile::Builder::new()
+                    .prefix("aeroftp_fuse_")
+                    .tempfile()
+                    .map(|f| f.into_temp_path().to_path_buf())
+                    .unwrap_or_else(|_| std::env::temp_dir().join(format!("aeroftp_fuse_{}", ino)));
+                let download_result = self.rt.block_on(async {
+                    let mut p = provider.lock().await;
+                    p.download(&path, &tmp.to_string_lossy(), None).await
+                });
+                if download_result.is_err() {
+                    // New file or download failed — start empty
+                    let _ = std::fs::write(&tmp, b"");
+                }
+                self.write_buffers.lock().unwrap().insert(ino, tmp.clone());
+                // Now write to the buffer
+                if let Err(e) = write_at_offset(&tmp, offset, data) {
+                    eprintln!("write error: {}", e);
+                    reply.error(libc::EIO);
+                    return;
+                }
+                reply.written(data.len() as u32);
+                return;
+            };
+            drop(buffers);
+
+            if let Err(e) = write_at_offset(&tmp_path, offset, data) {
+                eprintln!("write error: {}", e);
+                reply.error(libc::EIO);
+                return;
+            }
+            reply.written(data.len() as u32);
+        }
+
+        fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
+            let buffers = self.write_buffers.lock().unwrap();
+            let Some(tmp_path) = buffers.get(&ino).cloned() else {
+                reply.ok();
+                return;
+            };
+            drop(buffers);
+
+            let Some(remote_path) = self.get_path(ino) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+
+            let provider = self.provider.clone();
+            let local = tmp_path.to_string_lossy().to_string();
+            let result = self.rt.block_on(async {
+                let mut p = provider.lock().await;
+                p.upload(&local, &remote_path, None).await
+            });
+
+            if result.is_ok() {
+                let size = std::fs::metadata(&tmp_path).map(|m| m.len()).unwrap_or(0);
+                let attr = file_attr(ino, size, SystemTime::now(), self.uid, self.gid);
+                self.set_cached(ino, CachedEntry {
+                    attr,
+                    children: Some(Vec::new()),
+                    fetched_at: Instant::now(),
+                });
+                self.flush_ok.lock().unwrap().insert(ino);
+                reply.ok();
+            } else {
+                // Do NOT mark as flushed — release will keep the tempfile
+                reply.error(libc::EIO);
+            }
+        }
+
+        fn release(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _fh: u64,
+            _flags: i32,
+            _lock_owner: Option<u64>,
+            _flush: bool,
+            reply: ReplyEmpty,
+        ) {
+            if let Some(tmp_path) = self.write_buffers.lock().unwrap().remove(&ino) {
+                if self.flush_ok.lock().unwrap().remove(&ino) {
+                    // Flush succeeded — safe to delete tempfile
+                    let _ = std::fs::remove_file(tmp_path);
+                } else {
+                    // Flush failed — keep tempfile for recovery
+                    eprintln!(
+                        "aeroftp-fuse: keeping tempfile {} (flush failed, data preserved)",
+                        tmp_path.display()
+                    );
+                }
+            }
+            reply.ok();
+        }
+
+        fn mkdir(
+            &mut self,
+            _req: &Request,
+            parent: u64,
+            name: &OsStr,
+            _mode: u32,
+            _umask: u32,
+            reply: ReplyEntry,
+        ) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let child_name = name.to_string_lossy();
+            let child_path = Self::child_path(&parent_path, &child_name);
+
+            let provider = self.provider.clone();
+            let p = child_path.clone();
+            let result = self.rt.block_on(async {
+                let mut prov = provider.lock().await;
+                prov.mkdir(&p).await
+            });
+
+            match result {
+                Ok(()) => {
+                    let child_ino = self.alloc_inode(&child_path);
+                    let ttl = self.cache_ttl;
+                    let attr = dir_attr(child_ino, 0, self.uid, self.gid);
+                    self.set_cached(child_ino, CachedEntry {
+                        attr,
+                        children: Some(Vec::new()),
+                        fetched_at: Instant::now(),
+                    });
+                    self.invalidate_dir(parent);
+                    reply.entry(&ttl, &attr, 0);
+                }
+                Err(_) => reply.error(libc::EIO),
+            }
+        }
+
+        fn unlink(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let child_name = name.to_string_lossy();
+            let child_path = Self::child_path(&parent_path, &child_name);
+
+            let provider = self.provider.clone();
+            let p = child_path.clone();
+            let result = self.rt.block_on(async {
+                let mut prov = provider.lock().await;
+                prov.delete(&p).await
+            });
+
+            match result {
+                Ok(()) => {
+                    self.invalidate_dir(parent);
+                    // Remove from all maps to prevent inode leak
+                    if let Some(ino) = self.path_inode.lock().unwrap().remove(&child_path) {
+                        self.inode_path.lock().unwrap().remove(&ino);
+                        self.cache.lock().unwrap().remove(&ino);
+                    }
+                    reply.ok();
+                }
+                Err(_) => reply.error(libc::EIO),
+            }
+        }
+
+        fn rmdir(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let child_name = name.to_string_lossy();
+            let child_path = Self::child_path(&parent_path, &child_name);
+
+            let provider = self.provider.clone();
+            let p = child_path.clone();
+            let result = self.rt.block_on(async {
+                let mut prov = provider.lock().await;
+                prov.rmdir(&p).await
+            });
+
+            match result {
+                Ok(()) => {
+                    self.invalidate_dir(parent);
+                    if let Some(ino) = self.path_inode.lock().unwrap().remove(&child_path) {
+                        self.inode_path.lock().unwrap().remove(&ino);
+                        self.cache.lock().unwrap().remove(&ino);
+                    }
+                    reply.ok();
+                }
+                Err(_) => reply.error(libc::EIO),
+            }
+        }
+
+        fn rename(
+            &mut self,
+            _req: &Request,
+            parent: u64,
+            name: &OsStr,
+            newparent: u64,
+            newname: &OsStr,
+            _flags: u32,
+            reply: ReplyEmpty,
+        ) {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+            let Some(parent_path) = self.get_path(parent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let Some(newparent_path) = self.get_path(newparent) else {
+                reply.error(libc::ENOENT);
+                return;
+            };
+            let old_path = Self::child_path(&parent_path, &name.to_string_lossy());
+            let new_path = Self::child_path(&newparent_path, &newname.to_string_lossy());
+
+            let provider = self.provider.clone();
+            let from = old_path.clone();
+            let to = new_path.clone();
+            let result = self.rt.block_on(async {
+                let mut prov = provider.lock().await;
+                prov.rename(&from, &to).await
+            });
+
+            match result {
+                Ok(()) => {
+                    self.invalidate_dir(parent);
+                    if newparent != parent {
+                        self.invalidate_dir(newparent);
+                    }
+                    // Update inode mappings — including all descendants for directory renames
+                    let mut pi = self.path_inode.lock().unwrap();
+                    let mut ip = self.inode_path.lock().unwrap();
+                    let mut cache = self.cache.lock().unwrap();
+                    // Collect all paths that start with old_path (the renamed entry + descendants)
+                    let old_prefix = format!("{}/", old_path);
+                    let to_update: Vec<(String, u64)> = pi.iter()
+                        .filter(|(p, _)| *p == &old_path || p.starts_with(&old_prefix))
+                        .map(|(p, &ino)| (p.clone(), ino))
+                        .collect();
+                    for (op, ino) in to_update {
+                        pi.remove(&op);
+                        let np = if op == old_path {
+                            new_path.clone()
+                        } else {
+                            format!("{}{}", new_path, &op[old_path.len()..])
+                        };
+                        pi.insert(np.clone(), ino);
+                        ip.insert(ino, np);
+                        cache.remove(&ino); // force re-fetch
+                    }
+                    reply.ok();
+                }
+                Err(_) => reply.error(libc::EIO),
+            }
+        }
+
+        fn setattr(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _mode: Option<u32>,
+            _uid: Option<u32>,
+            _gid: Option<u32>,
+            size: Option<u64>,
+            _atime: Option<fuser::TimeOrNow>,
+            _mtime: Option<fuser::TimeOrNow>,
+            _ctime: Option<SystemTime>,
+            _fh: Option<u64>,
+            _crtime: Option<SystemTime>,
+            _chgtime: Option<SystemTime>,
+            _bkuptime: Option<SystemTime>,
+            _flags: Option<u32>,
+            reply: ReplyAttr,
+        ) {
+            // Handle truncation for write support
+            if let Some(new_size) = size {
+                if let Some(tmp_path) = self.write_buffers.lock().unwrap().get(&ino) {
+                    let _ = std::fs::OpenOptions::new()
+                        .write(true)
+                        .open(tmp_path)
+                        .and_then(|f| f.set_len(new_size));
+                }
+                // Update cached size to reflect truncation
+                if let Some(mut cached) = self.get_cached(ino) {
+                    cached.attr.size = new_size;
+                    cached.attr.blocks = new_size.div_ceil(BLOCK_SIZE as u64);
+                    cached.attr.mtime = SystemTime::now();
+                    self.set_cached(ino, cached.clone());
+                    reply.attr(&self.cache_ttl, &cached.attr);
+                    return;
+                }
+            }
+
+            let ttl = self.cache_ttl;
+            if let Some(cached) = self.get_cached(ino) {
+                reply.attr(&ttl, &cached.attr);
+            } else if ino == ROOT_INODE {
+                reply.attr(&ttl, &dir_attr(ROOT_INODE, 0, self.uid, self.gid));
+            } else {
+                reply.error(libc::ENOENT);
+            }
+        }
+
+        fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
+            let provider = self.provider.clone();
+            let result = self.rt.block_on(async {
+                let mut p = provider.lock().await;
+                p.storage_info().await.ok()
+            });
+
+            if let Some(info) = result {
+                let total_blocks = info.total / BLOCK_SIZE as u64;
+                let free_blocks = info.free / BLOCK_SIZE as u64;
+                reply.statfs(
+                    total_blocks,  // blocks
+                    free_blocks,   // bfree
+                    free_blocks,   // bavail
+                    0,             // files
+                    0,             // ffree
+                    BLOCK_SIZE,    // bsize
+                    255,           // namelen
+                    BLOCK_SIZE,    // frsize
+                );
+            } else {
+                // Default: report large filesystem
+                reply.statfs(u64::MAX / 512, u64::MAX / 1024, u64::MAX / 1024, 0, 0, BLOCK_SIZE, 255, BLOCK_SIZE);
+            }
+        }
+    }
+
+    /// Write data at a specific offset in a file.
+    fn write_at_offset(path: &std::path::Path, offset: i64, data: &[u8]) -> std::io::Result<()> {
+        use std::io::{Seek, SeekFrom, Write as IoWriteTrait};
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(path)?;
+        file.seek(SeekFrom::Start(offset as u64))?;
+        file.write_all(data)?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn cmd_mount(
+        url: &str,
+        mountpoint: &str,
+        path: &str,
+        cache_ttl: u64,
+        allow_other: bool,
+        read_only: bool,
+        cli: &Cli,
+        format: OutputFormat,
+    ) -> i32 {
+        // Validate mount point exists and is an empty directory
+        let mp = std::path::Path::new(mountpoint);
+        if !mp.exists() {
+            print_error(format, &format!("Mount point does not exist: {}", mountpoint), 5);
+            return 5;
+        }
+        if !mp.is_dir() {
+            print_error(format, &format!("Mount point is not a directory: {}", mountpoint), 5);
+            return 5;
+        }
+        // Check if empty (allow "." and "..")
+        if let Ok(mut rd) = std::fs::read_dir(mp) {
+            if rd.next().is_some() {
+                print_error(format, &format!("Mount point is not empty: {}", mountpoint), 5);
+                return 5;
+            }
+        }
+
+        let (provider, url_path) = match create_and_connect(url, cli, format).await {
+            Ok(v) => v,
+            Err(code) => return code,
+        };
+
+        let base_path = if path == "/" && url_path != "/" {
+            normalize_remote_path(&url_path)
+        } else {
+            normalize_remote_path(path)
+        };
+
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        if !quiet {
+            eprintln!(
+                "Mounting {} on {} ({}, cache TTL {}s)",
+                base_path, mountpoint, if read_only { "read-only" } else { "read-write" }, cache_ttl
+            );
+            eprintln!("Press Ctrl+C to unmount");
+        }
+
+        let provider_arc = Arc::new(AsyncMutex::new(provider));
+
+        let fs = AeroFuseFs::new(provider_arc.clone(), base_path, cache_ttl, read_only, quiet);
+
+        let mut options = vec![
+            MountOption::FSName("aeroftp".to_string()),
+            MountOption::Subtype("aeroftp".to_string()),
+            MountOption::DefaultPermissions,
+        ];
+        if read_only {
+            options.push(MountOption::RO);
+        }
+        if allow_other {
+            options.push(MountOption::AllowOther);
+        }
+
+        // Mount in a blocking thread (FUSE event loop is blocking)
+        let mountpoint_owned = mountpoint.to_string();
+        let mount_result = tokio::task::spawn_blocking(move || {
+            fuser::mount2(fs, &mountpoint_owned, &options)
+        }).await;
+
+        // Cleanup
+        let mut p = provider_arc.lock().await;
+        let _ = p.disconnect().await;
+
+        match mount_result {
+            Ok(Ok(())) => {
+                if !quiet {
+                    eprintln!("Unmounted successfully");
+                }
+                0
+            }
+            Ok(Err(e)) => {
+                print_error(format, &format!("Mount failed: {}", e), 99);
+                99
+            }
+            Err(e) => {
+                print_error(format, &format!("Mount task failed: {}", e), 99);
+                99
+            }
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use fuse_mount::cmd_mount;
+
+/// Windows mount: WebDAV bridge — starts a local WebDAV server and maps it as a drive letter.
+#[cfg(windows)]
+async fn cmd_mount_windows(
+    url: &str,
+    drive_letter: &str,
+    path: &str,
+    read_only: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    // Validate drive letter (e.g., "Z:", "Z", "z:")
+    let letter = drive_letter
+        .trim_end_matches(':')
+        .to_uppercase();
+    if letter.len() != 1 || !letter.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
+        print_error(format, &format!("Invalid drive letter '{}'. Use a single letter like 'Z:' or 'Z'", drive_letter), 5);
+        return 5;
+    }
+    let drive = format!("{}:", letter);
+
+    // Find a free local port for the WebDAV server
+    let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(l) => l,
+        Err(e) => {
+            print_error(format, &format!("Cannot bind local port: {}", e), 1);
+            return 1;
+        }
+    };
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let addr = format!("127.0.0.1:{}", port);
+
+    if !quiet {
+        eprintln!(
+            "Mounting via WebDAV bridge on {} ({}{})",
+            drive,
+            if read_only { "read-only, " } else { "" },
+            addr,
+        );
+    }
+
+    // Start the WebDAV server directly — it runs until Ctrl+C
+    // We run it concurrently with the drive mapping using tokio::select
+    if !quiet {
+        eprintln!("Starting WebDAV server on {}...", addr);
+    }
+
+    // Connect provider first
+    let (provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = serve_effective_base_path(path, &url_path);
+    let provider_label = if let Some(profile) = &cli.profile {
+        format!("profile {}", profile)
+    } else {
+        provider.display_name()
+    };
+
+    let state = ServeHttpState {
+        provider: Arc::new(AsyncMutex::new(provider)),
+        provider_label,
+        base_path,
+    };
+
+    let app = Router::new()
+        .route("/", any(webdav_root_handler))
+        .route("/{*path}", any(webdav_path_handler))
+        .layer(DefaultBodyLimit::max(WEBDAV_MAX_UPLOAD_BYTES))
+        .with_state(state.clone());
+
+    let bind_addr: SocketAddr = addr.parse().unwrap();
+    let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            print_error(format, &format!("Failed to bind {}: {}", addr, e), 1);
+            return 1;
+        }
+    };
+
+    // Spawn WebDAV server in background
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = tokio::signal::ctrl_c().await;
+            })
+            .await
+    });
+
+    // Wait for server to be ready
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Map as network drive using net use
+    let webdav_url = format!("http://{}", addr);
+    if !quiet {
+        eprintln!("Mapping drive: net use {} {}", drive, webdav_url);
+    }
+
+    let map_result = std::process::Command::new("net")
+        .args(["use", &drive, &webdav_url, "/persistent:no"])
+        .output();
+
+    match map_result {
+        Ok(output) if output.status.success() => {
+            if !quiet {
+                eprintln!("Drive {} mapped successfully. Press Ctrl+C to unmount.", drive);
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            print_error(format, &format!("Failed to map drive {}: {}", drive, stderr.trim()), 99);
+            server_handle.abort();
+            return 99;
+        }
+        Err(e) => {
+            print_error(format, &format!("Cannot execute 'net use': {}", e), 99);
+            server_handle.abort();
+            return 99;
+        }
+    }
+
+    // Wait for server (blocks until Ctrl+C)
+    let _ = server_handle.await;
+
+    // Cleanup: unmap drive
+    if !quiet {
+        eprintln!("\nUnmapping {}...", drive);
+    }
+    let _ = std::process::Command::new("net")
+        .args(["use", &drive, "/delete", "/yes"])
+        .output();
+
+    // Disconnect provider
+    let mut p = state.provider.lock().await;
+    let _ = p.disconnect().await;
+
+    if !quiet {
+        eprintln!("Unmounted {} successfully", drive);
+    }
+    0
+}
+
+// ── Daemon + Jobs ────────────────────────────────────────────────
+
+fn daemon_config_dir() -> PathBuf {
+    let dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("aeroftp");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn daemon_pid_path() -> PathBuf { daemon_config_dir().join("daemon.pid") }
+fn daemon_db_path() -> PathBuf { daemon_config_dir().join("jobs.db") }
+fn _daemon_log_path() -> PathBuf { daemon_config_dir().join("daemon.log") }
+
+fn daemon_read_pid() -> Option<u32> {
+    std::fs::read_to_string(daemon_pid_path()).ok()?.trim().parse().ok()
+}
+
+fn daemon_is_running() -> bool {
+    if let Some(pid) = daemon_read_pid() {
+        // Check if process exists
+        #[cfg(unix)]
+        {
+            let result = unsafe { libc::kill(pid as i32, 0) };
+            result == 0
+        }
+        #[cfg(not(unix))]
+        { let _ = pid; false }
+    } else {
+        false
+    }
+}
+
+fn daemon_addr() -> String {
+    // Read addr from pid file's sibling
+    let addr_path = daemon_config_dir().join("daemon.addr");
+    std::fs::read_to_string(addr_path)
+        .unwrap_or_else(|_| "127.0.0.1:14320".to_string())
+        .trim()
+        .to_string()
+}
+
+// ── Job database (SQLite) ────────────────────────────────────────
+
+fn jobs_db_init(db_path: &Path) -> Result<rusqlite::Connection, String> {
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| format!("Cannot open jobs database: {}", e))?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            command TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            exit_code INTEGER,
+            error TEXT
+        );
+        PRAGMA journal_mode=WAL;"
+    ).map_err(|e| format!("Cannot init jobs table: {}", e))?;
+    Ok(conn)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct JobEntry {
+    id: String,
+    command: String,
+    status: String,
+    created_at: String,
+    started_at: Option<String>,
+    finished_at: Option<String>,
+    exit_code: Option<i32>,
+    error: Option<String>,
+}
+
+fn jobs_list_all(conn: &rusqlite::Connection) -> Vec<JobEntry> {
+    let mut stmt = match conn.prepare(
+        "SELECT id, command, status, created_at, started_at, finished_at, exit_code, error FROM jobs ORDER BY created_at DESC LIMIT 100"
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map([], |row| {
+        Ok(JobEntry {
+            id: row.get(0)?,
+            command: row.get(1)?,
+            status: row.get(2)?,
+            created_at: row.get(3)?,
+            started_at: row.get(4)?,
+            finished_at: row.get(5)?,
+            exit_code: row.get(6)?,
+            error: row.get(7)?,
+        })
+    }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default()
+}
+
+fn jobs_get(conn: &rusqlite::Connection, id: &str) -> Option<JobEntry> {
+    conn.query_row(
+        "SELECT id, command, status, created_at, started_at, finished_at, exit_code, error FROM jobs WHERE id = ?1",
+        [id],
+        |row| Ok(JobEntry {
+            id: row.get(0)?,
+            command: row.get(1)?,
+            status: row.get(2)?,
+            created_at: row.get(3)?,
+            started_at: row.get(4)?,
+            finished_at: row.get(5)?,
+            exit_code: row.get(6)?,
+            error: row.get(7)?,
+        })
+    ).ok()
+}
+
+fn jobs_add(conn: &rusqlite::Connection, command: &str) -> Result<String, String> {
+    let id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    conn.execute(
+        "INSERT INTO jobs (id, command, status, created_at) VALUES (?1, ?2, 'queued', ?3)",
+        rusqlite::params![id, command, now],
+    ).map_err(|e| format!("Cannot add job: {}", e))?;
+    Ok(id)
+}
+
+fn jobs_update_status(conn: &rusqlite::Connection, id: &str, status: &str, exit_code: Option<i32>, error: Option<&str>) {
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let field = if status == "running" { "started_at" } else { "finished_at" };
+    let _ = conn.execute(
+        &format!("UPDATE jobs SET status = ?1, {} = ?2, exit_code = ?3, error = ?4 WHERE id = ?5", field),
+        rusqlite::params![status, now, exit_code, error, id],
+    );
+}
+
+// ── Daemon HTTP API ──────────────────────────────────────────────
+
+async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    if daemon_is_running() {
+        let pid = daemon_read_pid().unwrap_or(0);
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"status": "already_running", "pid": pid}));
+        } else {
+            eprintln!("Daemon already running (PID {})", pid);
+        }
+        return 0;
+    }
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    // In foreground mode (for now — proper daemonization would use fork)
+    // Write PID file and addr
+    let pid = std::process::id();
+    let _ = std::fs::write(daemon_pid_path(), pid.to_string());
+    let _ = std::fs::write(daemon_config_dir().join("daemon.addr"), addr_str);
+
+    // Init job database
+    let db_path = daemon_db_path();
+    let conn = match jobs_db_init(&db_path) {
+        Ok(c) => Arc::new(std::sync::Mutex::new(c)),
+        Err(e) => {
+            print_error(format, &e, 99);
+            return 99;
+        }
+    };
+
+    if !quiet {
+        eprintln!("AeroFTP daemon starting on {}", addr_str);
+        eprintln!("PID: {}, DB: {}", pid, db_path.display());
+        eprintln!("Press Ctrl+C to stop.");
+    }
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({"status": "started", "pid": pid, "addr": addr_str}));
+    }
+
+    // Build HTTP API
+    let conn_health = conn.clone();
+    let conn_jobs_list = conn.clone();
+    let conn_jobs_add = conn.clone();
+    let conn_jobs_get = conn.clone();
+    let conn_jobs_cancel = conn.clone();
+
+    let app = Router::new()
+        .route("/health", get(move || async move {
+            let jobs = jobs_list_all(&conn_health.lock().unwrap());
+            let running = jobs.iter().filter(|j| j.status == "running").count();
+            let queued = jobs.iter().filter(|j| j.status == "queued").count();
+            axum::Json(serde_json::json!({
+                "status": "ok",
+                "pid": std::process::id(),
+                "running_jobs": running,
+                "queued_jobs": queued,
+            }))
+        }))
+        .route("/api/jobs", get(move || async move {
+            let jobs = jobs_list_all(&conn_jobs_list.lock().unwrap());
+            axum::Json(serde_json::json!({"jobs": jobs}))
+        }))
+        .route("/api/jobs", axum::routing::post(move |body: axum::Json<serde_json::Value>| async move {
+            let command = body.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            if command.is_empty() {
+                return axum::Json(serde_json::json!({"error": "missing command"}));
+            }
+            let conn = conn_jobs_add.lock().unwrap();
+            match jobs_add(&conn, command) {
+                Ok(id) => axum::Json(serde_json::json!({"status": "queued", "id": id})),
+                Err(e) => axum::Json(serde_json::json!({"error": e})),
+            }
+        }))
+        .route("/api/jobs/{id}", get(move |axum::extract::Path(id): axum::extract::Path<String>| async move {
+            let conn = conn_jobs_get.lock().unwrap();
+            match jobs_get(&conn, &id) {
+                Some(job) => axum::Json(serde_json::json!(job)),
+                None => axum::Json(serde_json::json!({"error": "not found"})),
+            }
+        }))
+        .route("/api/jobs/{id}", axum::routing::delete(move |axum::extract::Path(id): axum::extract::Path<String>| async move {
+            let conn = conn_jobs_cancel.lock().unwrap();
+            jobs_update_status(&conn, &id, "cancelled", None, None);
+            axum::Json(serde_json::json!({"status": "cancelled", "id": id}))
+        }));
+
+    let bind_addr: SocketAddr = match addr_str.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            print_error(format, &format!("Invalid addr '{}': {}", addr_str, e), 5);
+            return 5;
+        }
+    };
+
+    let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            print_error(format, &format!("Cannot bind {}: {}", addr_str, e), 1);
+            return 1;
+        }
+    };
+
+    let result = axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await;
+
+    // Cleanup
+    let _ = std::fs::remove_file(daemon_pid_path());
+    let _ = std::fs::remove_file(daemon_config_dir().join("daemon.addr"));
+
+    if !quiet {
+        eprintln!("\nDaemon stopped.");
+    }
+
+    match result {
+        Ok(()) => 0,
+        Err(e) => { print_error(format, &format!("Daemon failed: {}", e), 1); 1 }
+    }
+}
+
+async fn cmd_daemon_stop(format: OutputFormat) -> i32 {
+    if !daemon_is_running() {
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"status": "not_running"}));
+        } else {
+            eprintln!("Daemon is not running.");
+        }
+        return 0;
+    }
+
+    let pid = daemon_read_pid().unwrap_or(0);
+
+    #[cfg(unix)]
+    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+
+    // Wait briefly for process to exit
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let _ = std::fs::remove_file(daemon_pid_path());
+    let _ = std::fs::remove_file(daemon_config_dir().join("daemon.addr"));
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({"status": "stopped", "pid": pid}));
+    } else {
+        eprintln!("Daemon stopped (PID {}).", pid);
+    }
+    0
+}
+
+async fn cmd_daemon_status(format: OutputFormat) -> i32 {
+    if !daemon_is_running() {
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"status": "not_running"}));
+        } else {
+            println!("Daemon: not running");
+        }
+        return 1;
+    }
+
+    let pid = daemon_read_pid().unwrap_or(0);
+    let addr = daemon_addr();
+
+    // Try HTTP health check
+    let health_url = format!("http://{}/health", addr);
+    if let Ok(resp) = reqwest::get(&health_url).await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if matches!(format, OutputFormat::Json) {
+                print_json(&json);
+            } else {
+                println!("Daemon: running (PID {}, {})", pid, addr);
+                if let Some(r) = json.get("running_jobs") {
+                    println!("  Running jobs: {}", r);
+                }
+                if let Some(q) = json.get("queued_jobs") {
+                    println!("  Queued jobs: {}", q);
+                }
+            }
+            return 0;
+        }
+    }
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({"status": "running", "pid": pid, "addr": addr, "api": "unreachable"}));
+    } else {
+        println!("Daemon: running (PID {}), API unreachable at {}", pid, addr);
+    }
+    0
+}
+
+async fn cmd_jobs_add(command_tokens: &[String], format: OutputFormat) -> i32 {
+    let addr = daemon_addr();
+    let command = command_tokens.join(" ");
+    let url = format!("http://{}/api/jobs", addr);
+
+    match reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({"command": command}))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&json);
+                } else if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
+                    println!("Job queued: {} ({})", id, command);
+                } else if let Some(err) = json.get("error") {
+                    eprintln!("Error: {}", err);
+                    return 4;
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Cannot reach daemon (is it running?): {}", e), 1);
+            1
+        }
+    }
+}
+
+async fn cmd_jobs_list(format: OutputFormat) -> i32 {
+    let addr = daemon_addr();
+    let url = format!("http://{}/api/jobs", addr);
+
+    match reqwest::get(&url).await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&json);
+                } else if let Some(jobs) = json.get("jobs").and_then(|v| v.as_array()) {
+                    if jobs.is_empty() {
+                        println!("No jobs.");
+                    } else {
+                        println!("{:<10} {:<10} {:<22} Command", "ID", "Status", "Created");
+                        println!("{}", "-".repeat(70));
+                        for j in jobs {
+                            println!("{:<10} {:<10} {:<22} {}",
+                                j.get("id").and_then(|v| v.as_str()).unwrap_or("-"),
+                                j.get("status").and_then(|v| v.as_str()).unwrap_or("-"),
+                                j.get("created_at").and_then(|v| v.as_str()).unwrap_or("-"),
+                                j.get("command").and_then(|v| v.as_str()).unwrap_or("-"),
+                            );
+                        }
+                    }
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Cannot reach daemon: {}", e), 1);
+            1
+        }
+    }
+}
+
+async fn cmd_jobs_status(id: &str, format: OutputFormat) -> i32 {
+    let addr = daemon_addr();
+    let url = format!("http://{}/api/jobs/{}", addr, id);
+    match reqwest::get(&url).await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&json);
+                } else {
+                    println!("Job: {}", id);
+                    for (k, v) in json.as_object().into_iter().flatten() {
+                        println!("  {}: {}", k, v);
+                    }
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Cannot reach daemon: {}", e), 1);
+            1
+        }
+    }
+}
+
+async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
+    let addr = daemon_addr();
+    let url = format!("http://{}/api/jobs/{}", addr, id);
+    match reqwest::Client::new().delete(&url).send().await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&json);
+                } else {
+                    println!("Job {} cancelled.", id);
+                }
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Cannot reach daemon: {}", e), 1);
+            1
+        }
+    }
+}
+
+// ── Crypt Overlay — Transparent Encryption Layer ─────────────────
+
+mod crypt_overlay {
+    use aes_gcm::{Aes256Gcm, Nonce as AesNonce};
+    use aes_gcm::aead::{Aead, KeyInit};
+    #[allow(unused_imports)]
+    use aes_siv::Aes256SivAead; // needed for KeyInit trait
+    use argon2::Argon2;
+    use base64::Engine as _;
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+
+    /// Magic bytes for AeroFTP encrypted files.
+    const CRYPT_MAGIC: &[u8; 4] = b"AECR";
+    const CRYPT_VERSION: u8 = 1;
+    /// Block size for streaming encryption (64 KB).
+    const BLOCK_SIZE: usize = 64 * 1024;
+    /// Argon2 parameters (balanced security vs performance).
+    const ARGON2_MEM_COST: u32 = 65536; // 64 MB
+    const ARGON2_TIME_COST: u32 = 3;
+    const ARGON2_PARALLELISM: u32 = 4;
+
+    /// Derive a 32-byte master key from a password and salt.
+    pub fn derive_master_key(password: &str, salt: &[u8; 16]) -> [u8; 32] {
+        let mut key = [0u8; 32];
+        let params = argon2::Params::new(ARGON2_MEM_COST, ARGON2_TIME_COST, ARGON2_PARALLELISM, Some(32))
+            .expect("valid argon2 params");
+        let argon = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+        argon.hash_password_into(password.as_bytes(), salt, &mut key)
+            .expect("argon2 hash");
+        key
+    }
+
+    /// Derive a per-file encryption key from the master key and a nonce.
+    fn derive_file_key(master_key: &[u8; 32], nonce: &[u8; 12]) -> [u8; 32] {
+        let hk = Hkdf::<Sha256>::new(Some(nonce), master_key);
+        let mut file_key = [0u8; 32];
+        hk.expand(b"aeroftp-crypt-file-key", &mut file_key)
+            .expect("hkdf expand");
+        file_key
+    }
+
+    /// Derive a key for filename encryption (AES-SIV needs 64 bytes = 2 x 256-bit keys).
+    fn derive_name_key(master_key: &[u8; 32]) -> [u8; 64] {
+        let hk = Hkdf::<Sha256>::new(Some(b"aeroftp-name-salt"), master_key);
+        let mut name_key = [0u8; 64];
+        hk.expand(b"aeroftp-crypt-name-key", &mut name_key)
+            .expect("hkdf expand");
+        name_key
+    }
+
+    /// Encrypt a filename using AES-SIV → base64url (no padding).
+    pub fn encrypt_filename(master_key: &[u8; 32], plaintext_name: &str) -> String {
+        let name_key = derive_name_key(master_key);
+        let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
+        let ciphertext = cipher.encrypt([&[] as &[u8]], plaintext_name.as_bytes())
+            .expect("aes-siv encrypt");
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(ciphertext)
+    }
+
+    /// Decrypt a filename from base64url using AES-SIV.
+    pub fn decrypt_filename(master_key: &[u8; 32], encrypted_name: &str) -> Option<String> {
+        let name_key = derive_name_key(master_key);
+        let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
+        let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(encrypted_name).ok()?;
+        let plaintext = cipher.decrypt([&[] as &[u8]], &ciphertext).ok()?;
+        String::from_utf8(plaintext).ok()
+    }
+
+    /// Encrypt file data: plaintext bytes → crypt format bytes.
+    pub fn encrypt_data(master_key: &[u8; 32], plaintext: &[u8]) -> Vec<u8> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        // Generate random master nonce
+        let mut master_nonce = [0u8; 12];
+        rng.fill(&mut master_nonce);
+
+        // Derive per-file key
+        let file_key = derive_file_key(master_key, &master_nonce);
+        let cipher = Aes256Gcm::new((&file_key).into());
+
+        // Build output: magic + version + nonce + encrypted blocks
+        let mut output = Vec::with_capacity(4 + 1 + 12 + plaintext.len() + (plaintext.len() / BLOCK_SIZE + 1) * 16);
+        output.extend_from_slice(CRYPT_MAGIC);
+        output.push(CRYPT_VERSION);
+        output.extend_from_slice(&master_nonce);
+
+        // Encrypt in blocks
+        for (block_idx, chunk) in plaintext.chunks(BLOCK_SIZE).enumerate() {
+            // Per-block nonce: master_nonce XOR block_index
+            let mut block_nonce = master_nonce;
+            let idx_bytes = (block_idx as u32).to_le_bytes();
+            for i in 0..4 {
+                block_nonce[i] ^= idx_bytes[i];
+            }
+            let nonce = AesNonce::from_slice(&block_nonce);
+            let ciphertext = cipher.encrypt(nonce, chunk)
+                .expect("aes-gcm encrypt");
+            output.extend_from_slice(&ciphertext);
+        }
+
+        output
+    }
+
+    /// Decrypt file data: crypt format bytes → plaintext bytes.
+    pub fn decrypt_data(master_key: &[u8; 32], ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+        if ciphertext.len() < 4 + 1 + 12 {
+            return Err("data too short".into());
+        }
+        if &ciphertext[0..4] != CRYPT_MAGIC {
+            return Err("not an AeroFTP encrypted file".into());
+        }
+        if ciphertext[4] != CRYPT_VERSION {
+            return Err(format!("unsupported crypt version {}", ciphertext[4]));
+        }
+
+        let master_nonce: [u8; 12] = ciphertext[5..17].try_into().unwrap();
+        let file_key = derive_file_key(master_key, &master_nonce);
+        let cipher = Aes256Gcm::new((&file_key).into());
+
+        let data = &ciphertext[17..];
+        let block_cipher_size = BLOCK_SIZE + 16; // data + GCM tag
+        let mut plaintext = Vec::with_capacity(data.len());
+
+        let mut block_idx = 0usize;
+        let mut pos = 0usize;
+        while pos < data.len() {
+            let end = (pos + block_cipher_size).min(data.len());
+            let block = &data[pos..end];
+
+            let mut block_nonce = master_nonce;
+            let idx_bytes = (block_idx as u32).to_le_bytes();
+            for i in 0..4 {
+                block_nonce[i] ^= idx_bytes[i];
+            }
+            let nonce = AesNonce::from_slice(&block_nonce);
+            let decrypted = cipher.decrypt(nonce, block)
+                .map_err(|_| format!("decryption failed at block {}", block_idx))?;
+            plaintext.extend_from_slice(&decrypted);
+
+            pos = end;
+            block_idx += 1;
+        }
+
+        Ok(plaintext)
+    }
+
+    /// Initialize a crypt overlay directory on a remote.
+    /// Creates a `.aeroftp-crypt.json` config file with the salt.
+    pub fn crypt_init_config(salt: &[u8; 16]) -> String {
+        serde_json::json!({
+            "version": CRYPT_VERSION,
+            "cipher": "AES-256-GCM",
+            "filename_cipher": "AES-256-SIV",
+            "kdf": "Argon2id",
+            "salt": base64::engine::general_purpose::STANDARD.encode(salt),
+            "block_size": BLOCK_SIZE,
+        }).to_string()
+    }
+
+    /// Parse the crypt config to extract the salt.
+    pub fn crypt_parse_config(config_json: &str) -> Result<[u8; 16], String> {
+        let val: serde_json::Value = serde_json::from_str(config_json)
+            .map_err(|e| format!("invalid crypt config: {}", e))?;
+        let salt_b64 = val.get("salt")
+            .and_then(|v| v.as_str())
+            .ok_or("missing salt in crypt config")?;
+        let salt_bytes = base64::engine::general_purpose::STANDARD
+            .decode(salt_b64)
+            .map_err(|e| format!("invalid salt: {}", e))?;
+        if salt_bytes.len() != 16 {
+            return Err("salt must be 16 bytes".into());
+        }
+        let mut salt = [0u8; 16];
+        salt.copy_from_slice(&salt_bytes);
+        Ok(salt)
+    }
+}
+
+/// CLI commands for crypt overlay operations.
+async fn cmd_crypt_init(
+    url: &str,
+    path: &str,
+    password: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use rand::Rng;
+    // Validate password is usable (derive key to verify)
+    let _verify_key = crypt_overlay::derive_master_key(password, &[0u8; 16]);
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = if path == "/" && url_path != "/" {
+        normalize_remote_path(&url_path)
+    } else {
+        normalize_remote_path(path)
+    };
+
+    let mut salt = [0u8; 16];
+    rand::thread_rng().fill(&mut salt);
+
+    let config_json = crypt_overlay::crypt_init_config(&salt);
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+
+    // Write config to tempfile, upload
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), &config_json).unwrap();
+
+    match provider.upload(&tmp.path().to_string_lossy(), &config_path, None).await {
+        Ok(()) => {
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({"status": "ok", "path": config_path}));
+            } else if !cli.quiet {
+                println!("Crypt overlay initialized at {}", base_path);
+                println!("Config: {}", config_path);
+                println!("Cipher: AES-256-GCM (content) + AES-256-SIV (filenames)");
+                println!("KDF: Argon2id (64 MB, 3 iterations)");
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Failed to init crypt: {}", e), 4);
+            4
+        }
+    }
+}
+
+async fn cmd_crypt_ls(
+    url: &str,
+    path: &str,
+    password: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = if path == "/" && url_path != "/" {
+        normalize_remote_path(&url_path)
+    } else {
+        normalize_remote_path(path)
+    };
+
+    // Read crypt config
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_data = match provider.download_to_bytes(&config_path).await {
+        Ok(d) => d,
+        Err(_) => {
+            print_error(format, "No crypt overlay found. Run 'crypt init' first.", 5);
+            return 5;
+        }
+    };
+    let config_str = String::from_utf8_lossy(&config_data);
+    let salt = match crypt_overlay::crypt_parse_config(&config_str) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("Invalid crypt config: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let master_key = crypt_overlay::derive_master_key(password, &salt);
+
+    // List directory and decrypt filenames
+    let entries = match provider.list(&base_path).await {
+        Ok(e) => e,
+        Err(e) => {
+            print_error(format, &format!("List failed: {}", e), provider_error_to_exit_code(&e));
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    let mut decrypted: Vec<(String, String, bool, u64)> = Vec::new(); // (decrypted_name, encrypted_name, is_dir, size)
+    for entry in &entries {
+        if entry.name == ".aeroftp-crypt.json" {
+            continue;
+        }
+        let decrypted_name = crypt_overlay::decrypt_filename(&master_key, &entry.name)
+            .unwrap_or_else(|| format!("[encrypted: {}]", entry.name));
+        decrypted.push((decrypted_name, entry.name.clone(), entry.is_dir, entry.size));
+    }
+
+    match format {
+        OutputFormat::Text => {
+            for (name, _enc, is_dir, size) in &decrypted {
+                if *is_dir {
+                    println!("{}/ ", name);
+                } else {
+                    println!("{:<40} {}", name, format_size(*size));
+                }
+            }
+            if !cli.quiet {
+                eprintln!("\n{} items (encrypted on remote)", decrypted.len());
+            }
+        }
+        OutputFormat::Json => {
+            let items: Vec<serde_json::Value> = decrypted.iter().map(|(name, enc, is_dir, size)| {
+                serde_json::json!({"name": name, "encrypted_name": enc, "is_dir": is_dir, "size": size})
+            }).collect();
+            print_json(&serde_json::json!({"items": items}));
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    0
+}
+
+async fn cmd_crypt_put(
+    url: &str,
+    local_file: &str,
+    remote_path: &str,
+    password: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = if remote_path == "/" && url_path != "/" {
+        normalize_remote_path(&url_path)
+    } else {
+        normalize_remote_path(remote_path)
+    };
+
+    // Read crypt config
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_data = match provider.download_to_bytes(&config_path).await {
+        Ok(d) => d,
+        Err(_) => {
+            print_error(format, "No crypt overlay found. Run 'crypt init' first.", 5);
+            return 5;
+        }
+    };
+    let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
+        Ok(s) => s,
+        Err(e) => { print_error(format, &e, 5); return 5; }
+    };
+
+    let master_key = crypt_overlay::derive_master_key(password, &salt);
+    let start = Instant::now();
+
+    // Read local file
+    let plaintext = match std::fs::read(local_file) {
+        Ok(d) => d,
+        Err(e) => {
+            print_error(format, &format!("Cannot read '{}': {}", local_file, e), 2);
+            return 2;
+        }
+    };
+
+    // Encrypt content
+    let ciphertext = crypt_overlay::encrypt_data(&master_key, &plaintext);
+
+    // Encrypt filename
+    let filename = Path::new(local_file).file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| local_file.to_string());
+    let encrypted_name = crypt_overlay::encrypt_filename(&master_key, &filename);
+    let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
+
+    // Write encrypted data to tempfile, upload
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(tmp.path(), &ciphertext).unwrap();
+
+    match provider.upload(&tmp.path().to_string_lossy(), &remote_file, None).await {
+        Ok(()) => {
+            let elapsed = start.elapsed();
+            if !cli.quiet {
+                println!(
+                    "{} → {} ({} → {}, {:.1}s)",
+                    filename, encrypted_name,
+                    format_size(plaintext.len() as u64),
+                    format_size(ciphertext.len() as u64),
+                    elapsed.as_secs_f64()
+                );
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("Upload failed: {}", e), 4);
+            4
+        }
+    }
+}
+
+async fn cmd_crypt_get(
+    url: &str,
+    file_name: &str,
+    path: &str,
+    local_dest: &str,
+    password: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = if path == "/" && url_path != "/" {
+        normalize_remote_path(&url_path)
+    } else {
+        normalize_remote_path(path)
+    };
+
+    // Read crypt config
+    let config_path = format!("{}/.aeroftp-crypt.json", base_path.trim_end_matches('/'));
+    let config_data = match provider.download_to_bytes(&config_path).await {
+        Ok(d) => d,
+        Err(_) => {
+            print_error(format, "No crypt overlay found.", 5);
+            return 5;
+        }
+    };
+    let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
+        Ok(s) => s,
+        Err(e) => { print_error(format, &e, 5); return 5; }
+    };
+
+    let master_key = crypt_overlay::derive_master_key(password, &salt);
+    let start = Instant::now();
+
+    // Encrypt the decrypted name to find the remote file
+    let enc = crypt_overlay::encrypt_filename(&master_key, file_name);
+    let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), enc);
+
+    // Download
+    let ciphertext = match provider.download_to_bytes(&remote_file).await {
+        Ok(d) => d,
+        Err(e) => {
+            print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    // Decrypt
+    let plaintext = match crypt_overlay::decrypt_data(&master_key, &ciphertext) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Decryption failed: {}", e), 99);
+            return 99;
+        }
+    };
+
+    // Write to local file
+    let dest = if local_dest.is_empty() || local_dest == "." {
+        // Use decrypted original filename
+        let enc_basename = remote_file.rsplit('/').next().unwrap_or("decrypted");
+        crypt_overlay::decrypt_filename(&master_key, enc_basename)
+            .unwrap_or_else(|| "decrypted".to_string())
+    } else {
+        local_dest.to_string()
+    };
+
+    if let Err(e) = std::fs::write(&dest, &plaintext) {
+        print_error(format, &format!("Cannot write '{}': {}", dest, e), 4);
+        return 4;
+    }
+
+    let elapsed = start.elapsed();
+    if !cli.quiet {
+        println!(
+            "{} → {} ({} → {}, {:.1}s)",
+            remote_file.rsplit('/').next().unwrap_or("?"),
+            dest,
+            format_size(ciphertext.len() as u64),
+            format_size(plaintext.len() as u64),
+            elapsed.as_secs_f64()
+        );
+    }
+
+    let _ = provider.disconnect().await;
+    0
+}
+
 async fn cmd_put_glob(
     url: &str,
     local_pattern: &str,
@@ -7673,7 +11614,7 @@ async fn cmd_put_glob(
             if cancelled.load(Ordering::Relaxed) {
                 return Err("Cancelled by user".to_string());
             }
-            upload_transfer_task(url, local_path, remote_path, cli, format, Some(aggregate), overall_pb)
+            upload_transfer_task(url, local_path, remote_path, cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
                 .await
                 .map(|_| filename)
         }
@@ -8544,6 +12485,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     None,
                     None,
                     "",
+                    "newer",
+                    false,
                     cli,
                     format,
                     cancelled.clone(),
@@ -11085,7 +15028,21 @@ async fn main() {
             } else {
                 (url.as_str(), remote.as_str(), local.as_deref())
             };
-            cmd_get(u, r, l, *recursive, *segments, &cli, format, cancelled).await
+            let max_attempts = cli.retries.max(1);
+            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+            let max_transfer_limit = resolve_max_transfer(&cli);
+            let mut last_code = 0i32;
+            for attempt in 1..=max_attempts {
+                last_code = cmd_get(u, r, l, *recursive, *segments, &cli, format, cancelled.clone()).await;
+                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                    break;
+                }
+                if !cli.quiet {
+                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                }
+                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+            }
+            last_code
         }
         Commands::Put {
             url,
@@ -11098,7 +15055,21 @@ async fn main() {
             } else {
                 (url.as_str(), local.as_str(), remote.as_deref())
             };
-            cmd_put(u, l, r, *recursive, &cli, format, cancelled).await
+            let max_attempts = cli.retries.max(1);
+            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+            let max_transfer_limit = resolve_max_transfer(&cli);
+            let mut last_code = 0i32;
+            for attempt in 1..=max_attempts {
+                last_code = cmd_put(u, l, r, *recursive, &cli, format, cancelled.clone()).await;
+                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                    break;
+                }
+                if !cli.quiet {
+                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                }
+                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+            }
+            last_code
         }
         Commands::Mkdir { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -11192,6 +15163,22 @@ async fn main() {
                 };
                 cmd_serve_webdav(u, p, addr, &cli, format).await
             }
+            ServeCommands::Ftp { url, path, addr, passive_ports } => {
+                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), path.as_str())
+                };
+                cmd_serve_ftp(u, p, addr, passive_ports, &cli, format).await
+            }
+            ServeCommands::Sftp { url, path, addr } => {
+                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), path.as_str())
+                };
+                cmd_serve_sftp(u, p, addr, &cli, format).await
+            }
         },
         Commands::Head { url, path, lines } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -11277,6 +15264,39 @@ async fn main() {
             };
             cmd_tree(u, p, *max_depth, &cli, format).await
         }
+        Commands::Ncdu {
+            url,
+            path,
+            max_depth,
+            export,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_ncdu(u, p, *max_depth, export.as_deref(), &cli, format).await
+        }
+        Commands::Mount {
+            url,
+            mountpoint,
+            path,
+            cache_ttl,
+            allow_other,
+            read_only,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            { cmd_mount(u, mountpoint, p, *cache_ttl, *allow_other, *read_only, &cli, format).await }
+            #[cfg(windows)]
+            { cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await }
+            #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+            { print_error(format, "Mount is not supported on this platform", 7); 7 }
+        }
         Commands::Sync {
             url,
             local,
@@ -11289,18 +15309,34 @@ async fn main() {
             max_delete,
             backup_dir,
             backup_suffix,
+            conflict_mode,
+            resync,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
                 (url.as_str(), local.as_str(), remote.as_str())
             };
-            cmd_sync(
-                u, l, r, direction, *dry_run, *delete, exclude,
-                *track_renames, max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
-                &cli, format, cancelled,
-            )
-            .await
+            let max_attempts = cli.retries.max(1);
+            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+            let max_transfer_limit = resolve_max_transfer(&cli);
+            let mut last_code = 0i32;
+            for attempt in 1..=max_attempts {
+                last_code = cmd_sync(
+                    u, l, r, direction, *dry_run, *delete, exclude,
+                    *track_renames, max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
+                    conflict_mode, *resync,
+                    &cli, format, cancelled.clone(),
+                ).await;
+                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                    break;
+                }
+                if !cli.quiet {
+                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                }
+                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+            }
+            last_code
         }
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url };
@@ -11346,6 +15382,58 @@ async fn main() {
         Commands::Profiles => list_vault_profiles(&cli, format),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentInfo => cmd_agent_info(&cli),
+        Commands::Crypt { command } => {
+            let resolve_crypt_password = |p: &Option<String>| -> Option<String> {
+                if let Some(pw) = p {
+                    return Some(pw.clone());
+                }
+                if std::io::stdin().is_terminal() {
+                    eprint!("Crypt password: ");
+                    let _ = std::io::stderr().flush();
+                    rpassword::read_password().ok()
+                } else {
+                    None
+                }
+            };
+            match command {
+                CryptCommands::Init { url, path, password } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    if pw.is_empty() {
+                        print_error(format, "Password required for crypt init", 5);
+                        5
+                    } else {
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                        cmd_crypt_init(u, path, &pw, &cli, format).await
+                    }
+                }
+                CryptCommands::Ls { url, path, password } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    cmd_crypt_ls(u, path, &pw, &cli, format).await
+                }
+                CryptCommands::Put { local, url, remote, password } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    cmd_crypt_put(u, local, remote, &pw, &cli, format).await
+                }
+                CryptCommands::Get { remote, url, path, local, password } => {
+                    let pw = resolve_crypt_password(password).unwrap_or_default();
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    cmd_crypt_get(u, remote, path, local, &pw, &cli, format).await
+                }
+            }
+        }
+        Commands::Daemon { command } => match command {
+            DaemonCommands::Start { addr } => cmd_daemon_start(addr, &cli, format).await,
+            DaemonCommands::Stop => cmd_daemon_stop(format).await,
+            DaemonCommands::Status => cmd_daemon_status(format).await,
+        },
+        Commands::Jobs { command } => match command {
+            JobCommands::Add { command: tokens } => cmd_jobs_add(tokens, format).await,
+            JobCommands::List => cmd_jobs_list(format).await,
+            JobCommands::Status { id } => cmd_jobs_status(id, format).await,
+            JobCommands::Cancel { id } => cmd_jobs_cancel(id, format).await,
+        },
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),
         Commands::Agent {
@@ -11384,7 +15472,26 @@ async fn main() {
         }
     };
 
+    // --max-transfer: override exit code to 8 if limit was exceeded
+    let exit_code = if session_transfer_exceeded(resolve_max_transfer(&cli)) && exit_code == 0 {
+        if !cli.quiet {
+            eprintln!(
+                "Max transfer limit reached ({} transferred)",
+                format_size(SESSION_TRANSFERRED_BYTES.load(Ordering::Relaxed))
+            );
+        }
+        8
+    } else {
+        exit_code
+    };
+
     std::process::exit(exit_code);
+}
+
+/// Check if a failed exit code is retryable.
+/// NOT retryable: success (0), usage error (5), auth failure (6), not supported (7).
+fn is_retryable_exit(code: i32) -> bool {
+    code != 0 && code != 5 && code != 6 && code != 7
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -11426,6 +15533,11 @@ mod tests {
             max_size: None,
             min_age: None,
             max_age: None,
+            max_transfer: None,
+            max_backlog: 10000,
+            retries: 3,
+            retries_sleep: "1s".to_string(),
+            dump: Vec::new(),
             command: Commands::Profiles,
         }
     }

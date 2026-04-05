@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.2" date="2026-04-05">
+      <description>
+        <p>CLI Pro: FUSE mount (read-write, cross-platform), ncdu TUI disk explorer, serve FTP/SFTP, background daemon with job queue, zero-knowledge crypt overlay (AES-256-GCM), bisync with snapshot and conflict resolution, transfer controls (retries, max-transfer, dump). ASPnix hosting provider integration.</p>
+      </description>
+    </release>
     <release version="3.4.1" date="2026-04-05">
       <description>
         <p>Fix FTPS implicit TLS on port 990 (CerberusFTP). Fix Azure Blob health check. SourceForge links in About dialog.</p>

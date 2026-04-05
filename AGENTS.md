@@ -93,6 +93,24 @@ The `profiles --json` output:
 | `sync` | `aeroftp-cli sync --profile NAME ./local/ /remote/` | Bidirectional sync |
 | `sync --dry-run` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
 
+### Advanced Operations
+
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `mount` | `aeroftp-cli --profile NAME mount /mnt/point` | Mount remote as local FUSE filesystem |
+| `ncdu` | `aeroftp-cli --profile NAME ncdu / [--json]` | Interactive disk usage explorer |
+| `serve http` | `aeroftp-cli --profile NAME serve http` | Expose remote as HTTP server |
+| `serve webdav` | `aeroftp-cli --profile NAME serve webdav` | Expose remote as WebDAV server |
+| `serve ftp` | `aeroftp-cli --profile NAME serve ftp` | Expose remote as FTP server |
+| `serve sftp` | `aeroftp-cli --profile NAME serve sftp` | Expose remote as SFTP server |
+| `daemon start` | `aeroftp-cli daemon start` | Start background service |
+| `jobs add` | `aeroftp-cli jobs add get --profile NAME /file` | Queue background transfer |
+| `jobs list` | `aeroftp-cli jobs list` | List queued/running jobs |
+| `crypt init` | `aeroftp-cli --profile NAME crypt init _ /dir --password P` | Init encrypted overlay |
+| `crypt put` | `aeroftp-cli --profile NAME crypt put ./file _ /dir --password P` | Upload encrypted |
+| `crypt get` | `aeroftp-cli --profile NAME crypt get filename _ /dir ./out --password P` | Download + decrypt |
+| `crypt ls` | `aeroftp-cli --profile NAME crypt ls _ /dir --password P` | List decrypted names |
+
 ### Info Operations
 
 | Command | Usage | Description |

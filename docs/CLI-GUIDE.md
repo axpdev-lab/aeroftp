@@ -480,9 +480,157 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "08:00,512k 12:0
 aeroftp-cli sync --profile "server" ./local/ /remote/ --bwlimit "1M"
 ```
 
-Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`.
+Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete`, `--exclude`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--resync`.
 
-Global transfer flags like `--parallel` and `--partial` also apply to `sync`, `get`, and `put`. `--parallel` controls concurrent worker count for bulk/recursive transfers, while `--partial` resumes interrupted transfers when the provider supports partial files or remote offsets.
+#### Bisync (bidirectional)
+
+```bash
+# Bidirectional sync (default --direction both)
+aeroftp-cli sync --profile "server" ./local/ /remote/
+
+# Conflict resolution: newer file wins (default)
+aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode newer
+
+# Other modes: older, larger, smaller, skip
+aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode skip --dry-run
+
+# Force full resync (ignore previous snapshot)
+aeroftp-cli sync --profile "server" ./local/ /remote/ --resync
+
+# Backup overwritten files before delete
+aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --backup-dir /tmp/bak
+```
+
+Bisync saves a `.aeroftp-bisync.json` snapshot after each successful sync. This enables delta detection: files deleted on one side are propagated to the other with `--delete`.
+
+### mount — FUSE Virtual Filesystem
+
+Mount any remote as a local directory. Any application can then access remote files with standard tools.
+
+```bash
+# Mount S3 as local directory
+mkdir /mnt/cloud
+aeroftp-cli --profile "S3 Storj" mount /mnt/cloud
+
+# Mount with read-only access
+aeroftp-cli --profile "server" mount /mnt/remote --read-only
+
+# Custom cache TTL (seconds)
+aeroftp-cli --profile "NAS" mount /mnt/nas --cache-ttl 60
+
+# Windows: mount as drive letter
+aeroftp-cli --profile "server" mount Z:
+```
+
+Supported operations: ls, cat, cp, vim, grep, mkdir, rm, touch, mv, df. All file managers (Nautilus, Dolphin, Explorer) can browse the mount natively.
+
+- **Linux/macOS**: FUSE (requires libfuse3-dev on Linux, macFUSE on macOS)
+- **Windows**: WebDAV bridge mapped as network drive (zero extra software)
+- Unmount: `fusermount -u /mnt/cloud` or Ctrl+C
+
+### ncdu — Interactive Disk Usage Explorer
+
+```bash
+# Interactive TUI (navigate with keyboard)
+aeroftp-cli --profile "server" ncdu /
+
+# Scan depth limit
+aeroftp-cli --profile "server" ncdu / -d 5
+
+# Export to JSON (non-interactive)
+aeroftp-cli --profile "server" ncdu / --export /tmp/usage.json
+
+# JSON to stdout
+aeroftp-cli --profile "server" ncdu / --json
+```
+
+TUI controls: Up/Down navigate, Enter opens directory, Backspace goes back, q quits.
+
+### serve — Expose Remote as Local Server
+
+#### serve http (read-only)
+
+```bash
+aeroftp-cli --profile "server" serve http _ / --addr 127.0.0.1:8080
+# Browse at http://127.0.0.1:8080
+```
+
+#### serve webdav (read-write)
+
+```bash
+aeroftp-cli --profile "server" serve webdav _ / --addr 127.0.0.1:8080
+```
+
+#### serve ftp (read-write)
+
+```bash
+aeroftp-cli --profile "server" serve ftp _ / --addr 0.0.0.0:2121 --passive-ports 49152-49200
+# Connect with any FTP client: curl ftp://localhost:2121/
+```
+
+#### serve sftp (read-write)
+
+```bash
+aeroftp-cli --profile "server" serve sftp _ / --addr 0.0.0.0:2222
+# Connect with: sftp -P 2222 anon@localhost
+# Or: curl sftp://localhost:2222/
+```
+
+All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) as a local server of the chosen protocol. Anonymous access, Ctrl+C to stop.
+
+### daemon — Background Service
+
+```bash
+# Start daemon (HTTP API on port 14320)
+aeroftp-cli daemon start
+
+# Check status
+aeroftp-cli daemon status
+
+# Stop daemon
+aeroftp-cli daemon stop
+```
+
+The daemon enables persistent mounts, scheduled transfers, and job management via HTTP RC API at `http://localhost:14320`.
+
+### jobs — Background Transfer Jobs
+
+```bash
+# Add a job (requires daemon running)
+aeroftp-cli jobs add get --profile "S3" /backups/db.sql ./
+
+# List jobs
+aeroftp-cli jobs list
+
+# Check job status
+aeroftp-cli jobs status <id>
+
+# Cancel a job
+aeroftp-cli jobs cancel <id>
+```
+
+Jobs are persisted in SQLite (`~/.config/aeroftp/jobs.db`).
+
+### crypt — Zero-Knowledge Encrypted Storage
+
+```bash
+# Initialize encrypted overlay on a remote directory
+aeroftp-cli --profile "S3" crypt init _ /encrypted --password "MySecret"
+
+# Upload with encryption (content + filename encrypted)
+aeroftp-cli --profile "S3" crypt put ./secret.pdf _ /encrypted --password "MySecret"
+
+# List (shows decrypted names)
+aeroftp-cli --profile "S3" crypt ls _ /encrypted --password "MySecret"
+
+# Download with decryption
+aeroftp-cli --profile "S3" crypt get secret.pdf _ /encrypted ./decrypted.pdf --password "MySecret"
+
+# Password via environment variable
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
+```
+
+Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon2id (key derivation). The cloud provider never sees file names or content.
 
 ### batch — Execute Script
 
@@ -584,6 +732,11 @@ Prints structured JSON describing safe/modify/destructive command groups, creden
 | `--max-size <size>` | Maximum file size filter (e.g., `1G`) |
 | `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
 | `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
+| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8 |
+| `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried |
+| `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
+| `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
+| `--dump <kinds>` | Debug: `headers`, `bodies`, `auth` (comma-separated). Prints to stderr |
 
 ---
 
@@ -660,7 +813,7 @@ limit_rate = "5M"
 prod-ls = ["ls", "--profile", "Production", "/var/www/", "-l"]
 ```
 
-Supported defaults include `profile`, `format`, `json`, `parallel`, `partial`, `quiet`, `verbose`, `limit_rate`, and `bwlimit`.
+Supported defaults include `profile`, `format`, `json`, `parallel`, `partial`, `quiet`, `verbose`, `limit_rate`, `bwlimit`, `max_transfer`, `max_backlog`, `retries`, and `retries_sleep`.
 
 ---
 

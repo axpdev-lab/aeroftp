@@ -407,6 +407,11 @@ export const HetznerLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/hetzner.png" alt="Hetzner" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+// ASPnix — hosting provider with AeroFTP control panel integration
+export const ASPnixLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/aspnix.png" alt="ASPnix" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -461,4 +466,5 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'quotaless-s3': QuotalessLogo,
     'quotaless-webdav': QuotalessLogo,
     'hetzner-storage-box': HetznerLogo,
+    'aspnix': ASPnixLogo,
 };

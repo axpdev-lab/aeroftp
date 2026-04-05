@@ -2547,7 +2547,7 @@ interface UpdateVerificationInfo {
     // FTP/FTPS and all provider-backed protocols use provider_connect
     if (isProvider) {
       const infinicloudWithApiKey = effectiveParams.providerId === 'infinicloud' && !!effectiveParams.options?.apiKey;
-      if ((!effectiveParams.server && !infinicloudWithApiKey && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
+      if ((!effectiveParams.server && !infinicloudWithApiKey && protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'mega' && protocol !== 'internxt' && protocol !== 'filen' && protocol !== 'kdrive' && protocol !== 'jottacloud' && protocol !== 'drime' && protocol !== 'azure' && protocol !== 'opendrive' && protocol !== 'yandexdisk' && protocol !== 'github' && protocol !== 'swift') || (!effectiveParams.username && protocol !== 'github')) {
         notify.error(t('toast.missingFields'), t('toast.fillEndpointCreds'));
         return;
       }

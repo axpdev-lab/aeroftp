@@ -94,6 +94,8 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
         if (host.includes('4shared')) return '4shared';
         if (host.includes('cloudme')) return 'cloudme';
     }
+    // Hosting providers (FTP/FTPS/SFTP)
+    if (host.includes('aspnix')) return 'aspnix';
     return undefined;
 };
 

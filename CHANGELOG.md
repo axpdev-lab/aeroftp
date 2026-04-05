@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.2] - 2026-04-05
+
+### CLI Pro: mount, ncdu, serve FTP/SFTP, daemon, crypt overlay, bisync
+
+#### Added
+
+- **Bisync snapshot persistence**: `sync --direction both` now saves state to `.aeroftp-bisync.json` after successful sync. Subsequent syncs use delta detection (size + mtime) to identify changes on each side, enabling safe bidirectional synchronization
+- **`--conflict-mode` flag**: Configurable conflict resolution for bidirectional sync. Modes: `newer` (default), `older`, `larger`, `smaller`, `skip`. When both sides have different content, the chosen strategy determines which side wins
+- **`--resync` flag**: Discard previous bisync snapshot and rebuild from scratch. Useful for recovery after interrupted syncs or state corruption
+- **Snapshot-based deletion detection**: In `--direction both --delete`, files that existed in the previous snapshot but are now missing on one side are correctly detected as deletions and propagated to the other side
+- **`--backup-dir` and `--backup-suffix`**: Move local files to a backup directory before overwriting or deleting during sync (previously accepted but ignored)
+- **`--max-transfer` flag**: Abort CLI session after transferring a configurable byte limit (e.g. `--max-transfer 10G`). Counts uploads and downloads combined. Exit code 8 when exceeded, in-flight transfers complete before stopping
+- **`--retries N` flag**: Automatic retry for failed transfer operations (get, put, sync). Default 3 attempts. Non-retryable errors (auth failure, usage error, unsupported) are never retried
+- **`--retries-sleep` flag**: Configurable delay between retries (e.g. `--retries-sleep 5s`, `1m`, `500ms`). Default 1 second
+- **`--max-backlog` flag**: Limit the number of queued transfer tasks in parallel operations. Default 10000
+- **`--dump` flag**: Connection debug diagnostics to stderr. Supports `headers`, `bodies`, `auth` (comma-separated). Passwords are redacted by default, visible only with `--dump auth`
+- All new flags are persistable as defaults in `~/.config/aeroftp/config.toml`
+
+- **`ncdu` interactive disk usage explorer**: New `aeroftp ncdu` command scans remote directories recursively and displays an interactive TUI (ratatui) with size bars, percentage breakdown, and keyboard navigation. Supports `--export file.json` for scripting and `--json` for piped output. Scan depth configurable with `-d`
+- **`mount` virtual filesystem** (cross-platform): New `aeroftp mount <mountpoint>` mounts any remote as a local filesystem. On Linux/macOS uses FUSE with full read-write support (create, write, mkdir, rm, rmdir, rename, statfs). On Windows uses a WebDAV bridge that maps to a drive letter (`aeroftp mount Z: --profile "MyServer"`). Features: `--read-only` flag, metadata cache with configurable TTL (`--cache-ttl`), range read with fallback, `--allow-other` for multi-user access, graceful unmount. Tested on 8 providers across S3, FTP, WebDAV, and MEGA
+- **`serve ftp`**: New `aeroftp serve ftp` exposes any remote as a local FTP server via `libunftp`. Full read-write: LIST, RETR, STOR, DELE, MKD, RMD, RNFR/RNTO, CWD. Anonymous access, configurable passive port range (`--passive-ports`). Any FTP client can now access S3, WebDAV, MEGA, or any other AeroFTP provider as if it were a standard FTP server
+- **Background daemon and job queue**: New `aeroftp daemon start/stop/status` runs a background service with HTTP RC API on localhost. `aeroftp jobs add/list/status/cancel` manages persistent transfer jobs via SQLite. Health monitoring via `curl http://localhost:14320/health`. Enables persistent mounts, scheduled transfers, and automation
+- **Crypt overlay — zero-knowledge encryption**: New `aeroftp crypt init/ls/put/get` provides transparent encryption on any provider. Content encrypted with AES-256-GCM (64KB blocks, HW accelerated), filenames encrypted with AES-256-SIV, key derivation via Argon2id (64MB, 3 iterations). The cloud provider never sees your file names or content. Overhead: ~33 bytes for small files, <0.1% for large files
+- **`serve sftp`**: New `aeroftp serve sftp` exposes any remote as a local SFTP server via `russh`. Full SFTP v3 protocol: LIST, STAT, READ, WRITE, REMOVE, MKDIR, RMDIR, RENAME, REALPATH. Anonymous access with ED25519 host key. Any SFTP client (sftp, WinSCP, FileZilla, curl sftp://) can now access all 27 AeroFTP providers
+
+#### Fixed
+
+- **FTP/FTPS Quick Connect "Missing Fields" error**: Quick connect for FTP/FTPS showed "Missing Fields: Please fill in endpoint and credentials" even with all fields filled. The provider-path validation incorrectly blocked FTP/FTPS connections that have their own server field (#81)
+
+#### Changed
+
+- **Sync comparison now uses mtime**: File comparison in `sync` uses both size and modification time (previously size-only). Files with identical size but different timestamps are correctly detected as changed
+
 ## [3.4.1] - 2026-04-05
 
 ### FTPS implicit fix, Azure health check, SourceForge in About
