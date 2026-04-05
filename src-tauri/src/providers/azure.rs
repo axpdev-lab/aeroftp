@@ -53,6 +53,45 @@ fn azure_retry_config() -> HttpRetryConfig {
     HttpRetryConfig::default()
 }
 
+/// Parse Azure XML error response into a clean "Code: Message" string.
+/// Falls back to sanitize_api_error if XML parsing fails.
+fn parse_azure_xml_error(body: &str) -> String {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    let mut code = String::new();
+    let mut message = String::new();
+    let mut current_tag = String::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) => {
+                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+            }
+            Ok(Event::Text(ref e)) => {
+                let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                match current_tag.as_str() {
+                    "Code" if code.is_empty() => code = text,
+                    "Message" if message.is_empty() => {
+                        // Azure messages often end with technical details after \n
+                        message = text.lines().next().unwrap_or(&text).to_string();
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    if !code.is_empty() {
+        if message.is_empty() {
+            code
+        } else {
+            format!("{}: {}", code, message)
+        }
+    } else {
+        sanitize_api_error(body)
+    }
+}
+
 /// Azure list blobs XML item
 #[derive(Debug)]
 struct BlobItem {
@@ -408,7 +447,7 @@ impl AzureProvider {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(
-                    format!("List blobs failed (HTTP {}): {}", status.as_u16(), sanitize_api_error(&body))
+                    format!("List blobs failed (HTTP {}): {}", status.as_u16(), parse_azure_xml_error(&body))
                 ));
             }
 
@@ -448,7 +487,7 @@ impl AzureProvider {
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(
-                format!("Put Block failed: {}", sanitize_api_error(&body))
+                format!("Put Block failed: {}", parse_azure_xml_error(&body))
             ));
         }
 
@@ -485,7 +524,7 @@ impl AzureProvider {
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(
-                format!("Put Block List failed: {}", sanitize_api_error(&body))
+                format!("Put Block List failed: {}", parse_azure_xml_error(&body))
             ));
         }
 
@@ -595,7 +634,7 @@ impl StorageProvider for AzureProvider {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(format!("Azure auth failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::AuthenticationFailed(format!("Azure auth failed: {}", parse_azure_xml_error(&body))));
         }
 
         self.connected = true;
@@ -1072,7 +1111,7 @@ impl AzureProvider {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Upload failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::TransferFailed(format!("Upload failed: {}", parse_azure_xml_error(&body))));
         }
 
         // AZ-003: Report completion
@@ -1179,7 +1218,7 @@ impl AzureProvider {
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ProviderError::ServerError(
-                    format!("Set blob tier failed ({}): {}", status, super::sanitize_api_error(&body)),
+                    format!("Set blob tier failed ({}): {}", status, parse_azure_xml_error(&body)),
                 ))
             }
         }
@@ -1200,7 +1239,7 @@ impl AzureProvider {
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
             return Err(ProviderError::ServerError(
-                format!("List deleted blobs failed ({}): {}", status, super::sanitize_api_error(&body)),
+                format!("List deleted blobs failed ({}): {}", status, parse_azure_xml_error(&body)),
             ));
         }
 
@@ -1281,7 +1320,7 @@ impl AzureProvider {
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ProviderError::ServerError(
-                    format!("Undelete blob failed ({}): {}", status, super::sanitize_api_error(&body)),
+                    format!("Undelete blob failed ({}): {}", status, parse_azure_xml_error(&body)),
                 ))
             }
         }
