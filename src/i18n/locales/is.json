@@ -785,7 +785,8 @@
             "fontFamily": "Leturgerð",
             "fontFamilyDesc": "Veldu viðmótsleturgerð",
             "fontPreview": "Forskoðun",
-            "fontReset": "Endurstilla (Inter, 16px)"
+            "fontReset": "Endurstilla (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

@@ -785,7 +785,8 @@
             "fontFamily": "ក្រុមពុម្ពអក្សរ",
             "fontFamilyDesc": "ជ្រើសរើសពុម្ពអក្សរ",
             "fontPreview": "មើលជាមុន",
-            "fontReset": "កំណត់ឡើងវិញ (Inter, 16px)"
+            "fontReset": "កំណត់ឡើងវិញ (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

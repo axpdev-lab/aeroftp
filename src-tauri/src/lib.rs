@@ -7472,12 +7472,23 @@ async fn save_server_credentials(
 // ============ Universal Credential Vault Commands ============
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultCategories {
+    server_credentials: u32,
+    server_profiles: u32,
+    ai_keys: u32,
+    oauth_tokens: u32,
+    config_entries: u32,
+}
+
+#[derive(Serialize)]
 struct CredentialStoreStatus {
     master_mode: bool,
     is_locked: bool,
     vault_exists: bool,
     accounts_count: u32,
     timeout_seconds: u64,
+    categories: Option<VaultCategories>,
 }
 
 #[tauri::command]
@@ -7518,10 +7529,20 @@ async fn get_credential_store_status(
         }
     }
 
-    let accounts_count = credential_store::CredentialStore::from_cache()
+    let (accounts_count, categories) = credential_store::CredentialStore::from_cache()
         .and_then(|store| store.list_accounts().ok())
-        .map(|a| a.len() as u32)
-        .unwrap_or(0);
+        .map(|accounts| {
+            let cats = keystore_export::categorize_accounts(&accounts);
+            let count = accounts.len() as u32;
+            (count, Some(VaultCategories {
+                server_credentials: cats.server_credentials,
+                server_profiles: cats.server_profiles,
+                ai_keys: cats.ai_keys,
+                oauth_tokens: cats.oauth_tokens,
+                config_entries: cats.config_entries,
+            }))
+        })
+        .unwrap_or((0, None));
 
     Ok(CredentialStoreStatus {
         master_mode,
@@ -7529,6 +7550,7 @@ async fn get_credential_store_status(
         vault_exists,
         accounts_count,
         timeout_seconds: state.get_timeout(),
+        categories,
     })
 }
 
@@ -7834,12 +7856,24 @@ async fn export_keystore(password: String, file_path: String) -> Result<keystore
 
 #[tauri::command]
 async fn import_keystore(
+    app: tauri::AppHandle,
     password: String,
     file_path: String,
     merge_strategy: String,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
-    keystore_export::import_keystore(&password, std::path::Path::new(&file_path), &merge_strategy)
-        .map_err(|e| e.to_string())
+    let progress_cb = move |phase: &str, current: u32, total: u32| {
+        let _ = app.emit("keystore-import-progress", serde_json::json!({
+            "phase": phase,
+            "current": current,
+            "total": total,
+        }));
+    };
+    keystore_export::import_keystore(
+        &password,
+        std::path::Path::new(&file_path),
+        &merge_strategy,
+        Some(&progress_cb),
+    ).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

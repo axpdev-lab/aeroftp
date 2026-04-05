@@ -395,6 +395,8 @@ export function MyServersPanel({
         const updated = servers.filter(s => s.id !== server.id);
         setServers(updated);
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+        // Clean up orphaned vault credential
+        invoke('delete_credential', { account: `server_${server.id}` }).catch(() => {});
     }, [servers]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {

@@ -127,7 +127,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         // Open file picker first
         const filePath = await open({
             title: t('settings.importServers'),
-            filters: [{ name: 'AeroFTP Profile', extensions: ['aeroftp'] }],
+            filters: [
+                { name: 'AeroFTP Profile', extensions: ['aeroftp'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
             multiple: false,
         });
         if (!filePath) return;

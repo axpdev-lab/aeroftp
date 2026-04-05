@@ -785,7 +785,8 @@
             "fontFamily": "Фонт",
             "fontFamilyDesc": "Изберете фонт на интерфејсот",
             "fontPreview": "Преглед",
-            "fontReset": "Ресетирај (Inter, 16px)"
+            "fontReset": "Ресетирај (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

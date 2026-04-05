@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
@@ -445,6 +446,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
     const [keystoreMessage, setKeystoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [keystoreImportProgress, setKeystoreImportProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
+    const [vaultCategories, setVaultCategories] = useState<{ serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } | null>(null);
     const [removePasswordConfirm, setRemovePasswordConfirm] = useState(false);
 
     // i18n hook
@@ -495,10 +498,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     };
                     await loadOAuthFromStore();
 
-                    const savedAnalytics = localStorage.getItem('analytics_enabled');
-                    if (savedAnalytics !== null) {
-                        setSettings(prev => ({ ...prev, analyticsEnabled: savedAnalytics === 'true' }));
-                    }
 
                     // Sync autostart state from OS (authoritative source)
                     isAutostartEnabled()
@@ -506,7 +505,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         .catch(e => logger.debug('Autostart status check failed:', e));
 
                     // Load credential store status
-                    invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number }>('get_credential_store_status')
+                    invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number; categories?: { serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } }>('get_credential_store_status')
                         .then(status => {
                             setMasterPasswordStatus({
                                 is_set: status.master_mode,
@@ -518,6 +517,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             }
                             if (typeof status.accounts_count === 'number') {
                                 setVaultEntriesCount(status.accounts_count);
+                            }
+                            if (status.categories) {
+                                setVaultCategories(status.categories);
                             }
                         })
                         .catch(console.error);
@@ -560,7 +562,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             }
             // Remove legacy OAuth settings from localStorage
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
-            localStorage.setItem('analytics_enabled', settings.analyticsEnabled ? 'true' : 'false');
             // Apply system menu setting immediately
             invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
             // Apply autostart setting (idempotent — no pre-check needed)
@@ -600,6 +601,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const deleteServer = (id: string) => {
         setServers(prev => prev.filter(s => s.id !== id));
         setHasChanges(true);
+        // Clean up orphaned vault credential
+        invoke('delete_credential', { account: `server_${id}` }).catch(() => {});
         onServersChanged?.();
     };
 
@@ -3403,10 +3406,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <Key size={14} className="text-blue-500" />
                                                     {t('settings.keystoreBackup')}
                                                 </h4>
-                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                                    <Key size={12} />
-                                                    {t('settings.entriesInVault', { count: vaultEntriesCount })}
-                                                </span>
+                                                <div className="text-right">
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                                        <Key size={12} />
+                                                        {t('settings.entriesInVault', { count: vaultEntriesCount })}
+                                                    </span>
+                                                    {vaultCategories && (
+                                                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">
+                                                            {[
+                                                                vaultCategories.serverCredentials > 0 && `${vaultCategories.serverCredentials} credentials`,
+                                                                vaultCategories.aiKeys > 0 && `${vaultCategories.aiKeys} AI keys`,
+                                                                vaultCategories.oauthTokens > 0 && `${vaultCategories.oauthTokens} OAuth`,
+                                                                vaultCategories.configEntries > 0 && `${vaultCategories.configEntries} config`,
+                                                            ].filter(Boolean).join(' · ')}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="p-4 space-y-4">
@@ -3640,6 +3655,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         </div>
 
+                                                        {/* Import progress bar (shown above buttons) */}
+                                                        {keystoreImporting && keystoreImportProgress && (
+                                                            <div className="space-y-1">
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                                                                    {keystoreImportProgress.phase === 'decrypting'
+                                                                        ? t('settings.decrypting')
+                                                                        : `${t('settings.importing')} ${keystoreImportProgress.current}/${keystoreImportProgress.total}`}
+                                                                </div>
+                                                                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                                                                    <div
+                                                                        className="bg-blue-500 rounded-full h-1.5 transition-all duration-150"
+                                                                        style={{ width: keystoreImportProgress.phase === 'decrypting' ? '0%' : `${Math.round((keystoreImportProgress.current / keystoreImportProgress.total) * 100)}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         {/* Import / Cancel buttons */}
                                                         <div className="flex gap-2">
                                                             <button
@@ -3651,6 +3683,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         return;
                                                                     }
                                                                     setKeystoreImporting(true);
+                                                                    setKeystoreImportProgress(null);
+
+                                                                    // Listen for progress events
+                                                                    let unlisten: UnlistenFn | null = null;
+                                                                    try {
+                                                                        unlisten = await listen<{ phase: string; current: number; total: number }>('keystore-import-progress', (event) => {
+                                                                            setKeystoreImportProgress(event.payload);
+                                                                        });
+                                                                    } catch { /* listener setup failed, proceed without progress */ }
+
                                                                     try {
                                                                         const result = await invoke<{
                                                                             imported: number;
@@ -3668,8 +3710,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 skipped: result.skipped,
                                                                             }),
                                                                         });
-                                                                        // Refresh vault count
-                                                                        setVaultEntriesCount(prev => prev + result.imported);
+
+                                                                        // Re-query actual vault count + categories (not optimistic)
+                                                                        try {
+                                                                            const status = await invoke<{ accounts_count: number; categories?: { serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } }>('get_credential_store_status');
+                                                                            setVaultEntriesCount(status.accounts_count);
+                                                                            if (status.categories) setVaultCategories(status.categories);
+                                                                        } catch { /* non-critical */ }
+
+                                                                        // Reload server profiles from vault into localStorage + state
+                                                                        try {
+                                                                            const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
+                                                                            if (profilesJson) {
+                                                                                const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
+                                                                                if (Array.isArray(importedProfiles) && importedProfiles.length > 0) {
+                                                                                    localStorage.setItem(SERVERS_KEY, JSON.stringify(importedProfiles));
+                                                                                    setServers(importedProfiles);
+                                                                                    onServersChanged?.();
+                                                                                }
+                                                                            }
+                                                                        } catch { /* vault may not contain server profiles */ }
+
                                                                         // Reset import state
                                                                         setKeystoreMetadata(null);
                                                                         setKeystoreImportFilePath(null);
@@ -3682,7 +3743,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             setKeystoreMessage({ type: 'error', text: errStr });
                                                                         }
                                                                     } finally {
+                                                                        unlisten?.();
                                                                         setKeystoreImporting(false);
+                                                                        setKeystoreImportProgress(null);
                                                                     }
                                                                 }}
                                                                 disabled={keystoreImporting || keystoreImportPassword.length < 8}
@@ -3691,7 +3754,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 {keystoreImporting ? (
                                                                     <>
                                                                         <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                                                                        {t('common.loading')}
+                                                                        {t('settings.importing')}
                                                                     </>
                                                                 ) : (
                                                                     <>
@@ -3734,19 +3797,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <h4 className="font-medium text-base">{t('settings.privacyDesc')}</h4>
                                                     <p className="text-sm text-gray-500 mt-1">{t('settings.privacyRespect')}</p>
                                                 </div>
-                                            </div>
-
-                                            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                                <Checkbox
-                                                    checked={settings.analyticsEnabled}
-                                                    onChange={(v) => updateSetting('analyticsEnabled', v)}
-                                                    label={
-                                                        <div>
-                                                            <p className="font-medium">{t('settings.sendAnalytics')}</p>
-                                                            <p className="text-sm text-gray-500">{t('settings.analyticsDesc')}</p>
-                                                        </div>
-                                                    }
-                                                />
                                             </div>
                                         </div>
 

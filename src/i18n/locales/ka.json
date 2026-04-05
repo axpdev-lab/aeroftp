@@ -785,7 +785,8 @@
             "fontFamily": "შრიფტი",
             "fontFamilyDesc": "აირჩიეთ ინტერფეისის შრიფტი",
             "fontPreview": "წინასწარი ნახვა",
-            "fontReset": "აღდგენა (Inter, 16px)"
+            "fontReset": "აღდგენა (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

@@ -785,7 +785,8 @@
             "fontFamily": "Teulu ffont",
             "fontFamilyDesc": "Dewiswch ffont y rhyngwyneb",
             "fontPreview": "Rhagolwg",
-            "fontReset": "Ailosod (Inter, 16px)"
+            "fontReset": "Ailosod (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

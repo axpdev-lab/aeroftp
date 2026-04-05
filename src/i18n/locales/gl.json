@@ -785,7 +785,8 @@
             "fontFamily": "Tipo de letra",
             "fontFamilyDesc": "Escolle a fonte da interface",
             "fontPreview": "Vista previa",
-            "fontReset": "Restablecer (Inter, 16px)"
+            "fontReset": "Restablecer (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

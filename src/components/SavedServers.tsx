@@ -251,6 +251,8 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         const updated = servers.filter(s => s.id !== id);
         setServers(updated);
         saveServers(updated);
+        // Clean up orphaned vault credential
+        invoke('delete_credential', { account: `server_${id}` }).catch(() => {});
     };
 
     const handleEdit = (server: ServerProfile) => {

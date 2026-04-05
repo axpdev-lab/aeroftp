@@ -195,10 +195,13 @@ pub fn export_keystore(
 }
 
 /// Import vault entries from an encrypted file
+/// `on_progress` callback receives (phase, current, total) — phase is "decrypting" or "importing"
+#[allow(clippy::type_complexity)]
 pub fn import_keystore(
     password: &str,
     file_path: &Path,
     merge_strategy: &str,
+    on_progress: Option<&dyn Fn(&str, u32, u32)>,
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
@@ -209,6 +212,12 @@ pub fn import_keystore(
 
     if export_file.version > FILE_VERSION {
         return Err(KeystoreExportError::UnsupportedVersion(export_file.version));
+    }
+
+    // Emit decrypting phase (Argon2id KDF is slow)
+    let metadata_count = export_file.metadata.entries_count;
+    if let Some(cb) = &on_progress {
+        cb("decrypting", 0, metadata_count);
     }
 
     // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
@@ -239,13 +248,25 @@ pub fn import_keystore(
     };
 
     // GPT-A2-02: Stage entries first — collect what to import, then commit all-or-nothing
-    let mut staged: Vec<(&String, &String)> = Vec::new();
+    // Uses owned values to support profile list merging
+    let mut staged: Vec<(String, String)> = Vec::new();
     let mut originals: HashMap<String, Option<String>> = HashMap::new();
     let mut skipped = 0u32;
     let total = entries.len() as u32;
 
     for (account, value) in &entries {
         if merge_strategy == "skip_existing" && existing.contains(account) {
+            // Special case: config_server_profiles is an aggregate list — merge by ID
+            if account == "config_server_profiles" {
+                if let Ok(existing_json) = store.get(account) {
+                    let merged = merge_profile_lists(&existing_json, value);
+                    if merged != existing_json {
+                        originals.insert(account.clone(), Some(existing_json));
+                        staged.push((account.clone(), merged));
+                        continue;
+                    }
+                }
+            }
             skipped += 1;
             continue;
         }
@@ -255,14 +276,25 @@ pub fn import_keystore(
             Err(e) => return Err(KeystoreExportError::Encryption(e.to_string())),
         };
         originals.insert(account.clone(), original);
-        staged.push((account, value));
+        staged.push((account.clone(), value.clone()));
+    }
+
+    // Emit importing phase start
+    let staged_total = staged.len() as u32;
+    if let Some(cb) = &on_progress {
+        cb("importing", 0, staged_total);
     }
 
     // Commit phase: write all staged entries, rollback on first failure
     let mut committed: Vec<String> = Vec::new();
     for (account, value) in &staged {
         match store.store(account, value) {
-            Ok(_) => committed.push((*account).clone()),
+            Ok(_) => {
+                committed.push(account.clone());
+                if let Some(cb) = &on_progress {
+                    cb("importing", committed.len() as u32, staged_total);
+                }
+            }
             Err(e) => {
                 tracing::error!("Failed to import keystore entry '{}': {} — rolling back {} committed entries", account, e, committed.len());
                 // Rollback: restore prior values for overwrites, delete only newly inserted entries
@@ -286,6 +318,38 @@ pub fn import_keystore(
     let imported = committed.len() as u32;
     tracing::info!("Keystore imported: {} entries ({} skipped) from {:?}", imported, skipped, file_path);
     Ok(KeystoreImportResult { imported, skipped, total })
+}
+
+/// Merge two server profile JSON arrays by "id" field.
+/// Returns union: existing profiles + any backup profiles not already present.
+fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
+    let mut existing: Vec<serde_json::Value> = serde_json::from_str(existing_json).unwrap_or_default();
+    let backup: Vec<serde_json::Value> = serde_json::from_str(backup_json).unwrap_or_default();
+
+    let existing_ids: HashSet<String> = existing.iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+
+    let mut added = 0usize;
+    for profile in backup {
+        if let Some(id) = profile.get("id").and_then(|v| v.as_str()) {
+            if !existing_ids.contains(id) {
+                existing.push(profile);
+                added += 1;
+            }
+        }
+    }
+
+    if added > 0 {
+        tracing::info!("Merged {} server profiles from backup into existing list", added);
+    }
+
+    serde_json::to_string(&existing).unwrap_or_else(|_| existing_json.to_string())
+}
+
+/// Count vault entries by category from account name list
+pub fn categorize_accounts(accounts: &[String]) -> KeystoreCategories {
+    count_categories(accounts)
 }
 
 /// Read export file metadata without decrypting

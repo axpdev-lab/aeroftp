@@ -785,7 +785,8 @@
             "fontFamily": "Letra-tipoa",
             "fontFamilyDesc": "Aukeratu interfazearen letra-tipoa",
             "fontPreview": "Aurrebista",
-            "fontReset": "Berrezarri (Inter, 16px)"
+            "fontReset": "Berrezarri (Inter, 16px)",
+            "decrypting": "[NEEDS TRANSLATION] Decrypting..."
         },
         "devtools": {
             "title": "AeroTools",

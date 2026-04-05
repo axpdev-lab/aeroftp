@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-04-05
+
+### Keystore backup overhaul, privacy cleanup & Discover reorder
+
+#### Fixed
+
+- **Keystore import now restores deleted servers**: Import with "skip existing" merges server profiles by ID instead of skipping the entire list, so deleted servers are properly restored from backup
+- **Vault entry count accurate after import**: Re-queries actual vault status instead of optimistic sum that could drift
+- **Server deletion cleans up vault credentials**: Removing a server now also deletes its orphaned `server_<id>` credential from the vault
+- **Import progress feedback**: Real-time progress bar with "Decrypting..." and "Importing 34/134..." phases via Tauri events, replacing the generic spinner
+- **Server profiles reload after keystore import**: Imported profiles are immediately visible without app restart
+
+#### Added
+
+- **Vault category breakdown**: Backup tab shows entry composition (e.g. "87 credentials - 8 AI keys - 26 OAuth - 12 config") alongside the total count
+- **Azure Blob health check**: Added `blob.core.windows.net` endpoint for status monitoring in Discover panel
+
+#### Changed
+
+- **Discover S3 provider order**: Reordered to group by tier (generic/decentralized, major cloud, mid-tier, regional)
+- **Privacy tab**: Removed unused analytics toggle and tracking language. AeroFTP collects zero data - the privacy page now clearly states this
+
 ## [3.3.9] - 2026-04-04
 
 ### TLS session reuse fix for CerberusFTP & strict servers

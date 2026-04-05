@@ -67,7 +67,7 @@ const PROTOCOL_ITEMS: DiscoverItem[] = [
 
 /** Object storage items defined at protocol level (not in provider registry) */
 const OBJECT_STORAGE_ITEMS: DiscoverItem[] = [
-    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, source: 'protocol' },
+    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, healthCheckUrl: 'https://blob.core.windows.net', source: 'protocol' },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [
@@ -110,11 +110,15 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
     const s3Providers = [...getProvidersByCategory('s3').map(registryToDiscoverItem), ...OBJECT_STORAGE_ITEMS]
         .sort((a, b) => {
             const priority: Record<string, number> = {
-                'custom-s3': 0, 'minio': 1,
-                'amazon-s3': 2, 'cloudflare-r2': 3, 'mega-s4': 4, 'storj': 5,
-                'backblaze': 6, 'idrive-e2': 7, 'digitalocean-spaces': 8,
-                'filelu-s3': 9, 'wasabi': 10, 'oracle-cloud': 11, 'quotaless-s3': 12,
-                'azure-generic': 13,
+                // Row 1: generic + self-hosted + decentralized
+                'custom-s3': 0, 'minio': 1, 'storj': 2,
+                // Row 2: major cloud providers
+                'amazon-s3': 3, 'cloudflare-r2': 4, 'azure-generic': 5,
+                // Row 3: mid-tier providers
+                'mega-s4': 6, 'backblaze': 7, 'idrive-e2': 8,
+                // Row 4+: remaining
+                'digitalocean-spaces': 9, 'filelu-s3': 10, 'wasabi': 11,
+                'oracle-cloud': 12, 'quotaless-s3': 13,
                 // Asian providers last
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
             };
