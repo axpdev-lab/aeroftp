@@ -9482,7 +9482,7 @@ async fn cmd_ncdu(
 
 // ── FUSE Mount (Linux + macOS) ───────────────────────────────────
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 mod fuse_mount {
     use super::*;
     use fuser::{
@@ -10456,7 +10456,7 @@ mod fuse_mount {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 use fuse_mount::cmd_mount;
 
 /// Windows mount: WebDAV bridge — starts a local WebDAV server and maps it as a drive letter.
@@ -15290,7 +15290,7 @@ async fn main() {
             } else {
                 (url.as_str(), path.as_str())
             };
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            #[cfg(target_os = "linux")]
             { cmd_mount(u, mountpoint, p, *cache_ttl, *allow_other, *read_only, &cli, format).await }
             #[cfg(windows)]
             { cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await }

@@ -68,10 +68,6 @@ jobs:
           # Install Snapcraft
           sudo snap install snapcraft --classic
 
-      - name: Install macOS dependencies (macFUSE)
-        if: startsWith(matrix.target, 'macos')
-        run: brew install macfuse
-
       - name: Install npm dependencies
         run: npm ci
 
