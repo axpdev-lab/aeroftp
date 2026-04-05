@@ -1079,7 +1079,8 @@
             "license": "Lesen",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Tulis ulasan di SourceForge"
         },
         "support": {
             "title": "Sokong AeroFTP",

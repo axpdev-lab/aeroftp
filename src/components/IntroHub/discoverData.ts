@@ -67,7 +67,7 @@ const PROTOCOL_ITEMS: DiscoverItem[] = [
 
 /** Object storage items defined at protocol level (not in provider registry) */
 const OBJECT_STORAGE_ITEMS: DiscoverItem[] = [
-    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, healthCheckUrl: 'https://blob.core.windows.net', source: 'protocol' },
+    { id: 'azure-generic', name: 'Azure Blob', description: 'Azure Blob Storage', protocol: 'azure', badge: 'HMAC', isGeneric: true, healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration', source: 'protocol' },
 ];
 
 const DEVELOPER_ITEMS: DiscoverItem[] = [

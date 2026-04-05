@@ -1391,7 +1391,8 @@
             "contact": "Contatti",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Scrivi una recensione su SourceForge"
         },
         "support": {
             "title": "Supporta AeroFTP",

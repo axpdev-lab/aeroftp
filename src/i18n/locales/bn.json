@@ -1079,7 +1079,8 @@
             "license": "লাইসেন্স",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "SourceForge-এ রিভিউ লিখুন"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",

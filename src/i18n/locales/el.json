@@ -1079,7 +1079,8 @@
             "license": "Άδεια",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Γράψτε μια κριτική στο SourceForge"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",

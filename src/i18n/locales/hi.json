@@ -1079,7 +1079,8 @@
             "contact": "संपर्क",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "SourceForge पर समीक्षा लिखें"
         },
         "support": {
             "title": "AeroFTP का समर्थन करें",

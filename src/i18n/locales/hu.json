@@ -1079,7 +1079,8 @@
             "license": "Licenc",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Véleményt ír a SourceForge-on"
         },
         "support": {
             "title": "Támogasd az AeroFTP-t",

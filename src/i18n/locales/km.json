@@ -1079,7 +1079,8 @@
             "license": "អាជ្ញាប័ណ្ណ",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "សរសេរការវាយតម្លៃនៅលើ SourceForge"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",

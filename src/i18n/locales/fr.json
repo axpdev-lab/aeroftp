@@ -1079,7 +1079,8 @@
             "license": "Licence",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Écrire un avis sur SourceForge"
         },
         "support": {
             "title": "Soutenir AeroFTP",

@@ -1072,7 +1072,8 @@
             "contact": "Կապ",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "\u0533\u0580\u0565\u0584 \u056f\u0561\u0580\u056e\u056b\u0584 SourceForge-\u0578\u0582\u0574"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",

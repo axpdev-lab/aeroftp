@@ -1079,7 +1079,8 @@
             "license": "Licencija",
             "reportIssue": "Report Issue",
             "documentation": "Documentation",
-            "supportDesc": "Need help or want to report a bug? We are here to assist."
+            "supportDesc": "Need help or want to report a bug? We are here to assist.",
+            "sourceforgeReviews": "Parašykite atsiliepimą SourceForge"
         },
         "support": {
             "title": "Palaikykite AeroFTP",
