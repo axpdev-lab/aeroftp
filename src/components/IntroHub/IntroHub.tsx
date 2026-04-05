@@ -32,7 +32,7 @@ export interface IntroHubProps {
     loading: boolean;
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
-    onConnect: () => void;
+    onConnect: (overrideParams?: ConnectionParams) => void;
     onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
@@ -299,14 +299,11 @@ export function IntroHub(props: IntroHubProps) {
                             onQuickConnectDirsChange={(dirs) => updateFormTabDirs(activeFormTab.id, dirs)}
                             editingProfile={activeFormTab.editingProfile}
                             onConnect={() => {
-                                // Set App-level params then connect
-                                // Use requestAnimationFrame to ensure state is flushed before connect
+                                // Pass params directly to avoid stale React state (#81)
                                 onConnectionParamsChange(activeFormTab.connectionParams);
                                 onQuickConnectDirsChange(activeFormTab.quickConnectDirs);
-                                requestAnimationFrame(() => {
-                                    onConnect();
-                                    handleCloseFormTab(activeFormTab.id);
-                                });
+                                onConnect(activeFormTab.connectionParams);
+                                handleCloseFormTab(activeFormTab.id);
                             }}
                             onSavedServerConnect={async (params, initialPath, localInitialPath) => {
                                 handleCloseFormTab(activeFormTab.id);

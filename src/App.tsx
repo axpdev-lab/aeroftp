@@ -2492,10 +2492,11 @@ interface UpdateVerificationInfo {
   };
 
   // FTP operations
-  const connectToFtp = async () => {
+  const connectToFtp = async (overrideParams?: ConnectionParams) => {
     // Parse host:port from server field if user entered it inline
     // Use a local copy to avoid direct React state mutation (C3 audit fix)
-    let effectiveParams = connectionParams;
+    // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
+    let effectiveParams = overrideParams || connectionParams;
     if (connectionParams.server && connectionParams.server.includes(':')) {
       const lastColon = connectionParams.server.lastIndexOf(':');
       const possiblePort = connectionParams.server.substring(lastColon + 1);
