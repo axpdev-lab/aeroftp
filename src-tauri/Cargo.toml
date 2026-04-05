@@ -171,13 +171,11 @@ windows = { version = "0.58", features = [
     "Win32_UI_Shell",
 ] }
 
-# Linux-only: localhost HTTP server to work around WebKitGTK limitations
-# (Monaco ESM, xterm.js, canvas, iframe CSS). Not needed on macOS/Windows.
+# Linux-only dependencies
+# - tauri-plugin-localhost: WebKitGTK workaround (Monaco ESM, xterm.js, canvas, iframe CSS)
+# - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
 tauri-plugin-localhost = "2"
-
-# FUSE virtual filesystem mount (Linux only — macOS requires macFUSE installed by user)
-[target.'cfg(target_os = "linux")'.dependencies]
 fuser = "0.15"
 
 [dev-dependencies]
