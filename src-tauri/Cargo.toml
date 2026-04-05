@@ -176,7 +176,7 @@ windows = { version = "0.58", features = [
 # - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
 tauri-plugin-localhost = "2"
-fuser = "0.15"
+fuser = "0.16"
 
 [dev-dependencies]
 
