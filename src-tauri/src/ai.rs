@@ -4,8 +4,8 @@
 // AI Provider Integration Module for AeroFTP
 // Supports: Google Gemini, OpenAI, Anthropic, xAI, OpenRouter, Ollama
 
-use serde::{Deserialize, Serialize};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -45,11 +45,11 @@ pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
 pub(crate) fn sanitize_error_message(msg: &str) -> String {
     static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
         [
-            r"[?&]key=[^&\s\)]*",                   // Google key= query parameter
-            r"sk-ant-[A-Za-z0-9_\-]{20,}",          // Anthropic API keys (check before generic sk-)
-            r"sk-[A-Za-z0-9_\-]{20,}",              // OpenAI API keys
-            r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}",// Bearer tokens in error bodies
-            r"(?i)x-api-key:\s*\S+",                // x-api-key header reflections
+            r"[?&]key=[^&\s\)]*",                    // Google key= query parameter
+            r"sk-ant-[A-Za-z0-9_\-]{20,}", // Anthropic API keys (check before generic sk-)
+            r"sk-[A-Za-z0-9_\-]{20,}",     // OpenAI API keys
+            r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}", // Bearer tokens in error bodies
+            r"(?i)x-api-key:\s*\S+",       // x-api-key header reflections
         ]
         .iter()
         .filter_map(|p| regex::Regex::new(p).ok())
@@ -206,16 +206,19 @@ impl ChatMessage {
     pub fn to_anthropic_content(&self) -> serde_json::Value {
         match &self.images {
             Some(images) if !images.is_empty() => {
-                let mut blocks: Vec<serde_json::Value> = images.iter().map(|img| {
-                    serde_json::json!({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": img.media_type,
-                            "data": img.data,
-                        }
+                let mut blocks: Vec<serde_json::Value> = images
+                    .iter()
+                    .map(|img| {
+                        serde_json::json!({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": img.media_type,
+                                "data": img.data,
+                            }
+                        })
                     })
-                }).collect();
+                    .collect();
                 blocks.push(serde_json::json!({"type": "text", "text": self.content}));
                 serde_json::Value::Array(blocks)
             }
@@ -422,7 +425,7 @@ mod gemini {
 
     pub async fn call(client: &Client, request: &AIRequest) -> Result<AIResponse, AIError> {
         let api_key = request.api_key.as_ref().ok_or(AIError::MissingApiKey)?;
-        
+
         // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter.
         // Header-based auth (Bearer token) is not supported by this endpoint.
         // Error messages are sanitized via `sanitize_error_message()` to strip `key=` params.
@@ -433,11 +436,14 @@ mod gemini {
 
         let gemini_tools = request.tools.as_ref().map(|tools| {
             vec![GeminiToolConfig {
-                function_declarations: tools.iter().map(|t| GeminiFunctionDeclaration {
-                    name: t.name.clone(),
-                    description: t.description.clone(),
-                    parameters: t.parameters.clone(),
-                }).collect(),
+                function_declarations: tools
+                    .iter()
+                    .map(|t| GeminiFunctionDeclaration {
+                        name: t.name.clone(),
+                        description: t.description.clone(),
+                        parameters: t.parameters.clone(),
+                    })
+                    .collect(),
             }]
         });
 
@@ -446,15 +452,21 @@ mod gemini {
         let system_instruction = if has_cache {
             None
         } else {
-            request.messages.iter()
+            request
+                .messages
+                .iter()
                 .find(|m| m.role == "system")
-                .map(|m| serde_json::json!({
-                    "parts": [{ "text": m.content }]
-                }))
+                .map(|m| {
+                    serde_json::json!({
+                        "parts": [{ "text": m.content }]
+                    })
+                })
         };
 
         let gemini_request = GeminiRequest {
-            contents: request.messages.iter()
+            contents: request
+                .messages
+                .iter()
                 .filter(|m| m.role != "system")
                 .map(|m| {
                     let mut parts = vec![GeminiPart {
@@ -477,16 +489,22 @@ mod gemini {
                         }
                     }
                     GeminiContent {
-                        role: if m.role == "user" { "user".to_string() } else { "model".to_string() },
+                        role: if m.role == "user" {
+                            "user".to_string()
+                        } else {
+                            "model".to_string()
+                        },
                         parts,
                     }
-                }).collect(),
+                })
+                .collect(),
             generation_config: Some(GeminiGenerationConfig {
                 max_output_tokens: request.max_tokens,
                 temperature: request.temperature,
                 top_p: request.top_p,
                 top_k: request.top_k,
-                thinking_config: request.thinking_budget
+                thinking_config: request
+                    .thinking_budget
                     .filter(|b| *b > 0)
                     .map(|budget| serde_json::json!({ "thinkingBudget": budget })),
             }),
@@ -495,11 +513,7 @@ mod gemini {
             cached_content: request.cached_content.clone(),
         };
 
-        let response = client
-            .post(&url)
-            .json(&gemini_request)
-            .send()
-            .await?;
+        let response = client.post(&url).json(&gemini_request).send().await?;
 
         let gemini_response: GeminiResponse = response.json().await?;
 
@@ -519,21 +533,31 @@ mod gemini {
                 content_parts.push(text.clone());
             }
             if let Some(exec_code) = &part.executable_code {
-                let lang = exec_code.language.as_deref().unwrap_or("python").to_lowercase();
+                let lang = exec_code
+                    .language
+                    .as_deref()
+                    .unwrap_or("python")
+                    .to_lowercase();
                 let code = exec_code.code.as_deref().unwrap_or("");
                 content_parts.push(format!("\n```{}\n{}\n```\n", lang, code));
             }
             if let Some(exec_result) = &part.code_execution_result {
                 let outcome = exec_result.outcome.as_deref().unwrap_or("OUTCOME_UNKNOWN");
                 let output = exec_result.output.as_deref().unwrap_or("");
-                content_parts.push(format!("\n**Execution Output** ({}):\n```\n{}\n```\n", outcome, output));
+                content_parts.push(format!(
+                    "\n**Execution Output** ({}):\n```\n{}\n```\n",
+                    outcome, output
+                ));
             }
         }
         let content = content_parts.join("");
 
         // Extract function call parts
         let tool_calls: Option<Vec<AIToolCall>> = {
-            let calls: Vec<AIToolCall> = candidate.content.parts.iter()
+            let calls: Vec<AIToolCall> = candidate
+                .content
+                .parts
+                .iter()
                 .filter_map(|p| p.function_call.as_ref())
                 .map(|fc| AIToolCall {
                     id: format!("gemini_{}", fc.name),
@@ -541,16 +565,28 @@ mod gemini {
                     arguments: fc.args.clone(),
                 })
                 .collect();
-            if calls.is_empty() { None } else { Some(calls) }
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
         };
 
         let (input_tokens, output_tokens, total_tokens) = match &gemini_response.usage_metadata {
-            Some(u) => (u.prompt_token_count, u.candidates_token_count, u.total_token_count),
+            Some(u) => (
+                u.prompt_token_count,
+                u.candidates_token_count,
+                u.total_token_count,
+            ),
             None => (None, None, None),
         };
 
         Ok(AIResponse {
-            content: if content.is_empty() { String::new() } else { content },
+            content: if content.is_empty() {
+                String::new()
+            } else {
+                content
+            },
             model: request.model.clone(),
             tokens_used: total_tokens,
             input_tokens,
@@ -649,14 +685,20 @@ mod openai_compat {
         pub completion_tokens: Option<u32>,
     }
 
-    pub async fn call(client: &Client, request: &AIRequest, endpoint: &str) -> Result<AIResponse, AIError> {
+    pub async fn call(
+        client: &Client,
+        request: &AIRequest,
+        endpoint: &str,
+    ) -> Result<AIResponse, AIError> {
         let url = format!("{}{}", request.base_url, endpoint);
 
         let mut headers = reqwest::header::HeaderMap::new();
 
         if let Some(api_key) = &request.api_key {
             let val = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key))
-                .map_err(|e| AIError::InvalidResponse(format!("Invalid API key for header: {}", e)))?;
+                .map_err(|e| {
+                    AIError::InvalidResponse(format!("Invalid API key for header: {}", e))
+                })?;
             headers.insert(reqwest::header::AUTHORIZATION, val);
         }
 
@@ -673,11 +715,15 @@ mod openai_compat {
         }
 
         // Build messages with vision support
-        let mut messages: Vec<OpenAIMessage> = request.messages.iter().map(|m| OpenAIMessage {
-            role: m.role.clone(),
-            content: m.to_openai_content(),
-            tool_call_id: None,
-        }).collect();
+        let mut messages: Vec<OpenAIMessage> = request
+            .messages
+            .iter()
+            .map(|m| OpenAIMessage {
+                role: m.role.clone(),
+                content: m.to_openai_content(),
+                tool_call_id: None,
+            })
+            .collect();
 
         // Append tool results as "tool" role messages
         if let Some(ref results) = request.tool_results {
@@ -697,23 +743,28 @@ mod openai_compat {
             AIProviderType::OpenAI | AIProviderType::Xai | AIProviderType::OpenRouter
         );
         let tools = request.tools.as_ref().map(|defs| {
-            defs.iter().map(|d| {
-                let mut params = d.parameters.clone();
-                if supports_strict {
-                    if let Some(obj) = params.as_object_mut() {
-                        obj.insert("additionalProperties".to_string(), serde_json::json!(false));
+            defs.iter()
+                .map(|d| {
+                    let mut params = d.parameters.clone();
+                    if supports_strict {
+                        if let Some(obj) = params.as_object_mut() {
+                            obj.insert(
+                                "additionalProperties".to_string(),
+                                serde_json::json!(false),
+                            );
+                        }
                     }
-                }
-                OpenAITool {
-                    tool_type: "function".to_string(),
-                    function: OpenAIFunction {
-                        name: d.name.clone(),
-                        description: d.description.clone(),
-                        parameters: params,
-                        strict: if supports_strict { Some(true) } else { None },
-                    },
-                }
-            }).collect()
+                    OpenAITool {
+                        tool_type: "function".to_string(),
+                        function: OpenAIFunction {
+                            name: d.name.clone(),
+                            description: d.description.clone(),
+                            parameters: params,
+                            strict: if supports_strict { Some(true) } else { None },
+                        },
+                    }
+                })
+                .collect()
         });
 
         let openai_request = OpenAIRequest {
@@ -732,7 +783,13 @@ mod openai_compat {
         // OpenAI o3/o3-mini thinking support: map budget to reasoning_effort levels
         if let Some(budget) = request.thinking_budget {
             if budget > 0 {
-                let effort = if budget <= 5000 { "low" } else if budget <= 20000 { "medium" } else { "high" };
+                let effort = if budget <= 5000 {
+                    "low"
+                } else if budget <= 20000 {
+                    "medium"
+                } else {
+                    "high"
+                };
                 body["reasoning_effort"] = serde_json::json!(effort);
                 // Reasoning models do not support temperature or top_p
                 if let Some(o) = body.as_object_mut() {
@@ -764,17 +821,18 @@ mod openai_compat {
 
         // Kimi web search: inject $web_search as builtin_function tool
         if matches!(request.provider_type, AIProviderType::Kimi)
-            && request.web_search.unwrap_or(false) {
-                let web_tool = serde_json::json!({
-                    "type": "builtin_function",
-                    "function": { "name": "$web_search" }
-                });
-                if let Some(tools_arr) = body["tools"].as_array_mut() {
-                    tools_arr.push(web_tool);
-                } else {
-                    body["tools"] = serde_json::json!([web_tool]);
-                }
+            && request.web_search.unwrap_or(false)
+        {
+            let web_tool = serde_json::json!({
+                "type": "builtin_function",
+                "function": { "name": "$web_search" }
+            });
+            if let Some(tools_arr) = body["tools"].as_array_mut() {
+                tools_arr.push(web_tool);
+            } else {
+                body["tools"] = serde_json::json!([web_tool]);
             }
+        }
 
         // Kimi context caching: inject cache_id if provided
         if matches!(request.provider_type, AIProviderType::Kimi) {
@@ -787,12 +845,13 @@ mod openai_compat {
 
         // Qwen web search: enable_search + search_options
         if matches!(request.provider_type, AIProviderType::Qwen)
-            && request.web_search.unwrap_or(false) {
-                body["enable_search"] = serde_json::json!(true);
-                body["search_options"] = serde_json::json!({
-                    "search_strategy": "pro"
-                });
-            }
+            && request.web_search.unwrap_or(false)
+        {
+            body["enable_search"] = serde_json::json!(true);
+            body["search_options"] = serde_json::json!({
+                "search_strategy": "pro"
+            });
+        }
 
         // DeepSeek prefix completion: add prefix:true to last assistant message
         if matches!(request.provider_type, AIProviderType::DeepSeek) {
@@ -824,11 +883,20 @@ mod openai_compat {
                     return Err(AIError::Api(format!("[{}] {}", status, error.message)));
                 }
             }
-            return Err(AIError::Api(format!("HTTP {} — {}", status, truncate_safe(&body, 500))));
+            return Err(AIError::Api(format!(
+                "HTTP {} — {}",
+                status,
+                truncate_safe(&body, 500)
+            )));
         }
 
-        let openai_response: OpenAIResponse = serde_json::from_str(&body)
-            .map_err(|e| AIError::InvalidResponse(format!("JSON parse error: {} — body: {}", e, truncate_safe(&body, 200))))?;
+        let openai_response: OpenAIResponse = serde_json::from_str(&body).map_err(|e| {
+            AIError::InvalidResponse(format!(
+                "JSON parse error: {} — body: {}",
+                e,
+                truncate_safe(&body, 200)
+            ))
+        })?;
 
         if let Some(error) = openai_response.error {
             return Err(AIError::Api(error.message));
@@ -841,11 +909,14 @@ mod openai_compat {
 
         // Parse native tool calls if present
         let tool_calls = choice.message.tool_calls.map(|tcs| {
-            tcs.into_iter().map(|tc| AIToolCall {
-                id: tc.id,
-                name: tc.function.name,
-                arguments: serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({})),
-            }).collect()
+            tcs.into_iter()
+                .map(|tc| AIToolCall {
+                    id: tc.id,
+                    name: tc.function.name,
+                    arguments: serde_json::from_str(&tc.function.arguments)
+                        .unwrap_or(serde_json::json!({})),
+                })
+                .collect()
         });
 
         Ok(AIResponse {
@@ -853,7 +924,10 @@ mod openai_compat {
             model: request.model.clone(),
             tokens_used: openai_response.usage.as_ref().and_then(|u| u.total_tokens),
             input_tokens: openai_response.usage.as_ref().and_then(|u| u.prompt_tokens),
-            output_tokens: openai_response.usage.as_ref().and_then(|u| u.completion_tokens),
+            output_tokens: openai_response
+                .usage
+                .as_ref()
+                .and_then(|u| u.completion_tokens),
             finish_reason: choice.finish_reason,
             tool_calls,
             cache_creation_input_tokens: None,
@@ -930,36 +1004,46 @@ mod anthropic {
 
         // Convert tool definitions for Anthropic format
         let tools = request.tools.as_ref().map(|defs| {
-            defs.iter().map(|d| AnthropicToolDef {
-                name: d.name.clone(),
-                description: d.description.clone(),
-                input_schema: d.parameters.clone(),
-            }).collect()
+            defs.iter()
+                .map(|d| AnthropicToolDef {
+                    name: d.name.clone(),
+                    description: d.description.clone(),
+                    input_schema: d.parameters.clone(),
+                })
+                .collect()
         });
 
         // Extract system message and separate from conversation messages
         // Anthropic requires system as a top-level parameter, not in messages array
-        let system_text: Option<String> = request.messages.iter()
+        let system_text: Option<String> = request
+            .messages
+            .iter()
             .find(|m| m.role == "system")
             .map(|m| m.content.clone());
 
-        let mut anthropic_messages: Vec<AnthropicMessage> = request.messages.iter()
+        let mut anthropic_messages: Vec<AnthropicMessage> = request
+            .messages
+            .iter()
             .filter(|m| m.role != "system")
             .map(|m| AnthropicMessage {
                 role: m.role.clone(),
                 content: m.to_anthropic_content(),
-            }).collect();
+            })
+            .collect();
 
         // Append tool results as a user message with tool_result content blocks (Anthropic API format)
         if let Some(ref results) = request.tool_results {
             if !results.is_empty() {
-                let content_blocks: Vec<serde_json::Value> = results.iter().map(|r| {
-                    serde_json::json!({
-                        "type": "tool_result",
-                        "tool_use_id": r.tool_call_id,
-                        "content": r.content,
+                let content_blocks: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "type": "tool_result",
+                            "tool_use_id": r.tool_call_id,
+                            "content": r.content,
+                        })
                     })
-                }).collect();
+                    .collect();
                 anthropic_messages.push(AnthropicMessage {
                     role: "user".to_string(),
                     content: serde_json::Value::Array(content_blocks),
@@ -1000,7 +1084,10 @@ mod anthropic {
             if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
                 let is_string = last_user["content"].is_string();
                 if is_string {
-                    let text = last_user["content"].as_str().unwrap_or_default().to_string();
+                    let text = last_user["content"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
                     last_user["content"] = serde_json::json!([{
                         "type": "text",
                         "text": text,
@@ -1060,7 +1147,9 @@ mod anthropic {
         let content = blocks
             .map(|b| {
                 b.iter()
-                    .filter(|c| c.content_type.as_deref() == Some("text") || c.content_type.is_none())
+                    .filter(|c| {
+                        c.content_type.as_deref() == Some("text") || c.content_type.is_none()
+                    })
                     .filter_map(|c| c.text.as_ref())
                     .cloned()
                     .collect::<Vec<_>>()
@@ -1070,7 +1159,8 @@ mod anthropic {
 
         // Extract tool_use blocks
         let tool_calls: Option<Vec<AIToolCall>> = blocks.and_then(|b| {
-            let calls: Vec<AIToolCall> = b.iter()
+            let calls: Vec<AIToolCall> = b
+                .iter()
                 .filter(|c| c.content_type.as_deref() == Some("tool_use"))
                 .filter_map(|c| {
                     Some(AIToolCall {
@@ -1080,13 +1170,29 @@ mod anthropic {
                     })
                 })
                 .collect();
-            if calls.is_empty() { None } else { Some(calls) }
+            if calls.is_empty() {
+                None
+            } else {
+                Some(calls)
+            }
         });
 
-        let input_tokens = anthropic_response.usage.as_ref().and_then(|u| u.input_tokens);
-        let output_tokens = anthropic_response.usage.as_ref().and_then(|u| u.output_tokens);
-        let cache_creation = anthropic_response.usage.as_ref().and_then(|u| u.cache_creation_input_tokens);
-        let cache_read = anthropic_response.usage.as_ref().and_then(|u| u.cache_read_input_tokens);
+        let input_tokens = anthropic_response
+            .usage
+            .as_ref()
+            .and_then(|u| u.input_tokens);
+        let output_tokens = anthropic_response
+            .usage
+            .as_ref()
+            .and_then(|u| u.output_tokens);
+        let cache_creation = anthropic_response
+            .usage
+            .as_ref()
+            .and_then(|u| u.cache_creation_input_tokens);
+        let cache_read = anthropic_response
+            .usage
+            .as_ref()
+            .and_then(|u| u.cache_read_input_tokens);
         let total = match (input_tokens, output_tokens) {
             (Some(i), Some(o)) => Some(i + o),
             _ => None,
@@ -1122,14 +1228,20 @@ pub async fn call_ai(request: AIRequest) -> Result<AIResponse, AIError> {
         AIProviderType::Google => gemini::call(client, &request).await,
         AIProviderType::Anthropic => anthropic::call(client, &request).await,
         // Ollama 0.5+ supports OpenAI-compat format at /v1/chat/completions
-        AIProviderType::Ollama => openai_compat::call(client, &request, "/v1/chat/completions").await,
+        AIProviderType::Ollama => {
+            openai_compat::call(client, &request, "/v1/chat/completions").await
+        }
         // OpenAI-compatible providers: OpenAI, xAI, OpenRouter, Kimi, Qwen, DeepSeek, Custom
         _ => openai_compat::call(client, &request, "/chat/completions").await,
     }
 }
 
 // Test provider connection
-pub async fn test_provider(provider_type: AIProviderType, base_url: String, api_key: Option<String>) -> Result<bool, AIError> {
+pub async fn test_provider(
+    provider_type: AIProviderType,
+    base_url: String,
+    api_key: Option<String>,
+) -> Result<bool, AIError> {
     let client = &*AI_HTTP_CLIENT;
 
     match provider_type {
@@ -1161,7 +1273,11 @@ pub async fn test_provider(provider_type: AIProviderType, base_url: String, api_
 }
 
 /// List available models from a provider API
-pub async fn list_models(provider_type: AIProviderType, base_url: String, api_key: Option<String>) -> Result<Vec<String>, AIError> {
+pub async fn list_models(
+    provider_type: AIProviderType,
+    base_url: String,
+    api_key: Option<String>,
+) -> Result<Vec<String>, AIError> {
     let client = &*AI_HTTP_CLIENT;
 
     match provider_type {
@@ -1172,8 +1288,13 @@ pub async fn list_models(provider_type: AIProviderType, base_url: String, api_ke
                 return Err(AIError::Api("Ollama not reachable".to_string()));
             }
             let body: serde_json::Value = response.json().await?;
-            let models = body["models"].as_array()
-                .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(|s| s.to_string())).collect())
+            let models = body["models"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
             Ok(models)
         }
@@ -1184,13 +1305,24 @@ pub async fn list_models(provider_type: AIProviderType, base_url: String, api_ke
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
-                return Err(AIError::Api(format!("HTTP {} — {}", status, truncate_safe(&body, 200))));
+                return Err(AIError::Api(format!(
+                    "HTTP {} — {}",
+                    status,
+                    truncate_safe(&body, 200)
+                )));
             }
             let body: serde_json::Value = response.json().await?;
-            let models = body["models"].as_array()
-                .map(|arr| arr.iter().filter_map(|m| {
-                    m["name"].as_str().map(|s| s.strip_prefix("models/").unwrap_or(s).to_string())
-                }).collect())
+            let models = body["models"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            m["name"]
+                                .as_str()
+                                .map(|s| s.strip_prefix("models/").unwrap_or(s).to_string())
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
             Ok(models)
         }
@@ -1206,11 +1338,20 @@ pub async fn list_models(provider_type: AIProviderType, base_url: String, api_ke
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
-                return Err(AIError::Api(format!("HTTP {} — {}", status, truncate_safe(&body, 200))));
+                return Err(AIError::Api(format!(
+                    "HTTP {} — {}",
+                    status,
+                    truncate_safe(&body, 200)
+                )));
             }
             let body: serde_json::Value = response.json().await?;
-            let models = body["data"].as_array()
-                .map(|arr| arr.iter().filter_map(|m| m["id"].as_str().map(|s| s.to_string())).collect())
+            let models = body["data"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
             Ok(models)
         }
@@ -1226,11 +1367,20 @@ pub async fn list_models(provider_type: AIProviderType, base_url: String, api_ke
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
-                return Err(AIError::Api(format!("HTTP {} — {}", status, truncate_safe(&body, 200))));
+                return Err(AIError::Api(format!(
+                    "HTTP {} — {}",
+                    status,
+                    truncate_safe(&body, 200)
+                )));
             }
             let body: serde_json::Value = response.json().await?;
-            let models = body["data"].as_array()
-                .map(|arr| arr.iter().filter_map(|m| m["id"].as_str().map(|s| s.to_string())).collect())
+            let models = body["data"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
             Ok(models)
         }
@@ -1245,8 +1395,8 @@ pub async fn ollama_pull_model(
     model_name: String,
     stream_id: String,
 ) -> Result<(), String> {
-    use tauri::Emitter;
     use futures_util::StreamExt;
+    use tauri::Emitter;
 
     #[derive(Clone, Serialize)]
     struct PullProgress {
@@ -1299,7 +1449,9 @@ pub async fn ollama_pull_model(
             let line = buffer[..line_end].trim().to_string();
             buffer = buffer[line_end + 1..].to_string();
 
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
                 let status = parsed["status"].as_str().unwrap_or("").to_string();
@@ -1307,12 +1459,15 @@ pub async fn ollama_pull_model(
                 let completed = parsed["completed"].as_u64();
                 let is_done = status == "success";
 
-                let _ = app_handle.emit(&event_name, PullProgress {
-                    status,
-                    total,
-                    completed,
-                    done: is_done,
-                });
+                let _ = app_handle.emit(
+                    &event_name,
+                    PullProgress {
+                        status,
+                        total,
+                        completed,
+                        done: is_done,
+                    },
+                );
             }
         }
     }
@@ -1326,12 +1481,15 @@ pub async fn ollama_pull_model(
             let completed = parsed["completed"].as_u64();
             let is_done = status == "success";
 
-            let _ = app_handle.emit(&event_name, PullProgress {
-                status,
-                total,
-                completed,
-                done: is_done,
-            });
+            let _ = app_handle.emit(
+                &event_name,
+                PullProgress {
+                    status,
+                    total,
+                    completed,
+                    done: is_done,
+                },
+            );
         }
     }
 
@@ -1380,11 +1538,15 @@ pub async fn gemini_create_cache(
         .map_err(|e| format!("Failed to create cache: {}", e))?;
 
     let status = response.status();
-    let resp_body: serde_json::Value = response.json().await
+    let resp_body: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse cache response: {}", e))?;
 
     if !status.is_success() {
-        let msg = resp_body["error"]["message"].as_str().unwrap_or("Unknown error");
+        let msg = resp_body["error"]["message"]
+            .as_str()
+            .unwrap_or("Unknown error");
         return Err(format!("HTTP {} — {}", status, msg));
     }
 
@@ -1429,7 +1591,9 @@ pub async fn ollama_list_running(base_url: String) -> Result<Vec<OllamaRunningMo
         return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)));
     }
 
-    let body: serde_json::Value = response.json().await
+    let body: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
     let models = body["models"]
@@ -1461,9 +1625,10 @@ pub async fn kimi_create_cache(
     let client = &*AI_HTTP_CLIENT;
     let url = format!("{}/caching", base_url);
 
-    let openai_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
-        serde_json::json!({ "role": m.role, "content": m.to_openai_content() })
-    }).collect();
+    let openai_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|m| serde_json::json!({ "role": m.role, "content": m.to_openai_content() }))
+        .collect();
 
     let mut body = serde_json::json!({
         "model": model,
@@ -1488,10 +1653,13 @@ pub async fn kimi_create_cache(
         return Err(format!("Kimi cache creation failed [{}]: {}", status, text));
     }
 
-    let result: serde_json::Value = response.json().await
+    let result: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse cache response: {}", e))?;
 
-    result["id"].as_str()
+    result["id"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "No cache ID in response".to_string())
 }
@@ -1517,7 +1685,14 @@ pub async fn kimi_upload_file(
             return Err("Invalid file path: parent directory traversal not allowed".to_string());
         }
     }
-    let denied = ["/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/etc/ssh"];
+    let denied = [
+        "/proc",
+        "/sys",
+        "/dev",
+        "/etc/shadow",
+        "/etc/passwd",
+        "/etc/ssh",
+    ];
     if let Ok(canonical) = fp.canonicalize() {
         let cs = canonical.to_string_lossy();
         if denied.iter().any(|d| cs.starts_with(d)) {
@@ -1526,7 +1701,8 @@ pub async fn kimi_upload_file(
     }
 
     // Size pre-check before reading into memory
-    let metadata = tokio::fs::metadata(&file_path).await
+    let metadata = tokio::fs::metadata(&file_path)
+        .await
         .map_err(|_| "Failed to read file metadata".to_string())?;
     if metadata.len() > 100 * 1024 * 1024 {
         return Err("File too large (max 100MB)".to_string());
@@ -1538,7 +1714,8 @@ pub async fn kimi_upload_file(
         .unwrap_or("file")
         .to_string();
 
-    let file_bytes = tokio::fs::read(&file_path).await
+    let file_bytes = tokio::fs::read(&file_path)
+        .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     let part = reqwest::multipart::Part::bytes(file_bytes)
@@ -1547,7 +1724,10 @@ pub async fn kimi_upload_file(
         .map_err(|e| format!("MIME error: {}", e))?;
 
     let form = reqwest::multipart::Form::new()
-        .text("purpose", purpose.unwrap_or_else(|| "file-extract".to_string()))
+        .text(
+            "purpose",
+            purpose.unwrap_or_else(|| "file-extract".to_string()),
+        )
         .part("file", part);
 
     let response = client
@@ -1564,10 +1744,13 @@ pub async fn kimi_upload_file(
         return Err(format!("Kimi file upload failed [{}]: {}", status, text));
     }
 
-    let result: serde_json::Value = response.json().await
+    let result: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse file response: {}", e))?;
 
-    result["id"].as_str()
+    result["id"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "No file ID in response".to_string())
 }
@@ -1610,10 +1793,13 @@ pub async fn deepseek_fim_complete(
         return Err(format!("DeepSeek FIM failed [{}]: {}", status, text));
     }
 
-    let result: serde_json::Value = response.json().await
+    let result: serde_json::Value = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse FIM response: {}", e))?;
 
-    result["choices"][0]["text"].as_str()
+    result["choices"][0]["text"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "No completion text in response".to_string())
 }

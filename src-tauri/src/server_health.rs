@@ -16,7 +16,7 @@ use tokio::net::TcpStream;
 #[derive(Serialize, Clone, Debug)]
 pub struct CheckDetail {
     pub name: String,
-    pub status: String,      // "pass" | "fail" | "skip"
+    pub status: String, // "pass" | "fail" | "skip"
     pub latency_ms: Option<f64>,
     pub details: Option<String>,
 }
@@ -26,10 +26,10 @@ pub struct CheckDetail {
 pub struct HealthCheckResult {
     pub server_id: String,
     pub host: String,
-    pub status: String,      // "healthy" | "degraded" | "unreachable" | "error"
-    pub score: u8,           // 0-100
+    pub status: String, // "healthy" | "degraded" | "unreachable" | "error"
+    pub score: u8,      // 0-100
     pub checks: Vec<CheckDetail>,
-    pub checked_at: String,  // ISO 8601
+    pub checked_at: String, // ISO 8601
     pub error: Option<String>,
 }
 
@@ -115,7 +115,8 @@ fn cloud_provider_info(protocol: &str) -> Option<CloudProviderInfo> {
         }),
         "azure" => Some(CloudProviderInfo {
             host: "login.microsoftonline.com",
-            probe_url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+            probe_url:
+                "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
         }),
         "drime" => Some(CloudProviderInfo {
             host: "api.drimecloud.com",
@@ -182,13 +183,10 @@ async fn check_dns(host: &str, port: u16) -> CheckDetail {
     let start = Instant::now();
     let addr_str = format!("{}:{}", host, port);
 
-    let result = tokio::time::timeout(
-        Duration::from_secs(5),
-        async {
-            let addrs = tokio::net::lookup_host(&addr_str).await?;
-            Ok::<Vec<SocketAddr>, std::io::Error>(addrs.collect())
-        },
-    )
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        let addrs = tokio::net::lookup_host(&addr_str).await?;
+        Ok::<Vec<SocketAddr>, std::io::Error>(addrs.collect())
+    })
     .await;
 
     match result {
@@ -236,12 +234,7 @@ async fn check_tcp(host: &str, port: u16) -> CheckDetail {
     let addr_str = format!("{}:{}", host, port);
     let start = Instant::now();
 
-    match tokio::time::timeout(
-        Duration::from_secs(10),
-        TcpStream::connect(&addr_str),
-    )
-    .await
-    {
+    match tokio::time::timeout(Duration::from_secs(10), TcpStream::connect(&addr_str)).await {
         Ok(Ok(_stream)) => {
             let elapsed = start.elapsed();
             CheckDetail {
@@ -475,12 +468,10 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
         (api_host.to_string(), 443u16)
     } else if req.protocol == "s3" {
         // S3: prefer endpoint over host (host is often "localhost" placeholder)
-        let ep_host = req.endpoint.as_deref()
-            .filter(|e| !e.is_empty())
-            .map(|e| {
-                let h = e.replace("https://", "").replace("http://", "");
-                h.split('/').next().unwrap_or(&h).to_string()
-            });
+        let ep_host = req.endpoint.as_deref().filter(|e| !e.is_empty()).map(|e| {
+            let h = e.replace("https://", "").replace("http://", "");
+            h.split('/').next().unwrap_or(&h).to_string()
+        });
         match ep_host {
             Some(h) => {
                 let (host, port) = parse_host_port(&h, req.port, &req.protocol);
@@ -488,7 +479,11 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
             }
             None => {
                 let host = sanitize_host(&req.host);
-                let port = if req.port > 0 { req.port } else { default_port(&req.protocol) };
+                let port = if req.port > 0 {
+                    req.port
+                } else {
+                    default_port(&req.protocol)
+                };
                 (host, port)
             }
         }
@@ -569,14 +564,22 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
             // Provider-specific lightweight health endpoint
             probe.to_string()
         } else if let Some(ref ep) = req.endpoint {
-            let scheme = if effective_port == 80 { "http" } else { "https" };
+            let scheme = if effective_port == 80 {
+                "http"
+            } else {
+                "https"
+            };
             if ep.starts_with("http") {
                 ep.clone()
             } else {
                 format!("{}://{}", scheme, ep)
             }
         } else {
-            let scheme = if effective_port == 80 { "http" } else { "https" };
+            let scheme = if effective_port == 80 {
+                "http"
+            } else {
+                "https"
+            };
             format!("{}://{}:{}/", scheme, effective_host, effective_port)
         };
         let http = check_http(&url, is_cloud_like).await;
@@ -608,7 +611,11 @@ fn parse_host_port(host: &str, fallback_port: u16, protocol: &str) -> (String, u
             return (host[..idx].to_string(), port);
         }
     }
-    let port = if fallback_port > 0 { fallback_port } else { default_port(protocol) };
+    let port = if fallback_port > 0 {
+        fallback_port
+    } else {
+        default_port(protocol)
+    };
     (host.to_string(), port)
 }
 
@@ -629,20 +636,19 @@ pub async fn server_health_check(
         endpoint,
     };
 
-    Ok(tokio::time::timeout(
-        Duration::from_secs(30),
-        run_health_check(&req),
+    Ok(
+        tokio::time::timeout(Duration::from_secs(30), run_health_check(&req))
+            .await
+            .unwrap_or_else(|_| HealthCheckResult {
+                server_id: req.server_id.clone(),
+                host: req.host.clone(),
+                status: "error".into(),
+                score: 0,
+                checks: vec![],
+                checked_at: chrono::Utc::now().to_rfc3339(),
+                error: Some("Global timeout (30s)".into()),
+            }),
     )
-    .await
-    .unwrap_or_else(|_| HealthCheckResult {
-        server_id: req.server_id.clone(),
-        host: req.host.clone(),
-        status: "error".into(),
-        score: 0,
-        checks: vec![],
-        checked_at: chrono::Utc::now().to_rfc3339(),
-        error: Some("Global timeout (30s)".into()),
-    }))
 }
 
 /// Check health of multiple servers in parallel

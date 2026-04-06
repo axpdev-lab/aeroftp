@@ -7,11 +7,11 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
+use log::{debug, info, warn};
 use reqwest::{Client, Method, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::time::{Duration, Instant};
-use log::{info, warn, debug};
 
 use super::{ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider};
 
@@ -36,7 +36,9 @@ impl SwiftConfig {
             auth_url,
             username: config.username.clone().unwrap_or_default(),
             password: SecretString::from(config.password.clone().unwrap_or_default()),
-            verify_cert: config.extra.get("verify_cert")
+            verify_cert: config
+                .extra
+                .get("verify_cert")
                 .map(|v| v != "false")
                 .unwrap_or(true),
         })
@@ -99,7 +101,7 @@ struct SloSegment {
 
 /// Compute MD5 hex digest for a byte slice
 fn md5_hex(data: &[u8]) -> String {
-    use md5::{Md5, Digest};
+    use md5::{Digest, Md5};
     let hash = Md5::digest(data);
     format!("{:x}", hash)
 }
@@ -171,7 +173,8 @@ impl SwiftProvider {
         let url = format!("{base}/auth/v1.0");
         debug!("Swift TempAuth v1: {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("X-Auth-User", &self.config.username)
             .header("X-Auth-Key", self.config.password.expose_secret())
@@ -181,19 +184,31 @@ impl SwiftProvider {
 
         match resp.status() {
             StatusCode::OK | StatusCode::NO_CONTENT => {
-                let token = resp.headers()
+                let token = resp
+                    .headers()
                     .get("x-auth-token")
                     .or_else(|| resp.headers().get("x-storage-token"))
-                    .ok_or_else(|| ProviderError::AuthenticationFailed("No X-Auth-Token in response".into()))?
+                    .ok_or_else(|| {
+                        ProviderError::AuthenticationFailed("No X-Auth-Token in response".into())
+                    })?
                     .to_str()
-                    .map_err(|_| ProviderError::AuthenticationFailed("Invalid token header encoding".into()))?
+                    .map_err(|_| {
+                        ProviderError::AuthenticationFailed("Invalid token header encoding".into())
+                    })?
                     .to_string();
 
-                let storage_url = resp.headers()
+                let storage_url = resp
+                    .headers()
                     .get("x-storage-url")
-                    .ok_or_else(|| ProviderError::AuthenticationFailed("No X-Storage-Url in response".into()))?
+                    .ok_or_else(|| {
+                        ProviderError::AuthenticationFailed("No X-Storage-Url in response".into())
+                    })?
                     .to_str()
-                    .map_err(|_| ProviderError::AuthenticationFailed("Invalid storage URL header encoding".into()))?
+                    .map_err(|_| {
+                        ProviderError::AuthenticationFailed(
+                            "Invalid storage URL header encoding".into(),
+                        )
+                    })?
                     .trim_end_matches('/')
                     .to_string();
 
@@ -205,9 +220,15 @@ impl SwiftProvider {
                 });
                 Ok(())
             }
-            StatusCode::UNAUTHORIZED => Err(ProviderError::AuthenticationFailed("Invalid credentials".into())),
-            StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed("Account suspended or forbidden".into())),
-            status => Err(ProviderError::AuthenticationFailed(format!("TempAuth failed: HTTP {status}"))),
+            StatusCode::UNAUTHORIZED => Err(ProviderError::AuthenticationFailed(
+                "Invalid credentials".into(),
+            )),
+            StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
+                "Account suspended or forbidden".into(),
+            )),
+            status => Err(ProviderError::AuthenticationFailed(format!(
+                "TempAuth failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -230,23 +251,29 @@ impl SwiftProvider {
             }
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}")))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
+            })?;
 
         match resp.status() {
             StatusCode::OK => {
-                let json: serde_json::Value = resp.json().await
-                    .map_err(|e| ProviderError::AuthenticationFailed(format!("Invalid Keystone response: {e}")))?;
+                let json: serde_json::Value = resp.json().await.map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!("Invalid Keystone response: {e}"))
+                })?;
 
                 // Extract token
                 let token = json["access"]["token"]["id"]
                     .as_str()
-                    .ok_or_else(|| ProviderError::AuthenticationFailed("No token in Keystone response".into()))?
+                    .ok_or_else(|| {
+                        ProviderError::AuthenticationFailed("No token in Keystone response".into())
+                    })?
                     .to_string();
 
                 // Extract storage URL from service catalog
@@ -255,16 +282,17 @@ impl SwiftProvider {
                 let storage_url_str = catalog
                     .and_then(|cat| {
                         // First try object-store
-                        cat.iter().find(|svc| svc["type"].as_str() == Some("object-store"))
+                        cat.iter()
+                            .find(|svc| svc["type"].as_str() == Some("object-store"))
                             .or_else(|| {
                                 // Log available types for debugging
-                                let types: Vec<&str> = cat.iter()
-                                    .filter_map(|s| s["type"].as_str())
-                                    .collect();
+                                let types: Vec<&str> =
+                                    cat.iter().filter_map(|s| s["type"].as_str()).collect();
                                 debug!("Keystone catalog types: {:?}", types);
                                 // Fall back to first service with a publicURL
                                 cat.iter().find(|svc| {
-                                    svc["endpoints"].as_array()
+                                    svc["endpoints"]
+                                        .as_array()
                                         .and_then(|eps| eps.first())
                                         .and_then(|ep| ep["publicURL"].as_str())
                                         .is_some()
@@ -273,24 +301,33 @@ impl SwiftProvider {
                     })
                     .and_then(|svc| svc["endpoints"].as_array())
                     .and_then(|endpoints| endpoints.first())
-                    .and_then(|ep| ep["publicURL"].as_str().or_else(|| ep["internalURL"].as_str()))
+                    .and_then(|ep| {
+                        ep["publicURL"]
+                            .as_str()
+                            .or_else(|| ep["internalURL"].as_str())
+                    })
                     .ok_or_else(|| {
                         // Dump catalog for debugging
-                        let cat_debug = catalog.map(|c| {
-                            c.iter().map(|s| {
-                                format!("type={}, endpoints={}",
-                                    s["type"].as_str().unwrap_or("?"),
-                                    s["endpoints"])
-                            }).collect::<Vec<_>>().join("; ")
-                        }).unwrap_or_else(|| "empty catalog".to_string());
+                        let cat_debug = catalog
+                            .map(|c| {
+                                c.iter()
+                                    .map(|s| {
+                                        format!(
+                                            "type={}, endpoints={}",
+                                            s["type"].as_str().unwrap_or("?"),
+                                            s["endpoints"]
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("; ")
+                            })
+                            .unwrap_or_else(|| "empty catalog".to_string());
                         warn!("Keystone catalog: {}", cat_debug);
                         ProviderError::AuthenticationFailed(
-                            "No storage endpoint in Keystone service catalog".into()
+                            "No storage endpoint in Keystone service catalog".into(),
                         )
                     })?;
-                let storage_url = storage_url_str
-                    .trim_end_matches('/')
-                    .to_string();
+                let storage_url = storage_url_str.trim_end_matches('/').to_string();
 
                 info!("Swift Keystone v2 OK — storage: {}", storage_url);
                 self.auth = Some(SwiftAuth {
@@ -300,9 +337,15 @@ impl SwiftProvider {
                 });
                 Ok(())
             }
-            StatusCode::UNAUTHORIZED => Err(ProviderError::AuthenticationFailed("Invalid credentials".into())),
-            StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed("Account suspended or forbidden".into())),
-            status => Err(ProviderError::AuthenticationFailed(format!("Keystone v2 failed: HTTP {status}"))),
+            StatusCode::UNAUTHORIZED => Err(ProviderError::AuthenticationFailed(
+                "Invalid credentials".into(),
+            )),
+            StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
+                "Account suspended or forbidden".into(),
+            )),
+            status => Err(ProviderError::AuthenticationFailed(format!(
+                "Keystone v2 failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -315,13 +358,15 @@ impl SwiftProvider {
     }
 
     fn token(&self) -> Result<&str, ProviderError> {
-        self.auth.as_ref()
+        self.auth
+            .as_ref()
             .map(|a| a.token.expose_secret())
             .ok_or_else(|| ProviderError::AuthenticationFailed("Not authenticated".into()))
     }
 
     fn storage_url(&self) -> Result<&str, ProviderError> {
-        self.auth.as_ref()
+        self.auth
+            .as_ref()
             .map(|a| a.storage_url.as_str())
             .ok_or_else(|| ProviderError::AuthenticationFailed("Not authenticated".into()))
     }
@@ -339,21 +384,31 @@ impl SwiftProvider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(
-                format!("Container list failed: HTTP {status} — {}", &body[..body.len().min(200)])
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "Container list failed: HTTP {status} — {}",
+                &body[..body.len().min(200)]
+            )));
         }
 
-        let text = resp.text().await
+        let text = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ServerError(format!("Read body failed: {e}")))?;
-        debug!("Container list (HTTP {}): {}", status, &text[..text.len().min(300)]);
+        debug!(
+            "Container list (HTTP {}): {}",
+            status,
+            &text[..text.len().min(300)]
+        );
 
-        let containers: Vec<ContainerEntry> = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ServerError(
-                format!("Invalid container JSON: {e} — body: {}", &text[..text.len().min(200)])
-            ))?;
+        let containers: Vec<ContainerEntry> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ServerError(format!(
+                "Invalid container JSON: {e} — body: {}",
+                &text[..text.len().min(200)]
+            ))
+        })?;
 
-        containers.first()
+        containers
+            .first()
             .map(|c| {
                 info!("Swift using container: {}", c.name);
                 c.name.clone()
@@ -369,8 +424,12 @@ impl SwiftProvider {
         if clean.is_empty() {
             Ok(format!("{}/{}", storage, self.container))
         } else {
-            Ok(format!("{}/{}/{}", storage, self.container,
-                urlencoding::encode(clean).replace("%2F", "/")))
+            Ok(format!(
+                "{}/{}/{}",
+                storage,
+                self.container,
+                urlencoding::encode(clean).replace("%2F", "/")
+            ))
         }
     }
 
@@ -389,7 +448,9 @@ impl SwiftProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         self.ensure_auth().await?;
 
-        let mut req = self.client.request(method.clone(), url)
+        let mut req = self
+            .client
+            .request(method.clone(), url)
             .header("X-Auth-Token", self.token()?);
         for (k, v) in extra_headers {
             req = req.header(k.as_str(), v.as_str());
@@ -398,13 +459,17 @@ impl SwiftProvider {
             req = req.body(data.clone());
         }
 
-        let resp = req.send().await
+        let resp = req
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             // Re-auth and retry once
             self.authenticate().await?;
-            let mut req2 = self.client.request(method, url)
+            let mut req2 = self
+                .client
+                .request(method, url)
                 .header("X-Auth-Token", self.token()?);
             for (k, v) in extra_headers {
                 req2 = req2.header(k.as_str(), v.as_str());
@@ -412,7 +477,8 @@ impl SwiftProvider {
             if let Some(data) = body {
                 req2 = req2.body(data);
             }
-            req2.send().await
+            req2.send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
         } else {
             Ok(resp)
@@ -433,9 +499,12 @@ impl SwiftProvider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncReadExt;
 
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Open failed: {e}")))?;
-        let file_size = file.metadata().await
+        let file_size = file
+            .metadata()
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Metadata failed: {e}")))?
             .len();
 
@@ -451,14 +520,21 @@ impl SwiftProvider {
             let mut total_read = 0usize;
 
             loop {
-                let n = reader.read(&mut buf[total_read..]).await
-                    .map_err(|e| ProviderError::TransferFailed(format!("Read chunk failed: {e}")))?;
-                if n == 0 { break; }
+                let n = reader.read(&mut buf[total_read..]).await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Read chunk failed: {e}"))
+                })?;
+                if n == 0 {
+                    break;
+                }
                 total_read += n;
-                if total_read >= chunk_size { break; }
+                if total_read >= chunk_size {
+                    break;
+                }
             }
 
-            if total_read == 0 { break; }
+            if total_read == 0 {
+                break;
+            }
             buf.truncate(total_read);
 
             let segment_path = format!(".file-segments/{object_name}/{seq:010}");
@@ -467,18 +543,25 @@ impl SwiftProvider {
             let segment_size = buf.len() as u64;
 
             let headers = vec![
-                ("Content-Type".to_string(), "application/octet-stream".to_string()),
+                (
+                    "Content-Type".to_string(),
+                    "application/octet-stream".to_string(),
+                ),
                 ("ETag".to_string(), digest.clone()),
             ];
 
-            let resp = self.swift_request(Method::PUT, &segment_url, Some(buf), &headers).await?;
+            let resp = self
+                .swift_request(Method::PUT, &segment_url, Some(buf), &headers)
+                .await?;
             if resp.status() != StatusCode::CREATED {
-                return Err(ProviderError::ServerError(
-                    format!("Segment {seq} upload failed: HTTP {}", resp.status())
-                ));
+                return Err(ProviderError::ServerError(format!(
+                    "Segment {seq} upload failed: HTTP {}",
+                    resp.status()
+                )));
             }
 
-            let etag = resp.headers()
+            let etag = resp
+                .headers()
                 .get("etag")
                 .and_then(|v| v.to_str().ok())
                 .map(|v| v.trim_matches('"').to_string())
@@ -502,17 +585,22 @@ impl SwiftProvider {
         let manifest_json = serde_json::to_vec(&segments)
             .map_err(|e| ProviderError::ServerError(format!("Manifest JSON failed: {e}")))?;
 
-        let headers = vec![
-            ("Content-Type".to_string(), "application/json".to_string()),
-        ];
-        let resp = self.swift_request(Method::PUT, &manifest_url, Some(manifest_json), &headers).await?;
+        let headers = vec![("Content-Type".to_string(), "application/json".to_string())];
+        let resp = self
+            .swift_request(Method::PUT, &manifest_url, Some(manifest_json), &headers)
+            .await?;
         if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(
-                format!("SLO manifest upload failed: HTTP {}", resp.status())
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "SLO manifest upload failed: HTTP {}",
+                resp.status()
+            )));
         }
 
-        info!("SLO upload complete: {} ({} segments)", object_name, segments.len());
+        info!(
+            "SLO upload complete: {} ({} segments)",
+            object_name,
+            segments.len()
+        );
         Ok(())
     }
 }
@@ -521,11 +609,21 @@ impl SwiftProvider {
 
 #[async_trait]
 impl StorageProvider for SwiftProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
-    fn provider_type(&self) -> ProviderType { ProviderType::Swift }
-    fn display_name(&self) -> String { format!("Swift ({})", self.config.username) }
-    fn account_email(&self) -> Option<String> { Some(self.config.username.clone()) }
-    fn is_connected(&self) -> bool { self.connected }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    fn provider_type(&self) -> ProviderType {
+        ProviderType::Swift
+    }
+    fn display_name(&self) -> String {
+        format!("Swift ({})", self.config.username)
+    }
+    fn account_email(&self) -> Option<String> {
+        Some(self.config.username.clone())
+    }
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
 
     /// Connect: authenticate + discover default container
     async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -557,8 +655,7 @@ impl StorageProvider for SwiftProvider {
         let mut marker = String::new();
 
         loop {
-            let base = format!("{}/{}",
-                self.storage_url()?, self.container);
+            let base = format!("{}/{}", self.storage_url()?, self.container);
             let mut url = format!("{base}?format=json&delimiter=/&limit=10000");
             if !prefix_query.is_empty() {
                 url.push_str(&format!("&prefix={}", urlencoding::encode(&prefix_query)));
@@ -569,25 +666,35 @@ impl StorageProvider for SwiftProvider {
 
             let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
             if !resp.status().is_success() {
-                return Err(ProviderError::ServerError(
-                    format!("List failed: HTTP {}", resp.status())
-                ));
+                return Err(ProviderError::ServerError(format!(
+                    "List failed: HTTP {}",
+                    resp.status()
+                )));
             }
 
-            let entries: Vec<ObjectEntry> = resp.json().await
+            let entries: Vec<ObjectEntry> = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ServerError(format!("List JSON parse failed: {e}")))?;
 
-            if entries.is_empty() { break; }
+            if entries.is_empty() {
+                break;
+            }
 
-            let last_name = entries.last().and_then(|e| {
-                e.name.as_ref().or(e.subdir.as_ref())
-            }).cloned().unwrap_or_default();
+            let last_name = entries
+                .last()
+                .and_then(|e| e.name.as_ref().or(e.subdir.as_ref()))
+                .cloned()
+                .unwrap_or_default();
 
             for entry in &entries {
                 if let Some(ref subdir) = entry.subdir {
                     // Virtual directory pseudo-entry
-                    let dir_name = subdir.trim_end_matches('/')
-                        .rsplit('/').next().unwrap_or(subdir);
+                    let dir_name = subdir
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(subdir);
                     if !dir_name.is_empty() {
                         all_entries.push(RemoteEntry::directory(
                             dir_name.to_string(),
@@ -602,8 +709,11 @@ impl StorageProvider for SwiftProvider {
 
                     if name.ends_with('/') && entry.bytes.unwrap_or(0) == 0 {
                         // Directory marker object
-                        let dir_name = name.trim_end_matches('/')
-                            .rsplit('/').next().unwrap_or(name);
+                        let dir_name = name
+                            .trim_end_matches('/')
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(name);
                         if !dir_name.is_empty() {
                             all_entries.push(RemoteEntry::directory(
                                 dir_name.to_string(),
@@ -628,7 +738,9 @@ impl StorageProvider for SwiftProvider {
                 }
             }
 
-            if entries.len() < 10000 { break; }
+            if entries.len() < 10000 {
+                break;
+            }
             marker = last_name;
         }
 
@@ -672,25 +784,29 @@ impl StorageProvider for SwiftProvider {
         let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(
-                format!("Download failed: HTTP {}", resp.status())
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "Download failed: HTTP {}",
+                resp.status()
+            )));
         }
 
         let total = resp.content_length().unwrap_or(0);
 
         // Read full response body
-        let bytes = resp.bytes().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download body read failed: {e}")))?;
+        let bytes = resp.bytes().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Download body read failed: {e}"))
+        })?;
         let bytes_written = bytes.len() as u64;
 
         // Ensure parent directory exists
         if let Some(parent) = std::path::Path::new(local_path).parent() {
-            tokio::fs::create_dir_all(parent).await
+            tokio::fs::create_dir_all(parent)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Create dir failed: {e}")))?;
         }
 
-        tokio::fs::write(local_path, &bytes).await
+        tokio::fs::write(local_path, &bytes)
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Write file failed: {e}")))?;
 
         if let Some(cb) = on_progress {
@@ -705,12 +821,14 @@ impl StorageProvider for SwiftProvider {
         let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(
-                format!("Download failed: HTTP {}", resp.status())
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "Download failed: HTTP {}",
+                resp.status()
+            )));
         }
 
-        resp.bytes().await
+        resp.bytes()
+            .await
             .map(|b| b.to_vec())
             .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {e}")))
     }
@@ -724,7 +842,8 @@ impl StorageProvider for SwiftProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let metadata = tokio::fs::metadata(local_path).await
+        let metadata = tokio::fs::metadata(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Stat local file failed: {e}")))?;
         let file_size = metadata.len();
 
@@ -733,7 +852,8 @@ impl StorageProvider for SwiftProvider {
             return self.upload_slo(local_path, remote_path, on_progress).await;
         }
 
-        let data = tokio::fs::read(local_path).await
+        let data = tokio::fs::read(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Read local file failed: {e}")))?;
 
         let url = self.object_url(remote_path)?;
@@ -747,7 +867,9 @@ impl StorageProvider for SwiftProvider {
         let digest = md5_hex(&data);
 
         // Preserve local mtime
-        let mtime = metadata.modified().ok()
+        let mtime = metadata
+            .modified()
+            .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| format!("{}.000000", d.as_secs()));
 
@@ -759,7 +881,9 @@ impl StorageProvider for SwiftProvider {
             headers.push(("X-Object-Meta-Mtime".to_string(), mt));
         }
 
-        let resp = self.swift_request(Method::PUT, &url, Some(data), &headers).await?;
+        let resp = self
+            .swift_request(Method::PUT, &url, Some(data), &headers)
+            .await?;
 
         match resp.status() {
             StatusCode::CREATED => {
@@ -768,10 +892,12 @@ impl StorageProvider for SwiftProvider {
                 }
                 Ok(())
             }
-            StatusCode::UNPROCESSABLE_ENTITY => {
-                Err(ProviderError::ServerError("ETag mismatch — data corrupted in transit".into()))
-            }
-            status => Err(ProviderError::ServerError(format!("Upload failed: HTTP {status}"))),
+            StatusCode::UNPROCESSABLE_ENTITY => Err(ProviderError::ServerError(
+                "ETag mismatch — data corrupted in transit".into(),
+            )),
+            status => Err(ProviderError::ServerError(format!(
+                "Upload failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -781,15 +907,23 @@ impl StorageProvider for SwiftProvider {
         let url = self.object_url(&dir_path)?;
 
         let headers = vec![
-            ("Content-Type".to_string(), "application/directory".to_string()),
+            (
+                "Content-Type".to_string(),
+                "application/directory".to_string(),
+            ),
             ("Content-Length".to_string(), "0".to_string()),
         ];
 
-        let resp = self.swift_request(Method::PUT, &url, Some(vec![]), &headers).await?;
+        let resp = self
+            .swift_request(Method::PUT, &url, Some(vec![]), &headers)
+            .await?;
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(ProviderError::ServerError(format!("Mkdir failed: HTTP {}", resp.status())))
+            Err(ProviderError::ServerError(format!(
+                "Mkdir failed: HTTP {}",
+                resp.status()
+            )))
         }
     }
 
@@ -801,7 +935,9 @@ impl StorageProvider for SwiftProvider {
         match resp.status() {
             StatusCode::NO_CONTENT | StatusCode::OK => Ok(()),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
-            status => Err(ProviderError::ServerError(format!("Delete failed: HTTP {status}"))),
+            status => Err(ProviderError::ServerError(format!(
+                "Delete failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -813,7 +949,9 @@ impl StorageProvider for SwiftProvider {
         let resp = self.swift_request(Method::DELETE, &url, None, &[]).await?;
         match resp.status() {
             StatusCode::NO_CONTENT | StatusCode::OK | StatusCode::NOT_FOUND => Ok(()),
-            status => Err(ProviderError::ServerError(format!("Rmdir failed: HTTP {status}"))),
+            status => Err(ProviderError::ServerError(format!(
+                "Rmdir failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -827,11 +965,16 @@ impl StorageProvider for SwiftProvider {
 
         // List all objects under prefix (no delimiter = flat recursive listing)
         let base = format!("{}/{}", self.storage_url()?, self.container);
-        let url = format!("{}?format=json&prefix={}/&limit=10000",
-            base, urlencoding::encode(&prefix));
+        let url = format!(
+            "{}?format=json&prefix={}/&limit=10000",
+            base,
+            urlencoding::encode(&prefix)
+        );
 
         let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-        let entries: Vec<ObjectEntry> = resp.json().await
+        let entries: Vec<ObjectEntry> = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
 
         if entries.is_empty() {
@@ -840,7 +983,8 @@ impl StorageProvider for SwiftProvider {
         }
 
         // Collect all object paths for bulk delete
-        let mut object_paths: Vec<String> = entries.iter()
+        let mut object_paths: Vec<String> = entries
+            .iter()
             .filter_map(|e| e.name.as_ref())
             .map(|n| format!("/{}/{n}", self.container))
             .collect();
@@ -858,9 +1002,9 @@ impl StorageProvider for SwiftProvider {
                 ("Accept".to_string(), "application/json".to_string()),
             ];
 
-            let resp = self.swift_request(
-                Method::POST, &bulk_url, Some(body.into_bytes()), &headers
-            ).await?;
+            let resp = self
+                .swift_request(Method::POST, &bulk_url, Some(body.into_bytes()), &headers)
+                .await?;
 
             if !resp.status().is_success() {
                 warn!("Bulk delete returned HTTP {}", resp.status());
@@ -884,11 +1028,14 @@ impl StorageProvider for SwiftProvider {
             ("Content-Length".to_string(), "0".to_string()),
         ];
 
-        let resp = self.swift_request(Method::PUT, &dest_url, Some(vec![]), &headers).await?;
+        let resp = self
+            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
+            .await?;
         if !resp.status().is_success() {
-            return Err(ProviderError::ServerError(
-                format!("Copy for rename failed: HTTP {}", resp.status())
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "Copy for rename failed: HTTP {}",
+                resp.status()
+            )));
         }
 
         self.delete(from).await
@@ -901,26 +1048,33 @@ impl StorageProvider for SwiftProvider {
 
         match resp.status() {
             StatusCode::OK | StatusCode::NO_CONTENT => {
-                let size = resp.headers()
+                let size = resp
+                    .headers()
                     .get("content-length")
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(0);
 
-                let modified = resp.headers()
+                let modified = resp
+                    .headers()
                     .get("last-modified")
                     .and_then(|v| v.to_str().ok())
                     .map(|v| v.to_string());
 
-                let mime = resp.headers()
+                let mime = resp
+                    .headers()
                     .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .map(|v| v.to_string());
 
-                let is_dir = mime.as_deref() == Some("application/directory")
-                    || path.ends_with('/');
-                let name = path.trim_end_matches('/').rsplit('/').next()
-                    .unwrap_or(path).to_string();
+                let is_dir =
+                    mime.as_deref() == Some("application/directory") || path.ends_with('/');
+                let name = path
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(path)
+                    .to_string();
 
                 let mut entry = if is_dir {
                     RemoteEntry::directory(name, format!("/{}", path.trim_matches('/')))
@@ -930,22 +1084,27 @@ impl StorageProvider for SwiftProvider {
                 entry.modified = modified;
                 entry.mime_type = mime;
 
-                if let Some(etag) = resp.headers().get("etag")
-                    .and_then(|v| v.to_str().ok())
-                {
-                    entry.metadata.insert("etag".to_string(),
-                        etag.trim_matches('"').to_string());
+                if let Some(etag) = resp.headers().get("etag").and_then(|v| v.to_str().ok()) {
+                    entry
+                        .metadata
+                        .insert("etag".to_string(), etag.trim_matches('"').to_string());
                 }
-                if let Some(mtime) = resp.headers().get("x-object-meta-mtime")
+                if let Some(mtime) = resp
+                    .headers()
+                    .get("x-object-meta-mtime")
                     .and_then(|v| v.to_str().ok())
                 {
-                    entry.metadata.insert("mtime".to_string(), mtime.to_string());
+                    entry
+                        .metadata
+                        .insert("mtime".to_string(), mtime.to_string());
                 }
 
                 Ok(entry)
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
-            status => Err(ProviderError::ServerError(format!("Stat failed: HTTP {status}"))),
+            status => Err(ProviderError::ServerError(format!(
+                "Stat failed: HTTP {status}"
+            ))),
         }
     }
 
@@ -979,7 +1138,8 @@ impl StorageProvider for SwiftProvider {
         let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
 
         let get_header = |name: &str| -> String {
-            resp.headers().get(name)
+            resp.headers()
+                .get(name)
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("?")
                 .to_string()
@@ -994,7 +1154,9 @@ impl StorageProvider for SwiftProvider {
         ))
     }
 
-    fn supports_server_copy(&self) -> bool { true }
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_clean = Self::normalize_path(from);
@@ -1007,11 +1169,16 @@ impl StorageProvider for SwiftProvider {
             ("Content-Length".to_string(), "0".to_string()),
         ];
 
-        let resp = self.swift_request(Method::PUT, &dest_url, Some(vec![]), &headers).await?;
+        let resp = self
+            .swift_request(Method::PUT, &dest_url, Some(vec![]), &headers)
+            .await?;
         if resp.status() == StatusCode::CREATED || resp.status().is_success() {
             Ok(())
         } else {
-            Err(ProviderError::ServerError(format!("Server copy failed: HTTP {}", resp.status())))
+            Err(ProviderError::ServerError(format!(
+                "Server copy failed: HTTP {}",
+                resp.status()
+            )))
         }
     }
 
@@ -1021,13 +1188,15 @@ impl StorageProvider for SwiftProvider {
         let url = self.storage_url()?.to_string();
         let resp = self.swift_request(Method::HEAD, &url, None, &[]).await?;
 
-        let used: u64 = resp.headers()
+        let used: u64 = resp
+            .headers()
             .get("x-account-bytes-used")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
-        let total: u64 = resp.headers()
+        let total: u64 = resp
+            .headers()
             .get("x-account-meta-quota-bytes")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok())

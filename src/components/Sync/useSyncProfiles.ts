@@ -47,6 +47,7 @@ export function useSyncProfiles(isOpen: boolean): {
                 compare_checksum: profile.compare_checksum,
                 exclude_patterns: [...profile.exclude_patterns],
                 direction: profile.direction,
+                delete_orphans: profile.delete_orphans,
             },
             retryPolicy: { ...profile.retry_policy },
             verifyPolicy: profile.verify_policy,

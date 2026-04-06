@@ -7,10 +7,10 @@
 //! emitting a Tauri event per result so the UI updates progressively.
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Semaphore;
-use std::sync::Arc;
 
 /// Input: list of providers to check
 #[derive(Debug, Deserialize)]
@@ -101,11 +101,14 @@ pub async fn start_health_scan(
             let (status, latency_ms) = check_one(&target.url).await;
 
             // Emit event to frontend
-            let _ = app_clone.emit("health-scan-result", HealthScanEvent {
-                id: target.id,
-                status: status.to_string(),
-                latency_ms,
-            });
+            let _ = app_clone.emit(
+                "health-scan-result",
+                HealthScanEvent {
+                    id: target.id,
+                    status: status.to_string(),
+                    latency_ms,
+                },
+            );
         });
         handles.push(handle);
     }

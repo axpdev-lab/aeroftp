@@ -4,20 +4,20 @@
 // Tray badge icon generation and management
 // Generates tray icons with colored dot badges + overlay icons for AeroCloud sync state
 
-use std::sync::atomic::{AtomicU8, Ordering};
 use image::Rgba;
+use std::sync::atomic::{AtomicU8, Ordering};
 use tauri::image::Image;
 use tauri::AppHandle;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 /// Tray badge states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TrayBadgeState {
-    Default = 0,   // No badge — idle/synced (Dropbox-style: no badge = all good)
-    Syncing = 1,   // Blue dot + white sync arrows (sync in progress)
-    Error = 2,     // Red dot + white X (error occurred)
-    Paused = 3,    // Grey dot + white pause bars (user paused sync)
+    Default = 0, // No badge — idle/synced (Dropbox-style: no badge = all good)
+    Syncing = 1, // Blue dot + white sync arrows (sync in progress)
+    Error = 2,   // Red dot + white X (error occurred)
+    Paused = 3,  // Grey dot + white pause bars (user paused sync)
 }
 
 impl TrayBadgeState {
@@ -29,7 +29,10 @@ impl TrayBadgeState {
             "paused" => Self::Paused,
             "default" | "synced" => Self::Default, // "synced" mapped to Default (Dropbox-style)
             other => {
-                warn!("Unrecognized tray badge state: {:?}, defaulting to Default", other);
+                warn!(
+                    "Unrecognized tray badge state: {:?}, defaulting to Default",
+                    other
+                );
                 Self::Default
             }
         }
@@ -39,9 +42,9 @@ impl TrayBadgeState {
     fn badge_color(&self) -> Option<[u8; 4]> {
         match self {
             Self::Default => None,
-            Self::Syncing => Some([33, 150, 243, 255]),   // #2196F3 - Material Blue 500
-            Self::Error => Some([244, 67, 54, 255]),      // #F44336 - Material Red 500
-            Self::Paused => Some([158, 158, 158, 255]),   // #9E9E9E - Material Grey 500
+            Self::Syncing => Some([33, 150, 243, 255]), // #2196F3 - Material Blue 500
+            Self::Error => Some([244, 67, 54, 255]),    // #F44336 - Material Red 500
+            Self::Paused => Some([158, 158, 158, 255]), // #9E9E9E - Material Grey 500
         }
     }
 
@@ -66,8 +69,10 @@ const BASE_ICON_BYTES: &[u8] = include_bytes!("../../icons/AeroFTP_simbol_white_
 /// Pixels within `half_w` distance of the line segment get colored.
 fn draw_thick_line(
     rgba: &mut image::RgbaImage,
-    x0: f32, y0: f32,
-    x1: f32, y1: f32,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
     half_w: f32,
     color: Rgba<u8>,
 ) {
@@ -110,16 +115,22 @@ fn draw_badge_pause(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
     // Left bar
     draw_thick_line(
         rgba,
-        cx - bar_spacing, cy - bar_half_h,
-        cx - bar_spacing, cy + bar_half_h,
-        hw, white,
+        cx - bar_spacing,
+        cy - bar_half_h,
+        cx - bar_spacing,
+        cy + bar_half_h,
+        hw,
+        white,
     );
     // Right bar
     draw_thick_line(
         rgba,
-        cx + bar_spacing, cy - bar_half_h,
-        cx + bar_spacing, cy + bar_half_h,
-        hw, white,
+        cx + bar_spacing,
+        cy - bar_half_h,
+        cx + bar_spacing,
+        cy + bar_half_h,
+        hw,
+        white,
     );
 }
 
@@ -223,8 +234,8 @@ fn generate_badge_icon(
 
     // Badge parameters — bottom-right, nudged 1px up + 1px right (no white border, like Ubuntu Livepatch)
     let badge_radius = (width as f32 * 0.22).round() as i32; // 22% of width — visible like Ubuntu Livepatch
-    let badge_center_x = width as i32 - badge_radius;         // 1px more right than original
-    let badge_center_y = height as i32 - badge_radius - 2;    // 1px more up than original
+    let badge_center_x = width as i32 - badge_radius; // 1px more right than original
+    let badge_center_y = height as i32 - badge_radius - 2; // 1px more up than original
     let badge_rgba = Rgba(badge_color);
 
     // Draw solid badge circle (no border — matches Ubuntu Livepatch style)

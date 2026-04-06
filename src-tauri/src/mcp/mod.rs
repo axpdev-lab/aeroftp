@@ -22,13 +22,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-pub mod transport;
+pub mod pool;
+pub mod prompts;
+pub mod resources;
+pub mod security;
 pub mod server;
 pub mod tools;
-pub mod resources;
-pub mod prompts;
-pub mod pool;
-pub mod security;
+pub mod transport;
 
 use crate::credential_store::CredentialStore;
 
@@ -85,8 +85,9 @@ impl McpServer {
 
 /// Load safe (no-password) profiles from the cached vault.
 fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
-    let store = CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not open. Set AEROFTP_MASTER_PASSWORD or open vault first.".to_string())?;
+    let store = CredentialStore::from_cache().ok_or_else(|| {
+        "Vault not open. Set AEROFTP_MASTER_PASSWORD or open vault first.".to_string()
+    })?;
     let profiles_json = store
         .get("config_server_profiles")
         .map_err(|e| format!("Failed to read profiles: {}", e))?;

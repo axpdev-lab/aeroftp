@@ -6,8 +6,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde::Serialize;
 use secrecy::{ExposeSecret, SecretString};
+use serde::Serialize;
 
 /// M16: Validate archive entry paths to prevent path traversal attacks (ZipSlip).
 /// Rejects entries containing ".." components, absolute paths, or Windows drive prefixes.
@@ -46,21 +46,24 @@ pub struct ArchiveEntry {
 // ─── ZIP ───────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn list_zip(archive_path: String, password: Option<String>) -> Result<Vec<ArchiveEntry>, String> {
+pub async fn list_zip(
+    archive_path: String,
+    password: Option<String>,
+) -> Result<Vec<ArchiveEntry>, String> {
     use std::fs::File;
     use zip::ZipArchive;
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
     let mut entries = Vec::new();
 
     for i in 0..archive.len() {
         // Use by_index_raw to get metadata without decompressing
-        let raw = archive.by_index_raw(i)
+        let raw = archive
+            .by_index_raw(i)
             .map_err(|e| format!("Failed to read entry {}: {}", i, e))?;
 
         let encrypted = raw.encrypted();
@@ -71,8 +74,12 @@ pub async fn list_zip(archive_path: String, password: Option<String>) -> Result<
         let modified = raw.last_modified().map(|dt| {
             format!(
                 "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-                dt.year(), dt.month(), dt.day(),
-                dt.hour(), dt.minute(), dt.second()
+                dt.year(),
+                dt.month(),
+                dt.day(),
+                dt.hour(),
+                dt.minute(),
+                dt.second()
             )
         });
 
@@ -92,13 +99,14 @@ pub async fn list_zip(archive_path: String, password: Option<String>) -> Result<
     // If encrypted and password provided, verify it works by trying to read first file
     if entries.iter().any(|e| e.is_encrypted) {
         if let Some(ref pwd) = secret_password {
-            let file = File::open(&archive_path)
-                .map_err(|e| format!("Failed to open archive: {}", e))?;
-            let mut archive = ZipArchive::new(file)
-                .map_err(|e| format!("Failed to read archive: {}", e))?;
+            let file =
+                File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+            let mut archive =
+                ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
             // Try decrypting first non-dir entry to validate password
             for i in 0..archive.len() {
-                let entry = archive.by_index_decrypt(i, pwd.expose_secret().as_bytes())
+                let entry = archive
+                    .by_index_decrypt(i, pwd.expose_secret().as_bytes())
                     .map_err(|e| format!("Invalid password or corrupt archive: {}", e))?;
                 if !entry.name().ends_with('/') {
                     break;
@@ -123,32 +131,35 @@ pub async fn extract_zip_entry(
 
     // M16: Validate entry name before extraction to prevent path traversal (ZipSlip)
     if !is_safe_archive_entry(&entry_name) {
-        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+        return Err(format!(
+            "Unsafe archive entry path rejected: {}",
+            entry_name
+        ));
     }
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
 
     let mut entry = if let Some(ref pwd) = secret_password {
-        archive.by_name_decrypt(&entry_name, pwd.expose_secret().as_bytes())
+        archive
+            .by_name_decrypt(&entry_name, pwd.expose_secret().as_bytes())
             .map_err(|e| format!("Entry not found: {}", e))?
     } else {
-        archive.by_name(&entry_name)
+        archive
+            .by_name(&entry_name)
             .map_err(|e| format!("Entry not found: {}", e))?
     };
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
     // Atomic write: extract to .tmp then rename to prevent partial files on failure
     let tmp_path = out_path.with_extension("aerotmp");
-    let mut outfile = File::create(&tmp_path)
-        .map_err(|e| format!("Failed to create output file: {}", e))?;
+    let mut outfile =
+        File::create(&tmp_path).map_err(|e| format!("Failed to create output file: {}", e))?;
     if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
         let _ = fs::remove_file(&tmp_path);
         return Err(format!("Failed to extract entry: {}", e));
@@ -163,16 +174,19 @@ pub async fn extract_zip_entry(
 // ─── 7z ────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<Vec<ArchiveEntry>, String> {
+pub async fn list_7z(
+    archive_path: String,
+    password: Option<String>,
+) -> Result<Vec<ArchiveEntry>, String> {
     use sevenz_rust::*;
     use std::fs::File;
     use std::io::BufReader;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
-    let len = file.metadata()
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let len = file
+        .metadata()
         .map_err(|e| format!("Failed to get metadata: {}", e))?
         .len();
     let reader = BufReader::new(file);
@@ -187,7 +201,10 @@ pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<V
         Ok(a) => a,
         Err(e) => {
             let err_str = format!("{:?}", e);
-            if err_str.contains("password") || err_str.contains("Password") || err_str.contains("PasswordRequired") {
+            if err_str.contains("password")
+                || err_str.contains("Password")
+                || err_str.contains("PasswordRequired")
+            {
                 return Err("PasswordRequired".to_string());
             }
             return Err(format!("Failed to read 7z archive: {}", e));
@@ -206,7 +223,9 @@ pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<V
                 }
                 Ok(false) // stop after first
             });
-            if result.is_err() { encrypted = true; }
+            if result.is_err() {
+                encrypted = true;
+            }
         }
         encrypted
     } else {
@@ -218,8 +237,8 @@ pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<V
     }
 
     // Re-open to get clean state for listing (for_each_entries consumed the reader)
-    let file2 = std::fs::File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file2 =
+        std::fs::File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let len2 = file2.metadata().map_err(|e| format!("{}", e))?.len();
     let reader2 = std::io::BufReader::new(file2);
     let pwd2 = secret_password
@@ -229,18 +248,23 @@ pub async fn list_7z(archive_path: String, password: Option<String>) -> Result<V
     let archive2 = SevenZReader::new(reader2, len2, pwd2)
         .map_err(|e| format!("Failed to read 7z archive: {}", e))?;
 
-    let entries: Vec<ArchiveEntry> = archive2.archive().files.iter().map(|entry| {
-        let name = entry.name().to_string();
-        let is_dir = entry.is_directory();
-        ArchiveEntry {
-            name,
-            size: entry.size(),
-            compressed_size: 0,
-            is_dir,
-            is_encrypted: entry.has_stream() && secret_password.is_some(),
-            modified: None,
-        }
-    }).collect();
+    let entries: Vec<ArchiveEntry> = archive2
+        .archive()
+        .files
+        .iter()
+        .map(|entry| {
+            let name = entry.name().to_string();
+            let is_dir = entry.is_directory();
+            ArchiveEntry {
+                name,
+                size: entry.size(),
+                compressed_size: 0,
+                is_dir,
+                is_encrypted: entry.has_stream() && secret_password.is_some(),
+                modified: None,
+            }
+        })
+        .collect();
 
     Ok(entries)
 }
@@ -258,14 +282,17 @@ pub async fn extract_7z_entry(
 
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
-        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+        return Err(format!(
+            "Unsafe archive entry path rejected: {}",
+            entry_name
+        ));
     }
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
-    let len = file.metadata()
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let len = file
+        .metadata()
         .map_err(|e| format!("Failed to get metadata: {}", e))?
         .len();
     let reader = BufReader::new(file);
@@ -280,23 +307,24 @@ pub async fn extract_7z_entry(
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
     let mut found = false;
     let tmp_path = out_path.with_extension("aerotmp");
-    archive.for_each_entries(|entry, reader| {
-        if entry.name() == entry_name {
-            found = true;
-            let mut outfile = File::create(&tmp_path)?;
-            std::io::copy(reader, &mut outfile)?;
-        }
-        Ok(true)
-    }).map_err(|e| {
-        let _ = fs::remove_file(&tmp_path);
-        format!("Failed to extract: {}", e)
-    })?;
+    archive
+        .for_each_entries(|entry, reader| {
+            if entry.name() == entry_name {
+                found = true;
+                let mut outfile = File::create(&tmp_path)?;
+                std::io::copy(reader, &mut outfile)?;
+            }
+            Ok(true)
+        })
+        .map_err(|e| {
+            let _ = fs::remove_file(&tmp_path);
+            format!("Failed to extract: {}", e)
+        })?;
 
     if found {
         fs::rename(&tmp_path, out_path)
@@ -317,8 +345,7 @@ pub async fn extract_7z_entry(
 fn open_tar_reader(archive_path: &str) -> Result<Box<dyn std::io::Read>, String> {
     use std::fs::File;
 
-    let file = File::open(archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let ext = archive_path.to_lowercase();
 
     if ext.ends_with(".tar.gz") || ext.ends_with(".tgz") {
@@ -338,11 +365,15 @@ pub async fn list_tar(archive_path: String) -> Result<Vec<ArchiveEntry>, String>
     let mut archive = tar::Archive::new(reader);
 
     let mut entries = Vec::new();
-    for entry_result in archive.entries().map_err(|e| format!("Failed to read tar: {}", e))? {
+    for entry_result in archive
+        .entries()
+        .map_err(|e| format!("Failed to read tar: {}", e))?
+    {
         let entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
         let header = entry.header();
 
-        let name = entry.path()
+        let name = entry
+            .path()
             .map_err(|e| format!("Invalid path: {}", e))?
             .to_string_lossy()
             .to_string();
@@ -377,7 +408,10 @@ pub async fn extract_tar_entry(
 
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
-        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+        return Err(format!(
+            "Unsafe archive entry path rejected: {}",
+            entry_name
+        ));
     }
 
     let reader = open_tar_reader(&archive_path)?;
@@ -385,13 +419,16 @@ pub async fn extract_tar_entry(
 
     let out_path = std::path::Path::new(&output_path);
     if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    for entry_result in archive.entries().map_err(|e| format!("Failed to read tar: {}", e))? {
+    for entry_result in archive
+        .entries()
+        .map_err(|e| format!("Failed to read tar: {}", e))?
+    {
         let mut entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path()
+        let path = entry
+            .path()
             .map_err(|e| format!("Invalid path: {}", e))?
             .to_string_lossy()
             .to_string();
@@ -399,8 +436,8 @@ pub async fn extract_tar_entry(
         if path == entry_name {
             // Atomic write: extract to .tmp then rename to prevent partial files
             let tmp_path = out_path.with_extension("aerotmp");
-            let mut outfile = File::create(&tmp_path)
-                .map_err(|e| format!("Failed to create file: {}", e))?;
+            let mut outfile =
+                File::create(&tmp_path).map_err(|e| format!("Failed to create file: {}", e))?;
             if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(format!("Failed to extract: {}", e));
@@ -448,7 +485,10 @@ pub async fn extract_rar_entry(
 ) -> Result<String, String> {
     // M16: Validate entry name before extraction to prevent path traversal
     if !is_safe_archive_entry(&entry_name) {
-        return Err(format!("Unsafe archive entry path rejected: {}", entry_name));
+        return Err(format!(
+            "Unsafe archive entry path rejected: {}",
+            entry_name
+        ));
     }
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
@@ -459,8 +499,7 @@ pub async fn extract_rar_entry(
         .to_string_lossy()
         .to_string();
 
-    std::fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let archive = if let Some(ref pwd) = secret_password {
         unrar::Archive::with_password(&archive_path, pwd.expose_secret().as_bytes())
@@ -468,19 +507,23 @@ pub async fn extract_rar_entry(
         unrar::Archive::new(&archive_path)
     };
 
-    let mut archive = archive.open_for_processing()
+    let mut archive = archive
+        .open_for_processing()
         .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
 
-    while let Some(header) = archive.read_header()
+    while let Some(header) = archive
+        .read_header()
         .map_err(|e| format!("Failed to read header: {}", e))?
     {
         let entry_path = header.entry().filename.to_string_lossy().to_string();
         if entry_path == entry_name {
-            header.extract_to(&output_path)
+            header
+                .extract_to(&output_path)
                 .map_err(|e| format!("Failed to extract entry: {}", e))?;
             return Ok(output_path);
         } else {
-            archive = header.skip()
+            archive = header
+                .skip()
                 .map_err(|e| format!("Failed to skip entry: {}", e))?;
         }
     }

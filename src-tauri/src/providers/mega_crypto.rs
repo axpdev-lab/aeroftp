@@ -4,10 +4,10 @@
 //! MEGA protocol cryptography — AES-128, RSA, KDF v1/v2, node key management.
 //! Implements the MEGA file encryption protocol as specified in APPENDIX-N/N2.
 
+use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArray};
-use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use ctr::cipher::StreamCipher;
 use num_bigint_dig::BigUint;
@@ -49,8 +49,10 @@ pub fn kdf_v1(password: &[u8]) -> MegaCryptoResult<[u8; 16]> {
         }
 
         // 65536 rounds of AES-ECB with the current key as both data and key derivation input
-        let mut pkey = [0x93, 0xC4, 0x67, 0xE3, 0x7D, 0xB0, 0xC7, 0xA4,
-                        0xD1, 0xBE, 0x3F, 0x81, 0x01, 0x52, 0xCB, 0x56]; // MEGA constant
+        let mut pkey = [
+            0x93, 0xC4, 0x67, 0xE3, 0x7D, 0xB0, 0xC7, 0xA4, 0xD1, 0xBE, 0x3F, 0x81, 0x01, 0x52,
+            0xCB, 0x56,
+        ]; // MEGA constant
         for _ in 0..65536 {
             let cipher = Aes128::new(GenericArray::from_slice(&key));
             let mut block = GenericArray::clone_from_slice(&pkey);
@@ -133,7 +135,8 @@ pub fn aes_ecb_decrypt_block(data: &[u8; 16], key: &[u8; 16]) -> MegaCryptoResul
 pub fn aes_ecb_decrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
-            "AES-ECB multi-block: data length {} is not a multiple of 16", data.len()
+            "AES-ECB multi-block: data length {} is not a multiple of 16",
+            data.len()
         )));
     }
     let cipher = Aes128::new(GenericArray::from_slice(key));
@@ -150,7 +153,8 @@ pub fn aes_ecb_decrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Ve
 pub fn aes_ecb_encrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
-            "AES-ECB multi-block: data length {} is not a multiple of 16", data.len()
+            "AES-ECB multi-block: data length {} is not a multiple of 16",
+            data.len()
         )));
     }
     let cipher = Aes128::new(GenericArray::from_slice(key));
@@ -172,7 +176,8 @@ type Aes128CbcEnc = cbc::Encryptor<Aes128>;
 pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
-            "AES-CBC: data length {} is not a multiple of 16", data.len()
+            "AES-CBC: data length {} is not a multiple of 16",
+            data.len()
         )));
     }
     let iv = [0u8; 16];
@@ -187,7 +192,8 @@ pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>>
 pub fn aes_cbc_encrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
-            "AES-CBC: data length {} is not a multiple of 16", data.len()
+            "AES-CBC: data length {} is not a multiple of 16",
+            data.len()
         )));
     }
     let iv = [0u8; 16];
@@ -262,7 +268,8 @@ pub fn compute_attr_key(key: &[u8]) -> MegaCryptoResult<[u8; 16]> {
             Ok(attr_key)
         }
         other => Err(ProviderError::ParseError(format!(
-            "Invalid node key length: {} (expected 16 or 32)", other
+            "Invalid node key length: {} (expected 16 or 32)",
+            other
         ))),
     }
 }
@@ -314,7 +321,10 @@ pub fn decrypt_node_attrs(encrypted: &[u8], key: &[u8]) -> MegaCryptoResult<Stri
     let json_str = std::str::from_utf8(json_bytes)
         .unwrap_or_else(|_| {
             // Try to find valid UTF-8 up to the first null or invalid byte
-            let end = json_bytes.iter().position(|&b| b == 0).unwrap_or(json_bytes.len());
+            let end = json_bytes
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(json_bytes.len());
             std::str::from_utf8(&json_bytes[..end]).unwrap_or("")
         })
         .trim_end_matches('\0')
@@ -326,7 +336,10 @@ pub fn decrypt_node_attrs(encrypted: &[u8], key: &[u8]) -> MegaCryptoResult<Stri
 /// Encrypt MEGA node attributes. Prepends "MEGA" prefix, pads to 16-byte boundary, AES-CBC with zero IV.
 pub fn encrypt_node_attrs(name: &str, key: &[u8]) -> MegaCryptoResult<Vec<u8>> {
     let attr_key = compute_attr_key(key)?;
-    let json = format!("MEGA{{\"n\":\"{}\"}}", name.replace('\\', "\\\\").replace('"', "\\\""));
+    let json = format!(
+        "MEGA{{\"n\":\"{}\"}}",
+        name.replace('\\', "\\\\").replace('"', "\\\"")
+    );
     let mut data = json.into_bytes();
 
     // Pad to 16-byte boundary with null bytes
@@ -414,7 +427,9 @@ pub fn compute_chunk_boundaries(file_size: u64) -> Vec<(u64, usize)> {
 /// Returns (value, bytes_consumed).
 fn decode_mpi(data: &[u8]) -> MegaCryptoResult<(BigUint, usize)> {
     if data.len() < 2 {
-        return Err(ProviderError::ParseError("MPI too short for length prefix".to_string()));
+        return Err(ProviderError::ParseError(
+            "MPI too short for length prefix".to_string(),
+        ));
     }
     let bit_len = ((data[0] as usize) << 8) | (data[1] as usize);
     let byte_len = bit_len.div_ceil(8);
@@ -422,7 +437,9 @@ fn decode_mpi(data: &[u8]) -> MegaCryptoResult<(BigUint, usize)> {
 
     if data.len() < total {
         return Err(ProviderError::ParseError(format!(
-            "MPI: need {} bytes but only {} available", total, data.len()
+            "MPI: need {} bytes but only {} available",
+            total,
+            data.len()
         )));
     }
 
@@ -434,7 +451,11 @@ fn decode_mpi(data: &[u8]) -> MegaCryptoResult<(BigUint, usize)> {
 #[allow(dead_code)]
 fn encode_mpi(value: &BigUint) -> Vec<u8> {
     let bytes = value.to_bytes_be();
-    let bit_len = if bytes.is_empty() { 0u16 } else { (bytes.len() as u16 - 1) * 8 + (8 - bytes[0].leading_zeros() as u16) };
+    let bit_len = if bytes.is_empty() {
+        0u16
+    } else {
+        (bytes.len() as u16 - 1) * 8 + (8 - bytes[0].leading_zeros() as u16)
+    };
     let mut out = Vec::with_capacity(2 + bytes.len());
     out.push((bit_len >> 8) as u8);
     out.push(bit_len as u8);
@@ -461,7 +482,8 @@ pub fn decrypt_rsa_privkey(
     for name in &["p", "q", "d", "u"] {
         if offset >= decrypted.len() {
             return Err(ProviderError::ParseError(format!(
-                "RSA private key: unexpected end while reading component {}", name
+                "RSA private key: unexpected end while reading component {}",
+                name
             )));
         }
         let (value, consumed) = decode_mpi(&decrypted[offset..])?;
@@ -499,7 +521,8 @@ pub fn rsa_decrypt_csid(
     // Session ID is the first 43 bytes of the decrypted MPI value
     if decrypted_bytes.len() < 43 {
         return Err(ProviderError::ParseError(format!(
-            "RSA-decrypted csid too short: {} bytes (need 43)", decrypted_bytes.len()
+            "RSA-decrypted csid too short: {} bytes (need 43)",
+            decrypted_bytes.len()
         )));
     }
 
@@ -510,7 +533,10 @@ pub fn rsa_decrypt_csid(
 
 /// Decrypt a MEGA node key. The encrypted key is XOR-ed with the owner's key
 /// in a specific pattern depending on length (file=32 bytes, folder=16 bytes).
-pub fn decrypt_node_key_xor(encrypted_key: &[u8], owner_key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
+pub fn decrypt_node_key_xor(
+    encrypted_key: &[u8],
+    owner_key: &[u8; 16],
+) -> MegaCryptoResult<Vec<u8>> {
     match encrypted_key.len() {
         32 => {
             // File node: 32-byte key, AES-ECB decrypt 2 blocks
@@ -530,7 +556,8 @@ pub fn decrypt_node_key_xor(encrypted_key: &[u8], owner_key: &[u8; 16]) -> MegaC
             Ok(decrypted.to_vec())
         }
         other => Err(ProviderError::ParseError(format!(
-            "Unexpected MEGA node key length: {} (expected 16 or 32)", other
+            "Unexpected MEGA node key length: {} (expected 16 or 32)",
+            other
         ))),
     }
 }
@@ -558,7 +585,10 @@ mod tests {
         let salt = hex::decode("00112233445566778899aabbccddeeff").unwrap();
         let (password_key, user_hash) = kdf_v2(b"correct horse battery staple", &salt).unwrap();
 
-        assert_eq!(hex::encode(password_key), "6cbed59f582390f4e8aae45c04c545a3");
+        assert_eq!(
+            hex::encode(password_key),
+            "6cbed59f582390f4e8aae45c04c545a3"
+        );
         assert_eq!(hex::encode(user_hash), "f95598ec9077408dd6731403cbae2a4b");
     }
 

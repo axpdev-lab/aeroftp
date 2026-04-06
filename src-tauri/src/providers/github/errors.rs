@@ -39,10 +39,7 @@ pub enum GitHubError {
     /// Repository rules require changes via pull request.
     RequiredPullRequest,
     /// Conflict: the file's SHA changed between read and write (struct form).
-    StaleObject {
-        path: String,
-        expected_sha: String,
-    },
+    StaleObject { path: String, expected_sha: String },
 
     // ── Releases ────────────────────────────────────────────────────
     /// Attempted to upload an asset that already exists on the release.
@@ -52,40 +49,27 @@ pub enum GitHubError {
 
     // ── Rate limits ─────────────────────────────────────────────────
     /// Primary rate limit hit (X-RateLimit-Remaining = 0).
-    PrimaryRateLimit {
-        reset_at: u64,
-    },
+    PrimaryRateLimit { reset_at: u64 },
     /// Secondary (abuse) rate limit — Retry-After header present.
-    SecondaryRateLimit {
-        retry_after: u64,
-    },
+    SecondaryRateLimit { retry_after: u64 },
 
     // ── Transport ───────────────────────────────────────────────────
     /// DNS, TLS, or TCP-level failure.
     NetworkError(String),
     /// Non-classified REST API error.
-    ApiError {
-        status: u16,
-        message: String,
-    },
+    ApiError { status: u16, message: String },
     /// Server-side error (5xx).
     ServerError(String),
 
     // ── Content ─────────────────────────────────────────────────────
     /// File exceeds the Contents API size limit (100 MB).
-    FileTooLarge {
-        size: u64,
-        max: u64,
-    },
+    FileTooLarge { size: u64, max: u64 },
     /// Payload too large (GraphQL).
     PayloadTooLarge(String),
 
     // ── GraphQL ─────────────────────────────────────────────────────
     /// GraphQL-level error with type and message.
-    GraphQLError {
-        error_type: String,
-        message: String,
-    },
+    GraphQLError { error_type: String, message: String },
     /// Parse/deserialization error.
     ParseError(String),
     /// Invalid input to a mutation.
@@ -222,9 +206,7 @@ impl From<GitHubError> for ProviderError {
             GitHubError::StaleObject { .. } => ProviderError::TransferFailed(e.to_string()),
 
             // Duplicate
-            GitHubError::DuplicateAsset(_) => {
-                ProviderError::AlreadyExists(e.to_string())
-            }
+            GitHubError::DuplicateAsset(_) => ProviderError::AlreadyExists(e.to_string()),
 
             // Rate limits
             GitHubError::PrimaryRateLimit { .. } | GitHubError::SecondaryRateLimit { .. } => {
@@ -317,9 +299,7 @@ pub fn classify_api_error(
             } else if message.contains("abuse") || message.contains("secondary") {
                 GitHubError::SecondaryRateLimit { retry_after: 60 }
             } else if message.contains("push") || message.contains("protected") {
-                GitHubError::ProtectedBranch(
-                    path_hint.unwrap_or("unknown").to_string(),
-                )
+                GitHubError::ProtectedBranch(path_hint.unwrap_or("unknown").to_string())
             } else {
                 GitHubError::InsufficientPermissions(message)
             }
@@ -333,9 +313,7 @@ pub fn classify_api_error(
         }
         409 => {
             if error_code == "already_exists" {
-                GitHubError::DuplicateAsset(
-                    path_hint.unwrap_or("unknown").to_string(),
-                )
+                GitHubError::DuplicateAsset(path_hint.unwrap_or("unknown").to_string())
             } else {
                 GitHubError::StaleObject {
                     path: path_hint.unwrap_or("unknown").to_string(),

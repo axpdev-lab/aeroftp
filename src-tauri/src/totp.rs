@@ -12,11 +12,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use totp_rs::{Algorithm, TOTP, Secret};
-use tauri::State;
 use secrecy::{ExposeSecret, SecretString};
 use std::sync::Mutex;
 use std::time::Instant;
+use tauri::State;
+use totp_rs::{Algorithm, Secret, TOTP};
 
 /// Maximum failed TOTP attempts before lockout.
 const MAX_FAILED_ATTEMPTS: u32 = 5;
@@ -64,7 +64,9 @@ impl Default for TotpState {
 
 /// Acquire the inner lock with poison recovery.
 fn lock_state(state: &TotpState) -> Result<std::sync::MutexGuard<'_, TotpInner>, String> {
-    state.inner.lock()
+    state
+        .inner
+        .lock()
         .map_err(|_| "TOTP internal state error".to_string())
 }
 
@@ -88,7 +90,8 @@ fn record_failure(inner: &mut TotpInner) {
     if inner.failed_attempts >= MAX_FAILED_ATTEMPTS {
         // Exponential backoff: 30s, 60s, 120s, 240s... capped at 15 min
         let multiplier = inner.failed_attempts.saturating_sub(MAX_FAILED_ATTEMPTS);
-        let secs = BASE_LOCKOUT_SECS.saturating_mul(1u64.checked_shl(multiplier).unwrap_or(u64::MAX));
+        let secs =
+            BASE_LOCKOUT_SECS.saturating_mul(1u64.checked_shl(multiplier).unwrap_or(u64::MAX));
         let secs = secs.min(900); // Cap at 15 minutes
         inner.lockout_until = Some(Instant::now() + std::time::Duration::from_secs(secs));
     }
@@ -133,9 +136,7 @@ fn generate_secret_base32() -> String {
 /// Start 2FA setup: generate a new TOTP secret and return the otpauth URI.
 /// Returns: { secret: string, uri: string }
 #[tauri::command]
-pub fn totp_setup_start(
-    state: State<'_, TotpState>,
-) -> Result<serde_json::Value, String> {
+pub fn totp_setup_start(state: State<'_, TotpState>) -> Result<serde_json::Value, String> {
     let secret_base32 = generate_secret_base32();
     let totp = build_totp(&secret_base32)?;
     let uri = totp.get_url();
@@ -155,17 +156,17 @@ pub fn totp_setup_start(
 /// Verify a TOTP code during setup. If valid, marks the pending secret as verified.
 /// The caller must then call totp_enable to activate.
 #[tauri::command]
-pub fn totp_setup_verify(
-    state: State<'_, TotpState>,
-    code: String,
-) -> Result<bool, String> {
+pub fn totp_setup_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
     let mut inner = lock_state(&state)?;
     check_rate_limit(&inner)?;
 
-    let secret = inner.pending_secret.as_ref()
+    let secret = inner
+        .pending_secret
+        .as_ref()
         .ok_or("No pending TOTP setup")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp.check_current(&code)
+    let valid = totp
+        .check_current(&code)
         .map_err(|e| format!("TOTP check error: {}", e))?;
 
     if valid {
@@ -179,17 +180,17 @@ pub fn totp_setup_verify(
 
 /// Verify a TOTP code during unlock (using the active secret).
 #[tauri::command]
-pub fn totp_verify(
-    state: State<'_, TotpState>,
-    code: String,
-) -> Result<bool, String> {
+pub fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
     let mut inner = lock_state(&state)?;
     check_rate_limit(&inner)?;
 
-    let secret = inner.active_secret.as_ref()
+    let secret = inner
+        .active_secret
+        .as_ref()
         .ok_or("No active TOTP secret")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp.check_current(&code)
+    let valid = totp
+        .check_current(&code)
         .map_err(|e| format!("TOTP check error: {}", e))?;
 
     if valid {
@@ -202,9 +203,7 @@ pub fn totp_verify(
 
 /// Check if TOTP is enabled.
 #[tauri::command]
-pub fn totp_status(
-    state: State<'_, TotpState>,
-) -> Result<bool, String> {
+pub fn totp_status(state: State<'_, TotpState>) -> Result<bool, String> {
     let inner = lock_state(&state)?;
     Ok(inner.enabled)
 }
@@ -215,23 +214,24 @@ pub fn totp_status(
 /// If the vault store fails, TOTP is NOT enabled (fail-closed).
 /// Returns the secret as a plain String for backward compatibility.
 #[tauri::command]
-pub fn totp_enable(
-    state: State<'_, TotpState>,
-) -> Result<String, String> {
+pub fn totp_enable(state: State<'_, TotpState>) -> Result<String, String> {
     let mut inner = lock_state(&state)?;
 
     if !inner.setup_verified {
         return Err("Must verify TOTP code before enabling".into());
     }
 
-    let secret = inner.pending_secret.as_ref()
+    let secret = inner
+        .pending_secret
+        .as_ref()
         .ok_or("No pending secret to enable")?;
     let secret_plain = secret.expose_secret().to_string();
 
     // A2-05: Store TOTP secret in vault BEFORE enabling — atomic operation.
     // If vault write fails, TOTP is not enabled (fail-closed).
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        store.store_internal("totp_secret", &secret_plain)
+        store
+            .store_internal("totp_secret", &secret_plain)
             .map_err(|e| format!("Failed to store TOTP secret in vault: {}", e))?;
     } else {
         return Err("Credential vault not available — cannot enable TOTP".into());
@@ -248,17 +248,14 @@ pub fn totp_enable(
 
 /// Disable TOTP (requires valid code first).
 #[tauri::command]
-pub fn totp_disable(
-    state: State<'_, TotpState>,
-    code: String,
-) -> Result<bool, String> {
+pub fn totp_disable(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
     let mut inner = lock_state(&state)?;
     check_rate_limit(&inner)?;
 
-    let secret = inner.active_secret.as_ref()
-        .ok_or("TOTP not enabled")?;
+    let secret = inner.active_secret.as_ref().ok_or("TOTP not enabled")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp.check_current(&code)
+    let valid = totp
+        .check_current(&code)
         .map_err(|e| format!("TOTP check error: {}", e))?;
 
     if valid {
@@ -276,10 +273,7 @@ pub fn totp_disable(
 
 /// Load TOTP state from a stored secret (called after vault unlock).
 #[tauri::command]
-pub fn totp_load_secret(
-    state: State<'_, TotpState>,
-    secret: String,
-) -> Result<(), String> {
+pub fn totp_load_secret(state: State<'_, TotpState>, secret: String) -> Result<(), String> {
     load_secret_internal(&state, &secret)
 }
 
@@ -301,10 +295,13 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
     let mut inner = lock_state(state)?;
     check_rate_limit(&inner)?;
 
-    let secret = inner.active_secret.as_ref()
+    let secret = inner
+        .active_secret
+        .as_ref()
         .ok_or("No active TOTP secret")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp.check_current(code)
+    let valid = totp
+        .check_current(code)
         .map_err(|e| format!("TOTP check error: {}", e))?;
 
     if valid {

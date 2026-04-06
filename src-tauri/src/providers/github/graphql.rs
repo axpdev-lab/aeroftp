@@ -77,7 +77,15 @@ pub async fn batch_commit(
     client: &mut GitHubHttpClient,
     params: &BatchCommitParams<'_>,
 ) -> Result<String, GitHubError> {
-    let BatchCommitParams { owner, repo, branch, head_oid, message, additions, deletions } = params;
+    let BatchCommitParams {
+        owner,
+        repo,
+        branch,
+        head_oid,
+        message,
+        additions,
+        deletions,
+    } = params;
     if additions.is_empty() && deletions.is_empty() {
         return Err(GitHubError::InvalidInput(
             "batch_commit requires at least one addition or deletion".into(),
@@ -138,9 +146,8 @@ pub async fn batch_commit(
     });
 
     let resp = client.graphql_raw(&body).await?;
-    let gql: GraphQLResponse = serde_json::from_value(resp).map_err(|e| {
-        GitHubError::ParseError(format!("Failed to parse GraphQL response: {e}"))
-    })?;
+    let gql: GraphQLResponse = serde_json::from_value(resp)
+        .map_err(|e| GitHubError::ParseError(format!("Failed to parse GraphQL response: {e}")))?;
 
     if let Some(errors) = gql.errors {
         if let Some(err) = errors.first() {
@@ -153,11 +160,7 @@ pub async fn batch_commit(
         .and_then(|d| d.create_commit)
         .and_then(|c| c.commit)
         .map(|c| c.oid)
-        .ok_or_else(|| {
-            GitHubError::ParseError(
-                "GraphQL response missing commit OID".into(),
-            )
-        })?;
+        .ok_or_else(|| GitHubError::ParseError("GraphQL response missing commit OID".into()))?;
 
     Ok(oid)
 }
@@ -177,9 +180,7 @@ pub async fn get_head_sha(
         .and_then(|s| s.as_str())
         .map(String::from)
         .ok_or_else(|| {
-            GitHubError::ParseError(format!(
-                "Could not resolve HEAD SHA for branch '{branch}'"
-            ))
+            GitHubError::ParseError(format!("Could not resolve HEAD SHA for branch '{branch}'"))
         })
 }
 
@@ -242,7 +243,10 @@ mod tests {
             message: "Cannot push to protected branch".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::ProtectedBranch(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::ProtectedBranch(_)
+        ));
     }
 
     #[test]
@@ -252,7 +256,10 @@ mod tests {
             message: "Expected HEAD OID does not match".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::StaleObject { .. }));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::StaleObject { .. }
+        ));
     }
 
     #[test]
@@ -262,7 +269,10 @@ mod tests {
             message: "Empty commit — no file changes provided".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::InvalidInput(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::InvalidInput(_)
+        ));
     }
 
     #[test]
@@ -272,7 +282,10 @@ mod tests {
             message: "Could not resolve to a node: branch does not exist".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::NotFound(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::NotFound(_)
+        ));
     }
 
     #[test]
@@ -282,7 +295,10 @@ mod tests {
             message: "Content exceeds maximum size of 100 MB".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::PayloadTooLarge(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::PayloadTooLarge(_)
+        ));
     }
 
     #[test]
@@ -292,7 +308,10 @@ mod tests {
             message: "Resource not accessible by personal access token".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::PermissionDenied(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::PermissionDenied(_)
+        ));
     }
 
     #[test]
@@ -302,7 +321,10 @@ mod tests {
             message: "Unexpected error".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::GraphQLError { .. }));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::GraphQLError { .. }
+        ));
     }
 
     #[test]
@@ -321,7 +343,10 @@ mod tests {
             message: "Your token has not been granted the required scopes".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::PermissionDenied(_)));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::PermissionDenied(_)
+        ));
     }
 
     #[test]
@@ -331,7 +356,10 @@ mod tests {
             message: "Something went wrong".into(),
             path: None,
         };
-        assert!(matches!(classify_graphql_error(&err), GitHubError::GraphQLError { .. }));
+        assert!(matches!(
+            classify_graphql_error(&err),
+            GitHubError::GraphQLError { .. }
+        ));
     }
 
     #[test]

@@ -6,9 +6,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde::{Deserialize, Serialize};
 use super::client::GitHubHttpClient;
 use super::errors::GitHubError;
+use serde::{Deserialize, Serialize};
 
 // ── Response Models ──────────────────────────────────────────────
 
@@ -24,12 +24,12 @@ pub struct WorkflowRun {
     pub name: Option<String>,
     pub head_branch: Option<String>,
     pub head_sha: Option<String>,
-    pub status: Option<String>,       // queued, in_progress, completed, waiting
-    pub conclusion: Option<String>,    // success, failure, cancelled, skipped, timed_out
+    pub status: Option<String>, // queued, in_progress, completed, waiting
+    pub conclusion: Option<String>, // success, failure, cancelled, skipped, timed_out
     pub workflow_id: Option<u64>,
     pub run_number: Option<u64>,
     pub run_attempt: Option<u64>,
-    pub event: Option<String>,         // push, pull_request, schedule, workflow_dispatch
+    pub event: Option<String>, // push, pull_request, schedule, workflow_dispatch
     pub display_title: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
@@ -78,7 +78,9 @@ pub async fn list_workflow_runs(
 ) -> Result<Vec<WorkflowRunInfo>, GitHubError> {
     let mut url = format!(
         "https://api.github.com/repos/{}/{}/actions/runs?per_page={}",
-        owner, repo, per_page.min(30)
+        owner,
+        repo,
+        per_page.min(30)
     );
     if let Some(b) = branch {
         url.push_str(&format!("&branch={}", urlencoding::encode(b)));
@@ -108,8 +110,16 @@ pub async fn list_workflow_runs(
                 updated_at: updated,
                 duration_seconds: duration,
                 html_url: r.html_url.unwrap_or_default(),
-                actor_login: r.actor.as_ref().and_then(|a| a.login.clone()).unwrap_or_default(),
-                actor_avatar: r.actor.as_ref().and_then(|a| a.avatar_url.clone()).unwrap_or_default(),
+                actor_login: r
+                    .actor
+                    .as_ref()
+                    .and_then(|a| a.login.clone())
+                    .unwrap_or_default(),
+                actor_avatar: r
+                    .actor
+                    .as_ref()
+                    .and_then(|a| a.avatar_url.clone())
+                    .unwrap_or_default(),
             }
         })
         .collect();

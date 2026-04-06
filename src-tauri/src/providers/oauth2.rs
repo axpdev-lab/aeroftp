@@ -8,22 +8,23 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use oauth2::{
-    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret,
-    CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, Scope, TokenResponse, TokenUrl, RefreshToken,
+    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    EndpointNotSet, EndpointSet, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken,
+    Scope, TokenResponse, TokenUrl,
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use zeroize::{Zeroize, ZeroizeOnDrop};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// In-memory token cache for when vault is locked (master mode).
 /// Tokens survive the session but are NOT persisted to disk.
 static MEMORY_TOKEN_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
-type ConfiguredClient = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
+type ConfiguredClient =
+    BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 
 /// Simple error wrapper for the oauth2 HTTP client adapter.
 #[derive(Debug)]
@@ -45,7 +46,12 @@ struct OAuth2HttpClient;
 impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
     type Error = oauth2::HttpClientError<OAuth2TransportError>;
     type Future = std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<oauth2::HttpResponse, Self::Error>> + Send + Sync + 'c>,
+        Box<
+            dyn std::future::Future<Output = Result<oauth2::HttpResponse, Self::Error>>
+                + Send
+                + Sync
+                + 'c,
+        >,
     >;
 
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
@@ -66,16 +72,22 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
             }
             builder = builder.body(request.into_body());
 
-            let response = builder.send().await
+            let response = builder
+                .send()
+                .await
                 .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
 
             let status_code = response.status().as_u16();
             let headers = response.headers().clone();
-            let body = response.bytes().await
+            let body = response
+                .bytes()
+                .await
                 .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
 
-            let mut http_response = http::Response::builder()
-                .status(http::StatusCode::from_u16(status_code).unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR));
+            let mut http_response = http::Response::builder().status(
+                http::StatusCode::from_u16(status_code)
+                    .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR),
+            );
             for (name, value) in headers.iter() {
                 http_response = http_response.header(name.as_str(), value.as_bytes());
             }
@@ -146,9 +158,7 @@ impl OAuthConfig {
                 "https://www.googleapis.com/auth/drive.file".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
-            extra_auth_params: vec![
-                ("access_type".to_string(), "offline".to_string()),
-            ],
+            extra_auth_params: vec![("access_type".to_string(), "offline".to_string())],
         }
     }
 
@@ -175,9 +185,7 @@ impl OAuthConfig {
                 "sharing.write".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
-            extra_auth_params: vec![
-                ("token_access_type".to_string(), "offline".to_string()),
-            ],
+            extra_auth_params: vec![("token_access_type".to_string(), "offline".to_string())],
         }
     }
 
@@ -369,18 +377,21 @@ impl OAuth2Manager {
     }
 
     /// Start OAuth2 authorization flow - returns URL to open in browser
-    pub async fn start_auth_flow(&self, config: &OAuthConfig) -> Result<(String, String), ProviderError> {
+    pub async fn start_auth_flow(
+        &self,
+        config: &OAuthConfig,
+    ) -> Result<(String, String), ProviderError> {
         let client = self.create_client(config)?;
-        
+
         // Generate PKCE challenge
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        
+
         // Generate state token for CSRF protection
         let (auth_url, csrf_token) = {
             let mut auth_builder = client
                 .authorize_url(CsrfToken::new_random)
                 .set_pkce_challenge(pkce_challenge);
-            
+
             // Add scopes
             for scope in &config.scopes {
                 auth_builder = auth_builder.add_scope(Scope::new(scope.clone()));
@@ -393,17 +404,17 @@ impl OAuth2Manager {
 
             auth_builder.url()
         };
-        
+
         let state = csrf_token.secret().clone();
-        
+
         // Store verifier for later
         {
             let mut verifiers = self.pending_verifiers.write().await;
             verifiers.insert(state.clone(), pkce_verifier);
         }
-        
+
         info!("OAuth2 auth URL generated for {:?}", config.provider);
-        
+
         Ok((auth_url.to_string(), state))
     }
 
@@ -417,26 +428,29 @@ impl OAuth2Manager {
         // Get and remove pending verifier
         let verifier = {
             let mut verifiers = self.pending_verifiers.write().await;
-            verifiers.remove(state)
-                .ok_or_else(|| ProviderError::AuthenticationFailed(
-                    "Invalid state token - authorization flow expired or invalid".to_string()
-                ))?
+            verifiers.remove(state).ok_or_else(|| {
+                ProviderError::AuthenticationFailed(
+                    "Invalid state token - authorization flow expired or invalid".to_string(),
+                )
+            })?
         };
-        
+
         let client = self.create_client(config)?;
-        
+
         // Exchange code for tokens
         let token_result = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
             .set_pkce_verifier(verifier)
             .request_async(&OAuth2HttpClient)
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("Token exchange failed: {}", e)))?;
-        
-        let expires_at = token_result.expires_in().map(|d| {
-            chrono::Utc::now().timestamp() + d.as_secs() as i64
-        });
-        
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Token exchange failed: {}", e))
+            })?;
+
+        let expires_at = token_result
+            .expires_in()
+            .map(|d| chrono::Utc::now().timestamp() + d.as_secs() as i64);
+
         let tokens = StoredTokens {
             access_token: token_result.access_token().secret().clone(),
             refresh_token: token_result.refresh_token().map(|t| t.secret().clone()),
@@ -444,12 +458,12 @@ impl OAuth2Manager {
             token_type: "Bearer".to_string(),
             scopes: config.scopes.clone(),
         };
-        
+
         // Store in keyring
         self.store_tokens(config.provider, &tokens)?;
-        
+
         info!("OAuth2 tokens obtained for {:?}", config.provider);
-        
+
         Ok(tokens)
     }
 
@@ -460,32 +474,35 @@ impl OAuth2Manager {
         refresh_token: &str,
     ) -> Result<StoredTokens, ProviderError> {
         let client = self.create_client(config)?;
-        
+
         let token_result = client
             .exchange_refresh_token(&RefreshToken::new(refresh_token.to_string()))
             .request_async(&OAuth2HttpClient)
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("Token refresh failed: {}", e)))?;
-        
-        let expires_at = token_result.expires_in().map(|d| {
-            chrono::Utc::now().timestamp() + d.as_secs() as i64
-        });
-        
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Token refresh failed: {}", e))
+            })?;
+
+        let expires_at = token_result
+            .expires_in()
+            .map(|d| chrono::Utc::now().timestamp() + d.as_secs() as i64);
+
         let tokens = StoredTokens {
             access_token: token_result.access_token().secret().clone(),
-            refresh_token: token_result.refresh_token()
+            refresh_token: token_result
+                .refresh_token()
                 .map(|t| t.secret().clone())
                 .or_else(|| Some(refresh_token.to_string())), // Keep old refresh token if not returned
             expires_at,
             token_type: "Bearer".to_string(),
             scopes: config.scopes.clone(),
         };
-        
+
         // Update keyring
         self.store_tokens(config.provider, &tokens)?;
-        
+
         info!("OAuth2 tokens refreshed for {:?}", config.provider);
-        
+
         Ok(tokens)
     }
 
@@ -503,7 +520,7 @@ impl OAuth2Manager {
                 tokens = self.refresh_tokens(config, refresh_token).await?;
             } else {
                 return Err(ProviderError::AuthenticationFailed(
-                    "Token expired and no refresh token available".to_string()
+                    "Token expired and no refresh token available".to_string(),
                 ));
             }
         }
@@ -517,14 +534,19 @@ impl OAuth2Manager {
             .ok_or_else(|| ProviderError::Other("Could not find config directory".to_string()))?;
         let token_dir = base.join("aeroftp").join("oauth_tokens");
         if !token_dir.exists() {
-            std::fs::create_dir_all(&token_dir)
-                .map_err(|e| ProviderError::Other(format!("Failed to create token directory: {}", e)))?;
+            std::fs::create_dir_all(&token_dir).map_err(|e| {
+                ProviderError::Other(format!("Failed to create token directory: {}", e))
+            })?;
         }
         Ok(token_dir)
     }
 
     /// Store tokens in secure credential store (OS keyring or encrypted vault)
-    pub fn store_tokens(&self, provider: OAuthProvider, tokens: &StoredTokens) -> Result<(), ProviderError> {
+    pub fn store_tokens(
+        &self,
+        provider: OAuthProvider,
+        tokens: &StoredTokens,
+    ) -> Result<(), ProviderError> {
         let json = serde_json::to_string_pretty(tokens)
             .map_err(|e| ProviderError::Other(format!("Failed to serialize tokens: {}", e)))?;
 
@@ -532,7 +554,8 @@ impl OAuth2Manager {
 
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            store.store(&account, &json)
+            store
+                .store(&account, &json)
                 .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
@@ -541,7 +564,8 @@ impl OAuth2Manager {
         // Vault not open — try auto-initializing vault first
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                store.store(&account, &json)
+                store
+                    .store(&account, &json)
                     .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
@@ -574,14 +598,16 @@ impl OAuth2Manager {
         if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
             if let Some(map) = cache.as_ref() {
                 if let Some(json) = map.get(&account) {
-                    return serde_json::from_str(json)
-                        .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                    return serde_json::from_str(json).map_err(|e| {
+                        ProviderError::Other(format!("Failed to parse tokens: {}", e))
+                    });
                 }
             }
         }
 
         // Legacy: try plaintext file — migrate to vault immediately, then delete the file
-        let legacy_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        let legacy_path =
+            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         let json = std::fs::read_to_string(&legacy_path)
             .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
 
@@ -598,7 +624,10 @@ impl OAuth2Manager {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if store.store(&account, &json).is_ok() {
                 migrated = true;
-                info!("Legacy tokens for {:?} migrated to credential vault", provider);
+                info!(
+                    "Legacy tokens for {:?} migrated to credential vault",
+                    provider
+                );
             }
         }
         if !migrated {
@@ -607,7 +636,10 @@ impl OAuth2Manager {
                 if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                     if store.store(&account, &json).is_ok() {
                         migrated = true;
-                        info!("Legacy tokens for {:?} migrated to auto-initialized vault", provider);
+                        info!(
+                            "Legacy tokens for {:?} migrated to auto-initialized vault",
+                            provider
+                        );
                     }
                 }
             }
@@ -616,7 +648,10 @@ impl OAuth2Manager {
         // Delete legacy plaintext file after successful migration
         if migrated {
             if let Err(e) = crate::credential_store::secure_delete(&legacy_path) {
-                warn!("Failed to secure-delete legacy token file for {:?}: {}", provider, e);
+                warn!(
+                    "Failed to secure-delete legacy token file for {:?}: {}",
+                    provider, e
+                );
                 // Fallback: try normal delete
                 let _ = std::fs::remove_file(&legacy_path);
             } else {
@@ -650,7 +685,8 @@ impl OAuth2Manager {
         }
 
         // Delete legacy .json file if exists
-        let json_path = Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        let json_path =
+            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         if json_path.exists() {
             let _ = crate::credential_store::secure_delete(&json_path);
         }
@@ -709,14 +745,22 @@ impl Default for OAuth2Manager {
 
 /// Bind the OAuth2 callback listener on a specific port (0 = ephemeral).
 /// Returns the listener and the actual port assigned by the OS.
-pub async fn bind_callback_listener_on_port(port: u16) -> Result<(tokio::net::TcpListener, u16), ProviderError> {
+pub async fn bind_callback_listener_on_port(
+    port: u16,
+) -> Result<(tokio::net::TcpListener, u16), ProviderError> {
     use tokio::net::TcpListener;
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .await
-        .map_err(|e| ProviderError::Other(format!("Failed to bind callback server on port {}: {}", port, e)))?;
+        .map_err(|e| {
+            ProviderError::Other(format!(
+                "Failed to bind callback server on port {}: {}",
+                port, e
+            ))
+        })?;
 
-    let actual_port = listener.local_addr()
+    let actual_port = listener
+        .local_addr()
         .map(|a| a.port())
         .map_err(|e| ProviderError::Other(format!("Failed to get local port: {}", e)))?;
 
@@ -732,34 +776,31 @@ pub async fn bind_callback_listener() -> Result<(tokio::net::TcpListener, u16), 
 
 /// Wait for an OAuth2 callback on an already-bound listener.
 /// Returns (code, state) extracted from the callback request.
-pub async fn wait_for_callback(listener: tokio::net::TcpListener) -> Result<(String, String), ProviderError> {
+pub async fn wait_for_callback(
+    listener: tokio::net::TcpListener,
+) -> Result<(String, String), ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::time::{timeout, Duration};
 
     // A3-01: Timeout on accept to prevent indefinite blocking if no callback arrives
-    let (mut socket, _): (tokio::net::TcpStream, _) = timeout(
-        Duration::from_secs(120),
-        listener.accept()
-    )
-    .await
-    .map_err(|_| ProviderError::Timeout)?
-    .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
+    let (mut socket, _): (tokio::net::TcpStream, _) =
+        timeout(Duration::from_secs(120), listener.accept())
+            .await
+            .map_err(|_| ProviderError::Timeout)?
+            .map_err(|e| ProviderError::Other(format!("Failed to accept connection: {}", e)))?;
 
     let mut buffer = vec![0u8; 4096];
     // A3-01: Timeout on read to prevent slow-loris style attacks on the callback socket
-    let n: usize = timeout(
-        Duration::from_secs(30),
-        socket.read(&mut buffer)
-    )
-    .await
-    .map_err(|_| ProviderError::Other("OAuth callback read timed out after 30s".to_string()))?
-    .map_err(|e| ProviderError::Other(format!("Failed to read request: {}", e)))?;
-    
+    let n: usize = timeout(Duration::from_secs(30), socket.read(&mut buffer))
+        .await
+        .map_err(|_| ProviderError::Other("OAuth callback read timed out after 30s".to_string()))?
+        .map_err(|e| ProviderError::Other(format!("Failed to read request: {}", e)))?;
+
     let request = String::from_utf8_lossy(&buffer[..n]);
-    
+
     // Parse the request to extract code and state
     let (code, state) = parse_callback_request(&request)?;
-    
+
     // Send success response with proper UTF-8 charset - Professional branded page
     let response = r#"HTTP/1.1 200 OK
 Content-Type: text/html; charset=utf-8
@@ -994,62 +1035,93 @@ Connection: close
     </script>
 </body>
 </html>"#;
-    
-    let _: () = socket.write_all(response.as_bytes())
+
+    let _: () = socket
+        .write_all(response.as_bytes())
         .await
         .map_err(|e| ProviderError::Other(format!("Failed to send response: {}", e)))?;
-    
+
     Ok((code, state))
 }
 
 /// Parse OAuth callback request to extract code and state
 fn parse_callback_request(request: &str) -> Result<(String, String), ProviderError> {
     // Find the GET line
-    let first_line = request.lines().next()
+    let first_line = request
+        .lines()
+        .next()
         .ok_or_else(|| ProviderError::AuthenticationFailed("Empty request".to_string()))?;
-    
+
     // Extract path: GET /callback?code=xxx&state=yyy HTTP/1.1
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() < 2 {
-        return Err(ProviderError::AuthenticationFailed("Invalid request format".to_string()));
+        return Err(ProviderError::AuthenticationFailed(
+            "Invalid request format".to_string(),
+        ));
     }
-    
+
     let path = parts[1];
-    let query_start = path.find('?')
+    let query_start = path
+        .find('?')
         .ok_or_else(|| ProviderError::AuthenticationFailed("No query parameters".to_string()))?;
-    
+
     let query = &path[query_start + 1..];
-    
+
     let mut code = None;
     let mut state = None;
-    
+
     for param in query.split('&') {
         let mut kv = param.splitn(2, '=');
         let key = kv.next().unwrap_or("");
         let value = kv.next().unwrap_or("");
-        
+
         match key {
-            "code" => code = Some(urlencoding::decode(value)
-                .map_err(|e| ProviderError::AuthenticationFailed(format!("Invalid URL encoding in code: {}", e)))?
-                .to_string()),
-            "state" => state = Some(urlencoding::decode(value)
-                .map_err(|e| ProviderError::AuthenticationFailed(format!("Invalid URL encoding in state: {}", e)))?
-                .to_string()),
-            "error" => return Err(ProviderError::AuthenticationFailed(format!("OAuth error: {}", value))),
+            "code" => {
+                code = Some(
+                    urlencoding::decode(value)
+                        .map_err(|e| {
+                            ProviderError::AuthenticationFailed(format!(
+                                "Invalid URL encoding in code: {}",
+                                e
+                            ))
+                        })?
+                        .to_string(),
+                )
+            }
+            "state" => {
+                state = Some(
+                    urlencoding::decode(value)
+                        .map_err(|e| {
+                            ProviderError::AuthenticationFailed(format!(
+                                "Invalid URL encoding in state: {}",
+                                e
+                            ))
+                        })?
+                        .to_string(),
+                )
+            }
+            "error" => {
+                return Err(ProviderError::AuthenticationFailed(format!(
+                    "OAuth error: {}",
+                    value
+                )))
+            }
             _ => {}
         }
     }
-    
-    let code = code.ok_or_else(|| ProviderError::AuthenticationFailed("Missing code".to_string()))?;
-    let state = state.ok_or_else(|| ProviderError::AuthenticationFailed("Missing state".to_string()))?;
-    
+
+    let code =
+        code.ok_or_else(|| ProviderError::AuthenticationFailed("Missing code".to_string()))?;
+    let state =
+        state.ok_or_else(|| ProviderError::AuthenticationFailed("Missing state".to_string()))?;
+
     Ok((code, state))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_callback_request() {
         let request = "GET /callback?code=abc123&state=xyz789 HTTP/1.1\r\nHost: localhost\r\n";
@@ -1057,7 +1129,7 @@ mod tests {
         assert_eq!(code, "abc123");
         assert_eq!(state, "xyz789");
     }
-    
+
     #[test]
     fn test_oauth_config_google() {
         let config = OAuthConfig::google("client_id", "client_secret");

@@ -255,7 +255,8 @@ pub fn init_db(app: &AppHandle) -> Result<Connection, String> {
         }
     }
 
-    let conn = Connection::open(&path).map_err(|_| "Failed to initialize chat database".to_string())?;
+    let conn =
+        Connection::open(&path).map_err(|_| "Failed to initialize chat database".to_string())?;
 
     // Set DB file permissions to 0600 (SEC-008)
     #[cfg(unix)]
@@ -443,9 +444,21 @@ pub fn migrate_from_json(conn: &Connection, app: &AppHandle) -> Result<usize, St
 
             for msg in &conv.messages {
                 let ts = iso_to_epoch_ms(&msg.timestamp);
-                let tokens_in = msg.token_info.as_ref().and_then(|ti| ti.input_tokens).unwrap_or(0);
-                let tokens_out = msg.token_info.as_ref().and_then(|ti| ti.output_tokens).unwrap_or(0);
-                let cost = msg.token_info.as_ref().and_then(|ti| ti.cost).unwrap_or(0.0);
+                let tokens_in = msg
+                    .token_info
+                    .as_ref()
+                    .and_then(|ti| ti.input_tokens)
+                    .unwrap_or(0);
+                let tokens_out = msg
+                    .token_info
+                    .as_ref()
+                    .and_then(|ti| ti.output_tokens)
+                    .unwrap_or(0);
+                let cost = msg
+                    .token_info
+                    .as_ref()
+                    .and_then(|ti| ti.cost)
+                    .unwrap_or(0.0);
                 let msg_model = msg.model_info.as_ref().map(|mi| mi.model_name.clone());
 
                 conn.execute(
@@ -468,9 +481,21 @@ pub fn migrate_from_json(conn: &Connection, app: &AppHandle) -> Result<usize, St
 
                     for msg in &branch.messages {
                         let ts = iso_to_epoch_ms(&msg.timestamp);
-                        let tokens_in = msg.token_info.as_ref().and_then(|ti| ti.input_tokens).unwrap_or(0);
-                        let tokens_out = msg.token_info.as_ref().and_then(|ti| ti.output_tokens).unwrap_or(0);
-                        let cost = msg.token_info.as_ref().and_then(|ti| ti.cost).unwrap_or(0.0);
+                        let tokens_in = msg
+                            .token_info
+                            .as_ref()
+                            .and_then(|ti| ti.input_tokens)
+                            .unwrap_or(0);
+                        let tokens_out = msg
+                            .token_info
+                            .as_ref()
+                            .and_then(|ti| ti.output_tokens)
+                            .unwrap_or(0);
+                        let cost = msg
+                            .token_info
+                            .as_ref()
+                            .and_then(|ti| ti.cost)
+                            .unwrap_or(0.0);
                         let msg_model = msg.model_info.as_ref().map(|mi| mi.model_name.clone());
 
                         conn.execute(
@@ -503,8 +528,7 @@ pub fn migrate_from_json(conn: &Connection, app: &AppHandle) -> Result<usize, St
     let _ = conn.execute_batch("INSERT INTO messages_fts(messages_fts) VALUES('rebuild');");
 
     // Rename JSON to .migrated
-    std::fs::rename(&json_path, &migrated_path)
-        .map_err(|e| format!("Cannot rename JSON: {e}"))?;
+    std::fs::rename(&json_path, &migrated_path).map_err(|e| format!("Cannot rename JSON: {e}"))?;
 
     Ok(migrated)
 }
@@ -642,7 +666,8 @@ pub async fn chat_history_list_sessions(
                  FROM sessions WHERE project_path = ?1 ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3",
             )
             .map_err(|e| format!("Prepare error: {e}"))?;
-        let results = s.query_map(params![pp, limit, offset], row_to_session)
+        let results = s
+            .query_map(params![pp, limit, offset], row_to_session)
             .map_err(|e| format!("Query error: {e}"))?
             .filter_map(log_filter_row)
             .collect::<Vec<_>>();
@@ -654,7 +679,8 @@ pub async fn chat_history_list_sessions(
                  FROM sessions ORDER BY updated_at DESC LIMIT ?1 OFFSET ?2",
             )
             .map_err(|e| format!("Prepare error: {e}"))?;
-        let results = s.query_map(params![limit, offset], row_to_session)
+        let results = s
+            .query_map(params![limit, offset], row_to_session)
             .map_err(|e| format!("Query error: {e}"))?
             .filter_map(log_filter_row)
             .collect::<Vec<_>>();
@@ -783,10 +809,7 @@ pub async fn chat_history_update_session_title(
 }
 
 #[tauri::command]
-pub async fn chat_history_delete_session(
-    app: AppHandle,
-    session_id: String,
-) -> Result<(), String> {
+pub async fn chat_history_delete_session(app: AppHandle, session_id: String) -> Result<(), String> {
     let db = app.state::<ChatHistoryDb>();
     let conn = acquire_lock(&db);
 
@@ -811,15 +834,22 @@ pub async fn chat_history_delete_sessions_bulk(
         for chunk in ids.chunks(500) {
             let placeholders: String = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             let sql = format!("DELETE FROM sessions WHERE id IN ({placeholders})");
-            let params: Vec<&dyn rusqlite::types::ToSql> =
-                chunk.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
-            total_deleted += conn.execute(&sql, params.as_slice())
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
+            total_deleted += conn
+                .execute(&sql, params.as_slice())
                 .map_err(|e| format!("Bulk delete: {e}"))? as i64;
         }
         total_deleted
     } else if let Some(days) = older_than_days {
-        let cutoff = chrono::Utc::now().timestamp_millis()
-            .checked_sub(days.checked_mul(86_400_000).ok_or("Overflow in days calculation")?)
+        let cutoff = chrono::Utc::now()
+            .timestamp_millis()
+            .checked_sub(
+                days.checked_mul(86_400_000)
+                    .ok_or("Overflow in days calculation")?,
+            )
             .ok_or("Overflow in cutoff calculation")?;
         conn.execute(
             "DELETE FROM sessions WHERE updated_at < ?1",
@@ -889,10 +919,7 @@ pub async fn chat_history_search(
 }
 
 #[tauri::command]
-pub async fn chat_history_cleanup(
-    app: AppHandle,
-    retention_days: i64,
-) -> Result<i64, String> {
+pub async fn chat_history_cleanup(app: AppHandle, retention_days: i64) -> Result<i64, String> {
     // Validate input (SEC-009)
     if retention_days <= 0 {
         return Err("retention_days must be positive".into());
@@ -901,8 +928,13 @@ pub async fn chat_history_cleanup(
     let db = app.state::<ChatHistoryDb>();
     let conn = acquire_lock(&db);
 
-    let cutoff = chrono::Utc::now().timestamp_millis()
-        .checked_sub(retention_days.checked_mul(86_400_000).ok_or("Overflow in days calculation")?)
+    let cutoff = chrono::Utc::now()
+        .timestamp_millis()
+        .checked_sub(
+            retention_days
+                .checked_mul(86_400_000)
+                .ok_or("Overflow in days calculation")?,
+        )
         .ok_or("Overflow in cutoff calculation")?;
 
     let deleted = conn
@@ -939,9 +971,11 @@ pub async fn chat_history_stats(app: AppHandle) -> Result<ChatStats, String> {
         .unwrap_or(0);
 
     let db_size_bytes: i64 = conn
-        .query_row("SELECT page_count * page_size FROM pragma_page_count, pragma_page_size", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT page_count * page_size FROM pragma_page_count, pragma_page_size",
+            [],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
 
     Ok(ChatStats {
@@ -965,8 +999,9 @@ pub async fn chat_history_export_session(
     let session_data = get_session_inner(&conn, &session_id)?;
 
     match format.as_str() {
-        "json" => serde_json::to_string_pretty(&session_data)
-            .map_err(|e| format!("JSON serialize: {e}")),
+        "json" => {
+            serde_json::to_string_pretty(&session_data).map_err(|e| format!("JSON serialize: {e}"))
+        }
         "markdown" => {
             let mut md = format!(
                 "# {}\n*Exported on {}*\n\n",
@@ -1006,10 +1041,7 @@ pub async fn chat_history_export_session(
 }
 
 #[tauri::command]
-pub async fn chat_history_import(
-    app: AppHandle,
-    json_data: String,
-) -> Result<String, String> {
+pub async fn chat_history_import(app: AppHandle, json_data: String) -> Result<String, String> {
     let db = app.state::<ChatHistoryDb>();
     let conn = acquire_lock(&db);
 

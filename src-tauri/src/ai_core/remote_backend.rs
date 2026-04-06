@@ -6,8 +6,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use async_trait::async_trait;
 use crate::providers::RemoteEntry;
+use async_trait::async_trait;
 
 /// Storage quota information
 #[derive(Debug, Clone, serde::Serialize)]

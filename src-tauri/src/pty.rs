@@ -55,7 +55,11 @@ pub fn create_pty_state() -> PtyState {
 /// Spawn a new shell in the PTY. Returns session info including session ID.
 /// Enforces a maximum of MAX_PTY_SESSIONS concurrent sessions.
 #[tauri::command]
-pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<String>) -> Result<String, String> {
+pub fn spawn_shell(
+    app: AppHandle,
+    pty_state: State<'_, PtyState>,
+    cwd: Option<String>,
+) -> Result<String, String> {
     // Check session limit before allocating resources
     {
         let manager = pty_state.lock().map_err(|_| "Lock error")?;
@@ -115,7 +119,10 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
 
     // Unix: set a colorful PS1 prompt (bash/zsh)
     #[cfg(unix)]
-    cmd.env("PS1", r"\[\e[1;36m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ ");
+    cmd.env(
+        "PS1",
+        r"\[\e[1;36m\]\u@\h\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ ",
+    );
 
     // Set working directory
     if let Some(path) = cwd {
@@ -146,10 +153,13 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
     let session_id = manager.next_session_id();
 
     // Store in state
-    manager.sessions.insert(session_id.clone(), PtySession {
-        pair: Some(pair),
-        writer: Some(writer),
-    });
+    manager.sessions.insert(
+        session_id.clone(),
+        PtySession {
+            pair: Some(pair),
+            writer: Some(writer),
+        },
+    );
 
     // Spawn a thread to read output from the PTY and emit it to the frontend
     // Each session emits to its own event channel: pty-output-{session_id}
@@ -174,11 +184,17 @@ pub fn spawn_shell(app: AppHandle, pty_state: State<'_, PtyState>, cwd: Option<S
 
 /// Write data to a PTY session (send keystrokes to shell)
 #[tauri::command]
-pub fn pty_write(pty_state: State<'_, PtyState>, data: String, session_id: String) -> Result<(), String> {
+pub fn pty_write(
+    pty_state: State<'_, PtyState>,
+    data: String,
+    session_id: String,
+) -> Result<(), String> {
     let mut manager = pty_state.lock().map_err(|_| "Lock error")?;
 
     // H31: session_id is required — no fallback to prevent multi-tab session confusion
-    let session = manager.sessions.get_mut(&session_id)
+    let session = manager
+        .sessions
+        .get_mut(&session_id)
         .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
 
     if let Some(ref mut writer) = session.writer {
@@ -194,11 +210,18 @@ pub fn pty_write(pty_state: State<'_, PtyState>, data: String, session_id: Strin
 
 /// Resize a PTY session
 #[tauri::command]
-pub fn pty_resize(pty_state: State<'_, PtyState>, rows: u16, cols: u16, session_id: String) -> Result<(), String> {
+pub fn pty_resize(
+    pty_state: State<'_, PtyState>,
+    rows: u16,
+    cols: u16,
+    session_id: String,
+) -> Result<(), String> {
     let manager = pty_state.lock().map_err(|_| "Lock error")?;
 
     // H31: session_id is required — no fallback to prevent multi-tab session confusion
-    let session = manager.sessions.get(&session_id)
+    let session = manager
+        .sessions
+        .get(&session_id)
         .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
 
     if let Some(ref pair) = session.pair {

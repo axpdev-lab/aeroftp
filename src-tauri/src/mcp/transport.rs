@@ -38,9 +38,7 @@ impl StdinReader {
         let mut line = String::new();
         match self.reader.read_line(&mut line).await {
             Ok(0) => None, // EOF
-            Ok(n) if n > MAX_LINE_BYTES => {
-                Some(Err(TransportError::LineTooLong(n)))
-            }
+            Ok(n) if n > MAX_LINE_BYTES => Some(Err(TransportError::LineTooLong(n))),
             Ok(_) => {
                 let trimmed = line.trim().to_string();
                 if trimmed.is_empty() {
@@ -75,8 +73,8 @@ impl StdoutWriter {
 
     /// Write a JSON-RPC message (adds trailing newline, flushes).
     pub async fn write_message(&self, msg: &serde_json::Value) -> Result<(), TransportError> {
-        let serialized = serde_json::to_string(msg)
-            .map_err(|e| TransportError::Serialize(e.to_string()))?;
+        let serialized =
+            serde_json::to_string(msg).map_err(|e| TransportError::Serialize(e.to_string()))?;
         let mut out = self.writer.lock().await;
         out.write_all(serialized.as_bytes())
             .await

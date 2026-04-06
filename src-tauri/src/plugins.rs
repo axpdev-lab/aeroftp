@@ -57,8 +57,8 @@ fn default_danger() -> String {
 
 /// Compute SHA-256 hex digest of a file
 fn compute_file_sha256(path: &std::path::Path) -> Result<String, String> {
-    let data =
-        std::fs::read(path).map_err(|e| format!("Failed to read file for integrity hash: {}", e))?;
+    let data = std::fs::read(path)
+        .map_err(|e| format!("Failed to read file for integrity hash: {}", e))?;
     let hash = Sha256::digest(&data);
     Ok(format!("{:x}", hash))
 }
@@ -124,8 +124,8 @@ pub async fn list_plugins(app: tauri::AppHandle) -> Result<Vec<PluginManifest>, 
     }
 
     let mut plugins = Vec::new();
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read plugins directory: {}", e))?;
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read plugins directory: {}", e))?;
 
     for entry in entries.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -139,11 +139,7 @@ pub async fn list_plugins(app: tauri::AppHandle) -> Result<Vec<PluginManifest>, 
             Ok(content) => match serde_json::from_str::<PluginManifest>(&content) {
                 Ok(mut manifest) => {
                     // Validate: id must be alphanumeric + underscore
-                    if manifest
-                        .id
-                        .chars()
-                        .all(|c| c.is_alphanumeric() || c == '_')
-                    {
+                    if manifest.id.chars().all(|c| c.is_alphanumeric() || c == '_') {
                         // GPT-F02: Enforce minimum dangerLevel of "medium" for all plugin tools.
                         // Plugin authors must not bypass the approval gate by declaring "safe".
                         for tool in &mut manifest.tools {
@@ -181,10 +177,7 @@ pub async fn execute_plugin_tool(
     approval_grant_id: Option<String>,
 ) -> Result<Value, String> {
     // Validate plugin_id (alphanumeric + underscore only)
-    if !plugin_id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !plugin_id.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err("Invalid plugin ID".to_string());
     }
 
@@ -210,8 +203,8 @@ pub async fn execute_plugin_tool(
         .find(|t| t.name == tool_name)
         .ok_or_else(|| format!("Tool '{}' not found in plugin '{}'", tool_name, plugin_id))?;
 
-    let args_value: Value = serde_json::from_str(&args_json)
-        .map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
+    let args_value: Value =
+        serde_json::from_str(&args_json).map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
     let approval_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
     let approval_scope_key = serde_json::to_string(&json!({
         "plugin_id": plugin_id,
@@ -266,19 +259,16 @@ pub async fn execute_plugin_tool(
 
         let command_path = plugin_dir.join(program);
         if !command_path.exists() {
-            return Err(format!(
-                "Plugin command file not found: {}",
-                program
-            ));
+            return Err(format!("Plugin command file not found: {}", program));
         }
 
         // SEC-AUDIT-08: Canonicalize to resolve symlinks, then verify still within plugin_dir
-        let canonical_path = command_path.canonicalize().map_err(|e| {
-            format!("Failed to resolve plugin command path: {}", e)
-        })?;
-        let canonical_plugin_dir = plugin_dir.canonicalize().map_err(|e| {
-            format!("Failed to resolve plugin directory: {}", e)
-        })?;
+        let canonical_path = command_path
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve plugin command path: {}", e))?;
+        let canonical_plugin_dir = plugin_dir
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve plugin directory: {}", e))?;
         if !canonical_path.starts_with(&canonical_plugin_dir) {
             return Err(format!(
                 "SEC: Plugin '{}' tool '{}' command resolves outside plugin directory (symlink escape)",
@@ -374,10 +364,7 @@ pub async fn prepare_plugin_tool_approval(
     args_json: String,
     session_id: Option<String>,
 ) -> Result<AiToolApprovalPreparation, String> {
-    if !plugin_id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !plugin_id.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err("Invalid plugin ID".to_string());
     }
 
@@ -403,8 +390,8 @@ pub async fn prepare_plugin_tool_approval(
         .find(|t| t.name == tool_name)
         .ok_or_else(|| format!("Tool '{}' not found in plugin '{}'", tool_name, plugin_id))?;
 
-    let args_value: Value = serde_json::from_str(&args_json)
-        .map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
+    let args_value: Value =
+        serde_json::from_str(&args_json).map_err(|e| format!("Invalid plugin args JSON: {}", e))?;
     let synthetic_tool_name = format!("plugin:{}:{}", plugin_id, tool_name);
     let scope_key = serde_json::to_string(&json!({
         "plugin_id": plugin_id,
@@ -441,12 +428,7 @@ pub async fn install_plugin(
         serde_json::from_str(&manifest_json).map_err(|e| format!("Invalid manifest: {}", e))?;
 
     // Validate id
-    if !manifest
-        .id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-        || manifest.id.is_empty()
-    {
+    if !manifest.id.chars().all(|c| c.is_alphanumeric() || c == '_') || manifest.id.is_empty() {
         return Err("Plugin ID must be non-empty alphanumeric with underscores".to_string());
     }
 
@@ -462,11 +444,19 @@ pub async fn install_plugin(
             if command_path.exists() {
                 match compute_file_sha256(&command_path) {
                     Ok(hash) => {
-                        info!("Plugin {}: tool {} integrity hash = {}…", manifest.id, tool.name, hash_prefix(&hash));
+                        info!(
+                            "Plugin {}: tool {} integrity hash = {}…",
+                            manifest.id,
+                            tool.name,
+                            hash_prefix(&hash)
+                        );
                         tool.integrity = Some(hash);
                     }
                     Err(e) => {
-                        warn!("Plugin {}: failed to compute integrity for {}: {}", manifest.id, tool.name, e);
+                        warn!(
+                            "Plugin {}: failed to compute integrity for {}: {}",
+                            manifest.id, tool.name, e
+                        );
                     }
                 }
             }
@@ -479,11 +469,19 @@ pub async fn install_plugin(
         if hook_path.exists() {
             match compute_file_sha256(&hook_path) {
                 Ok(hash) => {
-                    info!("Plugin {}: hook '{}' integrity hash = {}...", manifest.id, hook.event, hash_prefix(&hash));
+                    info!(
+                        "Plugin {}: hook '{}' integrity hash = {}...",
+                        manifest.id,
+                        hook.event,
+                        hash_prefix(&hash)
+                    );
                     hook.integrity = Some(hash);
                 }
                 Err(e) => {
-                    warn!("Plugin {}: failed to compute integrity for hook '{}': {}", manifest.id, hook.event, e);
+                    warn!(
+                        "Plugin {}: failed to compute integrity for hook '{}': {}",
+                        manifest.id, hook.event, e
+                    );
                 }
             }
         }
@@ -503,10 +501,7 @@ pub async fn install_plugin(
 /// Remove a plugin by ID
 #[tauri::command]
 pub async fn remove_plugin(app: tauri::AppHandle, plugin_id: String) -> Result<(), String> {
-    if !plugin_id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !plugin_id.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err("Invalid plugin ID".to_string());
     }
 
@@ -573,8 +568,15 @@ pub async fn trigger_plugin_hooks(
         const SHELL_METACHARACTERS: &[char] = &[
             '|', '&', ';', '`', '$', '(', ')', '>', '<', '{', '}', '\n', '\r', '!', '#',
         ];
-        if hook.command.chars().any(|c| SHELL_METACHARACTERS.contains(&c)) {
-            warn!("Hook {}:{} command contains forbidden shell metacharacters — skipping", plugin_id, event);
+        if hook
+            .command
+            .chars()
+            .any(|c| SHELL_METACHARACTERS.contains(&c))
+        {
+            warn!(
+                "Hook {}:{} command contains forbidden shell metacharacters — skipping",
+                plugin_id, event
+            );
             results.push(HookResult {
                 plugin_id: plugin_id.clone(),
                 hook_event: event.clone(),
@@ -613,7 +615,10 @@ pub async fn trigger_plugin_hooks(
         // SEC A1-02: Verify hook script integrity if SHA-256 hash is present
         if let Some(ref expected_hash) = hook.integrity {
             if !is_valid_sha256_hex(expected_hash) {
-                warn!("Hook {}:{} has malformed integrity hash — skipping", plugin_id, event);
+                warn!(
+                    "Hook {}:{} has malformed integrity hash — skipping",
+                    plugin_id, event
+                );
                 results.push(HookResult {
                     plugin_id: plugin_id.clone(),
                     hook_event: event.clone(),
@@ -627,19 +632,27 @@ pub async fn trigger_plugin_hooks(
                     if actual_hash != *expected_hash {
                         warn!(
                             "SEC: Hook {}:{} integrity check failed (expected {}, got {})",
-                            plugin_id, event, hash_prefix(expected_hash), hash_prefix(&actual_hash)
+                            plugin_id,
+                            event,
+                            hash_prefix(expected_hash),
+                            hash_prefix(&actual_hash)
                         );
                         results.push(HookResult {
                             plugin_id: plugin_id.clone(),
                             hook_event: event.clone(),
                             success: false,
-                            output: "Hook script integrity check failed — file modified after install".into(),
+                            output:
+                                "Hook script integrity check failed — file modified after install"
+                                    .into(),
                         });
                         continue;
                     }
                 }
                 Err(e) => {
-                    warn!("Hook {}:{} integrity hash computation failed: {}", plugin_id, event, e);
+                    warn!(
+                        "Hook {}:{} integrity hash computation failed: {}",
+                        plugin_id, event, e
+                    );
                     results.push(HookResult {
                         plugin_id: plugin_id.clone(),
                         hook_event: event.clone(),
@@ -701,7 +714,10 @@ async fn execute_hook_script(
         .stderr(Stdio::piped())
         .env_clear()
         .envs(std::env::vars().filter(|(k, _)| {
-            matches!(k.as_str(), "PATH" | "HOME" | "LANG" | "LC_ALL" | "TERM" | "TMPDIR")
+            matches!(
+                k.as_str(),
+                "PATH" | "HOME" | "LANG" | "LC_ALL" | "TERM" | "TMPDIR"
+            )
         }))
         .spawn()
         .map_err(|e| format!("Failed to spawn hook: {e}"))?;

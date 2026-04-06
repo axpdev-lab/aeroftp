@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
     X, Undo2, Camera, Trash2, Clock, File, Plus
 } from 'lucide-react';
-import { SyncSnapshot } from '../../types';
+import { RestoreSnapshotResult, SyncSnapshot } from '../../types';
 import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
@@ -21,6 +21,8 @@ interface RollbackDialogProps {
     onClose: () => void;
     localPath: string;
     remotePath: string;
+    isProvider: boolean;
+    versioningStrategy?: 'disabled' | 'trash_can' | 'simple' | 'staggered';
 }
 
 export const RollbackDialog: React.FC<RollbackDialogProps> = ({
@@ -28,12 +30,17 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     onClose,
     localPath,
     remotePath,
+    isProvider,
+    versioningStrategy,
 }) => {
     const t = useTranslation();
     const [snapshots, setSnapshots] = useState<SyncSnapshot[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [restoring, setRestoring] = useState(false);
+    const [confirmRestore, setConfirmRestore] = useState(false);
+    const [restoreResult, setRestoreResult] = useState<string | null>(null);
 
     const cancelledRef = useRef(false);
 
@@ -87,6 +94,34 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
             setSnapshots(prev => prev.filter(s => s.id !== snapshotId));
             if (selectedId === snapshotId) setSelectedId(null);
         } catch (e) { logger.error('[RollbackDialog] delete snapshot failed:', e); }
+    };
+
+    const handleRestore = async () => {
+        if (!selectedId) return;
+        setConfirmRestore(false);
+        setRestoring(true);
+        setRestoreResult(null);
+        try {
+            const result = await invoke<RestoreSnapshotResult>('restore_sync_snapshot_cmd', {
+                snapshotId: selectedId,
+                localPath,
+                remotePath,
+                isProvider,
+                versioningStrategy,
+            });
+            const messages = [
+                result.restored_from_remote > 0 ? `local ${result.restored_from_remote}` : null,
+                result.restored_to_remote > 0 ? `remote ${result.restored_to_remote}` : null,
+                result.skipped > 0 ? `skipped ${result.skipped}` : null,
+                result.failed.length > 0 ? `failed ${result.failed.length}` : null,
+            ].filter(Boolean);
+            setRestoreResult(messages.length > 0 ? `Restore completed: ${messages.join(', ')}` : 'Nothing to restore');
+            await loadSnapshots();
+        } catch (e: any) {
+            setRestoreResult(`Restore failed: ${e?.toString() || 'unknown error'}`);
+        } finally {
+            setRestoring(false);
+        }
     };
 
     const selectedSnapshot = snapshots.find(s => s.id === selectedId);
@@ -201,14 +236,16 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                         <Plus size={12} /> {creating ? '...' : t('syncPanel.rollbackCreate')}
                     </button>
                     <div className="flex items-center gap-2">
+                        {restoreResult && (
+                            <span className="text-[11px] text-amber-400 mr-2">{restoreResult}</span>
+                        )}
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={true}
-                            /* Restore not yet implemented — i18n key: syncPanel.rollbackRestoreComingSoon */
-                            title={t('syncPanel.rollbackRestoreComingSoon') || 'Coming in v2.3'}
+                            disabled={!selectedId || restoring}
+                            onClick={() => setConfirmRestore(true)}
                         >
                             <Undo2 size={12} className="inline mr-1" />
-                            {t('syncPanel.rollbackRestore')}
+                            {restoring ? '...' : t('syncPanel.rollbackRestore')}
                         </button>
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
@@ -219,6 +256,35 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Restore confirmation overlay */}
+            {confirmRestore && selectedSnapshot && (
+                <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center p-6">
+                    <div className="bg-gray-800 rounded-lg border border-amber-500/40 p-5 max-w-sm w-full">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Undo2 size={16} className="text-amber-500" />
+                            <span className="font-semibold text-sm">{t('syncPanel.rollbackConfirmTitle')}</span>
+                        </div>
+                        <p className="text-xs text-gray-300 mb-4">
+                            {t('syncPanel.rollbackConfirmBody', { count: Object.keys(selectedSnapshot.files).length })}
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                className="px-3 py-1.5 text-xs rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                onClick={() => setConfirmRestore(false)}
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium"
+                                onClick={handleRestore}
+                            >
+                                <Undo2 size={12} className="inline mr-1" /> {t('syncPanel.rollbackRestore')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

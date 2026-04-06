@@ -13,12 +13,12 @@
 //
 // v2.0 — February 2026
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use secrecy::zeroize::Zeroize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use serde::{Deserialize, Serialize};
-use secrecy::zeroize::Zeroize;
 use tracing::{info, warn};
 
 // Cached unlocked vault state: (vault.db path, vault_key)
@@ -80,15 +80,15 @@ pub enum CredentialError {
 #[derive(Serialize, Deserialize)]
 struct VaultFile {
     version: u32,
-    verify_nonce: Vec<u8>,   // 12 bytes - nonce for verification token
-    verify_data: Vec<u8>,    // encrypted "aeroftp_vault_v2_ok" for key verification
+    verify_nonce: Vec<u8>, // 12 bytes - nonce for verification token
+    verify_data: Vec<u8>,  // encrypted "aeroftp_vault_v2_ok" for key verification
     entries: HashMap<String, VaultEntry>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct VaultEntry {
-    nonce: Vec<u8>,   // 12 bytes
-    data: Vec<u8>,    // [ciphertext][tag 16B]
+    nonce: Vec<u8>, // 12 bytes
+    data: Vec<u8>,  // [ciphertext][tag 16B]
 }
 
 // ============ VaultKeyFile (vault.key) ============
@@ -159,7 +159,11 @@ impl VaultKeyFile {
                 data.push(MODE_AUTO_KEYRING);
                 data.extend_from_slice(&[0u8; 2]); // padding
             }
-            VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
+            VaultKeyMode::Master {
+                salt,
+                nonce,
+                encrypted_passphrase,
+            } => {
                 data.push(MODE_MASTER);
                 data.extend_from_slice(salt);
                 data.extend_from_slice(nonce);
@@ -209,7 +213,11 @@ impl VaultKeyFile {
                 nonce.copy_from_slice(&data[42..54]);
                 let encrypted_passphrase = data[54..134].to_vec();
                 Ok(VaultKeyFile {
-                    mode: VaultKeyMode::Master { salt, nonce, encrypted_passphrase },
+                    mode: VaultKeyMode::Master {
+                        salt,
+                        nonce,
+                        encrypted_passphrase,
+                    },
                 })
             }
             _ => Err(CredentialError::InvalidKeyFile),
@@ -248,9 +256,9 @@ impl VaultKeyFile {
             }
             #[cfg(not(windows))]
             {
-                return Err(CredentialError::Io(
-                    std::io::Error::other("vault.key rename failed")
-                ));
+                return Err(CredentialError::Io(std::io::Error::other(
+                    "vault.key rename failed",
+                )));
             }
         }
         if let Ok(f) = std::fs::File::open(&path) {
@@ -271,7 +279,11 @@ impl VaultKeyFile {
         match &self.mode {
             VaultKeyMode::LegacyAuto { passphrase } => Ok(*passphrase),
             VaultKeyMode::AutoKeyring => load_passphrase_from_keyring(),
-            VaultKeyMode::Master { salt, nonce, encrypted_passphrase } => {
+            VaultKeyMode::Master {
+                salt,
+                nonce,
+                encrypted_passphrase,
+            } => {
                 let key = crate::crypto::derive_key_strong(password, salt)
                     .map_err(CredentialError::Encryption)?;
                 let plaintext = crate::crypto::decrypt_aes_gcm(&key, nonce, encrypted_passphrase)
@@ -295,16 +307,19 @@ fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
 fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), CredentialError> {
     let entry = keyring_entry()?;
     let encoded = BASE64.encode(passphrase);
-    entry
-        .set_password(&encoded)
-        .map_err(|e| CredentialError::Encryption(format!("Failed to write vault key to system keyring: {}", e)))
+    entry.set_password(&encoded).map_err(|e| {
+        CredentialError::Encryption(format!(
+            "Failed to write vault key to system keyring: {}",
+            e
+        ))
+    })
 }
 
 fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
     let entry = keyring_entry()?;
-    let encoded = entry
-        .get_password()
-        .map_err(|e| CredentialError::Encryption(format!("Vault key missing from system keyring: {}", e)))?;
+    let encoded = entry.get_password().map_err(|e| {
+        CredentialError::Encryption(format!("Vault key missing from system keyring: {}", e))
+    })?;
     let decoded = BASE64
         .decode(encoded.as_bytes())
         .map_err(|e| CredentialError::Encryption(format!("Invalid keyring payload: {}", e)))?;
@@ -369,7 +384,10 @@ impl CredentialStore {
                         if let Ok(modified) = metadata.modified() {
                             if let Ok(elapsed) = modified.elapsed() {
                                 if elapsed.as_secs() > Self::VAULT_INIT_LOCK_STALE_SECS {
-                                    warn!("Removing stale vault init lock ({}s old)", elapsed.as_secs());
+                                    warn!(
+                                        "Removing stale vault init lock ({}s old)",
+                                        elapsed.as_secs()
+                                    );
                                     let _ = std::fs::remove_file(&lock_path);
                                     // Retry immediately after removing stale lock
                                     continue;
@@ -379,7 +397,9 @@ impl CredentialStore {
                     }
                     // Lock is held by another process — wait and retry
                     if attempt < Self::VAULT_INIT_LOCK_MAX_RETRIES - 1 {
-                        std::thread::sleep(std::time::Duration::from_millis(Self::VAULT_INIT_LOCK_RETRY_MS));
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            Self::VAULT_INIT_LOCK_RETRY_MS,
+                        ));
                     }
                 }
                 Err(e) => return Err(CredentialError::Io(e)),
@@ -460,9 +480,7 @@ impl CredentialStore {
                 Self::open_and_cache(vault_path, vault_key)?;
                 Ok("OK".to_string())
             }
-            VaultKeyMode::Master { .. } => {
-                Ok("MASTER_PASSWORD_REQUIRED".to_string())
-            }
+            VaultKeyMode::Master { .. } => Ok("MASTER_PASSWORD_REQUIRED".to_string()),
         }
     }
 
@@ -555,8 +573,9 @@ impl CredentialStore {
     /// Create an empty vault.db with a verification token
     fn create_empty_vault(path: &Path, vault_key: &[u8; 32]) -> Result<(), CredentialError> {
         let verify_nonce = crate::crypto::random_bytes(12);
-        let verify_data = crate::crypto::encrypt_aes_gcm(vault_key, &verify_nonce, b"aeroftp_vault_v2_ok")
-            .map_err(CredentialError::Encryption)?;
+        let verify_data =
+            crate::crypto::encrypt_aes_gcm(vault_key, &verify_nonce, b"aeroftp_vault_v2_ok")
+                .map_err(CredentialError::Encryption)?;
 
         let vault = VaultFile {
             version: 2,
@@ -714,7 +733,10 @@ impl CredentialStore {
     }
 
     /// Change master password
-    pub fn change_master_password(old_password: &str, new_password: &str) -> Result<(), CredentialError> {
+    pub fn change_master_password(
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), CredentialError> {
         if new_password.len() < 8 {
             return Err(CredentialError::PasswordTooShort);
         }
@@ -775,25 +797,35 @@ impl CredentialStore {
     pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
         // A2-07: Prevent overwriting system-reserved keys
         if Self::RESERVED_KEYS.contains(&account) {
-            return Err(CredentialError::Encryption("Reserved account name".to_string()));
+            return Err(CredentialError::Encryption(
+                "Reserved account name".to_string(),
+            ));
         }
         self.store_entry(account, secret)
     }
 
     /// A2-05: Internal store that bypasses reserved key check.
     /// Used by totp_enable to atomically store the TOTP secret.
-    pub(crate) fn store_internal(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+    pub(crate) fn store_internal(
+        &self,
+        account: &str,
+        secret: &str,
+    ) -> Result<(), CredentialError> {
         self.store_entry(account, secret)
     }
 
     /// Shared store implementation
     fn store_entry(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
+        let _lock = VAULT_WRITE_LOCK
+            .lock()
+            .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         let nonce = crate::crypto::random_bytes(12);
         let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
             .map_err(CredentialError::Encryption)?;
-        vault.entries.insert(account.to_string(), VaultEntry { nonce, data });
+        vault
+            .entries
+            .insert(account.to_string(), VaultEntry { nonce, data });
         Self::write_vault(&self.vault_path, &vault)?;
         info!("Credential stored: {}", account);
         Ok(())
@@ -802,17 +834,20 @@ impl CredentialStore {
     /// Retrieve a credential
     pub fn get(&self, account: &str) -> Result<String, CredentialError> {
         let vault = Self::read_vault(&self.vault_path)?;
-        let entry = vault.entries.get(account)
+        let entry = vault
+            .entries
+            .get(account)
             .ok_or_else(|| CredentialError::NotFound(account.to_string()))?;
         let plaintext = crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
             .map_err(CredentialError::Encryption)?;
-        String::from_utf8(plaintext)
-            .map_err(|e| CredentialError::Encryption(e.to_string()))
+        String::from_utf8(plaintext).map_err(|e| CredentialError::Encryption(e.to_string()))
     }
 
     /// Delete a credential
     pub fn delete(&self, account: &str) -> Result<(), CredentialError> {
-        let _lock = VAULT_WRITE_LOCK.lock().map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
+        let _lock = VAULT_WRITE_LOCK
+            .lock()
+            .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
         let mut vault = Self::read_vault(&self.vault_path)?;
         vault.entries.remove(account);
         Self::write_vault(&self.vault_path, &vault)?;
@@ -835,8 +870,7 @@ impl CredentialStore {
 
     fn read_vault(path: &Path) -> Result<VaultFile, CredentialError> {
         let data = std::fs::read(path)?;
-        serde_json::from_slice(&data)
-            .map_err(|e| CredentialError::Serialization(e.to_string()))
+        serde_json::from_slice(&data).map_err(|e| CredentialError::Serialization(e.to_string()))
     }
 
     fn write_vault(path: &Path, vault: &VaultFile) -> Result<(), CredentialError> {
@@ -866,9 +900,9 @@ impl CredentialStore {
             #[cfg(not(windows))]
             {
                 // On Unix rename is atomic even if destination exists — this shouldn't fail
-                return Err(CredentialError::Io(
-                    std::io::Error::other("vault.db rename failed")
-                ));
+                return Err(CredentialError::Io(std::io::Error::other(
+                    "vault.db rename failed",
+                )));
             }
         }
         // fsync the final file
@@ -894,11 +928,12 @@ impl CredentialStore {
 
 /// Get aeroftp config directory, creating it with secure permissions if needed
 fn config_dir() -> Result<PathBuf, CredentialError> {
-    let base = dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .ok_or_else(|| CredentialError::Io(
-            std::io::Error::new(std::io::ErrorKind::NotFound, "No config directory")
-        ))?;
+    let base = dirs::config_dir().or_else(dirs::home_dir).ok_or_else(|| {
+        CredentialError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No config directory",
+        ))
+    })?;
     let dir = base.join("aeroftp");
     if !dir.exists() {
         std::fs::create_dir_all(&dir)?;
@@ -948,8 +983,8 @@ pub(crate) fn harden_config_directory() -> Result<(), CredentialError> {
 /// Uses OpenOptions without truncate to preserve original file size on disk.
 /// Chunked writes (1 MiB) prevent OOM on large files.
 pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
-    use std::io::{Write, Seek, SeekFrom};
     use std::fs::OpenOptions;
+    use std::io::{Seek, SeekFrom, Write};
 
     if path.exists() {
         let size = std::fs::metadata(path)?.len() as usize;

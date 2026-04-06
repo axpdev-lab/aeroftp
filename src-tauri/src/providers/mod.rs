@@ -1,5 +1,5 @@
 //! Storage Providers Module
-//! 
+//!
 //! This module provides a unified abstraction layer for different storage backends.
 //! All providers implement the `StorageProvider` trait, allowing the application
 //! to work with FTP, WebDAV, S3, and other storage systems through a common interface.
@@ -22,38 +22,38 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-pub mod types;
-pub mod ftp;
-pub mod sftp;
-pub mod webdav;
-pub mod s3;
-pub mod oauth2;
-pub mod google_drive;
-pub mod dropbox;
-pub mod onedrive;
-pub mod mega;
-pub mod mega_native;
-pub mod mega_crypto;
-pub mod box_provider;
-pub mod pcloud;
+pub mod atomic_write;
 pub mod azure;
-pub mod filen;
-pub mod oauth1;
-pub mod fourshared;
-pub mod zoho_workdrive;
-pub mod internxt;
-pub mod kdrive;
-pub mod jottacloud;
+pub mod box_provider;
 pub mod drime_cloud;
+pub mod dropbox;
 pub mod filelu;
-pub mod koofr;
-pub mod opendrive;
-pub mod yandex_disk;
+pub mod filen;
+pub mod fourshared;
+pub mod ftp;
 pub mod github;
 pub mod gitlab;
-pub mod swift;
+pub mod google_drive;
 pub mod http_retry;
-pub mod atomic_write;
+pub mod internxt;
+pub mod jottacloud;
+pub mod kdrive;
+pub mod koofr;
+pub mod mega;
+pub mod mega_crypto;
+pub mod mega_native;
+pub mod oauth1;
+pub mod oauth2;
+pub mod onedrive;
+pub mod opendrive;
+pub mod pcloud;
+pub mod s3;
+pub mod sftp;
+pub mod swift;
+pub mod types;
+pub mod webdav;
+pub mod yandex_disk;
+pub mod zoho_workdrive;
 
 /// User-Agent sent with every HTTP request (auto-derived from Cargo.toml version).
 /// Used by all providers that make HTTP calls (WebDAV, S3, OAuth, REST APIs).
@@ -61,35 +61,35 @@ pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION
 
 pub use types::*;
 // GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0
-#[allow(unused_imports)]
-pub use http_retry::{HttpRetryConfig, send_with_retry};
-pub use ftp::FtpProvider;
-pub use sftp::SftpProvider;
-pub use webdav::WebDavProvider;
-pub use s3::S3Provider;
-pub use google_drive::GoogleDriveProvider;
-pub use dropbox::DropboxProvider;
-pub use onedrive::OneDriveProvider;
-pub use mega::{MegaCmdProvider, MegaProvider};
-pub use mega_native::MegaNativeProvider;
-pub use box_provider::BoxProvider;
-pub use pcloud::PCloudProvider;
 pub use azure::AzureProvider;
+pub use box_provider::BoxProvider;
+pub use drime_cloud::DrimeCloudProvider;
+pub use dropbox::DropboxProvider;
+pub use filelu::FileLuProvider;
 pub use filen::FilenProvider;
 pub use fourshared::FourSharedProvider;
-pub use zoho_workdrive::ZohoWorkdriveProvider;
-pub use internxt::InternxtProvider;
-pub use kdrive::KDriveProvider;
-pub use jottacloud::JottacloudProvider;
-pub use drime_cloud::DrimeCloudProvider;
-pub use filelu::FileLuProvider;
-pub use koofr::KoofrProvider;
-pub use opendrive::OpenDriveProvider;
-pub use yandex_disk::YandexDiskProvider;
+pub use ftp::FtpProvider;
 pub use github::GitHubProvider;
 pub use gitlab::GitLabProvider;
-pub use swift::SwiftProvider;
+pub use google_drive::GoogleDriveProvider;
+#[allow(unused_imports)]
+pub use http_retry::{send_with_retry, HttpRetryConfig};
+pub use internxt::InternxtProvider;
+pub use jottacloud::JottacloudProvider;
+pub use kdrive::KDriveProvider;
+pub use koofr::KoofrProvider;
+pub use mega::{MegaCmdProvider, MegaProvider};
+pub use mega_native::MegaNativeProvider;
 pub use oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider};
+pub use onedrive::OneDriveProvider;
+pub use opendrive::OpenDriveProvider;
+pub use pcloud::PCloudProvider;
+pub use s3::S3Provider;
+pub use sftp::SftpProvider;
+pub use swift::SwiftProvider;
+pub use webdav::WebDavProvider;
+pub use yandex_disk::YandexDiskProvider;
+pub use zoho_workdrive::ZohoWorkdriveProvider;
 
 use async_trait::async_trait;
 use serde::Serialize;
@@ -157,7 +157,8 @@ pub async fn response_bytes_with_limit(
 pub fn sanitize_api_error(body: &str) -> String {
     let first_line = body.lines().next().unwrap_or("unknown error");
     let truncated = if first_line.len() > 200 {
-        let boundary = first_line.char_indices()
+        let boundary = first_line
+            .char_indices()
             .take_while(|&(i, _)| i <= 200)
             .last()
             .map(|(i, c)| i + c.len_utf8())
@@ -256,34 +257,36 @@ pub trait StorageProvider: Send + Sync {
 
     /// Get the provider type identifier
     fn provider_type(&self) -> ProviderType;
-    
+
     /// Get display name for this provider instance
     fn display_name(&self) -> String;
 
     /// Get the authenticated account email/username (if available after connect)
-    fn account_email(&self) -> Option<String> { None }
+    fn account_email(&self) -> Option<String> {
+        None
+    }
 
     /// Connect to the storage backend
     async fn connect(&mut self) -> Result<(), ProviderError>;
-    
+
     /// Disconnect from the storage backend
     async fn disconnect(&mut self) -> Result<(), ProviderError>;
-    
+
     /// Check if currently connected
     fn is_connected(&self) -> bool;
-    
+
     /// List files and directories in the given path
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError>;
-    
+
     /// Get current working directory
     async fn pwd(&mut self) -> Result<String, ProviderError>;
-    
+
     /// Change current directory
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError>;
-    
+
     /// Go to parent directory
     async fn cd_up(&mut self) -> Result<(), ProviderError>;
-    
+
     /// Download a file to local path
     async fn download(
         &mut self,
@@ -291,10 +294,10 @@ pub trait StorageProvider: Send + Sync {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError>;
-    
+
     /// Download a file to memory (returns bytes)
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError>;
-    
+
     /// Upload a file from local path
     async fn upload(
         &mut self,
@@ -302,64 +305,64 @@ pub trait StorageProvider: Send + Sync {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError>;
-    
+
     /// Create a directory
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError>;
-    
+
     /// Delete a file
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError>;
-    
+
     /// Delete a directory (must be empty for most providers)
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError>;
-    
+
     /// Delete a directory recursively (with all contents)
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError>;
-    
+
     /// Rename/move a file or directory
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError>;
-    
+
     /// Get file/directory info
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError>;
-    
+
     /// Get file size
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError>;
-    
+
     /// Check if path exists
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError>;
-    
+
     /// Keep connection alive (send heartbeat/noop)
     async fn keep_alive(&mut self) -> Result<(), ProviderError>;
-    
+
     /// Get server/service info
     async fn server_info(&mut self) -> Result<String, ProviderError>;
-    
+
     // Optional capabilities - providers can override these
-    
+
     /// Check if provider supports chmod
     fn supports_chmod(&self) -> bool {
         false
     }
-    
+
     /// Change file permissions (Unix-style)
     async fn chmod(&mut self, _path: &str, _mode: u32) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("chmod".to_string()))
     }
-    
+
     /// Check if provider supports symlinks
     fn supports_symlinks(&self) -> bool {
         false
     }
-    
+
     /// Check if provider supports server-side copy
     fn supports_server_copy(&self) -> bool {
         false
     }
-    
+
     /// Copy file on server side (without download/upload)
     async fn server_copy(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("server_copy".to_string()))
     }
-    
+
     /// Check if provider supports share links
     fn supports_share_links(&self) -> bool {
         false
@@ -410,12 +413,20 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// Search for files matching a pattern under the given path
-    async fn find(&mut self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(
+        &mut self,
+        _path: &str,
+        _pattern: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         Err(ProviderError::NotSupported("find".to_string()))
     }
 
     /// Set transfer speed limits (in KB/s, 0 = unlimited)
-    async fn set_speed_limit(&mut self, _upload_kb: u64, _download_kb: u64) -> Result<(), ProviderError> {
+    async fn set_speed_limit(
+        &mut self,
+        _upload_kb: u64,
+        _download_kb: u64,
+    ) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("set_speed_limit".to_string()))
     }
 
@@ -472,7 +483,11 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// Restore a file to a specific version
-    async fn restore_version(&mut self, _path: &str, _version_id: &str) -> Result<(), ProviderError> {
+    async fn restore_version(
+        &mut self,
+        _path: &str,
+        _version_id: &str,
+    ) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("restore_version".to_string()))
     }
 
@@ -507,7 +522,10 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// List current permissions/shares on a file
-    async fn list_permissions(&mut self, _path: &str) -> Result<Vec<SharePermission>, ProviderError> {
+    async fn list_permissions(
+        &mut self,
+        _path: &str,
+    ) -> Result<Vec<SharePermission>, ProviderError> {
         Err(ProviderError::NotSupported("list_permissions".to_string()))
     }
 
@@ -521,11 +539,7 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// Remove a permission/share from a file
-    async fn remove_permission(
-        &mut self,
-        _path: &str,
-        _target: &str,
-    ) -> Result<(), ProviderError> {
+    async fn remove_permission(&mut self, _path: &str, _target: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("remove_permission".to_string()))
     }
 
@@ -560,7 +574,10 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// List changes since the given page token, returns (changes, new_token)
-    async fn list_changes(&mut self, _page_token: &str) -> Result<(Vec<ChangeEntry>, String), ProviderError> {
+    async fn list_changes(
+        &mut self,
+        _page_token: &str,
+    ) -> Result<(Vec<ChangeEntry>, String), ProviderError> {
         Err(ProviderError::NotSupported("list_changes".to_string()))
     }
 
@@ -575,7 +592,12 @@ pub trait StorageProvider: Send + Sync {
     }
 
     /// Read a byte range from a remote file (needed for delta sync)
-    async fn read_range(&mut self, _path: &str, _offset: u64, _len: u64) -> Result<Vec<u8>, ProviderError> {
+    async fn read_range(
+        &mut self,
+        _path: &str,
+        _offset: u64,
+        _len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
         Err(ProviderError::NotSupported("read_range".to_string()))
     }
 }
@@ -609,8 +631,12 @@ impl ProviderFactory {
                     "AeroCloud must be configured via the AeroCloud panel (click AeroCloud in status bar)".to_string()
                 ))
             }
-            ProviderType::GoogleDrive | ProviderType::Dropbox | ProviderType::OneDrive
-            | ProviderType::Box | ProviderType::PCloud | ProviderType::ZohoWorkdrive => {
+            ProviderType::GoogleDrive
+            | ProviderType::Dropbox
+            | ProviderType::OneDrive
+            | ProviderType::Box
+            | ProviderType::PCloud
+            | ProviderType::ZohoWorkdrive => {
                 // OAuth2 providers require a different initialization flow
                 // Use oauth2_connect command instead
                 Err(ProviderError::NotSupported(
@@ -626,7 +652,9 @@ impl ProviderFactory {
             ProviderType::Mega => {
                 let mega_config = MegaConfig::from_provider_config(config)?;
                 match mega_config.connection_mode {
-                    MegaConnectionMode::Native => Ok(Box::new(MegaNativeProvider::new(mega_config))),
+                    MegaConnectionMode::Native => {
+                        Ok(Box::new(MegaNativeProvider::new(mega_config)))
+                    }
                     MegaConnectionMode::MegaCmd => Ok(Box::new(MegaCmdProvider::new(mega_config))),
                 }
             }
@@ -685,7 +713,7 @@ impl ProviderFactory {
             }
         }
     }
-    
+
     /// Get list of all supported provider types
     #[allow(dead_code)]
     pub fn supported_types() -> Vec<ProviderType> {
@@ -724,7 +752,7 @@ impl ProviderFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_provider_factory_supported_types() {
         let types = ProviderFactory::supported_types();

@@ -7,9 +7,9 @@
 //
 // v2.0 — February 2026
 
+use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
-use serde::Serialize;
 use tracing::{info, warn};
 
 /// Maximum failed unlock attempts before throttling kicks in
@@ -71,7 +71,8 @@ impl MasterPasswordState {
                 .saturating_mul(1u64.checked_shl(excess.min(10)).unwrap_or(u64::MAX))
                 .min(THROTTLE_MAX_DELAY_SECS);
             let now_ms = self.start_instant.elapsed().as_millis() as u64;
-            self.throttle_until_ms.store(now_ms + delay_secs * 1000, Ordering::SeqCst);
+            self.throttle_until_ms
+                .store(now_ms + delay_secs * 1000, Ordering::SeqCst);
             warn!(
                 "Unlock throttled: {} failed attempts, backoff {}s",
                 count, delay_secs

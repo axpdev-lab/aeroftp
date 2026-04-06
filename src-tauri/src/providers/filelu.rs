@@ -22,9 +22,8 @@ use std::path::Path;
 use tracing::info;
 
 use super::{
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
-    FileLuConfig, HttpRetryConfig, send_with_retry,
-    ShareLinkOptions, ShareLinkResult,
+    send_with_retry, FileLuConfig, HttpRetryConfig, ProviderError, ProviderType, RemoteEntry,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 const API_BASE: &str = "https://filelu.com/api";
@@ -65,7 +64,14 @@ struct FolderEntry {
     name: Option<String>,
     /// Folder token used for password-protecting the folder
     code: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_opt_boolish", alias = "has_password", alias = "is_password", alias = "password_protected", alias = "fld_password_protected")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_opt_boolish",
+        alias = "has_password",
+        alias = "is_password",
+        alias = "password_protected",
+        alias = "fld_password_protected"
+    )]
     password_protected: Option<bool>,
 }
 
@@ -98,9 +104,20 @@ struct FileEntry {
     link: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_boolish")]
     only_me: Option<bool>,
-    #[serde(rename = "public", default, deserialize_with = "deserialize_opt_boolish")]
+    #[serde(
+        rename = "public",
+        default,
+        deserialize_with = "deserialize_opt_boolish"
+    )]
     is_public: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_opt_boolish", alias = "has_password", alias = "is_password", alias = "password_protected", alias = "file_password_protected")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_opt_boolish",
+        alias = "has_password",
+        alias = "is_password",
+        alias = "password_protected",
+        alias = "file_password_protected"
+    )]
     password_protected: Option<bool>,
 }
 
@@ -161,9 +178,9 @@ fn deserialize_size<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Er
     let v = serde_json::Value::deserialize(d)?;
     match v {
         serde_json::Value::Number(n) => Ok(n.as_u64().unwrap_or(0)),
-        serde_json::Value::String(s) => s.parse::<u64>().map_err(|_| {
-            serde::de::Error::invalid_value(Unexpected::Str(&s), &"a numeric string")
-        }),
+        serde_json::Value::String(s) => s
+            .parse::<u64>()
+            .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&s), &"a numeric string")),
         _ => Ok(0),
     }
 }
@@ -207,7 +224,9 @@ fn deserialize_opt_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<
 }
 
 /// Deserializer for optional bool fields encoded as bool/number/string.
-fn deserialize_opt_boolish<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
+fn deserialize_opt_boolish<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<bool>, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     match v {
         serde_json::Value::Null => Ok(None),
@@ -239,9 +258,9 @@ fn deserialize_opt_boolish<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Opt
 #[derive(Debug, Clone)]
 struct CacheEntry {
     is_dir: bool,
-    fld_id: u64,          // Valid when is_dir = true
+    fld_id: u64,               // Valid when is_dir = true
     fld_token: Option<String>, // folder token for password protection
-    file_code: String,    // Valid when is_dir = false
+    file_code: String,         // Valid when is_dir = false
     size: u64,
     modified: Option<String>,
 }
@@ -335,7 +354,10 @@ impl FileLuProvider {
 
     fn cache_insert(&mut self, path: String, entry: CacheEntry) {
         if self.path_cache.len() >= PATH_CACHE_MAX {
-            filelu_log(&format!("path_cache reached {} entries, evicting all", self.path_cache.len()));
+            filelu_log(&format!(
+                "path_cache reached {} entries, evicting all",
+                self.path_cache.len()
+            ));
             self.path_cache.clear();
         }
         self.path_cache.insert(path, entry);
@@ -375,7 +397,9 @@ impl FileLuProvider {
     }
 
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
-        let request = self.client.get(url)
+        let request = self
+            .client
+            .get(url)
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build GET failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -384,9 +408,18 @@ impl FileLuProvider {
     }
 
     #[allow(dead_code)]
-    async fn post_form_with_retry(&self, url: &str, body: String) -> Result<reqwest::Response, ProviderError> {
-        let request = self.client.post(url)
-            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+    async fn post_form_with_retry(
+        &self,
+        url: &str,
+        body: String,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let request = self
+            .client
+            .post(url)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
             .body(body)
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build POST failed: {}", e)))?;
@@ -399,16 +432,24 @@ impl FileLuProvider {
         resp: reqwest::Response,
     ) -> Result<T, ProviderError> {
         let status = resp.status();
-        let text = resp.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("Failed to read response: {}", e))
-        })?;
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
 
         if !status.is_success() {
-            return Err(ProviderError::ServerError(format!("HTTP {}: {}", status, text)));
+            return Err(ProviderError::ServerError(format!(
+                "HTTP {}: {}",
+                status, text
+            )));
         }
 
         let api_resp: ApiResponse<T> = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ParseError(format!("JSON parse error: {}. Body: {}", e, &text[..text.len().min(200)]))
+            ProviderError::ParseError(format!(
+                "JSON parse error: {}. Body: {}",
+                e,
+                &text[..text.len().min(200)]
+            ))
         })?;
 
         match api_resp.status {
@@ -424,22 +465,30 @@ impl FileLuProvider {
 
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
-        let text = resp.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("Failed to read response: {}", e))
-        })?;
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to read response: {}", e)))?;
 
         if !status.is_success() {
-            return Err(ProviderError::ServerError(format!("HTTP {}: {}", status, text)));
+            return Err(ProviderError::ServerError(format!(
+                "HTTP {}: {}",
+                status, text
+            )));
         }
 
         let parsed: StatusOnlyResponse = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ParseError(format!("JSON parse error: {}. Body: {}", e, &text[..text.len().min(200)]))
+            ProviderError::ParseError(format!(
+                "JSON parse error: {}. Body: {}",
+                e,
+                &text[..text.len().min(200)]
+            ))
         })?;
 
         if let Some(s) = parsed.status {
             if s != 200 {
                 return Err(ProviderError::ServerError(
-                    parsed.msg.unwrap_or_else(|| format!("API error {}", s))
+                    parsed.msg.unwrap_or_else(|| format!("API error {}", s)),
                 ));
             }
         }
@@ -464,7 +513,11 @@ impl FileLuProvider {
     /// Support confirmed on 2026-03-28: the response includes both files and folders,
     /// plus file `hash` and `direct_link` metadata.
     async fn list_folder_v2(&self, folder_path: &str) -> Result<FolderListResult, ProviderError> {
-        let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
+        let path = if folder_path.is_empty() || folder_path == "/" {
+            "/".to_string()
+        } else {
+            folder_path.to_string()
+        };
         let per_page = "100";
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
@@ -473,7 +526,11 @@ impl FileLuProvider {
             let page_str = page.to_string();
             let url = self.api_v2_url(
                 "folder/list",
-                &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
+                &[
+                    ("folder_path", &path),
+                    ("per_page", per_page),
+                    ("page", &page_str),
+                ],
             );
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FolderListResult>(resp).await?;
@@ -486,14 +543,25 @@ impl FileLuProvider {
             }
         }
 
-        Ok(FolderListResult { files: all_files, folders: all_folders })
+        Ok(FolderListResult {
+            files: all_files,
+            folders: all_folders,
+        })
     }
 
     /// Legacy fallback path kept as a defensive compatibility path.
     /// Uses v1 `file/list` by `fld_id` for files and v2 `folder/list` by `folder_path` for folders.
-    async fn list_folder_legacy_hybrid(&self, folder_path: &str, fld_id: u64) -> Result<FolderListResult, ProviderError> {
+    async fn list_folder_legacy_hybrid(
+        &self,
+        folder_path: &str,
+        fld_id: u64,
+    ) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
-        let path = if folder_path.is_empty() || folder_path == "/" { "/".to_string() } else { folder_path.to_string() };
+        let path = if folder_path.is_empty() || folder_path == "/" {
+            "/".to_string()
+        } else {
+            folder_path.to_string()
+        };
         let per_page = "100";
 
         let files_fut = async {
@@ -502,14 +570,21 @@ impl FileLuProvider {
                 let page_str = page.to_string();
                 let url = self.api_url_with(
                     "file/list",
-                    &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+                    &[
+                        ("fld_id", &fld_id_str),
+                        ("per_page", per_page),
+                        ("page", &page_str),
+                    ],
                 );
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FileListResult>(resp).await?;
                 let count = result.files.len();
-                all_files.extend(result.files.into_iter().filter(|f| {
-                    f.fld_id.is_none_or(|id| id == fld_id)
-                }));
+                all_files.extend(
+                    result
+                        .files
+                        .into_iter()
+                        .filter(|f| f.fld_id.is_none_or(|id| id == fld_id)),
+                );
                 if count < 100 {
                     break;
                 }
@@ -523,7 +598,11 @@ impl FileLuProvider {
                 let page_str = page.to_string();
                 let url = self.api_v2_url(
                     "folder/list",
-                    &[("folder_path", &path), ("per_page", per_page), ("page", &page_str)],
+                    &[
+                        ("folder_path", &path),
+                        ("per_page", per_page),
+                        ("page", &page_str),
+                    ],
                 );
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FolderListResult>(resp).await?;
@@ -556,31 +635,49 @@ impl FileLuProvider {
             let page_str = page.to_string();
             let url = self.api_url_with(
                 "file/list",
-                &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+                &[
+                    ("fld_id", &fld_id_str),
+                    ("per_page", per_page),
+                    ("page", &page_str),
+                ],
             );
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FileListResult>(resp).await?;
             let count = result.files.len();
-            all_files.extend(result.files.into_iter().filter(|f| {
-                f.fld_id.is_none_or(|id| id == fld_id)
-            }));
-            if count < 100 { break; }
+            all_files.extend(
+                result
+                    .files
+                    .into_iter()
+                    .filter(|f| f.fld_id.is_none_or(|id| id == fld_id)),
+            );
+            if count < 100 {
+                break;
+            }
         }
 
         for page in 1..=MAX_LIST_PAGES {
             let page_str = page.to_string();
             let url = self.api_url_with(
                 "folder/list",
-                &[("fld_id", &fld_id_str), ("per_page", per_page), ("page", &page_str)],
+                &[
+                    ("fld_id", &fld_id_str),
+                    ("per_page", per_page),
+                    ("page", &page_str),
+                ],
             );
             let resp = self.get_with_retry(&url).await?;
             let result = Self::parse_api::<FolderListResult>(resp).await?;
             let count = result.folders.len();
             all_folders.extend(result.folders);
-            if count < 100 { break; }
+            if count < 100 {
+                break;
+            }
         }
 
-        Ok(FolderListResult { files: all_files, folders: all_folders })
+        Ok(FolderListResult {
+            files: all_files,
+            folders: all_folders,
+        })
     }
 
     async fn populate_cache_for(
@@ -595,30 +692,41 @@ impl FileLuProvider {
                     "v2 folder/list failed for '{}', falling back to legacy hybrid listing: {}",
                     parent_path, error
                 ));
-                self.list_folder_legacy_hybrid(parent_path, parent_fld_id).await?
+                self.list_folder_legacy_hybrid(parent_path, parent_fld_id)
+                    .await?
             }
         };
         let mut entries: Vec<RemoteEntry> = Vec::new();
 
         let parent_norm = Self::normalize_path(parent_path);
-        let prefix = if parent_norm == "/" { String::new() } else { parent_norm.clone() };
+        let prefix = if parent_norm == "/" {
+            String::new()
+        } else {
+            parent_norm.clone()
+        };
 
         for folder in &result.folders {
             let name = folder.name.clone().unwrap_or_else(|| "unnamed".to_string());
             let child_norm = Self::normalize_path(&format!("{}/{}", prefix, name));
 
-            self.cache_insert(child_norm.clone(), CacheEntry {
-                is_dir: true,
-                fld_id: folder.fld_id,
-                fld_token: folder.code.clone(),
-                file_code: String::new(),
-                size: 0,
-                modified: None,
-            });
+            self.cache_insert(
+                child_norm.clone(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id: folder.fld_id,
+                    fld_token: folder.code.clone(),
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                },
+            );
 
             let mut metadata = HashMap::new();
             if let Some(is_password_protected) = folder.password_protected {
-                metadata.insert("filelu_password_protected".to_string(), is_password_protected.to_string());
+                metadata.insert(
+                    "filelu_password_protected".to_string(),
+                    is_password_protected.to_string(),
+                );
             }
 
             entries.push(RemoteEntry {
@@ -642,14 +750,17 @@ impl FileLuProvider {
             let code = file.file_code.clone().unwrap_or_default();
             let child_norm = Self::normalize_path(&format!("{}/{}", prefix, name));
 
-            self.cache_insert(child_norm.clone(), CacheEntry {
-                is_dir: false,
-                fld_id: parent_fld_id,
-                fld_token: None,
-                file_code: code,
-                size: file.size,
-                modified: file.uploaded.clone(),
-            });
+            self.cache_insert(
+                child_norm.clone(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: parent_fld_id,
+                    fld_token: None,
+                    file_code: code,
+                    size: file.size,
+                    modified: file.uploaded.clone(),
+                },
+            );
 
             let mime = Path::new(&name)
                 .extension()
@@ -658,7 +769,10 @@ impl FileLuProvider {
 
             let mut metadata = HashMap::new();
             if let Some(is_password_protected) = file.password_protected {
-                metadata.insert("filelu_password_protected".to_string(), is_password_protected.to_string());
+                metadata.insert(
+                    "filelu_password_protected".to_string(),
+                    is_password_protected.to_string(),
+                );
             }
             if let Some(ref h) = file.hash {
                 metadata.insert("content_hash".to_string(), h.clone());
@@ -679,7 +793,13 @@ impl FileLuProvider {
                 is_dir: false,
                 size: file.size,
                 modified: file.uploaded.clone(),
-                permissions: file.only_me.map(|is_private| if is_private { "private".to_string() } else { "public".to_string() }),
+                permissions: file.only_me.map(|is_private| {
+                    if is_private {
+                        "private".to_string()
+                    } else {
+                        "public".to_string()
+                    }
+                }),
                 owner: None,
                 group: None,
                 is_symlink: false,
@@ -722,18 +842,24 @@ impl FileLuProvider {
                 current_virtual.clone()
             };
 
-            self.populate_cache_for(&parent_virtual, current_fld_id).await?;
+            self.populate_cache_for(&parent_virtual, current_fld_id)
+                .await?;
 
             let child_virtual = Self::normalize_path(&format!("{}/{}", parent_virtual, seg));
-            let entry = self.path_cache.get(&child_virtual).cloned().ok_or_else(|| {
-                ProviderError::NotFound(format!("Path not found: {}", child_virtual))
-            })?;
+            let entry = self
+                .path_cache
+                .get(&child_virtual)
+                .cloned()
+                .ok_or_else(|| {
+                    ProviderError::NotFound(format!("Path not found: {}", child_virtual))
+                })?;
 
             if entry.is_dir {
                 current_fld_id = entry.fld_id;
             } else if i < segments.len() - 1 {
                 return Err(ProviderError::InvalidPath(format!(
-                    "Not a directory: {}", child_virtual
+                    "Not a directory: {}",
+                    child_virtual
                 )));
             } else {
                 return Ok(entry);
@@ -742,9 +868,10 @@ impl FileLuProvider {
             current_virtual = child_virtual;
         }
 
-        self.path_cache.get(&norm).cloned().ok_or_else(|| {
-            ProviderError::NotFound(format!("Directory not found: {}", norm))
-        })
+        self.path_cache
+            .get(&norm)
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(format!("Directory not found: {}", norm)))
     }
 
     async fn resolve_fld_id(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -752,14 +879,20 @@ impl FileLuProvider {
         if entry.is_dir {
             Ok(entry.fld_id)
         } else {
-            Err(ProviderError::InvalidPath(format!("Not a directory: {}", path)))
+            Err(ProviderError::InvalidPath(format!(
+                "Not a directory: {}",
+                path
+            )))
         }
     }
 
     async fn resolve_file_code(&mut self, path: &str) -> Result<String, ProviderError> {
         let entry = self.resolve_path_entry(path).await?;
         if entry.is_dir {
-            Err(ProviderError::InvalidPath(format!("Path is a directory: {}", path)))
+            Err(ProviderError::InvalidPath(format!(
+                "Path is a directory: {}",
+                path
+            )))
         } else {
             Ok(entry.file_code)
         }
@@ -772,9 +905,8 @@ impl FileLuProvider {
         } else {
             format!("{}/", prefix)
         };
-        self.path_cache.retain(|k, _| {
-            !k.starts_with(&prefix_slash) && k != &prefix
-        });
+        self.path_cache
+            .retain(|k, _| !k.starts_with(&prefix_slash) && k != &prefix);
     }
 
     /// Get direct download URL — v2 path-based (file_path), fallback to v1 (file_code)
@@ -782,9 +914,9 @@ impl FileLuProvider {
         let url = self.api_v2_url("file/direct_link", &[("file_path", file_path)]);
         let resp = self.get_with_retry(&url).await?;
         let result = Self::parse_api::<DirectLinkResult>(resp).await?;
-        result.url.ok_or_else(|| {
-            ProviderError::TransferFailed("No download URL returned".to_string())
-        })
+        result
+            .url
+            .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
     /// Legacy v1 get direct URL by file_code — kept for trash operations
@@ -794,36 +926,48 @@ impl FileLuProvider {
         let url = format!("{}/file/direct_link", API_BASE);
         let resp = self.post_form_with_retry(&url, body).await?;
         let result = Self::parse_api::<DirectLinkResult>(resp).await?;
-        result.url.ok_or_else(|| {
-            ProviderError::TransferFailed("No download URL returned".to_string())
-        })
+        result
+            .url
+            .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
     // ─── FileLu-Specific Public Methods ──────────────────────────────────
 
     /// Set or unset a file password. Pass empty string to remove password.
-    pub async fn set_file_password(&mut self, path: &str, password: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn set_file_password(
+        &mut self,
+        path: &str,
+        password: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let norm = self.resolve_path(path);
         let file_code = self.resolve_file_code(&norm).await?;
-        let url = self.api_url_with("file/set_password", &[
-            ("file_code", &file_code),
-            ("file_password", password),
-        ]);
+        let url = self.api_url_with(
+            "file/set_password",
+            &[("file_code", &file_code), ("file_password", password)],
+        );
         self.get_with_retry(&url).await?;
         Ok(())
     }
 
     /// Toggle file visibility. `only_me=true` → private, `false` → public.
-    pub async fn set_file_privacy(&mut self, path: &str, only_me: bool) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn set_file_privacy(
+        &mut self,
+        path: &str,
+        only_me: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let norm = self.resolve_path(path);
         let file_code = self.resolve_file_code(&norm).await?;
         let flag = if only_me { "1" } else { "0" };
-        let url = self.api_url_with("file/only_me", &[
-            ("file_code", &file_code),
-            ("only_me", flag),
-        ]);
+        let url = self.api_url_with(
+            "file/only_me",
+            &[("file_code", &file_code), ("only_me", flag)],
+        );
         self.get_with_retry(&url).await?;
         Ok(())
     }
@@ -847,20 +991,31 @@ impl FileLuProvider {
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| {
-            ProviderError::NetworkError(format!("clone_file read failed: {}", e))
-        })?;
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::NetworkError(format!("clone_file read failed: {}", e)))?;
         if !status.is_success() {
-            return Err(ProviderError::ServerError(format!("HTTP {}: {}", status, body)));
+            return Err(ProviderError::ServerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
         }
 
         let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
-            ProviderError::ParseError(format!("clone_file parse error: {}. Body: {}", e, &body[..body.len().min(200)]))
+            ProviderError::ParseError(format!(
+                "clone_file parse error: {}. Body: {}",
+                e,
+                &body[..body.len().min(200)]
+            ))
         })?;
 
         let status_code = value.get("status").and_then(|s| s.as_i64()).unwrap_or(200);
         if status_code != 200 {
-            let msg = value.get("msg").and_then(|m| m.as_str()).unwrap_or("clone failed");
+            let msg = value
+                .get("msg")
+                .and_then(|m| m.as_str())
+                .unwrap_or("clone failed");
             return Err(ProviderError::ServerError(msg.to_string()));
         }
 
@@ -923,22 +1078,30 @@ impl FileLuProvider {
 
     /// Set or unset a folder password via its fld_token.
     /// Returns Err if the folder token is not available (folder not yet shared).
-    pub async fn set_folder_password(&mut self, path: &str, password: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn set_folder_password(
+        &mut self,
+        path: &str,
+        password: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
         if !entry.is_dir {
-            return Err(ProviderError::InvalidPath("Path is not a folder".to_string()));
+            return Err(ProviderError::InvalidPath(
+                "Path is not a folder".to_string(),
+            ));
         }
         let token = entry.fld_token.ok_or_else(|| {
             ProviderError::ServerError(
-                "Folder token unavailable — enable folder sharing first".to_string()
+                "Folder token unavailable — enable folder sharing first".to_string(),
             )
         })?;
-        let url = self.api_url_with("folder/set_password", &[
-            ("fld_token", &token),
-            ("fld_password", password),
-        ]);
+        let url = self.api_url_with(
+            "folder/set_password",
+            &[("fld_token", &token), ("fld_password", password)],
+        );
         self.get_with_retry(&url).await?;
         Ok(())
     }
@@ -950,23 +1113,30 @@ impl FileLuProvider {
         filedrop: bool,
         is_public: bool,
     ) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let norm = self.resolve_path(path);
         let fld_id = self.resolve_fld_id(&norm).await?;
         let fd = if filedrop { "1" } else { "0" };
         let pub_ = if is_public { "1" } else { "0" };
-        let url = self.api_url_with("folder/setting", &[
-            ("fld_id", &fld_id.to_string()),
-            ("filedrop", fd),
-            ("fld_public", pub_),
-        ]);
+        let url = self.api_url_with(
+            "folder/setting",
+            &[
+                ("fld_id", &fld_id.to_string()),
+                ("filedrop", fd),
+                ("fld_public", pub_),
+            ],
+        );
         self.get_with_retry(&url).await?;
         Ok(())
     }
 
     /// List all deleted files (trash).
     pub async fn list_deleted_files(&mut self) -> Result<Vec<DeletedFileEntry>, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let url = self.api_url("files/deleted");
         let resp = self.get_with_retry(&url).await?;
         let entries = Self::parse_api::<Vec<DeletedFileEntry>>(resp).await?;
@@ -975,18 +1145,22 @@ impl FileLuProvider {
 
     /// Restore a file from trash by file_code.
     pub async fn restore_deleted_file(&mut self, file_code: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
-        let url = self.api_url_with("file/restore", &[
-            ("file_code", file_code),
-            ("restore", "1"),
-        ]);
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let url = self.api_url_with(
+            "file/restore",
+            &[("file_code", file_code), ("restore", "1")],
+        );
         self.get_with_retry(&url).await?;
         Ok(())
     }
 
     /// Restore a folder from trash by fld_id.
     pub async fn restore_deleted_folder(&mut self, fld_id: u64) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let url = self.api_url_with("folder/restore", &[("fld_id", &fld_id.to_string())]);
         self.get_with_retry(&url).await?;
         Ok(())
@@ -994,26 +1168,35 @@ impl FileLuProvider {
 
     /// Upload a file from a remote URL into the given destination folder.
     /// Returns the file_code of the newly created file.
-    pub async fn remote_url_upload(&mut self, remote_url: &str, dest_path: &str) -> Result<String, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn remote_url_upload(
+        &mut self,
+        remote_url: &str,
+        dest_path: &str,
+    ) -> Result<String, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let norm = self.resolve_path(dest_path);
         let fld_id = self.resolve_fld_id(&norm).await?;
         // URL-encode the remote URL ourselves via api_url_with
-        let url = self.api_url_with("upload/url", &[
-            ("url", remote_url),
-            ("fld_id", &fld_id.to_string()),
-        ]);
+        let url = self.api_url_with(
+            "upload/url",
+            &[("url", remote_url), ("fld_id", &fld_id.to_string())],
+        );
         let resp = self.get_with_retry(&url).await?;
         // Response is an array: [{"file_code":"..."}]
         let text = resp.text().await.map_err(|e| {
             ProviderError::NetworkError(format!("remote_url_upload read failed: {}", e))
         })?;
         #[derive(Deserialize)]
-        struct RemoteUploadEntry { file_code: Option<String> }
+        struct RemoteUploadEntry {
+            file_code: Option<String>,
+        }
         let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!("remote_url_upload parse error: {}", e))
         })?;
-        let code = entries.into_iter()
+        let code = entries
+            .into_iter()
             .next()
             .and_then(|e| e.file_code)
             .unwrap_or_default();
@@ -1024,10 +1207,10 @@ impl FileLuProvider {
     /// Permanently delete a file from trash.
     /// API: file/permanent_delete?key=xxx&file_code=xxx
     pub async fn permanent_delete_file(&mut self, file_code: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
-        let url = self.api_url_with("file/permanent_delete", &[
-            ("file_code", file_code),
-        ]);
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let url = self.api_url_with("file/permanent_delete", &[("file_code", file_code)]);
         let resp = self.get_with_retry(&url).await?;
         Self::ensure_api_ok(resp).await
     }
@@ -1135,7 +1318,9 @@ impl StorageProvider for FileLuProvider {
 
         let resp = self.get_with_retry(&direct_url).await?;
         let total_size = resp.content_length().unwrap_or(0);
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(ProviderError::IoError)?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
 
         use futures_util::StreamExt;
         let mut downloaded: u64 = 0;
@@ -1145,7 +1330,10 @@ impl StorageProvider for FileLuProvider {
             let chunk = chunk.map_err(|e| {
                 ProviderError::TransferFailed(format!("Download chunk error: {}", e))
             })?;
-            atomic.write_all(&chunk).await.map_err(ProviderError::IoError)?;
+            atomic
+                .write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
@@ -1174,9 +1362,10 @@ impl StorageProvider for FileLuProvider {
             }
         }
 
-        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
-            ProviderError::TransferFailed(format!("Download failed: {}", e))
-        })
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))
     }
 
     async fn upload(
@@ -1196,7 +1385,9 @@ impl StorageProvider for FileLuProvider {
             None => ("/".to_string(), norm.clone()),
         };
         if filename.is_empty() {
-            return Err(ProviderError::InvalidPath("Upload path must include filename".to_string()));
+            return Err(ProviderError::InvalidPath(
+                "Upload path must include filename".to_string(),
+            ));
         }
 
         let fld_id = self.resolve_fld_id(&dest_dir).await?;
@@ -1205,10 +1396,10 @@ impl StorageProvider for FileLuProvider {
         // (FileLu creates a new file_code on every upload, never overwrites)
         if let Ok(existing) = self.resolve_path_entry(&norm).await {
             if !existing.is_dir && !existing.file_code.is_empty() {
-                let del_url = self.api_url_with("file/remove", &[
-                    ("file_code", &existing.file_code),
-                    ("remove", "1"),
-                ]);
+                let del_url = self.api_url_with(
+                    "file/remove",
+                    &[("file_code", &existing.file_code), ("remove", "1")],
+                );
                 let _ = self.get_with_retry(&del_url).await;
                 self.invalidate_cache_under(&dest_dir);
             }
@@ -1223,11 +1414,17 @@ impl StorageProvider for FileLuProvider {
             ProviderError::NetworkError(format!("Failed to read upload server response: {}", e))
         })?;
         let server_info: UploadServerResponse = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ParseError(format!("Upload server JSON error: {}. Body: {}", e, &text[..text.len().min(200)]))
+            ProviderError::ParseError(format!(
+                "Upload server JSON error: {}. Body: {}",
+                e,
+                &text[..text.len().min(200)]
+            ))
         })?;
         if let Some(s) = server_info.status {
             if s != 200 {
-                let msg = server_info.msg.unwrap_or_else(|| format!("Upload server error {}", s));
+                let msg = server_info
+                    .msg
+                    .unwrap_or_else(|| format!("Upload server error {}", s));
                 return Err(ProviderError::ServerError(msg));
             }
         }
@@ -1239,14 +1436,17 @@ impl StorageProvider for FileLuProvider {
         })?;
 
         // Step 2: Stream file — avoid reading entire file into memory (OOM on large files)
-        let total_size = tokio::fs::metadata(local_path).await
-            .map_err(ProviderError::IoError)?.len();
+        let total_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?
+            .len();
 
         if let Some(ref cb) = on_progress {
             cb(0, total_size);
         }
 
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
@@ -1263,10 +1463,14 @@ impl StorageProvider for FileLuProvider {
             .text("fld_id", fld_id.to_string())
             .part("file_0", part);
 
-        let request = self.client.post(&upload_url)
+        let request = self
+            .client
+            .post(&upload_url)
             .multipart(form)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build upload request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Build upload request failed: {}", e))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -1274,22 +1478,43 @@ impl StorageProvider for FileLuProvider {
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Upload HTTP error: {}", body)));
+            return Err(ProviderError::TransferFailed(format!(
+                "Upload HTTP error: {}",
+                body
+            )));
         }
 
         let upload_body = resp.text().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to read upload response: {}", e))
         })?;
-        let upload_results: Vec<UploadResultEntry> = serde_json::from_str(&upload_body).map_err(|e| {
-            ProviderError::ParseError(format!("Upload result JSON error: {}. Body: {}", e, &upload_body[..upload_body.len().min(200)]))
-        })?;
-        let uploaded_file_code = upload_results.into_iter()
+        let upload_results: Vec<UploadResultEntry> =
+            serde_json::from_str(&upload_body).map_err(|e| {
+                ProviderError::ParseError(format!(
+                    "Upload result JSON error: {}. Body: {}",
+                    e,
+                    &upload_body[..upload_body.len().min(200)]
+                ))
+            })?;
+        let uploaded_file_code = upload_results
+            .into_iter()
             .find(|entry| {
-                entry.file_status.as_deref().map(|s| s.eq_ignore_ascii_case("OK")).unwrap_or(true)
-                    && entry.file_code.as_ref().map(|c| !c.is_empty()).unwrap_or(false)
+                entry
+                    .file_status
+                    .as_deref()
+                    .map(|s| s.eq_ignore_ascii_case("OK"))
+                    .unwrap_or(true)
+                    && entry
+                        .file_code
+                        .as_ref()
+                        .map(|c| !c.is_empty())
+                        .unwrap_or(false)
             })
             .and_then(|entry| entry.file_code)
-            .ok_or_else(|| ProviderError::TransferFailed("Upload completed but file_code was not returned".to_string()))?;
+            .ok_or_else(|| {
+                ProviderError::TransferFailed(
+                    "Upload completed but file_code was not returned".to_string(),
+                )
+            })?;
 
         // FileLu upload endpoint may place files in root depending on account/API behavior.
         // Force destination folder explicitly when target is not root.
@@ -1329,28 +1554,36 @@ impl StorageProvider for FileLuProvider {
             None => ("/".to_string(), norm.clone()),
         };
         if folder_name.is_empty() {
-            return Err(ProviderError::InvalidPath("Folder name cannot be empty".to_string()));
+            return Err(ProviderError::InvalidPath(
+                "Folder name cannot be empty".to_string(),
+            ));
         }
 
         let parent_fld_id = self.resolve_fld_id(&parent_path).await?;
         let url = self.api_url_with(
             "folder/create",
-            &[("parent_id", &parent_fld_id.to_string()), ("name", &folder_name)],
+            &[
+                ("parent_id", &parent_fld_id.to_string()),
+                ("name", &folder_name),
+            ],
         );
         let resp = self.get_with_retry(&url).await?;
         let result = Self::parse_api::<FolderCreateResult>(resp).await?;
-        let new_fld_id = result.fld_id.ok_or_else(|| {
-            ProviderError::ServerError("mkdir: no fld_id returned".to_string())
-        })?;
+        let new_fld_id = result
+            .fld_id
+            .ok_or_else(|| ProviderError::ServerError("mkdir: no fld_id returned".to_string()))?;
 
-        self.cache_insert(norm, CacheEntry {
-            is_dir: true,
-            fld_id: new_fld_id,
-            fld_token: None,
-            file_code: String::new(),
-            size: 0,
-            modified: None,
-        });
+        self.cache_insert(
+            norm,
+            CacheEntry {
+                is_dir: true,
+                fld_id: new_fld_id,
+                fld_token: None,
+                file_code: String::new(),
+                size: 0,
+                modified: None,
+            },
+        );
         self.invalidate_cache_under(&parent_path);
         Ok(())
     }
@@ -1371,14 +1604,24 @@ impl StorageProvider for FileLuProvider {
             // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint —
             // file/remove without remove=1 returns "Invalid option". Permanent delete is
             // the only API-supported delete. Trash is web-UI only on FileLu.
-            let url = self.api_url_with("file/remove", &[("file_code", &entry.file_code), ("remove", "1")]);
+            let url = self.api_url_with(
+                "file/remove",
+                &[("file_code", &entry.file_code), ("remove", "1")],
+            );
             let resp = self.get_with_retry(&url).await?;
             Self::ensure_api_ok(resp).await?;
         }
 
-        let parent = norm.rfind('/').map(|i| {
-            if i == 0 { "/".to_string() } else { norm[..i].to_string() }
-        }).unwrap_or_else(|| "/".to_string());
+        let parent = norm
+            .rfind('/')
+            .map(|i| {
+                if i == 0 {
+                    "/".to_string()
+                } else {
+                    norm[..i].to_string()
+                }
+            })
+            .unwrap_or_else(|| "/".to_string());
         self.path_cache.remove(&norm);
         self.invalidate_cache_under(&norm);
         self.invalidate_cache_under(&parent);
@@ -1401,15 +1644,31 @@ impl StorageProvider for FileLuProvider {
         let norm_to = self.resolve_path(to);
         let new_name = norm_to.rsplit('/').next().unwrap_or("").to_string();
         if new_name.is_empty() {
-            return Err(ProviderError::InvalidPath("New name cannot be empty".to_string()));
+            return Err(ProviderError::InvalidPath(
+                "New name cannot be empty".to_string(),
+            ));
         }
 
-        let from_parent = norm_from.rfind('/').map(|i| {
-            if i == 0 { "/".to_string() } else { norm_from[..i].to_string() }
-        }).unwrap_or_else(|| "/".to_string());
-        let to_parent = norm_to.rfind('/').map(|i| {
-            if i == 0 { "/".to_string() } else { norm_to[..i].to_string() }
-        }).unwrap_or_else(|| "/".to_string());
+        let from_parent = norm_from
+            .rfind('/')
+            .map(|i| {
+                if i == 0 {
+                    "/".to_string()
+                } else {
+                    norm_from[..i].to_string()
+                }
+            })
+            .unwrap_or_else(|| "/".to_string());
+        let to_parent = norm_to
+            .rfind('/')
+            .map(|i| {
+                if i == 0 {
+                    "/".to_string()
+                } else {
+                    norm_to[..i].to_string()
+                }
+            })
+            .unwrap_or_else(|| "/".to_string());
 
         let entry = self.resolve_path_entry(&norm_from).await?;
         let old_name = norm_from.rsplit('/').next().unwrap_or("").to_string();
@@ -1418,11 +1677,17 @@ impl StorageProvider for FileLuProvider {
         if from_parent == to_parent {
             // Pure rename — same directory
             if entry.is_dir {
-                let url = self.api_v2_url("folder/rename", &[("folder_path", &norm_from), ("name", &new_name)]);
+                let url = self.api_v2_url(
+                    "folder/rename",
+                    &[("folder_path", &norm_from), ("name", &new_name)],
+                );
                 let resp = self.get_with_retry(&url).await?;
                 Self::ensure_api_ok(resp).await?;
             } else {
-                let url = self.api_v2_url("file/rename", &[("file_path", &norm_from), ("name", &new_name)]);
+                let url = self.api_v2_url(
+                    "file/rename",
+                    &[("file_path", &norm_from), ("name", &new_name)],
+                );
                 let resp = self.get_with_retry(&url).await?;
                 Self::ensure_api_ok(resp).await?;
             }
@@ -1431,25 +1696,43 @@ impl StorageProvider for FileLuProvider {
             if entry.is_dir {
                 // Folder move: not yet available in v2 — fallback to v1
                 let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
-                let url = self.api_url_with("folder/move", &[("fld_id", &entry.fld_id.to_string()), ("dest_fld_id", &dest_fld_id.to_string())]);
+                let url = self.api_url_with(
+                    "folder/move",
+                    &[
+                        ("fld_id", &entry.fld_id.to_string()),
+                        ("dest_fld_id", &dest_fld_id.to_string()),
+                    ],
+                );
                 self.get_with_retry(&url).await?;
                 if new_name != old_name {
                     // After move, rename at new location via v2
                     let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url("folder/rename", &[("folder_path", &moved_path), ("name", &new_name)]);
+                    let url = self.api_v2_url(
+                        "folder/rename",
+                        &[("folder_path", &moved_path), ("name", &new_name)],
+                    );
                     let resp = self.get_with_retry(&url).await?;
                     Self::ensure_api_ok(resp).await?;
                 }
             } else {
                 // File move: v2 set_folder by path
                 let dest_folder = format!("{}/", to_parent.trim_end_matches('/'));
-                let url = self.api_v2_url("file/set_folder", &[("file_path", &norm_from), ("destination_folder_path", &dest_folder)]);
+                let url = self.api_v2_url(
+                    "file/set_folder",
+                    &[
+                        ("file_path", &norm_from),
+                        ("destination_folder_path", &dest_folder),
+                    ],
+                );
                 let resp = self.get_with_retry(&url).await?;
                 Self::ensure_api_ok(resp).await?;
                 if new_name != old_name {
                     // After move, rename at new location via v2
                     let moved_path = format!("{}/{}", to_parent.trim_end_matches('/'), old_name);
-                    let url = self.api_v2_url("file/rename", &[("file_path", &moved_path), ("name", &new_name)]);
+                    let url = self.api_v2_url(
+                        "file/rename",
+                        &[("file_path", &moved_path), ("name", &new_name)],
+                    );
                     let resp = self.get_with_retry(&url).await?;
                     Self::ensure_api_ok(resp).await?;
                 }
@@ -1571,7 +1854,10 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm).await?;
 
         // Make file public (only_me=0) and return the canonical FileLu link
-        let url = self.api_url_with("file/only_me", &[("file_code", &file_code), ("only_me", "0")]);
+        let url = self.api_url_with(
+            "file/only_me",
+            &[("file_code", &file_code), ("only_me", "0")],
+        );
         self.get_with_retry(&url).await?;
         Ok(ShareLinkResult {
             url: format!("https://filelu.com/{}", file_code),
@@ -1591,7 +1877,11 @@ impl StorageProvider for FileLuProvider {
         // FileLu API returns storage values in GB; convert to bytes for StorageInfo
         let used = info.storage_used.unwrap_or(0).saturating_mul(1_073_741_824);
         let free = info.storage_left.unwrap_or(0).saturating_mul(1_073_741_824);
-        Ok(StorageInfo { used, free, total: used + free })
+        Ok(StorageInfo {
+            used,
+            free,
+            total: used + free,
+        })
     }
 
     fn supports_server_copy(&self) -> bool {
@@ -1607,7 +1897,9 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
-        let body: serde_json::Value = resp.json().await
+        let body: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(format!("Clone response parse error: {}", e)))?;
 
         // Step 2: Move the clone to the destination folder if needed
@@ -1620,7 +1912,11 @@ impl StorageProvider for FileLuProvider {
 
         // Extract cloned file code from response (array format)
         if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
-            if let Some(cloned) = arr.first().and_then(|e| e.get("filecode").or_else(|| e.get("file_code"))).and_then(|v| v.as_str()) {
+            if let Some(cloned) = arr
+                .first()
+                .and_then(|e| e.get("filecode").or_else(|| e.get("file_code")))
+                .and_then(|v| v.as_str())
+            {
                 // Move to destination folder
                 let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
                 let fld_id_str = dest_fld_id.to_string();
@@ -1732,9 +2028,18 @@ mod tests {
         }"#;
         let entry: FileEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.name.as_deref(), Some("kodi.exe"));
-        assert_eq!(entry.hash.as_deref(), Some("73b6231c2379602a2266fbb0b94e9f302629426"));
-        assert_eq!(entry.direct_link.as_deref(), Some("https://d1028.cdnguest.space/example/kodi.exe"));
-        assert_eq!(entry.link.as_deref(), Some("https://filelu.com/218qmsppykci"));
+        assert_eq!(
+            entry.hash.as_deref(),
+            Some("73b6231c2379602a2266fbb0b94e9f302629426")
+        );
+        assert_eq!(
+            entry.direct_link.as_deref(),
+            Some("https://d1028.cdnguest.space/example/kodi.exe")
+        );
+        assert_eq!(
+            entry.link.as_deref(),
+            Some("https://filelu.com/218qmsppykci")
+        );
         assert_eq!(entry.is_public, Some(false));
     }
 

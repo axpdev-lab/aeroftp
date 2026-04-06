@@ -10,15 +10,14 @@
 
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
 use async_trait::async_trait;
+use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
-use russh::client::AuthResult;
 use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
-
 
 /// SSH Client Handler for server key verification
 struct SshHandler {
@@ -60,7 +59,9 @@ impl Handler for SshHandler {
                         "SFTP: Auto-accepting host key for {} (--trust-host-key)",
                         self.host
                     );
-                    if let Err(e) = known_hosts::learn_known_hosts(&self.host, self.port, server_public_key) {
+                    if let Err(e) =
+                        known_hosts::learn_known_hosts(&self.host, self.port, server_public_key)
+                    {
                         tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
                     }
                     Ok(true)
@@ -87,7 +88,8 @@ impl Handler for SshHandler {
                 // corrupted known_hosts or key format issues.
                 tracing::error!(
                     "SFTP: REJECTING connection to {} - known_hosts verification error: {}",
-                    self.host, e
+                    self.host,
+                    e
                 );
                 Ok(false)
             }
@@ -151,7 +153,11 @@ impl SftpProvider {
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "/".to_string());
-            if parent.is_empty() { "/".to_string() } else { parent }
+            if parent.is_empty() {
+                "/".to_string()
+            } else {
+                parent
+            }
         } else if path == "~" {
             self.home_dir.clone()
         } else if let Some(stripped) = path.strip_prefix("~/") {
@@ -173,14 +179,18 @@ impl SftpProvider {
     }
 
     /// Convert russh-sftp metadata to RemoteEntry
-    fn metadata_to_entry(&self, name: String, path: String, metadata: &russh_sftp::protocol::FileAttributes) -> RemoteEntry {
-        let is_dir = metadata.permissions
+    fn metadata_to_entry(
+        &self,
+        name: String,
+        path: String,
+        metadata: &russh_sftp::protocol::FileAttributes,
+    ) -> RemoteEntry {
+        let is_dir = metadata
+            .permissions
             .map(|p| (p & 0o40000) != 0)
             .unwrap_or(false);
 
-        let permissions = metadata.permissions.map(|p| {
-            format_permissions(p, is_dir)
-        });
+        let permissions = metadata.permissions.map(|p| format_permissions(p, is_dir));
 
         let modified = metadata.mtime.map(|t| {
             chrono::DateTime::from_timestamp(t as i64, 0)
@@ -205,9 +215,13 @@ impl SftpProvider {
     }
 
     /// Authenticate using SSH private key
-    async fn authenticate_with_key(&self, handle: &mut Handle<SshHandler>) -> Result<bool, ProviderError> {
-        let key_path = self.config.private_key_path.as_ref()
-            .ok_or_else(|| ProviderError::AuthenticationFailed("No private key path specified".to_string()))?;
+    async fn authenticate_with_key(
+        &self,
+        handle: &mut Handle<SshHandler>,
+    ) -> Result<bool, ProviderError> {
+        let key_path = self.config.private_key_path.as_ref().ok_or_else(|| {
+            ProviderError::AuthenticationFailed("No private key path specified".to_string())
+        })?;
 
         let expanded_path = Self::expand_home_path(key_path);
 
@@ -215,16 +229,26 @@ impl SftpProvider {
 
         // Load and parse the key using russh's built-in key loading
         use secrecy::ExposeSecret;
-        let passphrase_str = self.config.key_passphrase.as_ref().map(|s| s.expose_secret().to_string());
-        let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
+        let passphrase_str = self
+            .config
+            .key_passphrase
+            .as_ref()
+            .map(|s| s.expose_secret().to_string());
+        let key_pair =
+            keys::load_secret_key(&expanded_path, passphrase_str.as_deref()).map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e))
+            })?;
 
         // Wrap in PrivateKeyWithHashAlg (required by russh 0.54+)
         let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
 
         // Authenticate
-        let auth_result = handle.authenticate_publickey(&self.config.username, key_with_hash).await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("Key authentication failed: {}", e)))?;
+        let auth_result = handle
+            .authenticate_publickey(&self.config.username, key_with_hash)
+            .await
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Key authentication failed: {}", e))
+            })?;
 
         match auth_result {
             AuthResult::Success => Ok(true),
@@ -248,7 +272,10 @@ impl SftpProvider {
                     if actual_size == expected_size {
                         return Ok(());
                     }
-                    last_observation = format!("expected {} bytes, got {} bytes", expected_size, actual_size);
+                    last_observation = format!(
+                        "expected {} bytes, got {} bytes",
+                        expected_size, actual_size
+                    );
                 }
                 Err(error) => {
                     last_observation = error.to_string();
@@ -258,15 +285,13 @@ impl SftpProvider {
             if tokio::time::Instant::now() >= deadline {
                 return Err(ProviderError::TransferFailed(format!(
                     "Upload verification failed for {}: {}",
-                    remote_path,
-                    last_observation,
+                    remote_path, last_observation,
                 )));
             }
 
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         }
     }
-
 }
 
 /// Format Unix permissions as rwx string
@@ -289,12 +314,20 @@ fn format_permissions(mode: u32, is_dir: bool) -> String {
         if mode & 0o002 != 0 { 'w' } else { '-' },
         if mode & 0o001 != 0 { 'x' } else { '-' }
     );
-    format!("{}{}{}{}", if is_dir { 'd' } else { '-' }, user, group, other)
+    format!(
+        "{}{}{}{}",
+        if is_dir { 'd' } else { '-' },
+        user,
+        group,
+        other
+    )
 }
 
 #[async_trait]
 impl StorageProvider for SftpProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::Sftp
@@ -305,7 +338,11 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        tracing::info!("SFTP: Connecting to {}:{}", self.config.host, self.config.port);
+        tracing::info!(
+            "SFTP: Connecting to {}:{}",
+            self.config.host,
+            self.config.port
+        );
 
         // Create SSH config with keepalive to prevent server from closing connection
         let preferred = if self.compression_enabled {
@@ -331,8 +368,17 @@ impl StorageProvider for SftpProvider {
 
         // Connect to SSH server
         let addr = format!("{}:{}", self.config.host, self.config.port);
-        let mut handle = client::connect(Arc::new(config), &addr, SshHandler::with_trust(&self.config.host, self.config.port, self.config.trust_unknown_hosts)).await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
+        let mut handle = client::connect(
+            Arc::new(config),
+            &addr,
+            SshHandler::with_trust(
+                &self.config.host,
+                self.config.port,
+                self.config.trust_unknown_hosts,
+            ),
+        )
+        .await
+        .map_err(|e| ProviderError::ConnectionFailed(format!("SSH connection failed: {}", e)))?;
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 
@@ -342,58 +388,80 @@ impl StorageProvider for SftpProvider {
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
             // Try password authentication first, then keyboard-interactive as fallback
-            use secrecy::ExposeSecret;
             use russh::client::KeyboardInteractiveAuthResponse;
+            use secrecy::ExposeSecret;
             let pw = password.expose_secret().to_string();
-            let result = handle.authenticate_password(&self.config.username, &pw).await
-                .map_err(|e| ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e)))?;
+            let result = handle
+                .authenticate_password(&self.config.username, &pw)
+                .await
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e))
+                })?;
             if matches!(result, AuthResult::Success) {
                 true
             } else {
                 // Fallback: keyboard-interactive (many servers like SourceForge require this)
                 tracing::info!("SFTP: Password auth not accepted, trying keyboard-interactive...");
-                let ki_result = handle.authenticate_keyboard_interactive_start(&self.config.username, None::<String>).await
-                    .map_err(|e| ProviderError::AuthenticationFailed(format!("Keyboard-interactive auth failed: {}", e)))?;
+                let ki_result = handle
+                    .authenticate_keyboard_interactive_start(&self.config.username, None::<String>)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::AuthenticationFailed(format!(
+                            "Keyboard-interactive auth failed: {}",
+                            e
+                        ))
+                    })?;
                 match ki_result {
                     KeyboardInteractiveAuthResponse::Success => true,
                     KeyboardInteractiveAuthResponse::Failure { .. } => false,
                     KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
                         // Server asks for responses - send password for each prompt
                         let responses: Vec<String> = prompts.iter().map(|_| pw.clone()).collect();
-                        let resp = handle.authenticate_keyboard_interactive_respond(responses).await
-                            .map_err(|e| ProviderError::AuthenticationFailed(format!("Keyboard-interactive respond failed: {}", e)))?;
+                        let resp = handle
+                            .authenticate_keyboard_interactive_respond(responses)
+                            .await
+                            .map_err(|e| {
+                                ProviderError::AuthenticationFailed(format!(
+                                    "Keyboard-interactive respond failed: {}",
+                                    e
+                                ))
+                            })?;
                         matches!(resp, KeyboardInteractiveAuthResponse::Success)
                     }
                 }
             }
         } else {
             return Err(ProviderError::AuthenticationFailed(
-                "No authentication method provided (need password or private key)".to_string()
+                "No authentication method provided (need password or private key)".to_string(),
             ));
         };
 
         if !authenticated {
             return Err(ProviderError::AuthenticationFailed(
-                "Authentication rejected by server".to_string()
+                "Authentication rejected by server".to_string(),
             ));
         }
 
         tracing::info!("SFTP: Authenticated successfully, opening SFTP channel...");
 
         // Open SFTP subsystem channel
-        let channel = handle.channel_open_session().await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to open session channel: {}", e)))?;
+        let channel = handle.channel_open_session().await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to open session channel: {}", e))
+        })?;
 
-        channel.request_subsystem(true, "sftp").await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e)))?;
+        channel.request_subsystem(true, "sftp").await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e))
+        })?;
 
         // Create SFTP session from channel
-        let sftp = SftpSession::new(channel.into_stream()).await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e)))?;
+        let sftp = SftpSession::new(channel.into_stream()).await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e))
+        })?;
 
         // Get home directory (canonicalize ".")
-        let home = sftp.canonicalize(".").await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e)))?;
+        let home = sftp.canonicalize(".").await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e))
+        })?;
 
         self.home_dir = home;
 
@@ -407,7 +475,11 @@ impl StorageProvider for SftpProvider {
         self.ssh_handle = Some(handle);
         self.sftp = Some(sftp);
 
-        tracing::info!("SFTP: Connected successfully to {} (home: {})", self.config.host, self.home_dir);
+        tracing::info!(
+            "SFTP: Connected successfully to {} (home: {})",
+            self.config.host,
+            self.home_dir
+        );
         Ok(())
     }
 
@@ -421,7 +493,9 @@ impl StorageProvider for SftpProvider {
 
         // Close SSH handle
         if let Some(handle) = self.ssh_handle.take() {
-            let _ = handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+            let _ = handle
+                .disconnect(russh::Disconnect::ByApplication, "", "en")
+                .await;
         }
 
         self.current_dir = "/".to_string();
@@ -441,7 +515,9 @@ impl StorageProvider for SftpProvider {
 
         tracing::debug!("SFTP: Listing directory: {}", full_path);
 
-        let entries = sftp.read_dir(&full_path).await
+        let entries = sftp
+            .read_dir(&full_path)
+            .await
             .map_err(|e| ProviderError::NotFound(format!("Failed to list directory: {}", e)))?;
 
         let mut result = Vec::new();
@@ -460,7 +536,8 @@ impl StorageProvider for SftpProvider {
                 format!("{}/{}", full_path.trim_end_matches('/'), name)
             };
 
-            let mut remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+            let mut remote_entry =
+                self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
 
             // Check if it's a symlink
             if let Ok(link_meta) = sftp.symlink_metadata(&entry_path).await {
@@ -490,12 +567,10 @@ impl StorageProvider for SftpProvider {
         }
 
         // Sort: directories first, then alphabetically
-        result.sort_by(|a, b| {
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        result.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
 
         tracing::debug!("SFTP: Listed {} entries", result.len());
@@ -511,12 +586,17 @@ impl StorageProvider for SftpProvider {
         let full_path = self.normalize_path(path);
 
         // Verify the directory exists
-        let metadata = sftp.metadata(&full_path).await
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
             .map_err(|e| ProviderError::NotFound(format!("Directory not found: {}", e)))?;
 
         if let Some(perms) = metadata.permissions {
             if (perms & 0o40000) == 0 {
-                return Err(ProviderError::InvalidPath(format!("{} is not a directory", full_path)));
+                return Err(ProviderError::InvalidPath(format!(
+                    "{} is not a directory",
+                    full_path
+                )));
             }
         }
 
@@ -541,17 +621,23 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Downloading {} to {}", full_path, local_path);
 
         // Get file size
-        let metadata = sftp.metadata(&full_path).await
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
             .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
         let total_size = metadata.size.unwrap_or(0);
 
         // Open remote file
-        let mut remote_file = sftp.open(&full_path).await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to open remote file: {}", e)))?;
+        let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to open remote file: {}", e))
+        })?;
 
         // Create atomic local file (writes to .aerotmp, renames on commit)
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to create local file: {}", e)))?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
+            })?;
 
         // Read and write in chunks with optional rate limiting
         let mut buffer = vec![0u8; 32768]; // 32KB chunks
@@ -559,14 +645,18 @@ impl StorageProvider for SftpProvider {
         let start = std::time::Instant::now();
 
         loop {
-            let bytes_read = remote_file.read(&mut buffer).await
+            let bytes_read = remote_file
+                .read(&mut buffer)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Read error: {}", e)))?;
 
             if bytes_read == 0 {
                 break;
             }
 
-            atomic.write_all(&buffer[..bytes_read]).await
+            atomic
+                .write_all(&buffer[..bytes_read])
+                .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
 
             transferred += bytes_read as u64;
@@ -577,7 +667,9 @@ impl StorageProvider for SftpProvider {
 
             // Apply bandwidth throttling
             if self.download_limit_bps > 0 {
-                let expected = std::time::Duration::from_secs_f64(transferred as f64 / self.download_limit_bps as f64);
+                let expected = std::time::Duration::from_secs_f64(
+                    transferred as f64 / self.download_limit_bps as f64,
+                );
                 let elapsed = start.elapsed();
                 if expected > elapsed {
                     tokio::time::sleep(expected - elapsed).await;
@@ -585,8 +677,9 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         tracing::info!("SFTP: Download complete: {} bytes", transferred);
         Ok(())
@@ -610,7 +703,9 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        let data = sftp.read(&full_path).await
+        let data = sftp
+            .read(&full_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to read file: {}", e)))?;
 
         if data.len() as u64 > limit {
@@ -637,19 +732,22 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Uploading {} to {}", local_path, full_path);
 
         // Get local file size for progress reporting
-        let total_size = tokio::fs::metadata(local_path).await
+        let total_size = tokio::fs::metadata(local_path)
+            .await
             .map(|m| m.len())
             .unwrap_or(0);
 
         tracing::info!("SFTP: Upload local file size: {} bytes", total_size);
 
         // Open local file
-        let mut local_file = tokio::fs::File::open(local_path).await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to open local file: {}", e)))?;
+        let mut local_file = tokio::fs::File::open(local_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to open local file: {}", e))
+        })?;
 
         // Create remote file via russh_sftp (uses existing SSH session, no second connection)
-        let mut remote_file = sftp.create(&full_path).await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to create remote file: {}", e)))?;
+        let mut remote_file = sftp.create(&full_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to create remote file: {}", e))
+        })?;
 
         // Read and write in chunks with optional rate limiting
         let mut buffer = vec![0u8; 32768]; // 32KB chunks
@@ -657,14 +755,17 @@ impl StorageProvider for SftpProvider {
         let start = std::time::Instant::now();
 
         loop {
-            let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer).await
+            let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Local read error: {}", e)))?;
 
             if bytes_read == 0 {
                 break;
             }
 
-            remote_file.write_all(&buffer[..bytes_read]).await
+            remote_file
+                .write_all(&buffer[..bytes_read])
+                .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Remote write error: {}", e)))?;
 
             transferred += bytes_read as u64;
@@ -675,7 +776,9 @@ impl StorageProvider for SftpProvider {
 
             // Apply bandwidth throttling
             if self.upload_limit_bps > 0 {
-                let expected = std::time::Duration::from_secs_f64(transferred as f64 / self.upload_limit_bps as f64);
+                let expected = std::time::Duration::from_secs_f64(
+                    transferred as f64 / self.upload_limit_bps as f64,
+                );
                 let elapsed = start.elapsed();
                 if expected > elapsed {
                     tokio::time::sleep(expected - elapsed).await;
@@ -684,15 +787,26 @@ impl StorageProvider for SftpProvider {
         }
 
         // Ensure all data is flushed to remote
-        remote_file.shutdown().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to flush remote file: {}", e)))?;
+        remote_file.shutdown().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to flush remote file: {}", e))
+        })?;
 
         // Verify upload size
-        if let Err(error) = self.verify_remote_upload_size(sftp, &full_path, total_size).await {
-            tracing::warn!("SFTP: Upload size verification warning for {}: {}", full_path, error);
+        if let Err(error) = self
+            .verify_remote_upload_size(sftp, &full_path, total_size)
+            .await
+        {
+            tracing::warn!(
+                "SFTP: Upload size verification warning for {}: {}",
+                full_path,
+                error
+            );
         }
 
-        tracing::info!("SFTP: Upload complete via russh_sftp: {} bytes", transferred);
+        tracing::info!(
+            "SFTP: Upload complete via russh_sftp: {} bytes",
+            transferred
+        );
         Ok(())
     }
 
@@ -702,8 +816,9 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Creating directory: {}", full_path);
 
-        sftp.create_dir(&full_path).await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to create directory: {}", e)))?;
+        sftp.create_dir(&full_path).await.map_err(|e| {
+            ProviderError::ServerError(format!("Failed to create directory: {}", e))
+        })?;
 
         Ok(())
     }
@@ -714,7 +829,8 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Deleting file: {}", full_path);
 
-        sftp.remove_file(&full_path).await
+        sftp.remove_file(&full_path)
+            .await
             .map_err(|e| ProviderError::ServerError(format!("Failed to delete file: {}", e)))?;
 
         Ok(())
@@ -726,8 +842,9 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
-        sftp.remove_dir(&full_path).await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to remove directory: {}", e)))?;
+        sftp.remove_dir(&full_path).await.map_err(|e| {
+            ProviderError::ServerError(format!("Failed to remove directory: {}", e))
+        })?;
 
         Ok(())
     }
@@ -763,7 +880,8 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        sftp.rename(&from_path, &to_path).await
+        sftp.rename(&from_path, &to_path)
+            .await
             .map_err(|e| ProviderError::ServerError(format!("Failed to rename: {}", e)))?;
 
         Ok(())
@@ -773,7 +891,9 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp.metadata(&full_path).await
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
             .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
 
         let name = Path::new(&full_path)
@@ -802,7 +922,9 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp.metadata(&full_path).await
+        let metadata = sftp
+            .metadata(&full_path)
+            .await
             .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
 
         Ok(metadata.size.unwrap_or(0))
@@ -828,7 +950,8 @@ impl StorageProvider for SftpProvider {
         // Optionally do a simple operation to verify connection
         // canonicalize(".") is lightweight
         if let Some(sftp) = &self.sftp {
-            sftp.canonicalize(".").await
+            sftp.canonicalize(".")
+                .await
                 .map_err(|_| ProviderError::NotConnected)?;
         }
 
@@ -852,9 +975,13 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: chmod {} to {:o}", full_path, mode);
 
-        let attrs = russh_sftp::protocol::FileAttributes { permissions: Some(mode), ..Default::default() };
+        let attrs = russh_sftp::protocol::FileAttributes {
+            permissions: Some(mode),
+            ..Default::default()
+        };
 
-        sftp.set_metadata(&full_path, attrs).await
+        sftp.set_metadata(&full_path, attrs)
+            .await
             .map_err(|e| ProviderError::ServerError(format!("Failed to chmod: {}", e)))?;
 
         Ok(())
@@ -892,7 +1019,8 @@ impl StorageProvider for SftpProvider {
                     format!("{}/{}", dir.trim_end_matches('/'), name)
                 };
 
-                let remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+                let remote_entry =
+                    self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
 
                 if remote_entry.is_dir {
                     dirs_to_scan.push(entry_path.clone());
@@ -914,9 +1042,13 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let path = self.normalize_path(".");
 
-        let stat = sftp.fs_info(path).await
+        let stat = sftp
+            .fs_info(path)
+            .await
             .map_err(|e| ProviderError::ServerError(format!("statvfs failed: {}", e)))?
-            .ok_or_else(|| ProviderError::NotSupported("Server does not support statvfs".to_string()))?;
+            .ok_or_else(|| {
+                ProviderError::NotSupported("Server does not support statvfs".to_string())
+            })?;
 
         let total = stat.blocks * stat.fragment_size;
         let free = stat.blocks_avail * stat.fragment_size;
@@ -925,10 +1057,18 @@ impl StorageProvider for SftpProvider {
         Ok(super::StorageInfo { used, total, free })
     }
 
-    async fn set_speed_limit(&mut self, upload_kb: u64, download_kb: u64) -> Result<(), ProviderError> {
+    async fn set_speed_limit(
+        &mut self,
+        upload_kb: u64,
+        download_kb: u64,
+    ) -> Result<(), ProviderError> {
         self.upload_limit_bps = upload_kb * 1024;
         self.download_limit_bps = download_kb * 1024;
-        tracing::info!("SFTP: Speed limits set: download={}KB/s upload={}KB/s", download_kb, upload_kb);
+        tracing::info!(
+            "SFTP: Speed limits set: download={}KB/s upload={}KB/s",
+            download_kb,
+            upload_kb
+        );
         Ok(())
     }
 
@@ -951,34 +1091,48 @@ impl StorageProvider for SftpProvider {
         true
     }
 
-    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
-        let sftp = self.sftp.as_ref()
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let sftp = self
+            .sftp
+            .as_ref()
             .ok_or_else(|| ProviderError::NotConnected)?;
         let full_path = self.normalize_path(path);
 
-        let mut file = sftp.open(&full_path).await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to open file for range read: {}", e)))?;
+        let mut file = sftp.open(&full_path).await.map_err(|e| {
+            ProviderError::ServerError(format!("Failed to open file for range read: {}", e))
+        })?;
 
         // Seek to offset
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
-        file.seek(std::io::SeekFrom::Start(offset)).await
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
             .map_err(|e| ProviderError::ServerError(format!("Failed to seek: {}", e)))?;
 
         // GAP-A03: Cap read_range allocation to prevent attacker-controlled OOM
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(
-                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
-            ));
+            return Err(ProviderError::Other(format!(
+                "Read range size {} exceeds maximum {} bytes",
+                len, MAX_READ_RANGE
+            )));
         }
 
         // Read exact len bytes
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
         while total_read < len as usize {
-            let n = file.read(&mut buf[total_read..]).await
+            let n = file
+                .read(&mut buf[total_read..])
+                .await
                 .map_err(|e| ProviderError::ServerError(format!("Failed to read range: {}", e)))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total_read += n;
         }
         buf.truncate(total_read);
@@ -1032,7 +1186,10 @@ mod tests {
         assert_eq!(provider.normalize_path(".."), "/home");
         assert_eq!(provider.normalize_path("."), "/home/user");
         assert_eq!(provider.normalize_path("~"), "/home/user");
-        assert_eq!(provider.normalize_path("~/documents"), "/home/user/documents");
+        assert_eq!(
+            provider.normalize_path("~/documents"),
+            "/home/user/documents"
+        );
     }
 
     #[test]

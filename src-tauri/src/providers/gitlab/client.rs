@@ -14,7 +14,7 @@ use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
 
-use crate::providers::{ProviderError, sanitize_api_error};
+use crate::providers::{sanitize_api_error, ProviderError};
 
 /// User-Agent sent with every request.
 const USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
@@ -56,7 +56,11 @@ impl GitLabHttpClient {
     ///
     /// `api_base` should be e.g. `https://gitlab.com/api/v4` or
     /// `https://self-hosted.example.com/api/v4`.
-    pub fn new(token: SecretString, api_base: String, accept_invalid_certs: bool) -> Result<Self, ProviderError> {
+    pub fn new(
+        token: SecretString,
+        api_base: String,
+        accept_invalid_certs: bool,
+    ) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .user_agent(USER_AGENT)
@@ -114,10 +118,7 @@ impl GitLabHttpClient {
             ));
         }
 
-        let body: String = response
-            .text()
-            .await
-            .unwrap_or_else(|_| String::from("{}"));
+        let body: String = response.text().await.unwrap_or_else(|_| String::from("{}"));
         let sanitized = sanitize_api_error(&body);
 
         match status {
@@ -154,7 +155,9 @@ impl GitLabHttpClient {
                 if let Some(rb) = retry_builder {
                     self.execute(rb).await
                 } else {
-                    Err(ProviderError::Other("GitLab: server error (retry failed)".into()))
+                    Err(ProviderError::Other(
+                        "GitLab: server error (retry failed)".into(),
+                    ))
                 }
             }
             Err(e) => Err(e),
@@ -164,10 +167,7 @@ impl GitLabHttpClient {
     // ── High-level convenience methods ─────────────────────────────
 
     /// GET a JSON endpoint.
-    pub async fn get_json<T: DeserializeOwned>(
-        &mut self,
-        path: &str,
-    ) -> Result<T, ProviderError> {
+    pub async fn get_json<T: DeserializeOwned>(&mut self, path: &str) -> Result<T, ProviderError> {
         let url = self.resolve_url(path);
         let builder = self.request(Method::GET, &url);
         let resp = self.execute_with_retry(builder).await?;
@@ -268,7 +268,8 @@ impl GitLabHttpClient {
         content_type: &str,
     ) -> Result<Response, ProviderError> {
         let url = self.resolve_url(path);
-        let builder = self.request(Method::PUT, &url)
+        let builder = self
+            .request(Method::PUT, &url)
             .header("Content-Type", content_type)
             .body(bytes);
         self.execute(builder).await

@@ -25,7 +25,7 @@ import {
     Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
     WifiOff, KeyRound, HardDrive, Timer, Ban,
     Download, ShieldAlert,
-    History, FileCheck, FilePen, ChevronDown, ChevronRight, FlaskConical
+    History, FileCheck, FilePen, ChevronDown, ChevronRight, FlaskConical, Trash2
 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
@@ -56,6 +56,7 @@ interface SyncPanelProps {
 interface SyncReport {
     uploaded: number;
     downloaded: number;
+    deleted: number;
     skipped: number;
     dirsCreated: number;
     errors: SyncErrorInfo[];
@@ -126,11 +127,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [showTemplate, setShowTemplate] = useState(false);
     const [showRollback, setShowRollback] = useState(false);
 
+    // --- Rename Tracking ---
+    const [detectRenames, setDetectRenames] = useState(false);
+    const [detectedRenames, setDetectedRenames] = useState<Map<string, string>>(new Map()); // new_path → old_path
+
     // --- Canary Mode State ---
     const [canaryMode, setCanaryMode] = useState(false);
     const [canaryPercent, setCanaryPercent] = useState(10);
     const [canarySelection, setCanarySelection] = useState('random');
     const [canaryResult, setCanaryResult] = useState<CanaryResult | null>(null);
+
+    // --- Transfer Budget ---
+    const [transferBudget, setTransferBudget] = useState<number>(0); // 0 = unlimited
 
     // --- Core State ---
     const [editLocalPath, setEditLocalPath] = useState(localPath);
@@ -385,22 +393,83 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             );
 
             // Apply direction filter
+            // When delete_orphans is active, include orphans from the opposite side (they'll be deleted)
             if (options.direction === 'remote_to_local') {
                 differences = differences.filter(r =>
                     r.status === 'remote_newer' || r.status === 'remote_only'
+                    || (options.delete_orphans && r.status === 'local_only')
                 );
             } else if (options.direction === 'local_to_remote') {
                 differences = differences.filter(r =>
                     r.status === 'local_newer' || r.status === 'local_only'
+                    || (options.delete_orphans && r.status === 'remote_only')
                 );
+            }
+
+            // Detect renames (SHA256 matching between local_only and remote_only)
+            if (detectRenames) {
+                try {
+                    const renames = await invoke<Array<{ old_path: string; new_path: string; size: number }>>('detect_renames_cmd', {
+                        localPath: editLocalPath,
+                        comparisons: differences,
+                    });
+                    const renameMap = new Map<string, string>();
+                    const removePaths = new Set<string>();
+                    for (const r of renames) {
+                        renameMap.set(r.new_path, r.old_path);
+                        removePaths.add(r.old_path);
+                        removePaths.add(r.new_path);
+                    }
+                    setDetectedRenames(renameMap);
+                    // Remove matched pairs from differences (they don't need transfer)
+                    if (removePaths.size > 0) {
+                        differences = differences.filter(d => !removePaths.has(d.relative_path));
+                    }
+                } catch { setDetectedRenames(new Map()); }
+            } else {
+                setDetectedRenames(new Map());
             }
 
             setComparisons(differences);
 
+            // Auto-resolve conflicts based on conflict_strategy
+            const strategy = options.conflict_strategy || 'ask';
+            if (strategy !== 'ask') {
+                const autoResolutions = new Map<string, ConflictResolution>();
+                for (const c of differences) {
+                    if (c.status !== 'conflict') continue;
+                    if (strategy === 'newer') {
+                        const lt = c.local_info?.modified ? new Date(c.local_info.modified).getTime() : 0;
+                        const rt = c.remote_info?.modified ? new Date(c.remote_info.modified).getTime() : 0;
+                        autoResolutions.set(c.relative_path, lt >= rt ? 'upload' : 'download');
+                    } else if (strategy === 'older') {
+                        const lt = c.local_info?.modified ? new Date(c.local_info.modified).getTime() : 0;
+                        const rt = c.remote_info?.modified ? new Date(c.remote_info.modified).getTime() : 0;
+                        autoResolutions.set(c.relative_path, lt <= rt ? 'upload' : 'download');
+                    } else if (strategy === 'larger') {
+                        autoResolutions.set(c.relative_path,
+                            (c.local_info?.size || 0) >= (c.remote_info?.size || 0) ? 'upload' : 'download');
+                    } else if (strategy === 'smaller') {
+                        autoResolutions.set(c.relative_path,
+                            (c.local_info?.size || 0) <= (c.remote_info?.size || 0) ? 'upload' : 'download');
+                    } else if (strategy === 'skip') {
+                        autoResolutions.set(c.relative_path, 'skip');
+                    }
+                }
+                if (autoResolutions.size > 0) {
+                    setConflictResolutions(autoResolutions);
+                }
+            }
+
             // Auto-select all non-conflict, non-directory items
+            // (conflicts auto-resolved by strategy are also selected)
             const autoSelect = new Set<string>();
             differences.forEach(c => {
                 if (c.status !== 'conflict' && c.status !== 'size_mismatch' && !c.is_dir) {
+                    autoSelect.add(c.relative_path);
+                }
+                // Include auto-resolved conflicts (non-skip)
+                if (c.status === 'conflict' && strategy !== 'ask' && strategy !== 'skip') {
                     autoSelect.add(c.relative_path);
                 }
             });
@@ -527,8 +596,22 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    // Count files that will be deleted in this sync
+    const deleteCount = comparisons.filter(c =>
+        !c.is_dir && selectedPaths.has(c.relative_path) && isDeleteOrphan(c.status, c)
+    ).length;
+
+    // Delete safety confirmation state
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
     // Decides whether to run canary or full sync based on canaryMode toggle
     const handleCanaryOrSync = () => {
+        // Safety gate: confirm before deleting files
+        if (deleteCount > 0 && !showDeleteConfirm) {
+            setShowDeleteConfirm(true);
+            return;
+        }
+        setShowDeleteConfirm(false);
         if (canaryMode) {
             handleCanaryRun();
         } else {
@@ -660,6 +743,19 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             setJournalFeedback(t('syncPanel.journalVerifyError'));
             setTimeout(() => setJournalFeedback(null), 3000);
         }
+    };
+
+    // Apply bandwidth schedule based on current time of day
+    const applyBandwidthSchedule = async () => {
+        const schedule = options.bw_schedule;
+        if (!schedule || schedule === 'off') return;
+        const hour = new Date().getHours();
+        const isOfficeHours = hour >= 8 && hour < 18;
+        // office = throttle during 08-18, night = throttle during 18-08
+        const shouldThrottle = (schedule === 'office' && isOfficeHours) || (schedule === 'night' && !isOfficeHours);
+        const limit = shouldThrottle ? 512 : 0; // 512 KB/s during throttle, unlimited otherwise
+        const cmd = isFtp ? 'set_speed_limit' : 'provider_set_speed_limit';
+        try { await invoke(cmd, { downloadKb: limit, uploadKb: limit }); } catch { /* ignore */ }
     };
 
     const handleSpeedLimitChange = async (dl: number, ul: number) => {
@@ -840,6 +936,20 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    const archiveLocalBeforeMutation = async (localFilePath: string, relativePath: string) => {
+        const strategy = options.versioning_strategy;
+        if (!strategy || strategy === 'disabled') return;
+        try {
+            await invoke('archive_before_sync_delete', {
+                syncRoot: editLocalPath,
+                filePath: localFilePath,
+                versioningStrategy: strategy,
+            });
+        } catch (e) {
+            throw new Error(`Archive failed for ${relativePath}: ${String(e)}`);
+        }
+    };
+
     // Execute sync (new or resume)
     const handleSync = async (resumeJournal?: SyncJournal) => {
         if (!hasSyncableItems && !resumeJournal) return;
@@ -914,12 +1024,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         let completed = 0;
         let uploaded = 0;
         let downloaded = 0;
+        let deleted = 0;
         let skipped = 0;
         let totalBytes = 0;
         let retried = 0;
         let verifyFailed = 0;
         const errors: SyncErrorInfo[] = [];
         const startTime = Date.now();
+
+        // Apply bandwidth schedule at sync start
+        await applyBandwidthSchedule();
 
         // Create journal for checkpoint
         const journal: SyncJournal = resumeJournal || {
@@ -933,7 +1047,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             verify_policy: verifyPolicy,
             entries: selectedComparisons.map(c => {
                 let action: string;
-                if (c.status === 'conflict') {
+                if (isDeleteOrphan(c.status, c)) {
+                    action = 'delete';
+                } else if (c.status === 'conflict') {
                     const resolution = conflictResolutions.get(c.relative_path);
                     action = resolution === 'upload' ? 'upload' : 'download';
                 } else {
@@ -1063,6 +1179,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 continue;
             }
 
+            // Check transfer budget
+            if (transferBudget > 0 && totalBytes >= transferBudget) {
+                cancelledRef.current = true; // Stop remaining transfers
+            }
+
             // Check for cancellation
             if (cancelledRef.current) {
                 // Mark remaining as skipped in journal
@@ -1114,13 +1235,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 continue;
             }
 
-            const shouldUpload = conflictRes === 'upload' ||
-                (!conflictRes && (item.status === 'local_newer' || item.status === 'local_only') &&
-                (options.direction === 'local_to_remote' || options.direction === 'bidirectional'));
+            const shouldDelete = !conflictRes && isDeleteOrphan(item.status, item);
 
-            const shouldDownload = conflictRes === 'download' ||
+            const shouldUpload = !shouldDelete && (conflictRes === 'upload' ||
+                (!conflictRes && (item.status === 'local_newer' || item.status === 'local_only') &&
+                (options.direction === 'local_to_remote' || options.direction === 'bidirectional')));
+
+            const shouldDownload = !shouldDelete && (conflictRes === 'download' ||
                 (!conflictRes && (item.status === 'remote_newer' || item.status === 'remote_only') &&
-                (options.direction === 'remote_to_local' || options.direction === 'bidirectional'));
+                (options.direction === 'remote_to_local' || options.direction === 'bidirectional')));
 
             // Track whether a data connection was actually opened (for FTP delay logic)
             let didTransfer = false;
@@ -1162,10 +1285,40 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     updateFileResult(item.relative_path, 'error');
                 }
             } else if (shouldDownload) {
+                const shouldArchiveLocal =
+                    !!options.versioning_strategy
+                    && options.versioning_strategy !== 'disabled'
+                    && item.status !== 'remote_only';
+                if (shouldArchiveLocal) {
+                    try {
+                        await archiveLocalBeforeMutation(localFilePath, item.relative_path);
+                    } catch (e: any) {
+                        const archiveMessage = e?.message || String(e);
+                        if (journalEntry) {
+                            journalEntry.status = 'failed';
+                            journalEntry.last_error = {
+                                kind: 'disk_error',
+                                message: archiveMessage,
+                                retryable: false,
+                                file_path: item.relative_path,
+                            };
+                        }
+                        errors.push({
+                            kind: 'disk_error',
+                            message: archiveMessage,
+                            retryable: false,
+                            file_path: item.relative_path,
+                        });
+                        updateFileResult(item.relative_path, 'error');
+                        completed++;
+                        updateSyncProgress(completed, selectedComparisons.length);
+                        continue;
+                    }
+                }
                 const cmd = isProvider ? 'provider_download_file' : 'download_file';
                 const args = isProvider
-                    ? { remotePath: remoteFilePath, localPath: localFilePath }
-                    : { params: { remote_path: remoteFilePath, local_path: localFilePath } };
+                    ? { remotePath: remoteFilePath, localPath: localFilePath, modified: item.remote_info?.modified || undefined }
+                    : { params: { remote_path: remoteFilePath, local_path: localFilePath, modified: item.remote_info?.modified || undefined } };
 
                 const result = await executeTransferWithRetry(cmd, args, item.relative_path);
                 if (journalEntry) {
@@ -1220,6 +1373,45 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     errors.push(result.error || {
                         kind: 'unknown',
                         message: `Download failed: ${item.relative_path}`,
+                        retryable: false,
+                        file_path: item.relative_path,
+                    });
+                    updateFileResult(item.relative_path, 'error');
+                }
+            } else if (shouldDelete) {
+                // Delete orphan file (Mirror/Pull mode with delete_orphans)
+                try {
+                    if (item.status === 'remote_only') {
+                        // Delete from remote (local_to_remote mirror: remote has file that local doesn't)
+                        const cmd = isProvider ? 'provider_delete_file' : 'delete_remote_file';
+                        const args = isProvider
+                            ? { path: remoteFilePath }
+                            : { path: remoteFilePath, isDir: item.is_dir };
+                        await invoke(cmd, args);
+                    } else {
+                        // Delete from local (remote_to_local pull: local has file that remote doesn't)
+                        if (!item.is_dir) {
+                            await archiveLocalBeforeMutation(localFilePath, item.relative_path);
+                        }
+                        await invoke('delete_local_file', { path: localFilePath });
+                    }
+                    deleted++;
+                    didTransfer = true;
+                    if (journalEntry) journalEntry.status = 'completed';
+                    updateFileResult(item.relative_path, 'success');
+                } catch (e: any) {
+                    if (journalEntry) {
+                        journalEntry.status = 'failed';
+                        journalEntry.last_error = {
+                            kind: 'permission_denied',
+                            message: `Delete failed: ${e?.toString() || 'unknown error'}`,
+                            retryable: false,
+                            file_path: item.relative_path,
+                        };
+                    }
+                    errors.push({
+                        kind: 'permission_denied',
+                        message: `Delete failed: ${item.relative_path} - ${e?.toString() || 'unknown'}`,
                         retryable: false,
                         file_path: item.relative_path,
                     });
@@ -1298,6 +1490,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setSyncReport({
             uploaded,
             downloaded,
+            deleted,
             skipped,
             dirsCreated,
             errors,
@@ -1335,6 +1528,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 remotePath: editRemotePath,
             });
             const mergedFiles = { ...(existing?.files || {}), ...indexFiles };
+            // Remove successfully deleted files from the index (bisync state)
+            if (deleted > 0) {
+                for (const item of selectedComparisons) {
+                    if (isDeleteOrphan(item.status, item) && fileResults.get(item.relative_path) === 'success') {
+                        delete mergedFiles[item.relative_path];
+                    }
+                }
+            }
             const index: SyncIndex = {
                 version: 1,
                 last_sync: new Date().toISOString(),
@@ -1356,7 +1557,23 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
     if (!isOpen) return null;
 
-    const getStatusLabel = (status: SyncStatus): string => {
+    // Determine if an orphan file is a delete candidate.
+    // - One-way (Mirror/Pull): opposite-side orphans are always deleted when delete_orphans is active
+    // - Bidirectional (Both): only delete orphans that were previously synced (the other side deleted them)
+    //   New files (not in index) are uploaded/downloaded, not deleted.
+    const isDeleteOrphan = (status: SyncStatus, comparison?: FileComparison): boolean => {
+        if (!options.delete_orphans) return false;
+        if (options.direction === 'local_to_remote' && status === 'remote_only') return true;
+        if (options.direction === 'remote_to_local' && status === 'local_only') return true;
+        // Bidirectional: only delete if previously synced (the other side intentionally deleted it)
+        if (options.direction === 'bidirectional' && comparison?.previously_synced) {
+            if (status === 'remote_only' || status === 'local_only') return true;
+        }
+        return false;
+    };
+
+    const getStatusLabel = (status: SyncStatus, comparison?: FileComparison): string => {
+        if (isDeleteOrphan(status, comparison)) return t('syncPanel.statusDelete');
         switch (status) {
             case 'identical': return t('syncPanel.statusIdentical');
             case 'local_newer': return t('syncPanel.statusUpload');
@@ -1725,6 +1942,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     <span>{t('syncPanel.reportDownloaded')}: <strong>{syncReport.downloaded}</strong></span>
                                 </div>
                             )}
+                            {syncReport.deleted > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                    <Trash2 size={14} className="text-red-500" />
+                                    <span>{t('syncPanel.reportDeleted')}: <strong>{syncReport.deleted}</strong></span>
+                                </div>
+                            )}
                             {syncReport.dirsCreated > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <Folder size={14} className="text-purple-500" />
@@ -1839,7 +2062,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         {syncTab === 'advanced' && (
                             <SyncAdvancedConfig
                                 options={options}
-                                onOptionsChange={setOptions}
+                                onOptionsChange={(newOpts) => {
+                                    setOptions(newOpts);
+                                    // Sync activeProfileId when direction changes in Advanced tab
+                                    if (newOpts.direction !== options.direction) {
+                                        const match = profiles.find(p => p.builtin && p.direction === newOpts.direction);
+                                        setActiveProfileId(match ? match.id : 'custom');
+                                    }
+                                }}
                                 verifyPolicy={verifyPolicy}
                                 onVerifyPolicyChange={setVerifyPolicy}
                                 retryPolicy={retryPolicy}
@@ -1861,6 +2091,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 onOpenTemplate={() => setShowTemplate(true)}
                                 onOpenRollback={() => setShowRollback(true)}
                                 onClearHistory={handleClearHistory}
+                                transferBudget={transferBudget}
+                                onTransferBudgetChange={setTransferBudget}
+                                detectRenames={detectRenames}
+                                onDetectRenamesChange={setDetectRenames}
+                                detectedRenamesCount={detectedRenames.size}
                                 canaryMode={canaryMode}
                                 onCanaryModeChange={setCanaryMode}
                                 canaryPercent={canaryPercent}
@@ -1954,7 +2189,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 <div style={{ height: virtualTotalHeight, position: 'relative' }}>
                                     <div style={{ position: 'absolute', top: virtualTopPad, left: 0, right: 0 }}>
                                         {comparisons.slice(virtualStart, virtualEnd).map((comparison) => {
-                                            const statusCfg = STATUS_ICONS[comparison.status];
+                                            const isOrphanDelete = isDeleteOrphan(comparison.status, comparison);
+                                            const statusCfg = isOrphanDelete
+                                                ? { Icon: Trash2, color: '#ef4444' }
+                                                : STATUS_ICONS[comparison.status];
                                             const StatusIcon = statusCfg.Icon;
                                             const resultIcon = getFileResultIcon(comparison.relative_path);
                                             const result = fileResults.get(comparison.relative_path);
@@ -1981,7 +2219,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                     </div>
                                                     <div className="sync-col-status" style={{ color: statusCfg.color }} title={comparison.sync_reason}>
                                                         <StatusIcon size={14} />
-                                                        <span className="status-label">{getStatusLabel(comparison.status)}</span>
+                                                        <span className="status-label">{getStatusLabel(comparison.status, comparison)}</span>
                                                     </div>
                                                     <div className="sync-col-file">
                                                         <div className="flex flex-col min-w-0">
@@ -2150,6 +2388,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 onClose={() => setShowRollback(false)}
                 localPath={editLocalPath}
                 remotePath={editRemotePath}
+                isProvider={isProvider}
+                versioningStrategy={options.versioning_strategy}
             />
             {canaryResult && (
                 <CanaryResultDialog
@@ -2160,6 +2400,36 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         handleSync();
                     }}
                 />
+            )}
+
+            {/* Delete confirmation dialog */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-gray-800 rounded-lg border border-red-500/40 p-5 max-w-md w-full mx-4 shadow-2xl">
+                        <div className="flex items-center gap-2 mb-3">
+                            <AlertTriangle size={20} className="text-red-500" />
+                            <h3 className="text-base font-semibold text-red-400">{t('syncPanel.deleteWarningTitle')}</h3>
+                        </div>
+                        <p className="text-sm text-gray-300 mb-4">
+                            {t('syncPanel.deleteWarningBody', { count: deleteCount })}
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                className="px-4 py-2 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
+                                onClick={() => setShowDeleteConfirm(false)}
+                            >
+                                {t('common.cancel')}
+                            </button>
+                            <button
+                                className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
+                                onClick={() => handleCanaryOrSync()}
+                            >
+                                <Trash2 size={14} className="inline mr-1" />
+                                {t('syncPanel.deleteConfirmBtn', { count: deleteCount })}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

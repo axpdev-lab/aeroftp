@@ -5,71 +5,71 @@
 // Real-time transfer progress with event emission
 
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
-use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
-use tauri::{AppHandle, Emitter, State, Manager, WebviewUrl, WebviewWindowBuilder};
-use tokio::sync::Mutex;
-use tokio::io::AsyncWriteExt;
-use tracing::{debug, info, warn, error};
-use semver::Version;
 use reqwest::Client as HttpClient;
 use secrecy::{ExposeSecret, SecretString};
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+use tracing::{debug, error, info, warn};
 use url::Url;
 
-mod ftp;
-pub mod sync;
+mod aerovault;
+mod aerovault_v2;
+pub mod agent_memory_db;
 pub mod ai;
+pub mod ai_core;
+mod ai_stream;
+mod ai_tools;
+mod archive_browse;
+mod chat_history;
 mod cloud_config;
+mod cloud_provider_factory;
+mod cloud_service;
+mod context_intelligence;
+pub mod credential_store;
+mod crypto;
+mod cryptomator;
+mod cyber_tools;
+mod delta_sync;
+mod file_tags;
 mod file_watcher;
+mod filesystem;
+mod ftp;
+mod health_check;
+mod host_key_check;
+mod infinicloud;
+mod keystore_export;
+mod master_password;
+pub mod mcp;
+mod plugin_registry;
+mod plugins;
+mod profile_export;
+mod provider_commands;
+pub mod providers;
+mod pty;
+mod session_commands;
+mod session_manager;
+#[cfg(not(target_os = "macos"))]
+mod speech;
+mod ssh_shell;
+pub mod sync;
+mod sync_badge;
 mod sync_ignore;
 mod sync_scheduler;
 mod sync_versioning;
-mod transfer_pool;
-mod delta_sync;
-mod cloud_service;
-mod cloud_provider_factory;
-pub mod providers;
-mod provider_commands;
-mod session_manager;
-mod session_commands;
-mod crypto;
-pub mod credential_store;
-mod profile_export;
-mod keystore_export;
-mod pty;
-mod ssh_shell;
-mod host_key_check;
-mod ai_tools;
-pub mod ai_core;
-mod context_intelligence;
-mod plugins;
-mod plugin_registry;
-mod ai_stream;
-mod archive_browse;
-mod aerovault;
-mod aerovault_v2;
-mod vault_remote;
-mod cryptomator;
-mod master_password;
-mod windows_acl;
-mod filesystem;
-mod tray_badge;
-mod sync_badge;
-mod cyber_tools;
 mod totp;
-mod chat_history;
-mod file_tags;
-pub mod agent_memory_db;
-pub mod mcp;
-mod health_check;
-mod infinicloud;
-#[cfg(not(target_os = "macos"))]
-mod speech;
+mod transfer_pool;
+mod tray_badge;
+mod vault_remote;
+mod windows_acl;
 #[cfg(target_os = "macos")]
 mod speech {
     //! Stub: macOS uses native Web Speech API via WKWebView — whisper.cpp not needed.
@@ -89,31 +89,47 @@ mod speech {
     }
 
     #[tauri::command]
-    pub fn speech_model_status(_state: tauri::State<'_, SpeechState>) -> Result<SpeechModelStatus, String> {
-        Ok(SpeechModelStatus { available: false, model_path: None, model_size_bytes: None })
+    pub fn speech_model_status(
+        _state: tauri::State<'_, SpeechState>,
+    ) -> Result<SpeechModelStatus, String> {
+        Ok(SpeechModelStatus {
+            available: false,
+            model_path: None,
+            model_size_bytes: None,
+        })
     }
 
     #[tauri::command]
-    pub async fn download_speech_model(_app: tauri::AppHandle, _state: tauri::State<'_, SpeechState>) -> Result<String, String> {
+    pub async fn download_speech_model(
+        _app: tauri::AppHandle,
+        _state: tauri::State<'_, SpeechState>,
+    ) -> Result<String, String> {
         Err("Speech-to-text not available on macOS — use native voice input".to_string())
     }
 
     #[tauri::command]
-    pub async fn speech_to_text(_audio_base64: String, _language: Option<String>, _app: tauri::AppHandle, _state: tauri::State<'_, SpeechState>) -> Result<serde_json::Value, String> {
+    pub async fn speech_to_text(
+        _audio_base64: String,
+        _language: Option<String>,
+        _app: tauri::AppHandle,
+        _state: tauri::State<'_, SpeechState>,
+    ) -> Result<serde_json::Value, String> {
         Err("Speech-to-text not available on macOS — use native voice input".to_string())
     }
 }
-mod vault_history;
-mod image_edit;
-mod server_health;
 #[cfg(windows)]
 mod cloud_filter_badge;
+mod image_edit;
+mod server_health;
+mod vault_history;
 
 use filesystem::validate_path;
 use ftp::{FtpManager, RemoteFile};
-use pty::{create_pty_state, spawn_shell, pty_write, pty_resize, pty_close};
-use ssh_shell::{create_ssh_shell_state, ssh_shell_open, ssh_shell_write, ssh_shell_resize, ssh_shell_close};
-use host_key_check::{sftp_check_host_key, sftp_accept_host_key, sftp_remove_host_key};
+use host_key_check::{sftp_accept_host_key, sftp_check_host_key, sftp_remove_host_key};
+use pty::{create_pty_state, pty_close, pty_resize, pty_write, spawn_shell};
+use ssh_shell::{
+    create_ssh_shell_state, ssh_shell_close, ssh_shell_open, ssh_shell_resize, ssh_shell_write,
+};
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
 pub struct SpeedLimits {
@@ -132,11 +148,16 @@ impl SpeedLimits {
 
 /// Apply rate limiting by sleeping after transferring a chunk.
 /// Returns immediately if limit is 0 (unlimited).
-pub async fn throttle_transfer(bytes_transferred: u64, elapsed: std::time::Duration, limit_bps: u64) {
+pub async fn throttle_transfer(
+    bytes_transferred: u64,
+    elapsed: std::time::Duration,
+    limit_bps: u64,
+) {
     if limit_bps == 0 {
         return;
     }
-    let expected_duration = std::time::Duration::from_secs_f64(bytes_transferred as f64 / limit_bps as f64);
+    let expected_duration =
+        std::time::Duration::from_secs_f64(bytes_transferred as f64 / limit_bps as f64);
     if expected_duration > elapsed {
         tokio::time::sleep(expected_duration - elapsed).await;
     }
@@ -300,7 +321,10 @@ const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
 // ============ Updater Command ============
 
 fn update_download_supported(install_format: &str) -> bool {
-    matches!(install_format, "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg")
+    matches!(
+        install_format,
+        "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg"
+    )
 }
 
 fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
@@ -340,7 +364,10 @@ fn asset_matches_current_arch(name: &str) -> bool {
     expected_markers.iter().any(|marker| lower.contains(marker))
 }
 
-fn select_release_asset(release: &GitHubRelease, install_format: &str) -> Option<ReleaseAssetSelection> {
+fn select_release_asset(
+    release: &GitHubRelease,
+    install_format: &str,
+) -> Option<ReleaseAssetSelection> {
     if !update_download_supported(install_format) {
         return None;
     }
@@ -348,7 +375,10 @@ fn select_release_asset(release: &GitHubRelease, install_format: &str) -> Option
     let candidates: Vec<&GitHubAsset> = release
         .assets
         .iter()
-        .filter(|asset| !asset.name.ends_with(".sigstore.json") && asset_matches_install_format(&asset.name, install_format))
+        .filter(|asset| {
+            !asset.name.ends_with(".sigstore.json")
+                && asset_matches_install_format(&asset.name, install_format)
+        })
         .collect();
 
     let asset = candidates
@@ -358,7 +388,10 @@ fn select_release_asset(release: &GitHubRelease, install_format: &str) -> Option
         .or_else(|| candidates.first().copied())?;
 
     let bundle_name = format!("{}.sigstore.json", asset.name);
-    let bundle_asset = release.assets.iter().find(|candidate| candidate.name == bundle_name)?;
+    let bundle_asset = release
+        .assets
+        .iter()
+        .find(|candidate| candidate.name == bundle_name)?;
 
     Some(ReleaseAssetSelection {
         tag: release.tag_name.clone(),
@@ -375,7 +408,10 @@ fn unique_download_path(directory: &Path, file_name: &str) -> PathBuf {
     }
 
     let file_path = Path::new(file_name);
-    let stem = file_path.file_stem().and_then(|s| s.to_str()).unwrap_or("AeroFTP-update");
+    let stem = file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("AeroFTP-update");
     let extension = file_path.extension().and_then(|s| s.to_str());
 
     for index in 1..1000 {
@@ -404,7 +440,14 @@ fn compute_update_download_progress(downloaded: u64, total: u64, completed: bool
     raw.min(99)
 }
 
-fn emit_update_download_progress(app: &AppHandle, filename: &str, downloaded: u64, total: u64, started_at: Instant, completed: bool) {
+fn emit_update_download_progress(
+    app: &AppHandle,
+    filename: &str,
+    downloaded: u64,
+    total: u64,
+    started_at: Instant,
+    completed: bool,
+) {
     let elapsed = started_at.elapsed().as_secs_f64();
     let speed_bps = if elapsed > 0.0 {
         (downloaded as f64 / elapsed) as u64
@@ -431,8 +474,8 @@ fn emit_update_download_progress(app: &AppHandle, filename: &str, downloaded: u6
 }
 
 fn parse_release_download_url(download_url: &str) -> Result<ReleaseAssetSelection, String> {
-    let parsed = Url::parse(download_url)
-        .map_err(|error| format!("Invalid update URL: {}", error))?;
+    let parsed =
+        Url::parse(download_url).map_err(|error| format!("Invalid update URL: {}", error))?;
 
     if parsed.scheme() != "https" || parsed.host_str() != Some(GITHUB_RELEASES_HOST) {
         return Err("Update URL rejected: expected an HTTPS GitHub Releases URL".to_string());
@@ -484,7 +527,11 @@ async fn download_file_to_path(
         .map_err(|error| format!("Failed to download {}: {}", url, error))?;
 
     if !response.status().is_success() {
-        return Err(format!("Download failed for {}: HTTP {}", url, response.status()));
+        return Err(format!(
+            "Download failed for {}: HTTP {}",
+            url,
+            response.status()
+        ));
     }
 
     let bytes = response
@@ -512,7 +559,10 @@ async fn download_update_artifact(
         .map_err(|error| format!("Failed to start update download: {}", error))?;
 
     if !response.status().is_success() {
-        return Err(format!("Update download failed: HTTP {}", response.status()));
+        return Err(format!(
+            "Update download failed: HTTP {}",
+            response.status()
+        ));
     }
 
     let total = response.content_length().unwrap_or(0);
@@ -534,7 +584,8 @@ async fn download_update_artifact(
         downloaded = downloaded.saturating_add(chunk.len() as u64);
 
         let percentage = compute_update_download_progress(downloaded, total, false);
-        let should_emit = last_emit.elapsed().as_millis() >= 150 || percentage.saturating_sub(last_percentage) >= 2;
+        let should_emit = last_emit.elapsed().as_millis() >= 150
+            || percentage.saturating_sub(last_percentage) >= 2;
         if should_emit {
             emit_update_download_progress(app, filename, downloaded, total, started_at, false);
             last_emit = Instant::now();
@@ -585,7 +636,11 @@ struct DownloadUpdateResponse {
 ///
 /// The `download_update` caller relies on this contract to delete the artifact and
 /// return a user-facing error when `mode == VerificationFailed`.
-fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -> Result<UpdateVerificationInfo, String> {
+fn verify_sigstore_bundle(
+    artifact_path: &Path,
+    bundle_path: &Path,
+    tag: &str,
+) -> Result<UpdateVerificationInfo, String> {
     let artifact_sha256 = sha256_file_hex(artifact_path).unwrap_or_else(|_| "unknown".to_string());
 
     let bundle_file = match std::fs::File::open(bundle_path) {
@@ -634,7 +689,8 @@ fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -
             artifact_sha256,
             bundle_present: true,
             bundle_parsed: true,
-            message: "Successfully verified against GitHub Actions Sigstore transparency log".to_string(),
+            message: "Successfully verified against GitHub Actions Sigstore transparency log"
+                .to_string(),
         }),
         Err(e) => {
             // Sigstore verification errors should NEVER block the user from installing.
@@ -656,7 +712,7 @@ fn verify_sigstore_bundle(artifact_path: &Path, bundle_path: &Path, tag: &str) -
 /// Detect how the app was installed (deb, appimage, snap, flatpak, rpm, exe, dmg)
 fn detect_install_format() -> String {
     let os = std::env::consts::OS;
-    
+
     match os {
         "linux" => {
             // Check for Snap
@@ -675,8 +731,9 @@ fn detect_install_format() -> String {
                 }
             }
             // Check for RPM-based distros (Fedora, CentOS, RHEL)
-            if std::path::Path::new("/etc/redhat-release").exists() 
-                || std::path::Path::new("/etc/fedora-release").exists() {
+            if std::path::Path::new("/etc/redhat-release").exists()
+                || std::path::Path::new("/etc/fedora-release").exists()
+            {
                 return "rpm".to_string();
             }
             // Default to DEB for Debian/Ubuntu based
@@ -687,11 +744,16 @@ fn detect_install_format() -> String {
             if let Ok(exe_path) = std::env::current_exe() {
                 let path_str = exe_path.to_string_lossy().to_lowercase();
                 // Check against env-provided Program Files paths (more reliable than hardcoded)
-                let pf = std::env::var("ProgramFiles").unwrap_or_default().to_lowercase();
-                let pf86 = std::env::var("ProgramFiles(x86)").unwrap_or_default().to_lowercase();
+                let pf = std::env::var("ProgramFiles")
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let pf86 = std::env::var("ProgramFiles(x86)")
+                    .unwrap_or_default()
+                    .to_lowercase();
                 if (!pf.is_empty() && path_str.starts_with(&pf))
                     || (!pf86.is_empty() && path_str.starts_with(&pf86))
-                    || path_str.contains("program files") {
+                    || path_str.contains("program files")
+                {
                     return "msi".to_string();
                 }
             }
@@ -704,8 +766,8 @@ fn detect_install_format() -> String {
 
 #[tauri::command]
 fn copy_to_clipboard(text: String) -> Result<(), String> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| format!("Clipboard init failed: {}", e))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Clipboard init failed: {}", e))?;
     #[cfg(target_os = "linux")]
     {
         // On Linux/X11, spawn the clipboard operation in a separate thread.
@@ -720,7 +782,8 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
             }
         });
         // Also set without wait as immediate fallback
-        clipboard.set_text(text)
+        clipboard
+            .set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
     }
     #[cfg(target_os = "windows")]
@@ -733,12 +796,14 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
                 let _ = cb.set_text(text_clone);
             }
         });
-        clipboard.set_text(text)
+        clipboard
+            .set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
     }
     #[cfg(target_os = "macos")]
     {
-        clipboard.set_text(text)
+        clipboard
+            .set_text(text)
             .map_err(|e| format!("Clipboard write failed: {}", e))?;
     }
     Ok(())
@@ -760,40 +825,43 @@ async fn resolve_hostname(hostname: String, port: u16) -> Result<String, String>
 async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
     let current_version = app.package_info().version.to_string();
     let install_format = detect_install_format();
-    
-    info!("Checking for updates... Current: v{}, Format: {}", current_version, install_format);
-    
+
+    info!(
+        "Checking for updates... Current: v{}, Format: {}",
+        current_version, install_format
+    );
+
     let client = HttpClient::new();
-    
-    let response = client.get(GITHUB_RELEASES_API_URL)
+
+    let response = client
+        .get(GITHUB_RELEASES_API_URL)
         .header("User-Agent", "AeroFTP")
         .header("Accept", "application/vnd.github.v3+json")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch releases: {}", e))?;
-    
+
     if !response.status().is_success() {
         return Err(format!("GitHub API error: {}", response.status()));
     }
-    
-    let release: GitHubRelease = response.json()
+
+    let release: GitHubRelease = response
+        .json()
         .await
         .map_err(|e| format!("Failed to parse release info: {}", e))?;
-    
+
     // Parse versions (remove 'v' prefix if present)
     let latest_tag = release.tag_name.trim_start_matches('v');
     let current = Version::parse(&current_version)
         .map_err(|e| format!("Failed to parse current version: {}", e))?;
-    let latest = Version::parse(latest_tag)
-        .map_err(|e| format!("Failed to parse latest version: {}", e))?;
-    
+    let latest =
+        Version::parse(latest_tag).map_err(|e| format!("Failed to parse latest version: {}", e))?;
+
     if latest > current {
         if let Some(asset) = select_release_asset(&release, &install_format) {
             info!(
                 "Update v{} available with signed asset {} for format {}",
-                latest_tag,
-                asset.asset_name,
-                install_format
+                latest_tag, asset.asset_name, install_format
             );
 
             return Ok(UpdateInfo {
@@ -808,14 +876,12 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
         if update_download_supported(&install_format) {
             info!(
                 "Update v{} released, but no signed asset pair is ready for format {}",
-                latest_tag,
-                install_format
+                latest_tag, install_format
             );
         } else {
             info!(
                 "Update v{} exists, but install format {} is not handled by the in-app updater",
-                latest_tag,
-                install_format
+                latest_tag, install_format
             );
         }
 
@@ -827,9 +893,12 @@ async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
             install_format,
         });
     }
-    
-    info!("No update available. Current: v{}, Latest: v{}", current_version, latest_tag);
-    
+
+    info!(
+        "No update available. Current: v{}, Latest: v{}",
+        current_version, latest_tag
+    );
+
     Ok(UpdateInfo {
         has_update: false,
         latest_version: Some(latest_tag.to_string()),
@@ -854,12 +923,16 @@ fn validate_update_path(path: &str) -> Result<(), String> {
 
     let allowed_dirs: Vec<std::path::PathBuf> = vec![
         dirs::download_dir().unwrap_or_default(),
-        dirs::home_dir().map(|h| h.join("Downloads")).unwrap_or_default(),
+        dirs::home_dir()
+            .map(|h| h.join("Downloads"))
+            .unwrap_or_default(),
         std::env::temp_dir(),
     ];
 
     let in_allowed = allowed_dirs.iter().any(|dir| {
-        if dir.as_os_str().is_empty() { return false; }
+        if dir.as_os_str().is_empty() {
+            return false;
+        }
         if let Ok(canon_dir) = dir.canonicalize() {
             let canon_dir_str = canon_dir.to_string_lossy();
             let canon_dir_ref: &str = canon_dir_str.as_ref();
@@ -896,8 +969,17 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
     let bundle_path = destination.with_file_name(format!("{}.sigstore.json", asset.asset_name));
     let client = HttpClient::new();
 
-    download_update_artifact(&app, &client, &asset.download_url, &destination, &asset.asset_name).await?;
-    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP").await.ok(); // Ignore missing bundle here, verification checks it later
+    download_update_artifact(
+        &app,
+        &client,
+        &asset.download_url,
+        &destination,
+        &asset.asset_name,
+    )
+    .await?;
+    download_file_to_path(&client, &asset.bundle_url, &bundle_path, "AeroFTP")
+        .await
+        .ok(); // Ignore missing bundle here, verification checks it later
 
     let verify_destination = destination.clone();
     let verify_bundle = bundle_path.clone();
@@ -1004,8 +1086,15 @@ fn spawn_detached_relaunch(exe_path: &str) {
     }
 }
 
-fn write_update_marker(app: &AppHandle, from: &str, to: &str, format: &str, verification_mode: &str) {
-    let verified = verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
+fn write_update_marker(
+    app: &AppHandle,
+    from: &str,
+    to: &str,
+    format: &str,
+    verification_mode: &str,
+) {
+    let verified =
+        verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
     if let Ok(config_dir) = app.path().app_config_dir() {
         let marker = config_dir.join("last-update.json");
         let data = serde_json::json!({
@@ -1025,7 +1114,9 @@ async fn read_update_marker(app: AppHandle) -> Result<Option<String>, String> {
     if let Ok(config_dir) = app.path().app_config_dir() {
         let marker = config_dir.join("last-update.json");
         if marker.exists() {
-            return std::fs::read_to_string(&marker).map(Some).map_err(|e| e.to_string());
+            return std::fs::read_to_string(&marker)
+                .map(Some)
+                .map_err(|e| e.to_string());
         }
     }
     Ok(None)
@@ -1044,7 +1135,11 @@ async fn clear_update_marker(app: AppHandle) -> Result<(), String> {
 
 /// Replace current AppImage with downloaded update and restart
 #[tauri::command]
-async fn install_appimage_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
+async fn install_appimage_update(
+    app: AppHandle,
+    downloaded_path: String,
+    verification_mode: String,
+) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
 
     let downloaded = PathBuf::from(&downloaded_path);
@@ -1093,9 +1188,15 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String, verifi
     }
 
     let _ = std::fs::remove_file(&backup_path);
-    
+
     let from_version = app.package_info().version.to_string();
-    write_update_marker(&app, &from_version, "unknown", "appimage", &verification_mode);
+    write_update_marker(
+        &app,
+        &from_version,
+        "unknown",
+        "appimage",
+        &verification_mode,
+    );
     let _ = app.emit("update_install_phase", "restart");
 
     // Release DBus single-instance lock before restart to prevent race condition
@@ -1107,7 +1208,11 @@ async fn install_appimage_update(app: AppHandle, downloaded_path: String, verifi
 /// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
 /// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
-async fn install_deb_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
+async fn install_deb_update(
+    app: AppHandle,
+    downloaded_path: String,
+    verification_mode: String,
+) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
     if !downloaded_path.to_ascii_lowercase().ends_with(".deb") {
         return Err("Downloaded update is not a .deb package".to_string());
@@ -1129,7 +1234,10 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String, verificatio
         .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
 
     if !status.success() {
-        return Err(format!(".deb installation failed with exit status {:?}", status.code()));
+        return Err(format!(
+            ".deb installation failed with exit status {:?}",
+            status.code()
+        ));
     }
 
     let from_version = app.package_info().version.to_string();
@@ -1144,7 +1252,11 @@ async fn install_deb_update(app: AppHandle, downloaded_path: String, verificatio
 /// Install an .rpm package via pkexec with branded Polkit dialog and restart the app.
 /// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
-async fn install_rpm_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
+async fn install_rpm_update(
+    app: AppHandle,
+    downloaded_path: String,
+    verification_mode: String,
+) -> Result<(), String> {
     validate_update_path(&downloaded_path)?;
     if !downloaded_path.to_ascii_lowercase().ends_with(".rpm") {
         return Err("Downloaded update is not an .rpm package".to_string());
@@ -1166,7 +1278,10 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String, verificatio
         .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
 
     if !status.success() {
-        return Err(format!(".rpm installation failed with exit status {:?}", status.code()));
+        return Err(format!(
+            ".rpm installation failed with exit status {:?}",
+            status.code()
+        ));
     }
 
     let from_version = app.package_info().version.to_string();
@@ -1181,13 +1296,18 @@ async fn install_rpm_update(app: AppHandle, downloaded_path: String, verificatio
 /// Launch Windows installer (.msi or .exe) and exit the app
 #[cfg(windows)]
 #[tauri::command]
-async fn install_windows_update(app: AppHandle, downloaded_path: String, verification_mode: String) -> Result<(), String> {
+async fn install_windows_update(
+    app: AppHandle,
+    downloaded_path: String,
+    verification_mode: String,
+) -> Result<(), String> {
     let downloaded = std::path::Path::new(&downloaded_path);
     if !downloaded.exists() {
         return Err("Downloaded file not found".to_string());
     }
 
-    let ext = downloaded.extension()
+    let ext = downloaded
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -1210,7 +1330,13 @@ async fn install_windows_update(app: AppHandle, downloaded_path: String, verific
     }
 
     let from_version = app.package_info().version.to_string();
-    write_update_marker(&app, &from_version, "unknown", ext.as_str(), &verification_mode);
+    write_update_marker(
+        &app,
+        &from_version,
+        "unknown",
+        ext.as_str(),
+        &verification_mode,
+    );
     let _ = app.emit("update_install_phase", "restart");
 
     // Give installer a moment to start, then exit
@@ -1226,22 +1352,25 @@ async fn install_windows_update(app: AppHandle, downloaded_path: String, verific
 async fn connect_ftp(state: State<'_, AppState>, params: ConnectionParams) -> Result<(), String> {
     info!("Connecting to FTP server: {}", params.server);
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
-    ftp_manager.connect(&params.server)
+
+    ftp_manager
+        .connect(&params.server)
         .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-        
-    ftp_manager.login(&params.username, &params.password)
+
+    ftp_manager
+        .login(&params.username, &params.password)
         .await
         .map_err(|e| format!("Login failed: {}", e))?;
-        
+
     Ok(())
 }
 
 #[tauri::command]
 async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager.disconnect()
+    ftp_manager
+        .disconnect()
         .await
         .map_err(|e| format!("Disconnect failed: {}", e))?;
     Ok(())
@@ -1256,7 +1385,8 @@ async fn check_connection(state: State<'_, AppState>) -> Result<bool, String> {
 #[tauri::command]
 async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager.noop()
+    ftp_manager
+        .noop()
         .await
         .map_err(|e| format!("NOOP failed: {}", e))?;
     Ok(())
@@ -1266,7 +1396,8 @@ async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
 async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
     info!("Attempting FTP reconnection");
     let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager.reconnect()
+    ftp_manager
+        .reconnect()
         .await
         .map_err(|e| format!("Reconnection failed: {}", e))?;
     info!("FTP reconnection successful");
@@ -1276,13 +1407,14 @@ async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
-    let files = ftp_manager.list_files()
+
+    let files = ftp_manager
+        .list_files()
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-        
+
     let current_path = ftp_manager.current_path();
-    
+
     Ok(FileListResponse {
         files,
         current_path,
@@ -1290,19 +1422,24 @@ async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, Stri
 }
 
 #[tauri::command]
-async fn change_directory(state: State<'_, AppState>, path: String) -> Result<FileListResponse, String> {
+async fn change_directory(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<FileListResponse, String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
-    ftp_manager.change_dir(&path)
+
+    ftp_manager
+        .change_dir(&path)
         .await
         .map_err(|e| format!("Failed to change directory: {}", e))?;
-        
-    let files = ftp_manager.list_files()
+
+    let files = ftp_manager
+        .list_files()
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-        
+
     let current_path = ftp_manager.current_path();
-    
+
     Ok(FileListResponse {
         files,
         current_path,
@@ -1314,8 +1451,8 @@ async fn change_directory(state: State<'_, AppState>, path: String) -> Result<Fi
 #[tauri::command]
 async fn download_file(
     app: AppHandle,
-    state: State<'_, AppState>, 
-    params: DownloadParams
+    state: State<'_, AppState>,
+    params: DownloadParams,
 ) -> Result<String, String> {
     // Check if already cancelled (batch stop) — bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
@@ -1327,38 +1464,44 @@ async fn download_file(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
-    
+
     let transfer_id = format!("dl-{}", chrono::Utc::now().timestamp_millis());
-    
+
     // Emit start event
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "start".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: filename.clone(),
-        direction: "download".to_string(),
-        message: Some(format!("Starting download: {}", filename)),
-        progress: None,
-        path: None,
-    });
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: filename.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Starting download: {}", filename)),
+            progress: None,
+            path: None,
+        },
+    );
 
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
+
     // Get file size first
-    let file_size = ftp_manager.get_file_size(&params.remote_path)
+    let file_size = ftp_manager
+        .get_file_size(&params.remote_path)
         .await
         .unwrap_or(0);
-    
+
     let start_time = Instant::now();
     let mut last_emit_time = Instant::now();
     let mut last_emit_pct = 0u8;
 
     // Download with progress (throttled: emit every 150ms or 2% delta)
-    match ftp_manager.download_file_with_progress(
-        &params.remote_path,
-        &params.local_path,
-        |transferred| {
+    match ftp_manager
+        .download_file_with_progress(&params.remote_path, &params.local_path, |transferred| {
             let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+            let speed = if elapsed > 0.0 {
+                (transferred as f64 / elapsed) as u64
+            } else {
+                0
+            };
             let percentage = if file_size > 0 {
                 ((transferred as f64 / file_size as f64) * 100.0) as u8
             } else {
@@ -1377,57 +1520,67 @@ async fn download_file(
                     0
                 };
 
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: filename.clone(),
-                    direction: "download".to_string(),
-                    message: None,
-                    progress: Some(TransferProgress {
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "progress".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
-                        transferred,
-                        total: file_size,
-                        percentage,
-                        speed_bps: speed,
-                        eta_seconds: eta,
                         direction: "download".to_string(),
-                        total_files: None,
+                        message: None,
+                        progress: Some(TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            transferred,
+                            total: file_size,
+                            percentage,
+                            speed_bps: speed,
+                            eta_seconds: eta,
+                            direction: "download".to_string(),
+                            total_files: None,
+                            path: None,
+                        }),
                         path: None,
-                    }),
-                    path: None,
-                });
+                    },
+                );
             }
             !cancel_flag.load(Ordering::Relaxed)
-        }
-    ).await {
+        })
+        .await
+    {
         Ok(_) => {
             // Preserve remote mtime on the local file
             preserve_remote_mtime(&params.local_path, params.modified.as_deref());
 
             // Emit complete event
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "complete".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Download complete: {}", filename)),
-                progress: None,
-                path: None,
-            });
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "complete".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download complete: {}", filename)),
+                    progress: None,
+                    path: None,
+                },
+            );
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
             // Emit error event
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "error".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Download failed: {}", e)),
-                progress: None,
-                path: None,
-            });
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download failed: {}", e)),
+                    progress: None,
+                    path: None,
+                },
+            );
             Err(format!("Download failed: {}", e))
         }
     }
@@ -1438,7 +1591,7 @@ async fn upload_file(
     app: AppHandle,
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
-    params: UploadParams
+    params: UploadParams,
 ) -> Result<String, String> {
     // Check if already cancelled (batch stop) — bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
@@ -1460,15 +1613,18 @@ async fn upload_file(
         .unwrap_or(0);
 
     // Emit start event
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "start".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: filename.clone(),
-        direction: "upload".to_string(),
-        message: Some(format!("Starting upload: {}", filename)),
-        progress: None,
-        path: None,
-    });
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: filename.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Starting upload: {}", filename)),
+            progress: None,
+            path: None,
+        },
+    );
 
     // Try provider path first (cloud providers, GitHub, etc.)
     {
@@ -1479,17 +1635,27 @@ async fn upload_file(
         if provider_connected {
             let mut guard = provider_state.provider.lock().await;
             if let Some(provider) = guard.as_mut() {
-                let result = provider.upload(&params.local_path, &params.remote_path, None).await;
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "complete".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: filename.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(if result.is_ok() { format!("Uploaded: {}", filename) } else { format!("Upload failed: {}", filename) }),
-                    progress: None,
-                    path: None,
-                });
-                return result.map(|_| format!("Uploaded: {}", filename))
+                let result = provider
+                    .upload(&params.local_path, &params.remote_path, None)
+                    .await;
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "complete".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(if result.is_ok() {
+                            format!("Uploaded: {}", filename)
+                        } else {
+                            format!("Upload failed: {}", filename)
+                        }),
+                        progress: None,
+                        path: None,
+                    },
+                );
+                return result
+                    .map(|_| format!("Uploaded: {}", filename))
                     .map_err(|e| format!("Failed to upload file: {}", e));
             }
         }
@@ -1501,79 +1667,95 @@ async fn upload_file(
     let mut last_emit_pct_ul = 0u8;
 
     // Upload with progress (throttled: emit every 150ms or 2% delta)
-    match ftp_manager.upload_file_with_progress(
-        &params.local_path,
-        &params.remote_path,
-        file_size,
-        |transferred| {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
-            let percentage = if file_size > 0 {
-                ((transferred as f64 / file_size as f64) * 100.0) as u8
-            } else {
-                0
-            };
-
-            let is_complete = transferred >= file_size && file_size > 0;
-            let time_delta = last_emit_time_ul.elapsed().as_millis() >= 150;
-            let pct_delta = percentage.saturating_sub(last_emit_pct_ul) >= 2;
-            if time_delta || pct_delta || is_complete {
-                last_emit_time_ul = Instant::now();
-                last_emit_pct_ul = percentage;
-                let eta = if speed > 0 && file_size > transferred {
-                    ((file_size - transferred) / speed) as u32
+    match ftp_manager
+        .upload_file_with_progress(
+            &params.local_path,
+            &params.remote_path,
+            file_size,
+            |transferred| {
+                let elapsed = start_time.elapsed().as_secs_f64();
+                let speed = if elapsed > 0.0 {
+                    (transferred as f64 / elapsed) as u64
+                } else {
+                    0
+                };
+                let percentage = if file_size > 0 {
+                    ((transferred as f64 / file_size as f64) * 100.0) as u8
                 } else {
                     0
                 };
 
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
+                let is_complete = transferred >= file_size && file_size > 0;
+                let time_delta = last_emit_time_ul.elapsed().as_millis() >= 150;
+                let pct_delta = percentage.saturating_sub(last_emit_pct_ul) >= 2;
+                if time_delta || pct_delta || is_complete {
+                    last_emit_time_ul = Instant::now();
+                    last_emit_pct_ul = percentage;
+                    let eta = if speed > 0 && file_size > transferred {
+                        ((file_size - transferred) / speed) as u32
+                    } else {
+                        0
+                    };
+
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "progress".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "upload".to_string(),
+                            message: None,
+                            progress: Some(TransferProgress {
+                                transfer_id: transfer_id.clone(),
+                                filename: filename.clone(),
+                                transferred,
+                                total: file_size,
+                                percentage,
+                                speed_bps: speed,
+                                eta_seconds: eta,
+                                direction: "upload".to_string(),
+                                total_files: None,
+                                path: None,
+                            }),
+                            path: None,
+                        },
+                    );
+                }
+                !cancel_flag_upload.load(Ordering::Relaxed)
+            },
+        )
+        .await
+    {
+        Ok(_) => {
+            // Emit complete event
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "complete".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: None,
-                    progress: Some(TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        filename: filename.clone(),
-                        transferred,
-                        total: file_size,
-                        percentage,
-                        speed_bps: speed,
-                        eta_seconds: eta,
-                        direction: "upload".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
+                    message: Some(format!("Upload complete: {}", filename)),
+                    progress: None,
                     path: None,
-                });
-            }
-            !cancel_flag_upload.load(Ordering::Relaxed)
-        }
-    ).await {
-        Ok(_) => {
-            // Emit complete event
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "complete".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "upload".to_string(),
-                message: Some(format!("Upload complete: {}", filename)),
-                progress: None,
-                path: None,
-            });
+                },
+            );
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
             // Emit error event
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "error".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: filename.clone(),
-                direction: "upload".to_string(),
-                message: Some(format!("Upload failed: {}", e)),
-                progress: None,
-                path: None,
-            });
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Upload failed: {}", e)),
+                    progress: None,
+                    path: None,
+                },
+            );
             Err(format!("Upload failed: {}", e))
         }
     }
@@ -1583,7 +1765,9 @@ async fn upload_file(
 /// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
 pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
-    let Some(modified_str) = remote_modified else { return };
+    let Some(modified_str) = remote_modified else {
+        return;
+    };
     // Strip trailing 'Z' suffix (UTC marker added in v2.9.6) before NaiveDateTime parsing
     let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
     let ts = chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
@@ -1591,8 +1775,7 @@ pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
         .or_else(|_| {
             // Try parsing full RFC 3339 (with timezone) → strip tz suffix
-            chrono::DateTime::parse_from_rfc3339(modified_str)
-                .map(|dt| dt.naive_utc())
+            chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc())
         })
         .ok();
     if let Some(ndt) = ts {
@@ -1603,7 +1786,10 @@ pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
 }
 
 /// Preserve remote mtime from a `chrono::DateTime<Utc>`.
-pub fn preserve_remote_mtime_dt(local_path: &std::path::Path, remote_modified: Option<chrono::DateTime<chrono::Utc>>) {
+pub fn preserve_remote_mtime_dt(
+    local_path: &std::path::Path,
+    remote_modified: Option<chrono::DateTime<chrono::Utc>>,
+) {
     if let Some(dt) = remote_modified {
         let ft = filetime::FileTime::from_unix_time(dt.timestamp(), 0);
         let _ = filetime::set_file_mtime(local_path, ft);
@@ -1620,10 +1806,8 @@ pub fn should_skip_file_download(
 ) -> bool {
     use chrono::DateTime;
     let dest_size = dest_meta.len();
-    let dest_modified: Option<DateTime<chrono::Utc>> = dest_meta
-        .modified()
-        .ok()
-        .map(DateTime::<chrono::Utc>::from);
+    let dest_modified: Option<DateTime<chrono::Utc>> =
+        dest_meta.modified().ok().map(DateTime::<chrono::Utc>::from);
     const TOLERANCE_SECS: i64 = 2;
 
     match action {
@@ -1639,7 +1823,9 @@ pub fn should_skip_file_download(
             // Skip if date AND size are the same
             let size_same = source_size == dest_size;
             let date_same = match (source_modified, dest_modified) {
-                (Some(src), Some(dst)) => (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS,
+                (Some(src), Some(dst)) => {
+                    (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS
+                }
                 _ => false,
             };
             size_same && date_same
@@ -1676,7 +1862,9 @@ fn should_skip_file_upload(
         "overwrite_if_different" | "skip_if_identical" => {
             let size_same = local_size == remote_size;
             let date_same = match (local_modified, remote_modified) {
-                (Some(src), Some(dst)) => (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS,
+                (Some(src), Some(dst)) => {
+                    (src.timestamp() - dst.timestamp()).abs() <= TOLERANCE_SECS
+                }
                 _ => false,
             };
             size_same && date_same
@@ -1689,10 +1877,12 @@ fn should_skip_file_upload(
 async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
-    params: DownloadFolderParams
+    params: DownloadFolderParams,
 ) -> Result<String, String> {
-    
-    info!("Downloading folder: {} -> {}", params.remote_path, params.local_path);
+    info!(
+        "Downloading folder: {} -> {}",
+        params.remote_path, params.local_path
+    );
 
     // Reset cancel flag
     state.cancel_flag.store(false, Ordering::Relaxed);
@@ -1701,40 +1891,46 @@ async fn download_folder(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "folder".to_string());
-    
-    let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
-    
-    // Emit start event
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "start".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "download".to_string(),
-        message: Some(format!("Starting folder download: {}", folder_name)),
-        progress: None,
-        path: Some(params.remote_path.clone()),
-    });
 
-    // Create local directory
-    let local_folder_path = PathBuf::from(&params.local_path);
-    
-    if let Err(e) = tokio::fs::create_dir_all(&local_folder_path).await {
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "error".to_string(),
+    let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
+
+    // Emit start event
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
             direction: "download".to_string(),
-            message: Some(format!("Failed to create local directory: {}", e)),
+            message: Some(format!("Starting folder download: {}", folder_name)),
             progress: None,
-            path: None,
-        });
+            path: Some(params.remote_path.clone()),
+        },
+    );
+
+    // Create local directory
+    let local_folder_path = PathBuf::from(&params.local_path);
+
+    if let Err(e) = tokio::fs::create_dir_all(&local_folder_path).await {
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "error".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!("Failed to create local directory: {}", e)),
+                progress: None,
+                path: None,
+            },
+        );
         return Err(format!("Failed to create local directory: {}", e));
     }
-    
+
     // Get file list from remote folder
     let mut ftp_manager = state.ftp_manager.lock().await;
     let original_path = ftp_manager.current_path();
-    
+
     // ── Streaming scan + transfer: directory-by-directory interleaving ──
     //
     // Instead of scanning ALL directories first then downloading ALL files,
@@ -1755,7 +1951,8 @@ async fn download_folder(
         modified: Option<chrono::DateTime<chrono::Utc>>,
     }
 
-    let mut dirs_to_scan: Vec<(String, PathBuf)> = vec![(params.remote_path.clone(), local_folder_path.clone())];
+    let mut dirs_to_scan: Vec<(String, PathBuf)> =
+        vec![(params.remote_path.clone(), local_folder_path.clone())];
     let mut downloaded_files: usize = 0;
     let mut total_files_discovered: usize = 0;
     let mut dirs_scanned: usize = 0;
@@ -1767,18 +1964,30 @@ async fn download_folder(
     while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
         // ── Check cancel ──
         if state.cancel_flag.load(Ordering::Relaxed) {
-            info!("Folder download cancelled by user after {} files", downloaded_files);
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "cancelled".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: folder_name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Download cancelled after {} files", downloaded_files)),
-                progress: None,
-                path: None,
-            });
+            info!(
+                "Folder download cancelled by user after {} files",
+                downloaded_files
+            );
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!(
+                        "Download cancelled after {} files",
+                        downloaded_files
+                    )),
+                    progress: None,
+                    path: None,
+                },
+            );
             let _ = ftp_manager.change_dir(&original_path).await;
-            return Ok(format!("Download cancelled after {} files", downloaded_files));
+            return Ok(format!(
+                "Download cancelled after {} files",
+                downloaded_files
+            ));
         }
 
         // ── Scan this directory ──
@@ -1805,7 +2014,11 @@ async fn download_folder(
             if file.is_dir {
                 // Create local subdir and queue for scanning
                 if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
-                    warn!("Failed to create directory {}: {}", local_file_path.display(), e);
+                    warn!(
+                        "Failed to create directory {}: {}",
+                        local_file_path.display(),
+                        e
+                    );
                     errors += 1;
                 }
                 dirs_to_scan.push((remote_file_path, local_file_path));
@@ -1813,7 +2026,9 @@ async fn download_folder(
                 let modified_dt = file.modified.as_ref().and_then(|s| {
                     let clean = s.strip_suffix('Z').unwrap_or(s);
                     chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                        .or_else(|_| {
+                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S")
+                        })
                         .ok()
                         .map(|ndt| ndt.and_utc())
                 });
@@ -1831,18 +2046,23 @@ async fn download_folder(
 
         // Emit scanning progress
         if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "scanning".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: folder_name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!(
-                    "Scanning... {} files found, {} downloaded ({} dirs queued)",
-                    total_files_discovered, downloaded_files, dirs_to_scan.len()
-                )),
-                progress: None,
-                path: None,
-            });
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!(
+                        "Scanning... {} files found, {} downloaded ({} dirs queued)",
+                        total_files_discovered,
+                        downloaded_files,
+                        dirs_to_scan.len()
+                    )),
+                    progress: None,
+                    path: None,
+                },
+            );
             last_scan_emit = std::time::Instant::now();
         }
 
@@ -1850,34 +2070,56 @@ async fn download_folder(
         for item in &dir_files {
             // Check cancel before each file
             if state.cancel_flag.load(Ordering::Relaxed) {
-                info!("Folder download cancelled by user after {} files", downloaded_files);
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Download cancelled after {} files", downloaded_files)),
-                    progress: None,
-                    path: None,
-                });
+                info!(
+                    "Folder download cancelled by user after {} files",
+                    downloaded_files
+                );
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "cancelled".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "Download cancelled after {} files",
+                            downloaded_files
+                        )),
+                        progress: None,
+                        path: None,
+                    },
+                );
                 let _ = ftp_manager.change_dir(&original_path).await;
-                return Ok(format!("Download cancelled after {} files", downloaded_files));
+                return Ok(format!(
+                    "Download cancelled after {} files",
+                    downloaded_files
+                ));
             }
 
             // Check if local file exists and should be skipped
             if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
                 if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
-                    if local_meta.is_file() && should_skip_file_download(file_exists_action, item.modified, item.size, &local_meta) {
+                    if local_meta.is_file()
+                        && should_skip_file_download(
+                            file_exists_action,
+                            item.modified,
+                            item.size,
+                            &local_meta,
+                        )
+                    {
                         skipped_files += 1;
-                        let _ = app.emit("transfer_event", TransferEvent {
-                            event_type: "file_skip".to_string(),
-                            transfer_id: transfer_id.clone(),
-                            filename: item.name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!("Skipped (identical): {}", item.name)),
-                            progress: None,
-                            path: Some(item.remote_path.clone()),
-                        });
+                        let _ = app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "file_skip".to_string(),
+                                transfer_id: transfer_id.clone(),
+                                filename: item.name.clone(),
+                                direction: "download".to_string(),
+                                message: Some(format!("Skipped (identical): {}", item.name)),
+                                progress: None,
+                                path: Some(item.remote_path.clone()),
+                            },
+                        );
                         continue;
                     }
                 }
@@ -1894,29 +2136,39 @@ async fn download_folder(
             let file_transfer_id = format!("{}-{}", transfer_id, downloaded_files);
             let folder_pct = if total_files_discovered > 0 {
                 ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
-            } else { 0 };
+            } else {
+                0
+            };
 
             // Emit file_start
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "file_start".to_string(),
-                transfer_id: file_transfer_id.clone(),
-                filename: item.name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Downloading ({}/{}+): {}", downloaded_files + 1, total_files_discovered, item.remote_path)),
-                progress: Some(TransferProgress {
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "file_start".to_string(),
                     transfer_id: file_transfer_id.clone(),
                     filename: item.name.clone(),
-                    transferred: 0,
-                    total: item.size,
-                    percentage: folder_pct,
-                    speed_bps: 0,
-                    eta_seconds: 0,
                     direction: "download".to_string(),
-                    total_files: Some(total_files_discovered as u64),
-                    path: None,
-                }),
-                path: Some(item.remote_path.clone()),
-            });
+                    message: Some(format!(
+                        "Downloading ({}/{}+): {}",
+                        downloaded_files + 1,
+                        total_files_discovered,
+                        item.remote_path
+                    )),
+                    progress: Some(TransferProgress {
+                        transfer_id: file_transfer_id.clone(),
+                        filename: item.name.clone(),
+                        transferred: 0,
+                        total: item.size,
+                        percentage: folder_pct,
+                        speed_bps: 0,
+                        eta_seconds: 0,
+                        direction: "download".to_string(),
+                        total_files: Some(total_files_discovered as u64),
+                        path: None,
+                    }),
+                    path: Some(item.remote_path.clone()),
+                },
+            );
 
             // Download file with streaming progress
             let file_name_only = PathBuf::from(&item.remote_path)
@@ -1930,138 +2182,183 @@ async fn download_folder(
             let dl_file_size = item.size;
             let dl_start = Instant::now();
 
-            match ftp_manager.download_file_with_progress(
-                &file_name_only,
-                item.local_path.to_string_lossy().as_ref(),
-                |transferred| {
-                    let elapsed = dl_start.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
-                    let pct = if dl_file_size > 0 {
-                        ((transferred as f64 / dl_file_size as f64) * 100.0) as u8
-                    } else { 0 };
-                    let eta = if speed > 0 && dl_file_size > transferred {
-                        ((dl_file_size - transferred) / speed) as u32
-                    } else { 0 };
+            match ftp_manager
+                .download_file_with_progress(
+                    &file_name_only,
+                    item.local_path.to_string_lossy().as_ref(),
+                    |transferred| {
+                        let elapsed = dl_start.elapsed().as_secs_f64();
+                        let speed = if elapsed > 0.0 {
+                            (transferred as f64 / elapsed) as u64
+                        } else {
+                            0
+                        };
+                        let pct = if dl_file_size > 0 {
+                            ((transferred as f64 / dl_file_size as f64) * 100.0) as u8
+                        } else {
+                            0
+                        };
+                        let eta = if speed > 0 && dl_file_size > transferred {
+                            ((dl_file_size - transferred) / speed) as u32
+                        } else {
+                            0
+                        };
 
-                    let _ = dl_app.emit("transfer_event", TransferEvent {
-                        event_type: "progress".to_string(),
-                        transfer_id: dl_transfer_id.clone(),
-                        filename: dl_filename.clone(),
-                        direction: "download".to_string(),
-                        message: None,
-                        progress: Some(TransferProgress {
-                            transfer_id: dl_transfer_id.clone(),
-                            filename: dl_filename.clone(),
-                            transferred,
-                            total: dl_file_size,
-                            percentage: pct,
-                            speed_bps: speed,
-                            eta_seconds: eta,
-                            direction: "download".to_string(),
-                            total_files: None,
-                            path: None,
-                        }),
-                        path: None,
-                    });
-                    true
-                }
-            ).await {
+                        let _ = dl_app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "progress".to_string(),
+                                transfer_id: dl_transfer_id.clone(),
+                                filename: dl_filename.clone(),
+                                direction: "download".to_string(),
+                                message: None,
+                                progress: Some(TransferProgress {
+                                    transfer_id: dl_transfer_id.clone(),
+                                    filename: dl_filename.clone(),
+                                    transferred,
+                                    total: dl_file_size,
+                                    percentage: pct,
+                                    speed_bps: speed,
+                                    eta_seconds: eta,
+                                    direction: "download".to_string(),
+                                    total_files: None,
+                                    path: None,
+                                }),
+                                path: None,
+                            },
+                        );
+                        true
+                    },
+                )
+                .await
+            {
                 Ok(_) => {
                     preserve_remote_mtime_dt(&item.local_path, item.modified);
                     downloaded_files += 1;
 
                     let percentage = if total_files_discovered > 0 {
                         ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
-                    } else { 100 };
+                    } else {
+                        100
+                    };
 
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "file_complete".to_string(),
-                        transfer_id: file_transfer_id.clone(),
-                        filename: item.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Downloaded: {} ({}/{}+)", item.name, downloaded_files, total_files_discovered)),
-                        progress: Some(TransferProgress {
-                            transfer_id: transfer_id.clone(),
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "file_complete".to_string(),
+                            transfer_id: file_transfer_id.clone(),
                             filename: item.name.clone(),
-                            transferred: item.size,
-                            total: item.size,
-                            percentage,
-                            speed_bps: 0,
-                            eta_seconds: 0,
                             direction: "download".to_string(),
-                            total_files: None,
-                            path: None,
-                        }),
-                        path: Some(item.remote_path.clone()),
-                    });
+                            message: Some(format!(
+                                "Downloaded: {} ({}/{}+)",
+                                item.name, downloaded_files, total_files_discovered
+                            )),
+                            progress: Some(TransferProgress {
+                                transfer_id: transfer_id.clone(),
+                                filename: item.name.clone(),
+                                transferred: item.size,
+                                total: item.size,
+                                percentage,
+                                speed_bps: 0,
+                                eta_seconds: 0,
+                                direction: "download".to_string(),
+                                total_files: None,
+                                path: None,
+                            }),
+                            path: Some(item.remote_path.clone()),
+                        },
+                    );
 
                     // Emit folder progress (for folder row counter in queue)
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "progress".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Downloaded {}/{}+ files", downloaded_files, total_files_discovered)),
-                        progress: Some(TransferProgress {
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "progress".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: folder_name.clone(),
-                            transferred: downloaded_files as u64,
-                            total: total_files_discovered as u64,
-                            percentage,
-                            speed_bps: 0,
-                            eta_seconds: 0,
                             direction: "download".to_string(),
-                            total_files: Some(total_files_discovered as u64),
+                            message: Some(format!(
+                                "Downloaded {}/{}+ files",
+                                downloaded_files, total_files_discovered
+                            )),
+                            progress: Some(TransferProgress {
+                                transfer_id: transfer_id.clone(),
+                                filename: folder_name.clone(),
+                                transferred: downloaded_files as u64,
+                                total: total_files_discovered as u64,
+                                percentage,
+                                speed_bps: 0,
+                                eta_seconds: 0,
+                                direction: "download".to_string(),
+                                total_files: Some(total_files_discovered as u64),
+                                path: Some(params.remote_path.clone()),
+                            }),
                             path: Some(params.remote_path.clone()),
-                        }),
-                        path: Some(params.remote_path.clone()),
-                    });
+                        },
+                    );
 
-                    info!("Downloaded: {} ({}/{}+)", item.name, downloaded_files, total_files_discovered);
+                    info!(
+                        "Downloaded: {} ({}/{}+)",
+                        item.name, downloaded_files, total_files_discovered
+                    );
                 }
                 Err(e) => {
                     errors += 1;
                     warn!("Failed to download {}: {}", item.name, e);
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "file_error".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: item.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Failed: {} - {}", item.name, e)),
-                        progress: None,
-                        path: Some(item.remote_path.clone()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "file_error".to_string(),
+                            transfer_id: file_transfer_id,
+                            filename: item.name.clone(),
+                            direction: "download".to_string(),
+                            message: Some(format!("Failed: {} - {}", item.name, e)),
+                            progress: None,
+                            path: Some(item.remote_path.clone()),
+                        },
+                    );
                 }
             }
         }
     }
 
-    info!("Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
-          folder_name, downloaded_files, skipped_files, errors);
-    
+    info!(
+        "Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
+        folder_name, downloaded_files, skipped_files, errors
+    );
+
     // Return to original directory
     let _ = ftp_manager.change_dir(&original_path).await;
-    
+
     // Emit complete event
     let result_message = if errors > 0 && skipped_files > 0 {
-        format!("Downloaded {} files, {} skipped, {} errors", downloaded_files, skipped_files, errors)
+        format!(
+            "Downloaded {} files, {} skipped, {} errors",
+            downloaded_files, skipped_files, errors
+        )
     } else if skipped_files > 0 {
-        format!("Downloaded {} files, {} skipped", downloaded_files, skipped_files)
+        format!(
+            "Downloaded {} files, {} skipped",
+            downloaded_files, skipped_files
+        )
     } else if errors > 0 {
         format!("Downloaded {} files ({} errors)", downloaded_files, errors)
     } else {
         format!("Downloaded {} files successfully", downloaded_files)
     };
 
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "complete".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "download".to_string(),
-        message: Some(result_message.clone()),
-        progress: None,
-        path: None,
-    });
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "complete".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: folder_name.clone(),
+            direction: "download".to_string(),
+            message: Some(result_message.clone()),
+            progress: None,
+            path: None,
+        },
+    );
 
     Ok(result_message)
 }
@@ -2073,10 +2370,12 @@ async fn download_folder(
 async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
-    params: UploadFolderParams
+    params: UploadFolderParams,
 ) -> Result<String, String> {
-    
-    info!("Uploading folder recursively: {} -> {}", params.local_path, params.remote_path);
+    info!(
+        "Uploading folder recursively: {} -> {}",
+        params.local_path, params.remote_path
+    );
 
     // Reset cancel flag
     state.cancel_flag.store(false, Ordering::Relaxed);
@@ -2085,39 +2384,45 @@ async fn upload_folder(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "folder".to_string());
-    
-    let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
-    
-    // Emit folder upload start event
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "start".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "upload".to_string(),
-        message: Some(format!("Scanning folder: {}", folder_name)),
-        progress: None,
-        path: Some(params.remote_path.clone()),
-    });
 
-    let local_base_path = PathBuf::from(&params.local_path);
-    
-    if !local_base_path.is_dir() {
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "error".to_string(),
+    let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
+
+    // Emit folder upload start event
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
             direction: "upload".to_string(),
-            message: Some("Source is not a directory".to_string()),
+            message: Some(format!("Scanning folder: {}", folder_name)),
             progress: None,
-            path: None,
-        });
+            path: Some(params.remote_path.clone()),
+        },
+    );
+
+    let local_base_path = PathBuf::from(&params.local_path);
+
+    if !local_base_path.is_dir() {
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "error".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "upload".to_string(),
+                message: Some("Source is not a directory".to_string()),
+                progress: None,
+                path: None,
+            },
+        );
         return Err("Source is not a directory".to_string());
     }
-    
+
     // Get FTP connection
     let mut ftp_manager = state.ftp_manager.lock().await;
     let current_remote_path = ftp_manager.current_path();
-    
+
     // Determine remote base folder path
     let remote_base_path = if params.remote_path.is_empty() || params.remote_path == "." {
         if current_remote_path == "/" {
@@ -2128,10 +2433,10 @@ async fn upload_folder(
     } else {
         params.remote_path.clone()
     };
-    
+
     // ============ PHASE 1: Recursively scan ALL local files and directories ============
     // Using stack-based traversal instead of recursion for better control
-    
+
     struct UploadItem {
         local_path: PathBuf,
         remote_path: String,
@@ -2139,21 +2444,22 @@ async fn upload_folder(
         size: u64,
         name: String,
     }
-    
+
     let mut items_to_upload: Vec<UploadItem> = Vec::new();
     let mut dirs_to_create: Vec<String> = Vec::new();
-    
+
     // Stack for directory traversal: (local_dir_path, remote_dir_path)
-    let mut dirs_to_scan: Vec<(PathBuf, String)> = vec![(local_base_path.clone(), remote_base_path.clone())];
-    
+    let mut dirs_to_scan: Vec<(PathBuf, String)> =
+        vec![(local_base_path.clone(), remote_base_path.clone())];
+
     // Add the root folder to create
     dirs_to_create.push(remote_base_path.clone());
-    
+
     info!("Phase 1: Scanning local directory structure...");
-    
+
     let mut scan_counter: u64 = 0;
     let mut last_scan_emit = std::time::Instant::now();
-    
+
     while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
         let mut read_dir = match tokio::fs::read_dir(&current_local_dir).await {
             Ok(rd) => rd,
@@ -2162,18 +2468,18 @@ async fn upload_folder(
                 continue;
             }
         };
-        
+
         while let Ok(Some(entry)) = read_dir.next_entry().await {
             let local_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
             let remote_path = format!("{}/{}", current_remote_dir, name);
-            
+
             if local_path.is_dir() {
                 // Queue this directory for scanning
                 dirs_to_scan.push((local_path.clone(), remote_path.clone()));
                 // Add directory to create list
                 dirs_to_create.push(remote_path.clone());
-                
+
                 items_to_upload.push(UploadItem {
                     local_path,
                     remote_path,
@@ -2183,7 +2489,7 @@ async fn upload_folder(
                 });
             } else if local_path.is_file() {
                 let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
-                
+
                 items_to_upload.push(UploadItem {
                     local_path,
                     remote_path,
@@ -2192,57 +2498,70 @@ async fn upload_folder(
                     name,
                 });
             }
-            
+
             scan_counter += 1;
-            
+
             // Emit scan progress every 500ms or every 100 files
             if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
                 let files_found = items_to_upload.iter().filter(|i| !i.is_dir).count();
                 let dirs_found = dirs_to_create.len();
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "scanning".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Scanning... {} files, {} folders found", files_found, dirs_found)),
-                    progress: None,
-                    path: None,
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "scanning".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!(
+                            "Scanning... {} files, {} folders found",
+                            files_found, dirs_found
+                        )),
+                        progress: None,
+                        path: None,
+                    },
+                );
                 last_scan_emit = std::time::Instant::now();
             }
         }
     }
-    
+
     // Separate files from directories
-    let files_to_upload: Vec<&UploadItem> = items_to_upload.iter()
-        .filter(|item| !item.is_dir)
-        .collect();
-    
+    let files_to_upload: Vec<&UploadItem> =
+        items_to_upload.iter().filter(|item| !item.is_dir).collect();
+
     let total_files = files_to_upload.len();
     let total_dirs = dirs_to_create.len();
     let total_size: u64 = files_to_upload.iter().map(|f| f.size).sum();
-    
-    info!("Phase 1 complete: Found {} files in {} directories (total: {} bytes)", 
-          total_files, total_dirs, total_size);
-    
+
+    info!(
+        "Phase 1 complete: Found {} files in {} directories (total: {} bytes)",
+        total_files, total_dirs, total_size
+    );
+
     // Update event with scan results
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "scanning".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "upload".to_string(),
-        message: Some(format!("Scan complete: {} files in {} folders", total_files, total_dirs)),
-        progress: None,
-        path: None,
-    });
-    
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "scanning".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: folder_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!(
+                "Scan complete: {} files in {} folders",
+                total_files, total_dirs
+            )),
+            progress: None,
+            path: None,
+        },
+    );
+
     // ============ PHASE 2: Create all remote directories first ============
     info!("Phase 2: Creating {} remote directories...", total_dirs);
-    
+
     // Sort directories by depth (shortest first) to ensure parent dirs exist
     let mut dirs_sorted = dirs_to_create.clone();
     dirs_sorted.sort_by_key(|a| a.matches('/').count());
-    
+
     for remote_dir in &dirs_sorted {
         match ftp_manager.mkdir(remote_dir).await {
             Ok(_) => info!("Created remote directory: {}", remote_dir),
@@ -2255,13 +2574,19 @@ async fn upload_folder(
             }
         }
     }
-    
+
     // ============ PHASE 2.5: Collect remote file metadata for smart comparison ============
     let file_exists_action = params.file_exists_action.as_str();
-    let mut remote_index: std::collections::HashMap<String, (u64, Option<chrono::DateTime<chrono::Utc>>)> = std::collections::HashMap::new();
+    let mut remote_index: std::collections::HashMap<
+        String,
+        (u64, Option<chrono::DateTime<chrono::Utc>>),
+    > = std::collections::HashMap::new();
 
     if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-        info!("Phase 2.5: Listing remote files for comparison (action: {})...", file_exists_action);
+        info!(
+            "Phase 2.5: Listing remote files for comparison (action: {})...",
+            file_exists_action
+        );
         // Save current directory so we can restore it after scanning
         let saved_path = ftp_manager.current_path();
         for remote_dir in &dirs_sorted {
@@ -2270,15 +2595,22 @@ async fn upload_folder(
                 if let Ok(entries) = ftp_manager.list_files().await {
                     for entry in entries {
                         if !entry.is_dir {
-                            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
+                            let remote_file_path =
+                                format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
                             let modified_dt = entry.modified.as_ref().and_then(|s| {
                                 let clean = s.strip_suffix('Z').unwrap_or(s);
                                 chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                                    .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                                    .or_else(|_| {
+                                        chrono::NaiveDateTime::parse_from_str(
+                                            clean,
+                                            "%Y-%m-%dT%H:%M:%S",
+                                        )
+                                    })
                                     .ok()
                                     .map(|ndt| ndt.and_utc())
                             });
-                            remote_index.insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
+                            remote_index
+                                .insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
                         }
                     }
                 }
@@ -2288,7 +2620,10 @@ async fn upload_folder(
         if let Err(e) = ftp_manager.change_dir(&saved_path).await {
             warn!("Could not restore directory to {}: {}", saved_path, e);
         }
-        info!("Phase 2.5 complete: {} remote files indexed for comparison", remote_index.len());
+        info!(
+            "Phase 2.5 complete: {} remote files indexed for comparison",
+            remote_index.len()
+        );
     }
 
     // ============ PHASE 3: Upload all files with per-file events ============
@@ -2301,16 +2636,22 @@ async fn upload_folder(
     for item in &files_to_upload {
         // Check cancel flag before each file
         if state.cancel_flag.load(Ordering::Relaxed) {
-            info!("Folder upload cancelled by user after {} files", uploaded_files);
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "cancelled".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: folder_name.clone(),
-                direction: "upload".to_string(),
-                message: Some(format!("Upload cancelled after {} files", uploaded_files)),
-                progress: None,
-                path: None,
-            });
+            info!(
+                "Folder upload cancelled by user after {} files",
+                uploaded_files
+            );
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Upload cancelled after {} files", uploaded_files)),
+                    progress: None,
+                    path: None,
+                },
+            );
             return Ok(format!("Upload cancelled after {} files", uploaded_files));
         }
 
@@ -2318,17 +2659,25 @@ async fn upload_folder(
         if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
             if let Some(&(remote_size, remote_modified)) = remote_index.get(&item.remote_path) {
                 if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
-                    if should_skip_file_upload(file_exists_action, &local_meta, remote_size, remote_modified) {
+                    if should_skip_file_upload(
+                        file_exists_action,
+                        &local_meta,
+                        remote_size,
+                        remote_modified,
+                    ) {
                         skipped_files += 1;
-                        let _ = app.emit("transfer_event", TransferEvent {
-                            event_type: "file_skip".to_string(),
-                            transfer_id: transfer_id.clone(),
-                            filename: item.name.clone(),
-                            direction: "upload".to_string(),
-                            message: Some(format!("Skipped (identical): {}", item.name)),
-                            progress: None,
-                            path: Some(item.remote_path.clone()),
-                        });
+                        let _ = app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "file_skip".to_string(),
+                                transfer_id: transfer_id.clone(),
+                                filename: item.name.clone(),
+                                direction: "upload".to_string(),
+                                message: Some(format!("Skipped (identical): {}", item.name)),
+                                progress: None,
+                                path: Some(item.remote_path.clone()),
+                            },
+                        );
                         continue;
                     }
                 }
@@ -2338,29 +2687,37 @@ async fn upload_folder(
         let file_transfer_id = format!("ul-{}-{}", transfer_id, uploaded_files);
 
         // Emit file_start event for activity log
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "file_start".to_string(),
-            transfer_id: file_transfer_id.clone(),
-            filename: item.name.clone(),
-            direction: "upload".to_string(),
-            message: Some(format!("Uploading: {}", item.remote_path)),
-            progress: Some(TransferProgress {
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "file_start".to_string(),
                 transfer_id: file_transfer_id.clone(),
                 filename: item.name.clone(),
-                transferred: 0,
-                total: item.size,
-                percentage: 0,
-                speed_bps: 0,
-                eta_seconds: 0,
                 direction: "upload".to_string(),
-                total_files: None,
-                path: None,
-            }),
-            path: Some(item.remote_path.clone()),
-        });
-        
-        info!("Uploading [{}/{}]: {} -> {}",
-              uploaded_files + 1, total_files, item.local_path.display(), item.remote_path);
+                message: Some(format!("Uploading: {}", item.remote_path)),
+                progress: Some(TransferProgress {
+                    transfer_id: file_transfer_id.clone(),
+                    filename: item.name.clone(),
+                    transferred: 0,
+                    total: item.size,
+                    percentage: 0,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "upload".to_string(),
+                    total_files: None,
+                    path: None,
+                }),
+                path: Some(item.remote_path.clone()),
+            },
+        );
+
+        info!(
+            "Uploading [{}/{}]: {} -> {}",
+            uploaded_files + 1,
+            total_files,
+            item.local_path.display(),
+            item.remote_path
+        );
 
         let ul_app = app.clone();
         let ul_transfer_id = file_transfer_id.clone();
@@ -2368,43 +2725,57 @@ async fn upload_folder(
         let ul_file_size = item.size;
         let ul_start = Instant::now();
 
-        match ftp_manager.upload_file_with_progress(
-            item.local_path.to_string_lossy().as_ref(),
-            &item.remote_path,
-            item.size,
-            |transferred| {
-                let elapsed = ul_start.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
-                let pct = if ul_file_size > 0 {
-                    ((transferred as f64 / ul_file_size as f64) * 100.0) as u8
-                } else { 0 };
-                let eta = if speed > 0 && ul_file_size > transferred {
-                    ((ul_file_size - transferred) / speed) as u32
-                } else { 0 };
+        match ftp_manager
+            .upload_file_with_progress(
+                item.local_path.to_string_lossy().as_ref(),
+                &item.remote_path,
+                item.size,
+                |transferred| {
+                    let elapsed = ul_start.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 {
+                        (transferred as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
+                    let pct = if ul_file_size > 0 {
+                        ((transferred as f64 / ul_file_size as f64) * 100.0) as u8
+                    } else {
+                        0
+                    };
+                    let eta = if speed > 0 && ul_file_size > transferred {
+                        ((ul_file_size - transferred) / speed) as u32
+                    } else {
+                        0
+                    };
 
-                let _ = ul_app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
-                    transfer_id: ul_transfer_id.clone(),
-                    filename: ul_filename.clone(),
-                    direction: "upload".to_string(),
-                    message: None,
-                    progress: Some(TransferProgress {
-                        transfer_id: ul_transfer_id.clone(),
-                        filename: ul_filename.clone(),
-                        transferred,
-                        total: ul_file_size,
-                        percentage: pct,
-                        speed_bps: speed,
-                        eta_seconds: eta,
-                        direction: "upload".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
-                    path: None,
-                });
-                true // no cancel from sync
-            }
-        ).await {
+                    let _ = ul_app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "progress".to_string(),
+                            transfer_id: ul_transfer_id.clone(),
+                            filename: ul_filename.clone(),
+                            direction: "upload".to_string(),
+                            message: None,
+                            progress: Some(TransferProgress {
+                                transfer_id: ul_transfer_id.clone(),
+                                filename: ul_filename.clone(),
+                                transferred,
+                                total: ul_file_size,
+                                percentage: pct,
+                                speed_bps: speed,
+                                eta_seconds: eta,
+                                direction: "upload".to_string(),
+                                total_files: None,
+                                path: None,
+                            }),
+                            path: None,
+                        },
+                    );
+                    true // no cancel from sync
+                },
+            )
+            .await
+        {
             Ok(_) => {
                 uploaded_files += 1;
                 let percentage = if total_files > 0 {
@@ -2414,88 +2785,106 @@ async fn upload_folder(
                 };
 
                 // Emit file_complete event
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "file_complete".to_string(),
-                    transfer_id: file_transfer_id.clone(),
-                    filename: item.name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Uploaded: {} ({} bytes)", item.name, item.size)),
-                    progress: Some(TransferProgress {
-                        transfer_id: file_transfer_id,
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "file_complete".to_string(),
+                        transfer_id: file_transfer_id.clone(),
                         filename: item.name.clone(),
-                        transferred: item.size,
-                        total: item.size,
-                        percentage: 100,
-                        speed_bps: 0,
-                        eta_seconds: 0,
                         direction: "upload".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
-                    path: Some(item.remote_path.clone()),
-                });
+                        message: Some(format!("Uploaded: {} ({} bytes)", item.name, item.size)),
+                        progress: Some(TransferProgress {
+                            transfer_id: file_transfer_id,
+                            filename: item.name.clone(),
+                            transferred: item.size,
+                            total: item.size,
+                            percentage: 100,
+                            speed_bps: 0,
+                            eta_seconds: 0,
+                            direction: "upload".to_string(),
+                            total_files: None,
+                            path: None,
+                        }),
+                        path: Some(item.remote_path.clone()),
+                    },
+                );
 
                 // Emit folder progress event
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "progress".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Uploaded {}/{} files", uploaded_files, total_files)),
-                    progress: Some(TransferProgress {
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "progress".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: folder_name.clone(),
-                        transferred: uploaded_files,
-                        total: total_files as u64,
-                        percentage,
-                        speed_bps: 0,
-                        eta_seconds: 0,
                         direction: "upload".to_string(),
-                        total_files: Some(total_files as u64),
+                        message: Some(format!("Uploaded {}/{} files", uploaded_files, total_files)),
+                        progress: Some(TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            filename: folder_name.clone(),
+                            transferred: uploaded_files,
+                            total: total_files as u64,
+                            percentage,
+                            speed_bps: 0,
+                            eta_seconds: 0,
+                            direction: "upload".to_string(),
+                            total_files: Some(total_files as u64),
+                            path: Some(remote_base_path.clone()),
+                        }),
                         path: Some(remote_base_path.clone()),
-                    }),
-                    path: Some(remote_base_path.clone()),
-                });
+                    },
+                );
             }
             Err(e) => {
                 errors += 1;
                 warn!("Failed to upload file {}: {}", item.name, e);
 
                 // Emit file_error event
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "file_error".to_string(),
-                    transfer_id: file_transfer_id,
-                    filename: item.name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Failed to upload {}: {}", item.name, e)),
-                    progress: None,
-                    path: Some(item.remote_path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "file_error".to_string(),
+                        transfer_id: file_transfer_id,
+                        filename: item.name.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!("Failed to upload {}: {}", item.name, e)),
+                        progress: None,
+                        path: Some(item.remote_path.clone()),
+                    },
+                );
             }
         }
     }
 
     // Emit complete event
     let result_message = if errors > 0 && skipped_files > 0 {
-        format!("Uploaded {} files, {} skipped, {} errors", uploaded_files, skipped_files, errors)
+        format!(
+            "Uploaded {} files, {} skipped, {} errors",
+            uploaded_files, skipped_files, errors
+        )
     } else if skipped_files > 0 {
-        format!("Uploaded {} files, {} skipped", uploaded_files, skipped_files)
+        format!(
+            "Uploaded {} files, {} skipped",
+            uploaded_files, skipped_files
+        )
     } else if errors > 0 {
         format!("Uploaded {} files ({} errors)", uploaded_files, errors)
     } else {
         format!("Uploaded {} files successfully", uploaded_files)
     };
 
-    let _ = app.emit("transfer_event", TransferEvent {
-        event_type: "complete".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "upload".to_string(),
-        message: Some(result_message.clone()),
-        progress: None,
-        path: None,
-    });
-    
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "complete".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: folder_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(result_message.clone()),
+            progress: None,
+            path: None,
+        },
+    );
+
     Ok(result_message)
 }
 
@@ -2536,25 +2925,34 @@ async fn set_speed_limit(
     download_kb: u64,
     upload_kb: u64,
 ) -> Result<(), String> {
-    state.speed_limits.download_bps.store(
-        download_kb * 1024,
-        std::sync::atomic::Ordering::Relaxed,
+    state
+        .speed_limits
+        .download_bps
+        .store(download_kb * 1024, std::sync::atomic::Ordering::Relaxed);
+    state
+        .speed_limits
+        .upload_bps
+        .store(upload_kb * 1024, std::sync::atomic::Ordering::Relaxed);
+    info!(
+        "Speed limits set: download={}KB/s upload={}KB/s (0=unlimited)",
+        download_kb, upload_kb
     );
-    state.speed_limits.upload_bps.store(
-        upload_kb * 1024,
-        std::sync::atomic::Ordering::Relaxed,
-    );
-    info!("Speed limits set: download={}KB/s upload={}KB/s (0=unlimited)", download_kb, upload_kb);
     Ok(())
 }
 
 /// Get current global transfer speed limits (KB/s)
 #[tauri::command]
-async fn get_speed_limit(
-    state: State<'_, AppState>,
-) -> Result<(u64, u64), String> {
-    let dl = state.speed_limits.download_bps.load(std::sync::atomic::Ordering::Relaxed) / 1024;
-    let ul = state.speed_limits.upload_bps.load(std::sync::atomic::Ordering::Relaxed) / 1024;
+async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), String> {
+    let dl = state
+        .speed_limits
+        .download_bps
+        .load(std::sync::atomic::Ordering::Relaxed)
+        / 1024;
+    let ul = state
+        .speed_limits
+        .upload_bps
+        .load(std::sync::atomic::Ordering::Relaxed)
+        / 1024;
     Ok((dl, ul))
 }
 
@@ -2601,58 +2999,250 @@ struct SystemInfo {
 fn get_dependencies() -> Vec<DependencyInfo> {
     vec![
         // Core Framework (versions from Cargo.lock via build.rs)
-        DependencyInfo { name: "tauri".into(), version: env!("DEP_VERSION_TAURI").into(), category: "Core".into() },
-        DependencyInfo { name: "tokio".into(), version: env!("DEP_VERSION_TOKIO").into(), category: "Core".into() },
-        DependencyInfo { name: "serde".into(), version: env!("DEP_VERSION_SERDE").into(), category: "Core".into() },
-        DependencyInfo { name: "serde_json".into(), version: env!("DEP_VERSION_SERDE_JSON").into(), category: "Core".into() },
-        DependencyInfo { name: "anyhow".into(), version: env!("DEP_VERSION_ANYHOW").into(), category: "Core".into() },
-        DependencyInfo { name: "thiserror".into(), version: env!("DEP_VERSION_THISERROR").into(), category: "Core".into() },
-        DependencyInfo { name: "chrono".into(), version: env!("DEP_VERSION_CHRONO").into(), category: "Core".into() },
-        DependencyInfo { name: "log".into(), version: env!("DEP_VERSION_LOG").into(), category: "Core".into() },
-        DependencyInfo { name: "tracing".into(), version: env!("DEP_VERSION_TRACING").into(), category: "Core".into() },
-        DependencyInfo { name: "portable-pty".into(), version: env!("DEP_VERSION_PORTABLE_PTY").into(), category: "Core".into() },
-        DependencyInfo { name: "notify".into(), version: env!("DEP_VERSION_NOTIFY").into(), category: "Core".into() },
-        DependencyInfo { name: "image".into(), version: env!("DEP_VERSION_IMAGE").into(), category: "Core".into() },
+        DependencyInfo {
+            name: "tauri".into(),
+            version: env!("DEP_VERSION_TAURI").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "tokio".into(),
+            version: env!("DEP_VERSION_TOKIO").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "serde".into(),
+            version: env!("DEP_VERSION_SERDE").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "serde_json".into(),
+            version: env!("DEP_VERSION_SERDE_JSON").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "anyhow".into(),
+            version: env!("DEP_VERSION_ANYHOW").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "thiserror".into(),
+            version: env!("DEP_VERSION_THISERROR").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "chrono".into(),
+            version: env!("DEP_VERSION_CHRONO").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "log".into(),
+            version: env!("DEP_VERSION_LOG").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "tracing".into(),
+            version: env!("DEP_VERSION_TRACING").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "portable-pty".into(),
+            version: env!("DEP_VERSION_PORTABLE_PTY").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "notify".into(),
+            version: env!("DEP_VERSION_NOTIFY").into(),
+            category: "Core".into(),
+        },
+        DependencyInfo {
+            name: "image".into(),
+            version: env!("DEP_VERSION_IMAGE").into(),
+            category: "Core".into(),
+        },
         // Protocols
-        DependencyInfo { name: "suppaftp".into(), version: env!("DEP_VERSION_SUPPAFTP").into(), category: "Protocols".into() },
-        DependencyInfo { name: "russh".into(), version: env!("DEP_VERSION_RUSSH").into(), category: "Protocols".into() },
-        DependencyInfo { name: "russh-sftp".into(), version: env!("DEP_VERSION_RUSSH_SFTP").into(), category: "Protocols".into() },
-        DependencyInfo { name: "reqwest".into(), version: env!("DEP_VERSION_REQWEST").into(), category: "Protocols".into() },
-        DependencyInfo { name: "quick-xml".into(), version: env!("DEP_VERSION_QUICK_XML").into(), category: "Protocols".into() },
-        DependencyInfo { name: "oauth2".into(), version: env!("DEP_VERSION_OAUTH2").into(), category: "Protocols".into() },
-        DependencyInfo { name: "rustls".into(), version: env!("DEP_VERSION_RUSTLS").into(), category: "Protocols".into() },
+        DependencyInfo {
+            name: "suppaftp".into(),
+            version: env!("DEP_VERSION_SUPPAFTP").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "russh".into(),
+            version: env!("DEP_VERSION_RUSSH").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "russh-sftp".into(),
+            version: env!("DEP_VERSION_RUSSH_SFTP").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "reqwest".into(),
+            version: env!("DEP_VERSION_REQWEST").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "quick-xml".into(),
+            version: env!("DEP_VERSION_QUICK_XML").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "oauth2".into(),
+            version: env!("DEP_VERSION_OAUTH2").into(),
+            category: "Protocols".into(),
+        },
+        DependencyInfo {
+            name: "rustls".into(),
+            version: env!("DEP_VERSION_RUSTLS").into(),
+            category: "Protocols".into(),
+        },
         // Security
-        DependencyInfo { name: "argon2".into(), version: env!("DEP_VERSION_ARGON2").into(), category: "Security".into() },
-        DependencyInfo { name: "aes-gcm".into(), version: env!("DEP_VERSION_AES_GCM").into(), category: "Security".into() },
-        DependencyInfo { name: "aes-gcm-siv".into(), version: env!("DEP_VERSION_AES_GCM_SIV").into(), category: "Security".into() },
-        DependencyInfo { name: "chacha20poly1305".into(), version: env!("DEP_VERSION_CHACHA20POLY1305").into(), category: "Security".into() },
-        DependencyInfo { name: "hkdf".into(), version: env!("DEP_VERSION_HKDF").into(), category: "Security".into() },
-        DependencyInfo { name: "aes-kw".into(), version: env!("DEP_VERSION_AES_KW").into(), category: "Security".into() },
-        DependencyInfo { name: "aes-siv".into(), version: env!("DEP_VERSION_AES_SIV").into(), category: "Security".into() },
-        DependencyInfo { name: "scrypt".into(), version: env!("DEP_VERSION_SCRYPT").into(), category: "Security".into() },
-        DependencyInfo { name: "ring".into(), version: env!("DEP_VERSION_RING").into(), category: "Security".into() },
-        DependencyInfo { name: "secrecy".into(), version: env!("DEP_VERSION_SECRECY").into(), category: "Security".into() },
-        DependencyInfo { name: "sha2".into(), version: env!("DEP_VERSION_SHA2").into(), category: "Security".into() },
-        DependencyInfo { name: "hmac".into(), version: env!("DEP_VERSION_HMAC").into(), category: "Security".into() },
-        DependencyInfo { name: "blake3".into(), version: env!("DEP_VERSION_BLAKE3").into(), category: "Security".into() },
-        DependencyInfo { name: "jsonwebtoken".into(), version: env!("DEP_VERSION_JSONWEBTOKEN").into(), category: "Security".into() },
+        DependencyInfo {
+            name: "argon2".into(),
+            version: env!("DEP_VERSION_ARGON2").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes-gcm".into(),
+            version: env!("DEP_VERSION_AES_GCM").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes-gcm-siv".into(),
+            version: env!("DEP_VERSION_AES_GCM_SIV").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "chacha20poly1305".into(),
+            version: env!("DEP_VERSION_CHACHA20POLY1305").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "hkdf".into(),
+            version: env!("DEP_VERSION_HKDF").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes-kw".into(),
+            version: env!("DEP_VERSION_AES_KW").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "aes-siv".into(),
+            version: env!("DEP_VERSION_AES_SIV").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "scrypt".into(),
+            version: env!("DEP_VERSION_SCRYPT").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "ring".into(),
+            version: env!("DEP_VERSION_RING").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "secrecy".into(),
+            version: env!("DEP_VERSION_SECRECY").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "sha2".into(),
+            version: env!("DEP_VERSION_SHA2").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "hmac".into(),
+            version: env!("DEP_VERSION_HMAC").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "blake3".into(),
+            version: env!("DEP_VERSION_BLAKE3").into(),
+            category: "Security".into(),
+        },
+        DependencyInfo {
+            name: "jsonwebtoken".into(),
+            version: env!("DEP_VERSION_JSONWEBTOKEN").into(),
+            category: "Security".into(),
+        },
         // Archives
-        DependencyInfo { name: "sevenz-rust".into(), version: env!("DEP_VERSION_SEVENZ_RUST").into(), category: "Archives".into() },
-        DependencyInfo { name: "zip".into(), version: env!("DEP_VERSION_ZIP").into(), category: "Archives".into() },
-        DependencyInfo { name: "tar".into(), version: env!("DEP_VERSION_TAR").into(), category: "Archives".into() },
-        DependencyInfo { name: "flate2".into(), version: env!("DEP_VERSION_FLATE2").into(), category: "Archives".into() },
-        DependencyInfo { name: "xz2".into(), version: env!("DEP_VERSION_XZ2").into(), category: "Archives".into() },
-        DependencyInfo { name: "bzip2".into(), version: env!("DEP_VERSION_BZIP2").into(), category: "Archives".into() },
-        DependencyInfo { name: "unrar".into(), version: env!("DEP_VERSION_UNRAR").into(), category: "Archives".into() },
+        DependencyInfo {
+            name: "sevenz-rust".into(),
+            version: env!("DEP_VERSION_SEVENZ_RUST").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "zip".into(),
+            version: env!("DEP_VERSION_ZIP").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "tar".into(),
+            version: env!("DEP_VERSION_TAR").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "flate2".into(),
+            version: env!("DEP_VERSION_FLATE2").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "xz2".into(),
+            version: env!("DEP_VERSION_XZ2").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "bzip2".into(),
+            version: env!("DEP_VERSION_BZIP2").into(),
+            category: "Archives".into(),
+        },
+        DependencyInfo {
+            name: "unrar".into(),
+            version: env!("DEP_VERSION_UNRAR").into(),
+            category: "Archives".into(),
+        },
         // Tauri Plugins
-        DependencyInfo { name: "tauri-plugin-fs".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_FS").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-dialog".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_DIALOG").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-shell".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_SHELL").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-notification".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_NOTIFICATION").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-log".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_LOG").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-single-instance".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_SINGLE_INSTANCE").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-localhost".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_LOCALHOST").into(), category: "Plugins".into() },
-        DependencyInfo { name: "tauri-plugin-autostart".into(), version: env!("DEP_VERSION_TAURI_PLUGIN_AUTOSTART").into(), category: "Plugins".into() },
+        DependencyInfo {
+            name: "tauri-plugin-fs".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_FS").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-dialog".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_DIALOG").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-shell".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_SHELL").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-notification".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_NOTIFICATION").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-log".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_LOG").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-single-instance".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_SINGLE_INSTANCE").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-localhost".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_LOCALHOST").into(),
+            category: "Plugins".into(),
+        },
+        DependencyInfo {
+            name: "tauri-plugin-autostart".into(),
+            version: env!("DEP_VERSION_TAURI_PLUGIN_AUTOSTART").into(),
+            category: "Plugins".into(),
+        },
     ]
 }
 
@@ -2774,7 +3364,10 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("quick-xml".into(), env!("DEP_VERSION_QUICK_XML").into());
     dep_versions.insert("oauth2".into(), env!("DEP_VERSION_OAUTH2").into());
     dep_versions.insert("aes-gcm-siv".into(), env!("DEP_VERSION_AES_GCM_SIV").into());
-    dep_versions.insert("chacha20poly1305".into(), env!("DEP_VERSION_CHACHA20POLY1305").into());
+    dep_versions.insert(
+        "chacha20poly1305".into(),
+        env!("DEP_VERSION_CHACHA20POLY1305").into(),
+    );
     dep_versions.insert("hkdf".into(), env!("DEP_VERSION_HKDF").into());
     dep_versions.insert("aes-kw".into(), env!("DEP_VERSION_AES_KW").into());
     dep_versions.insert("aes-siv".into(), env!("DEP_VERSION_AES_SIV").into());
@@ -2800,17 +3393,20 @@ fn get_system_info() -> SystemInfo {
 // ============ Local File System Commands ============
 
 #[tauri::command]
-async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<LocalFileInfo>, String> {
+async fn get_local_files(
+    path: String,
+    show_hidden: Option<bool>,
+) -> Result<Vec<LocalFileInfo>, String> {
     validate_path(&path)?;
     let path = PathBuf::from(&path);
-    let show_hidden = show_hidden.unwrap_or(true);  // Developer-first: show all files by default
-    
+    let show_hidden = show_hidden.unwrap_or(true); // Developer-first: show all files by default
+
     if !path.exists() {
         return Err(format!("Path does not exist: {}", path.display()));
     }
 
     let mut files = Vec::new();
-    
+
     // Parent directory (..) removed - use "Up" button in toolbar for navigation
 
     let mut entries = tokio::fs::read_dir(&path)
@@ -2820,19 +3416,19 @@ async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<
     while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
         let metadata = entry.metadata().await.ok();
         let file_name = entry.file_name().to_string_lossy().to_string();
-        
+
         // Skip hidden files unless show_hidden is enabled
         if !show_hidden && file_name.starts_with('.') {
             continue;
         }
 
         let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-        let size = if is_dir { 
-            None 
-        } else { 
-            metadata.as_ref().map(|m| m.len()) 
+        let size = if is_dir {
+            None
+        } else {
+            metadata.as_ref().map(|m| m.len())
         };
-        
+
         let modified = metadata.as_ref().and_then(|m| {
             m.modified().ok().map(|t| {
                 let datetime: chrono::DateTime<chrono::Local> = t.into();
@@ -2850,12 +3446,10 @@ async fn get_local_files(path: String, show_hidden: Option<bool>) -> Result<Vec<
     }
 
     // Sort: directories first, then alphabetically
-    files.sort_by(|a, b| {
-        match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     Ok(files)
@@ -2871,7 +3465,7 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open file manager: {}", e))?;
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         // Use /select, for files or plain path for directories
@@ -2889,7 +3483,7 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
                 .map_err(|e| format!("Failed to open file manager: {}", e))?;
         }
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         let metadata = std::fs::metadata(&path);
@@ -2906,7 +3500,7 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
                 .map_err(|e| format!("Failed to open file manager: {}", e))?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -2919,72 +3513,84 @@ async fn delete_remote_file(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
-    is_dir: bool
+    is_dir: bool,
 ) -> Result<String, String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
+
     let file_name = path.split('/').next_back().unwrap_or(&path).to_string();
     let delete_id = format!("del-remote-{}", chrono::Utc::now().timestamp_millis());
-    
+
     if !is_dir {
         // Single file delete - simple case
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_start".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "remote".to_string(),
-            message: Some(format!("Deleting remote file: {}", file_name)),
-            progress: None,
-            path: Some(path.clone()),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "delete_start".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "remote".to_string(),
+                message: Some(format!("Deleting remote file: {}", file_name)),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
 
         match ftp_manager.remove(&path).await {
             Ok(_) => {
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "delete_complete".to_string(),
-                    transfer_id: delete_id.clone(),
-                    filename: file_name.clone(),
-                    direction: "remote".to_string(),
-                    message: Some(format!("Deleted remote file: {}", file_name)),
-                    progress: None,
-                    path: Some(path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "delete_complete".to_string(),
+                        transfer_id: delete_id.clone(),
+                        filename: file_name.clone(),
+                        direction: "remote".to_string(),
+                        message: Some(format!("Deleted remote file: {}", file_name)),
+                        progress: None,
+                        path: Some(path.clone()),
+                    },
+                );
                 Ok(format!("Deleted: {}", file_name))
             }
             Err(e) => {
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "delete_error".to_string(),
-                    transfer_id: delete_id.clone(),
-                    filename: file_name.clone(),
-                    direction: "remote".to_string(),
-                    message: Some(format!("Failed to delete: {}", e)),
-                    progress: None,
-                    path: Some(path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "delete_error".to_string(),
+                        transfer_id: delete_id.clone(),
+                        filename: file_name.clone(),
+                        direction: "remote".to_string(),
+                        message: Some(format!("Failed to delete: {}", e)),
+                        progress: None,
+                        path: Some(path.clone()),
+                    },
+                );
                 Err(format!("Failed to delete file: {}", e))
             }
         }
     } else {
         // Folder delete - scan first, then delete with events
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_start".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "remote".to_string(),
-            message: Some(format!("Scanning remote folder: {}", file_name)),
-            progress: None,
-            path: Some(path.clone()),
-        });
-        
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "delete_start".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "remote".to_string(),
+                message: Some(format!("Scanning remote folder: {}", file_name)),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
+
         let original_path = ftp_manager.current_path();
-        
+
         // Build absolute target path
         let target_path = if path.starts_with('/') {
             path.clone()
         } else {
             format!("{}/{}", original_path, path)
         };
-        
+
         // Phase 1: Collect all files and directories recursively
         struct DeleteItem {
             path: String,
@@ -3026,34 +3632,50 @@ async fn delete_remote_file(
 
             // Emit scan progress every 500ms or every 100 entries
             if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "scanning".to_string(),
-                    transfer_id: delete_id.clone(),
-                    filename: file_name.clone(),
-                    direction: "remote".to_string(),
-                    message: Some(format!("Scanning... {} files, {} folders found", files_to_delete.len(), dirs_to_delete.len())),
-                    progress: None,
-                    path: None,
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "scanning".to_string(),
+                        transfer_id: delete_id.clone(),
+                        filename: file_name.clone(),
+                        direction: "remote".to_string(),
+                        message: Some(format!(
+                            "Scanning... {} files, {} folders found",
+                            files_to_delete.len(),
+                            dirs_to_delete.len()
+                        )),
+                        progress: None,
+                        path: None,
+                    },
+                );
                 last_scan_emit = std::time::Instant::now();
             }
         }
-        
+
         let total_files = files_to_delete.len();
         let total_dirs = dirs_to_delete.len();
-        
-        info!("Found {} files and {} directories to delete in {}", total_files, total_dirs, file_name);
-        
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "scanning".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "remote".to_string(),
-            message: Some(format!("Scan complete: {} files in {} folders to delete", total_files, total_dirs)),
-            progress: None,
-            path: None,
-        });
-        
+
+        info!(
+            "Found {} files and {} directories to delete in {}",
+            total_files, total_dirs, file_name
+        );
+
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "scanning".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "remote".to_string(),
+                message: Some(format!(
+                    "Scan complete: {} files in {} folders to delete",
+                    total_files, total_dirs
+                )),
+                progress: None,
+                path: None,
+            },
+        );
+
         // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
         let mut errors = 0u64;
@@ -3063,50 +3685,62 @@ async fn delete_remote_file(
             // Check cancel flag before each file
             if state.cancel_flag.load(Ordering::Relaxed) {
                 cancelled = true;
-                info!("Folder deletion cancelled by user after {} files", deleted_files);
+                info!(
+                    "Folder deletion cancelled by user after {} files",
+                    deleted_files
+                );
                 break;
             }
             let file_delete_id = format!("{}-file-{}", delete_id, deleted_files);
-            
-            let _ = app.emit("transfer_event", TransferEvent {
-                event_type: "delete_file_start".to_string(),
-                transfer_id: file_delete_id.clone(),
-                filename: item.name.clone(),
-                direction: "remote".to_string(),
-                message: Some(format!("Deleting: {}", item.path)),
-                progress: None,
-                path: Some(item.path.clone()),
-            });
+
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "delete_file_start".to_string(),
+                    transfer_id: file_delete_id.clone(),
+                    filename: item.name.clone(),
+                    direction: "remote".to_string(),
+                    message: Some(format!("Deleting: {}", item.path)),
+                    progress: None,
+                    path: Some(item.path.clone()),
+                },
+            );
 
             match ftp_manager.remove(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "delete_file_complete".to_string(),
-                        transfer_id: file_delete_id,
-                        filename: item.name.clone(),
-                        direction: "remote".to_string(),
-                        message: Some(format!("Deleted: {}", item.name)),
-                        progress: None,
-                        path: Some(item.path.clone()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "delete_file_complete".to_string(),
+                            transfer_id: file_delete_id,
+                            filename: item.name.clone(),
+                            direction: "remote".to_string(),
+                            message: Some(format!("Deleted: {}", item.name)),
+                            progress: None,
+                            path: Some(item.path.clone()),
+                        },
+                    );
                 }
                 Err(e) => {
                     errors += 1;
                     warn!("Failed to delete {}: {}", item.path, e);
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "delete_file_error".to_string(),
-                        transfer_id: file_delete_id,
-                        filename: item.name.clone(),
-                        direction: "remote".to_string(),
-                        message: Some(format!("Failed: {} - {}", item.name, e)),
-                        progress: None,
-                        path: Some(item.path.clone()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "delete_file_error".to_string(),
+                            transfer_id: file_delete_id,
+                            filename: item.name.clone(),
+                            direction: "remote".to_string(),
+                            message: Some(format!("Failed: {} - {}", item.name, e)),
+                            progress: None,
+                            path: Some(item.path.clone()),
+                        },
+                    );
                 }
             }
         }
-        
+
         // Phase 3: Delete directories (deepest first - reverse the order!)
         // Directories were added in scan order (parent first), so we need to reverse
         // Skip if cancelled - partial content may remain
@@ -3119,43 +3753,60 @@ async fn delete_remote_file(
             let dir_name = dir_path.split('/').next_back().unwrap_or(dir_path);
             match ftp_manager.remove_dir(dir_path).await {
                 Ok(_) => {
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "delete_dir_complete".to_string(),
-                        transfer_id: delete_id.clone(),
-                        filename: dir_name.to_string(),
-                        direction: "remote".to_string(),
-                        message: Some(format!("Removed folder: {}", dir_name)),
-                        progress: None,
-                        path: Some(dir_path.to_string()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "delete_dir_complete".to_string(),
+                            transfer_id: delete_id.clone(),
+                            filename: dir_name.to_string(),
+                            direction: "remote".to_string(),
+                            message: Some(format!("Removed folder: {}", dir_name)),
+                            progress: None,
+                            path: Some(dir_path.to_string()),
+                        },
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to remove remote directory {}: {}", dir_path, e);
                 }
             }
         }
-        
+
         // Return to original directory
         let _ = ftp_manager.change_dir(&original_path).await;
 
         // Emit completion
         let result_message = if cancelled {
-            format!("Deletion cancelled: {} of {} files deleted", deleted_files, total_files)
+            format!(
+                "Deletion cancelled: {} of {} files deleted",
+                deleted_files, total_files
+            )
         } else if errors > 0 {
-            format!("Deleted {} files ({} errors), {} folders", deleted_files, errors, total_dirs)
+            format!(
+                "Deleted {} files ({} errors), {} folders",
+                deleted_files, errors, total_dirs
+            )
         } else {
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
 
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: if cancelled { "delete_cancelled" } else { "delete_complete" }.to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "remote".to_string(),
-            message: Some(result_message.clone()),
-            progress: None,
-            path: Some(path.clone()),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: if cancelled {
+                    "delete_cancelled"
+                } else {
+                    "delete_complete"
+                }
+                .to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "remote".to_string(),
+                message: Some(result_message.clone()),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
 
         Ok(result_message)
     }
@@ -3163,72 +3814,89 @@ async fn delete_remote_file(
 
 /// Delete a local file or folder with detailed event emission for each deleted item.
 #[tauri::command]
-async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<String, String> {
+async fn delete_local_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
     validate_path(&path)?;
     let path_buf = std::path::PathBuf::from(&path);
-    let file_name = path_buf.file_name()
+    let file_name = path_buf
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
-    
+
     let delete_id = format!("del-local-{}", chrono::Utc::now().timestamp_millis());
     let is_dir = path_buf.is_dir();
-    
+
     if !is_dir {
         // Single file delete
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_start".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "local".to_string(),
-            message: Some(format!("Deleting local file: {}", file_name)),
-            progress: None,
-            path: Some(path.clone()),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "delete_start".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "local".to_string(),
+                message: Some(format!("Deleting local file: {}", file_name)),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
 
         match tokio::fs::remove_file(&path).await {
             Ok(_) => {
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "delete_complete".to_string(),
-                    transfer_id: delete_id.clone(),
-                    filename: file_name.clone(),
-                    direction: "local".to_string(),
-                    message: Some(format!("Deleted local file: {}", file_name)),
-                    progress: None,
-                    path: Some(path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "delete_complete".to_string(),
+                        transfer_id: delete_id.clone(),
+                        filename: file_name.clone(),
+                        direction: "local".to_string(),
+                        message: Some(format!("Deleted local file: {}", file_name)),
+                        progress: None,
+                        path: Some(path.clone()),
+                    },
+                );
                 Ok(format!("Deleted: {}", file_name))
             }
             Err(e) => {
-                let _ = app.emit("transfer_event", TransferEvent {
-                    event_type: "delete_error".to_string(),
-                    transfer_id: delete_id.clone(),
-                    filename: file_name.clone(),
-                    direction: "local".to_string(),
-                    message: Some(format!("Failed to delete: {}", e)),
-                    progress: None,
-                    path: Some(path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "delete_error".to_string(),
+                        transfer_id: delete_id.clone(),
+                        filename: file_name.clone(),
+                        direction: "local".to_string(),
+                        message: Some(format!("Failed to delete: {}", e)),
+                        progress: None,
+                        path: Some(path.clone()),
+                    },
+                );
                 Err(format!("Failed to delete file: {}", e))
             }
         }
     } else {
         // Folder delete - scan first, then delete with events
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "delete_start".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "local".to_string(),
-            message: Some(format!("Scanning local folder: {}", file_name)),
-            progress: None,
-            path: Some(path.clone()),
-        });
-        
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "delete_start".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "local".to_string(),
+                message: Some(format!("Scanning local folder: {}", file_name)),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
+
         // Phase 1: Collect all files and directories
         struct DeleteItem {
             path: std::path::PathBuf,
             name: String,
         }
-        
+
         let mut files_to_delete: Vec<DeleteItem> = Vec::new();
         let mut dirs_to_delete: Vec<std::path::PathBuf> = Vec::new();
         let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![path_buf.clone()];
@@ -3250,7 +3918,8 @@ async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: Str
                 let entry_name = entry.file_name().to_string_lossy().to_string();
 
                 // Use symlink_metadata to avoid following symlinks
-                let metadata = tokio::fs::symlink_metadata(&entry_path).await
+                let metadata = tokio::fs::symlink_metadata(&entry_path)
+                    .await
                     .map_err(|e| format!("Failed to read metadata: {}", e))?;
                 if metadata.is_symlink() {
                     // For symlinks, delete the link itself, not the target
@@ -3270,22 +3939,31 @@ async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: Str
 
             dirs_to_delete.push(current_dir);
         }
-        
+
         let total_files = files_to_delete.len();
         let total_dirs = dirs_to_delete.len();
-        
-        info!("Found {} files and {} directories to delete in {}", total_files, total_dirs, file_name);
-        
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: "progress".to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "local".to_string(),
-            message: Some(format!("Found {} files in {} folders to delete", total_files, total_dirs)),
-            progress: None,
-            path: None,
-        });
-        
+
+        info!(
+            "Found {} files and {} directories to delete in {}",
+            total_files, total_dirs, file_name
+        );
+
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "local".to_string(),
+                message: Some(format!(
+                    "Found {} files in {} folders to delete",
+                    total_files, total_dirs
+                )),
+                progress: None,
+                path: None,
+            },
+        );
+
         // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
         let mut errors = 0u64;
@@ -3295,42 +3973,57 @@ async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: Str
         for item in &files_to_delete {
             if state.cancel_flag.load(Ordering::Relaxed) {
                 cancelled = true;
-                info!("Local folder deletion cancelled by user after {} files", deleted_files);
+                info!(
+                    "Local folder deletion cancelled by user after {} files",
+                    deleted_files
+                );
                 break;
             }
             match tokio::fs::remove_file(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
-                    
+
                     // Emit progress every 100ms or every 50 files to avoid flooding
-                    if last_emit.elapsed().as_millis() > 100 || deleted_files % 50 == 0 || deleted_files == total_files as u64 {
-                        let _ = app.emit("transfer_event", TransferEvent {
-                            event_type: "delete_file_complete".to_string(),
-                            transfer_id: delete_id.clone(),
-                            filename: item.name.clone(),
-                            direction: "local".to_string(),
-                            message: Some(format!("Deleted [{}/{}]: {}", deleted_files, total_files, item.name)),
-                            progress: None,
-                            path: Some(item.path.display().to_string()),
-                        });
+                    if last_emit.elapsed().as_millis() > 100
+                        || deleted_files % 50 == 0
+                        || deleted_files == total_files as u64
+                    {
+                        let _ = app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "delete_file_complete".to_string(),
+                                transfer_id: delete_id.clone(),
+                                filename: item.name.clone(),
+                                direction: "local".to_string(),
+                                message: Some(format!(
+                                    "Deleted [{}/{}]: {}",
+                                    deleted_files, total_files, item.name
+                                )),
+                                progress: None,
+                                path: Some(item.path.display().to_string()),
+                            },
+                        );
                         last_emit = std::time::Instant::now();
                     }
                 }
                 Err(e) => {
                     errors += 1;
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "delete_file_error".to_string(),
-                        transfer_id: delete_id.clone(),
-                        filename: item.name.clone(),
-                        direction: "local".to_string(),
-                        message: Some(format!("Failed: {} - {}", item.name, e)),
-                        progress: None,
-                        path: Some(item.path.display().to_string()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "delete_file_error".to_string(),
+                            transfer_id: delete_id.clone(),
+                            filename: item.name.clone(),
+                            direction: "local".to_string(),
+                            message: Some(format!("Failed: {} - {}", item.name, e)),
+                            progress: None,
+                            path: Some(item.path.display().to_string()),
+                        },
+                    );
                 }
             }
         }
-        
+
         // Phase 3: Delete directories (deepest first - reverse the order!)
         // Directories were added in scan order (parent first), so we need to reverse
         // to delete children before parents
@@ -3340,77 +4033,106 @@ async fn delete_local_file(app: AppHandle, state: State<'_, AppState>, path: Str
                 cancelled = true;
                 break;
             }
-            let dir_name = dir_path.file_name()
+            let dir_name = dir_path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "folder".to_string());
-            
+
             match tokio::fs::remove_dir(dir_path).await {
                 Ok(_) => {
-                    let _ = app.emit("transfer_event", TransferEvent {
-                        event_type: "delete_dir_complete".to_string(),
-                        transfer_id: delete_id.clone(),
-                        filename: dir_name,
-                        direction: "local".to_string(),
-                        message: Some(format!("Removed folder: {}", dir_path.display())),
-                        progress: None,
-                        path: Some(dir_path.display().to_string()),
-                    });
+                    let _ = app.emit(
+                        "transfer_event",
+                        TransferEvent {
+                            event_type: "delete_dir_complete".to_string(),
+                            transfer_id: delete_id.clone(),
+                            filename: dir_name,
+                            direction: "local".to_string(),
+                            message: Some(format!("Removed folder: {}", dir_path.display())),
+                            progress: None,
+                            path: Some(dir_path.display().to_string()),
+                        },
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to remove directory {:?}: {}", dir_path, e);
                 }
             }
         }
-        
+
         // Emit completion
         let result_message = if cancelled {
-            format!("Deletion cancelled: {} of {} files deleted", deleted_files, total_files)
+            format!(
+                "Deletion cancelled: {} of {} files deleted",
+                deleted_files, total_files
+            )
         } else if errors > 0 {
-            format!("Deleted {} files ({} errors), {} folders", deleted_files, errors, total_dirs)
+            format!(
+                "Deleted {} files ({} errors), {} folders",
+                deleted_files, errors, total_dirs
+            )
         } else {
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
 
-        let _ = app.emit("transfer_event", TransferEvent {
-            event_type: if cancelled { "delete_cancelled" } else { "delete_complete" }.to_string(),
-            transfer_id: delete_id.clone(),
-            filename: file_name.clone(),
-            direction: "local".to_string(),
-            message: Some(result_message.clone()),
-            progress: None,
-            path: Some(path.clone()),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: if cancelled {
+                    "delete_cancelled"
+                } else {
+                    "delete_complete"
+                }
+                .to_string(),
+                transfer_id: delete_id.clone(),
+                filename: file_name.clone(),
+                direction: "local".to_string(),
+                message: Some(result_message.clone()),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
 
         Ok(result_message)
     }
 }
 
 #[tauri::command]
-async fn rename_remote_file(state: State<'_, AppState>, from: String, to: String) -> Result<(), String> {
+async fn rename_remote_file(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
-    ftp_manager.rename(&from, &to)
+
+    ftp_manager
+        .rename(&from, &to)
         .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
-    
+
     Ok(())
 }
 
 #[tauri::command]
 async fn create_remote_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
-    ftp_manager.mkdir(&path)
+
+    ftp_manager
+        .mkdir(&path)
         .await
         .map_err(|e| format!("Failed to create folder: {}", e))?;
-    
+
     Ok(())
 }
 
 #[tauri::command]
-async fn chmod_remote_file(state: State<'_, AppState>, path: String, mode: String) -> Result<(), String> {
+async fn chmod_remote_file(
+    state: State<'_, AppState>,
+    path: String,
+    mode: String,
+) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager.chmod(&path, &mode)
+    ftp_manager
+        .chmod(&path, &mode)
         .await
         .map_err(|e| e.to_string())
 }
@@ -3427,7 +4149,10 @@ async fn rename_local_file(from: String, to: String) -> Result<(), String> {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         if let Some(reserved) = windows_acl::check_windows_reserved(&dest_name) {
-            return Err(format!("'{}' is a reserved Windows filename and cannot be used", reserved));
+            return Err(format!(
+                "'{}' is a reserved Windows filename and cannot be used",
+                reserved
+            ));
         }
     }
 
@@ -3457,7 +4182,11 @@ async fn copy_local_file(from: String, to: String) -> Result<(), String> {
     Ok(())
 }
 
-async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path, depth: u32) -> Result<(), String> {
+async fn copy_dir_recursive(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    depth: u32,
+) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
@@ -3467,11 +4196,16 @@ async fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path, depth:
     let mut entries = tokio::fs::read_dir(src)
         .await
         .map_err(|e| format!("Failed to read directory: {}", e))?;
-    while let Some(entry) = entries.next_entry().await.map_err(|e| format!("Failed to read entry: {}", e))? {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| format!("Failed to read entry: {}", e))?
+    {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         // Use symlink_metadata to avoid following symlinks
-        let metadata = tokio::fs::symlink_metadata(&src_path).await
+        let metadata = tokio::fs::symlink_metadata(&src_path)
+            .await
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
         if metadata.is_symlink() {
             // Skip symlinks for security
@@ -3494,14 +4228,14 @@ async fn create_local_folder(path: String) -> Result<(), String> {
     tokio::fs::create_dir_all(&path)
         .await
         .map_err(|e| format!("Failed to create folder: {}", e))?;
-    
+
     Ok(())
 }
 
 #[tauri::command]
 async fn read_file_base64(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
     validate_path(&path)?;
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     // Size cap to prevent OOM on large files (default 50MB)
     let max_size: u64 = (max_size_mb.unwrap_or(50) as u64) * 1024 * 1024;
@@ -3528,7 +4262,7 @@ async fn read_file_base64(path: String, max_size_mb: Option<u32>) -> Result<Stri
 async fn calculate_checksum(path: String, algorithm: String) -> Result<String, String> {
     validate_path(&path)?;
     use md5::Md5;
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     use tokio::io::AsyncReadExt;
 
     let mut file = tokio::fs::File::open(&path)
@@ -3541,9 +4275,13 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
 
             loop {
-                let bytes_read = file.read(&mut buffer).await
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .await
                     .map_err(|e| format!("Failed to read file: {}", e))?;
-                if bytes_read == 0 { break; }
+                if bytes_read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..bytes_read]);
             }
 
@@ -3555,9 +4293,13 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
 
             loop {
-                let bytes_read = file.read(&mut buffer).await
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .await
                     .map_err(|e| format!("Failed to read file: {}", e))?;
-                if bytes_read == 0 { break; }
+                if bytes_read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..bytes_read]);
             }
 
@@ -3570,9 +4312,13 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             let mut buffer = vec![0u8; 64 * 1024];
 
             loop {
-                let bytes_read = file.read(&mut buffer).await
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .await
                     .map_err(|e| format!("Failed to read file: {}", e))?;
-                if bytes_read == 0 { break; }
+                if bytes_read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..bytes_read]);
             }
 
@@ -3580,27 +4326,39 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             Ok(hex::encode(result))
         }
         "sha512" => {
-            use sha2::{Sha512, Digest};
+            use sha2::{Digest, Sha512};
             let mut hasher = Sha512::new();
             let mut buffer = vec![0u8; 64 * 1024];
 
             loop {
-                let bytes_read = file.read(&mut buffer).await
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .await
                     .map_err(|e| format!("Failed to read file: {}", e))?;
-                if bytes_read == 0 { break; }
+                if bytes_read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..bytes_read]);
             }
 
             let result = hasher.finalize();
             Ok(hex::encode(result))
         }
-        _ => Err(format!("Unsupported algorithm: {}. Use 'md5', 'sha1', 'sha256', or 'sha512'", algorithm))
+        _ => Err(format!(
+            "Unsupported algorithm: {}. Use 'md5', 'sha1', 'sha256', or 'sha512'",
+            algorithm
+        )),
     }
 }
 
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
-async fn compress_files(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+async fn compress_files(
+    paths: Vec<String>,
+    output_path: String,
+    password: Option<String>,
+    compression_level: Option<i64>,
+) -> Result<String, String> {
     validate_path(&output_path)?;
     for p in &paths {
         validate_path(p)?;
@@ -3608,19 +4366,23 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 
     use std::fs::File;
     use std::io::{Read, Write};
+    use walkdir::WalkDir;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
-    use walkdir::WalkDir;
 
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::create(&output_path)
-        .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+    let file =
+        File::create(&output_path).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
     let level = compression_level.unwrap_or(6);
-    let method = if level == 0 { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
+    let method = if level == 0 {
+        zip::CompressionMethod::Stored
+    } else {
+        zip::CompressionMethod::Deflated
+    };
     let base_options = SimpleFileOptions::default()
         .compression_method(method)
         .compression_level(Some(level));
@@ -3629,34 +4391,38 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
         let path = std::path::Path::new(path);
 
         if path.is_file() {
-            let file_name = path.file_name()
+            let file_name = path
+                .file_name()
                 .ok_or("Invalid file name")?
                 .to_string_lossy();
 
             if let Some(ref pwd) = secret_password {
-                zip.start_file(file_name.to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
-                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                zip.start_file(
+                    file_name.to_string(),
+                    base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                )
+                .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
             } else {
                 zip.start_file(file_name.to_string(), base_options)
                     .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
             }
 
-            let mut f = File::open(path)
-                .map_err(|e| format!("Failed to open file: {}", e))?;
+            let mut f = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
             let mut buffer = Vec::new();
             f.read_to_end(&mut buffer)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
             zip.write_all(&buffer)
                 .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
-
         } else if path.is_dir() {
-            let _base_name = path.file_name()
+            let _base_name = path
+                .file_name()
                 .ok_or("Invalid directory name")?
                 .to_string_lossy();
 
             for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
                 let entry_path = entry.path();
-                let relative_path = entry_path.strip_prefix(path.parent().unwrap_or(path))
+                let relative_path = entry_path
+                    .strip_prefix(path.parent().unwrap_or(path))
                     .map_err(|e| format!("Path error: {}", e))?;
 
                 // Use symlink_metadata to avoid following symlinks (A7-06)
@@ -3668,8 +4434,12 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 
                 if metadata.is_file() {
                     if let Some(ref pwd) = secret_password {
-                        zip.start_file(relative_path.to_string_lossy().to_string(), base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
-                            .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                        zip.start_file(
+                            relative_path.to_string_lossy().to_string(),
+                            base_options
+                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                        )
+                        .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
                     } else {
                         zip.start_file(relative_path.to_string_lossy().to_string(), base_options)
                             .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
@@ -3682,12 +4452,15 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
                         .map_err(|e| format!("Failed to read file: {}", e))?;
                     zip.write_all(&buffer)
                         .map_err(|e| format!("Failed to write to ZIP: {}", e))?;
-
                 } else if metadata.is_dir() && entry_path != path {
                     let dir_path = format!("{}/", relative_path.to_string_lossy());
                     if let Some(ref pwd) = secret_password {
-                        zip.add_directory(&dir_path, base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()))
-                            .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                        zip.add_directory(
+                            &dir_path,
+                            base_options
+                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                        )
+                        .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
                     } else {
                         zip.add_directory(&dir_path, base_options)
                             .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
@@ -3705,7 +4478,12 @@ async fn compress_files(paths: Vec<String>, output_path: String, password: Optio
 
 /// Extract a ZIP archive
 #[tauri::command]
-async fn extract_archive(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
+async fn extract_archive(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+    password: Option<String>,
+) -> Result<String, String> {
     validate_path(&archive_path)?;
     validate_path(&output_dir)?;
 
@@ -3715,11 +4493,10 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
-    let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
 
     // Determine actual output directory
     let actual_output = if create_subfolder {
@@ -3740,16 +4517,21 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
 
     for i in 0..archive.len() {
         let mut file = if let Some(ref pwd) = secret_password {
-            archive.by_index_decrypt(i, pwd.expose_secret().as_bytes())
+            archive
+                .by_index_decrypt(i, pwd.expose_secret().as_bytes())
                 .map_err(|e| format!("Failed to decrypt file from archive: {}", e))?
         } else {
-            archive.by_index(i)
+            archive
+                .by_index(i)
                 .map_err(|e| format!("Failed to read file from archive: {}", e))?
         };
 
         // ZIP Slip protection: reject entries with traversal or absolute paths
         let entry_name = file.name().to_string();
-        if entry_name.split('/').chain(entry_name.split('\\')).any(|c| c == "..")
+        if entry_name
+            .split('/')
+            .chain(entry_name.split('\\'))
+            .any(|c| c == "..")
             || entry_name.starts_with('/')
             || entry_name.starts_with('\\')
             || (entry_name.len() > 2 && entry_name.as_bytes().get(1) == Some(&b':'))
@@ -3769,8 +4551,8 @@ async fn extract_archive(archive_path: String, output_dir: String, create_subfol
                     .map_err(|e| format!("Failed to create parent directory: {}", e))?;
             }
 
-            let mut outfile = File::create(&outpath)
-                .map_err(|e| format!("Failed to create file: {}", e))?;
+            let mut outfile =
+                File::create(&outpath).map_err(|e| format!("Failed to create file: {}", e))?;
 
             std::io::copy(&mut file, &mut outfile)
                 .map_err(|e| format!("Failed to extract file: {}", e))?;
@@ -3803,14 +4585,19 @@ async fn compress_7z(
         let path = Path::new(path_str);
 
         if path.is_file() {
-            let file_name = path.file_name()
+            let file_name = path
+                .file_name()
                 .ok_or("Invalid file name")?
                 .to_string_lossy()
                 .to_string();
             entries.push((file_name, path_str.clone()));
         } else if path.is_dir() {
             // Add directory contents recursively
-            for entry in WalkDir::new(path).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 let entry_path = entry.path();
                 if entry_path.is_file() {
                     let relative_path = entry_path
@@ -3830,11 +4617,11 @@ async fn compress_7z(
     }
 
     // Create the 7z archive
-    let output_file = File::create(&output_path)
-        .map_err(|e| format!("Failed to create 7z file: {}", e))?;
+    let output_file =
+        File::create(&output_path).map_err(|e| format!("Failed to create 7z file: {}", e))?;
 
-    let mut sz = SevenZWriter::new(output_file)
-        .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
+    let mut sz =
+        SevenZWriter::new(output_file).map_err(|e| format!("Failed to create 7z writer: {}", e))?;
 
     // Set compression and optional AES-256 encryption
     if let Some(ref pwd) = secret_password {
@@ -3844,9 +4631,7 @@ async fn compress_7z(
             SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
         ]);
     } else {
-        sz.set_content_methods(vec![
-            SevenZMethodConfiguration::new(SevenZMethod::LZMA2),
-        ]);
+        sz.set_content_methods(vec![SevenZMethodConfiguration::new(SevenZMethod::LZMA2)]);
     }
 
     // Add files to archive
@@ -3885,7 +4670,11 @@ fn is_safe_archive_entry(entry_name: &str) -> bool {
         return false;
     }
     // Reject path traversal via ".." in any component (handles both / and \ separators)
-    if entry_name.split('/').chain(entry_name.split('\\')).any(|c| c == "..") {
+    if entry_name
+        .split('/')
+        .chain(entry_name.split('\\'))
+        .any(|c| c == "..")
+    {
         return false;
     }
     // Reject null bytes
@@ -3914,7 +4703,10 @@ async fn extract_7z(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir).join(&archive_name).to_string_lossy().to_string()
+        Path::new(&output_dir)
+            .join(&archive_name)
+            .to_string_lossy()
+            .to_string()
     } else {
         output_dir.clone()
     };
@@ -3926,9 +4718,10 @@ async fn extract_7z(
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
-    let len = file.metadata()
+    let file =
+        File::open(&archive_path).map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+    let len = file
+        .metadata()
         .map_err(|e| format!("Failed to get archive metadata: {}", e))?
         .len();
     let reader = BufReader::new(file);
@@ -3945,29 +4738,31 @@ async fn extract_7z(
 
     // C5: Extract entries with per-entry path traversal validation
     // instead of using decompress_file() which extracts blindly
-    archive.for_each_entries(|entry, reader| {
-        let name = entry.name();
+    archive
+        .for_each_entries(|entry, reader| {
+            let name = entry.name();
 
-        // Skip entries with unsafe paths (traversal, absolute, drive letters)
-        if !is_safe_archive_entry(name) {
-            return Ok(true); // skip this entry, continue to next
-        }
+            // Skip entries with unsafe paths (traversal, absolute, drive letters)
+            if !is_safe_archive_entry(name) {
+                return Ok(true); // skip this entry, continue to next
+            }
 
-        let out_path = dest.join(name);
+            let out_path = dest.join(name);
 
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
 
-        if entry.is_directory() {
-            fs::create_dir_all(&out_path)?;
-        } else {
-            let mut outfile = File::create(&out_path)?;
-            std::io::copy(reader, &mut outfile)?;
-        }
+            if entry.is_directory() {
+                fs::create_dir_all(&out_path)?;
+            } else {
+                let mut outfile = File::create(&out_path)?;
+                std::io::copy(reader, &mut outfile)?;
+            }
 
-        Ok(true) // continue
-    }).map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
+            Ok(true) // continue
+        })
+        .map_err(|e| format!("Failed to extract 7z archive: {}", e))?;
 
     Ok(final_output_dir)
 }
@@ -3979,10 +4774,10 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
     use std::fs::File;
     use std::io::BufReader;
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
-    let len = file.metadata()
+    let len = file
+        .metadata()
         .map_err(|e| format!("Failed to get file metadata: {}", e))?
         .len();
 
@@ -3993,7 +4788,11 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
         Ok(a) => a,
         Err(e) => {
             let err_str = format!("{:?}", e);
-            if err_str.contains("password") || err_str.contains("Password") || err_str.contains("encrypted") || err_str.contains("Encrypted") {
+            if err_str.contains("password")
+                || err_str.contains("Password")
+                || err_str.contains("encrypted")
+                || err_str.contains("Encrypted")
+            {
                 return Ok(true);
             }
             return Ok(false);
@@ -4012,7 +4811,9 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
         let mut buf = [0u8; 1];
         match reader.read(&mut buf) {
             Ok(_) => {}
-            Err(_) => { encrypted = true; }
+            Err(_) => {
+                encrypted = true;
+            }
         }
         // Stop after first entry
         Ok(false)
@@ -4031,11 +4832,10 @@ async fn is_zip_encrypted(archive_path: String) -> Result<bool, String> {
     use std::fs::File;
     use zip::ZipArchive;
 
-    let file = File::open(&archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
-    let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
 
     // Check if any file in the archive is encrypted
     for i in 0..archive.len() {
@@ -4069,16 +4869,29 @@ async fn compress_tar(
     for p in &paths {
         let path = Path::new(p);
         if path.is_dir() {
-            for entry in WalkDir::new(path).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 if entry.file_type().is_file() {
-                    let rel = entry.path().strip_prefix(path.parent().unwrap_or(path))
+                    let rel = entry
+                        .path()
+                        .strip_prefix(path.parent().unwrap_or(path))
                         .unwrap_or(entry.path());
-                    entries.push((entry.path().to_path_buf(), rel.to_string_lossy().to_string()));
+                    entries.push((
+                        entry.path().to_path_buf(),
+                        rel.to_string_lossy().to_string(),
+                    ));
                 }
             }
             // Directory entries are created automatically by tar when adding files
         } else if path.is_file() {
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             entries.push((path.to_path_buf(), name));
         }
     }
@@ -4094,46 +4907,71 @@ async fn compress_tar(
         "tar" => {
             let mut archive = tar::Builder::new(file);
             for (abs_path, rel_path) in &entries {
-                archive.append_path_with_name(abs_path, rel_path)
+                archive
+                    .append_path_with_name(abs_path, rel_path)
                     .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
             }
-            archive.finish().map_err(|e| format!("Failed to finalize tar: {}", e))?;
+            archive
+                .finish()
+                .map_err(|e| format!("Failed to finalize tar: {}", e))?;
         }
         "tar.gz" => {
-            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::new(compression_level.unwrap_or(6) as u32));
+            let gz = flate2::write::GzEncoder::new(
+                file,
+                flate2::Compression::new(compression_level.unwrap_or(6) as u32),
+            );
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
-                archive.append_path_with_name(abs_path, rel_path)
+                archive
+                    .append_path_with_name(abs_path, rel_path)
                     .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
             }
-            archive.into_inner().map_err(|e| format!("Failed to finalize gz: {}", e))?
-                .finish().map_err(|e| format!("Failed to finish gz: {}", e))?;
+            archive
+                .into_inner()
+                .map_err(|e| format!("Failed to finalize gz: {}", e))?
+                .finish()
+                .map_err(|e| format!("Failed to finish gz: {}", e))?;
         }
         "tar.xz" => {
             let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(6) as u32);
             let mut archive = tar::Builder::new(xz);
             for (abs_path, rel_path) in &entries {
-                archive.append_path_with_name(abs_path, rel_path)
+                archive
+                    .append_path_with_name(abs_path, rel_path)
                     .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
             }
-            archive.into_inner().map_err(|e| format!("Failed to finalize xz: {}", e))?
-                .finish().map_err(|e| format!("Failed to finish xz: {}", e))?;
+            archive
+                .into_inner()
+                .map_err(|e| format!("Failed to finalize xz: {}", e))?
+                .finish()
+                .map_err(|e| format!("Failed to finish xz: {}", e))?;
         }
         "tar.bz2" => {
-            let bz = bzip2::write::BzEncoder::new(file, bzip2::Compression::new(compression_level.unwrap_or(6) as u32));
+            let bz = bzip2::write::BzEncoder::new(
+                file,
+                bzip2::Compression::new(compression_level.unwrap_or(6) as u32),
+            );
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
-                archive.append_path_with_name(abs_path, rel_path)
+                archive
+                    .append_path_with_name(abs_path, rel_path)
                     .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
             }
-            archive.into_inner().map_err(|e| format!("Failed to finalize bz2: {}", e))?
-                .finish().map_err(|e| format!("Failed to finish bz2: {}", e))?;
+            archive
+                .into_inner()
+                .map_err(|e| format!("Failed to finalize bz2: {}", e))?
+                .finish()
+                .map_err(|e| format!("Failed to finish bz2: {}", e))?;
         }
         _ => return Err(format!("Unsupported format: {}", format)),
     }
 
     let file_count = entries.len();
-    Ok(format!("Compressed {} files into {}", file_count, output.display()))
+    Ok(format!(
+        "Compressed {} files into {}",
+        file_count,
+        output.display()
+    ))
 }
 
 /// Extract TAR-based archives (auto-detects tar, tar.gz, tar.xz, tar.bz2 from extension)
@@ -4184,10 +5022,14 @@ async fn extract_tar(
 
     // C5: Iterate entries manually with path traversal validation
     // instead of using unpack() which extracts blindly
-    for entry_result in ar.entries().map_err(|e| format!("Failed to read tar entries: {}", e))? {
+    for entry_result in ar
+        .entries()
+        .map_err(|e| format!("Failed to read tar entries: {}", e))?
+    {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {}", e))?;
 
-        let entry_path = entry.path()
+        let entry_path = entry
+            .path()
             .map_err(|e| format!("Failed to get entry path: {}", e))?
             .to_string_lossy()
             .to_string();
@@ -4205,8 +5047,9 @@ async fn extract_tar(
         } else {
             // Ensure parent directory exists
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create parent dir for '{}': {}", entry_path, e))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create parent dir for '{}': {}", entry_path, e)
+                })?;
             }
 
             let mut outfile = File::create(&out_path)
@@ -4251,26 +5094,31 @@ async fn extract_rar(
         unrar::Archive::new(&archive_path)
     };
 
-    let mut archive = archive.open_for_processing()
+    let mut archive = archive
+        .open_for_processing()
         .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
 
-    while let Some(header) = archive.read_header()
+    while let Some(header) = archive
+        .read_header()
         .map_err(|e| format!("Failed to read RAR header: {}", e))?
     {
         let entry_name = header.entry().filename.to_string_lossy().to_string();
 
         // C5: Skip entries with unsafe paths (traversal, absolute, drive letters)
         if !is_safe_archive_entry(&entry_name) {
-            archive = header.skip()
+            archive = header
+                .skip()
                 .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
             continue;
         }
 
         archive = if header.entry().is_file() {
-            header.extract_with_base(&final_output)
+            header
+                .extract_with_base(&final_output)
                 .map_err(|e| format!("Failed to extract RAR entry: {}", e))?
         } else {
-            header.skip()
+            header
+                .skip()
                 .map_err(|e| format!("Failed to skip RAR entry: {}", e))?
         };
     }
@@ -4301,27 +5149,29 @@ async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
 
 #[tauri::command]
 async fn ftp_read_file_base64(state: State<'_, AppState>, path: String) -> Result<String, String> {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
-    
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
     let mut ftp_manager = state.ftp_manager.lock().await;
-    
+
     // Limit size for preview (10MB should be enough for most media files)
     let max_size: u64 = 10 * 1024 * 1024;
-    
+
     // Get file size first
-    let file_size = ftp_manager.get_file_size(&path)
-        .await
-        .unwrap_or(0);
-    
+    let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
+
     if file_size > max_size {
-        return Err(format!("File too large for preview ({:.1} MB). Max: 10 MB", file_size as f64 / 1024.0 / 1024.0));
+        return Err(format!(
+            "File too large for preview ({:.1} MB). Max: 10 MB",
+            file_size as f64 / 1024.0 / 1024.0
+        ));
     }
-    
+
     // Download to memory
-    let data = ftp_manager.download_to_bytes(&path)
+    let data = ftp_manager
+        .download_to_bytes(&path)
         .await
         .map_err(|e| format!("Failed to download: {}", e))?;
-    
+
     Ok(STANDARD.encode(data))
 }
 
@@ -4343,34 +5193,36 @@ async fn read_local_file(path: String, max_size_mb: Option<u32>) -> Result<Strin
         ));
     }
 
-    let bytes = tokio::fs::read(&path)
-        .await
-        .map_err(|e| e.to_string())?;
+    let bytes = tokio::fs::read(&path).await.map_err(|e| e.to_string())?;
 
     // Detect binary content (null bytes in first 8KB)
     let check_len = bytes.len().min(8192);
     let null_count = bytes[..check_len].iter().filter(|&&b| b == 0).count();
     if null_count > 0 {
-        return Err("Binary file detected (contains null bytes). Use read_file_base64 for binary files.".to_string());
+        return Err(
+            "Binary file detected (contains null bytes). Use read_file_base64 for binary files."
+                .to_string(),
+        );
     }
 
-    String::from_utf8(bytes)
-        .map_err(|_| "File contains invalid UTF-8. Use read_file_base64 for binary files.".to_string())
+    String::from_utf8(bytes).map_err(|_| {
+        "File contains invalid UTF-8. Use read_file_base64 for binary files.".to_string()
+    })
 }
 
 #[tauri::command]
 async fn read_local_file_base64(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
     validate_path(&path)?;
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
 
     // Default max size is 50MB for media files (audio/video)
     let max_size: u64 = (max_size_mb.unwrap_or(50) as u64) * 1024 * 1024;
-    
+
     // Check file size first
     let metadata = tokio::fs::metadata(&path)
         .await
         .map_err(|e| format!("Failed to read file metadata: {}", e))?;
-    
+
     if metadata.len() > max_size {
         return Err(format!(
             "File too large for preview ({:.1} MB). Max: {} MB",
@@ -4378,12 +5230,12 @@ async fn read_local_file_base64(path: String, max_size_mb: Option<u32>) -> Resul
             max_size / (1024 * 1024)
         ));
     }
-    
+
     // Read file as binary
     let content = tokio::fs::read(&path)
         .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
-    
+
     // Encode as base64
     Ok(STANDARD.encode(&content))
 }
@@ -4394,7 +5246,10 @@ async fn preview_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
 ) -> Result<String, String> {
-    let temp_path = std::env::temp_dir().join(format!("aeroftp_preview_{}", chrono::Utc::now().timestamp_millis()));
+    let temp_path = std::env::temp_dir().join(format!(
+        "aeroftp_preview_{}",
+        chrono::Utc::now().timestamp_millis()
+    ));
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     // Try provider path first (cloud providers, GitHub, etc.)
@@ -4406,7 +5261,8 @@ async fn preview_remote_file(
     if provider_connected {
         let mut guard = provider_state.provider.lock().await;
         if let Some(provider) = guard.as_mut() {
-            provider.download(&path, &temp_path_str, None)
+            provider
+                .download(&path, &temp_path_str, None)
                 .await
                 .map_err(|e| format!("Failed to download for preview: {}", e))?;
 
@@ -4426,15 +5282,17 @@ async fn preview_remote_file(
     let max_size: u64 = 1024 * 1024; // 1MB limit
 
     // Get file size first
-    let file_size = ftp_manager.get_file_size(&path)
-        .await
-        .unwrap_or(0);
+    let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
 
     if file_size > max_size {
-        return Err(format!("File too large for preview ({} KB). Max: 1024 KB", file_size / 1024));
+        return Err(format!(
+            "File too large for preview ({} KB). Max: 1024 KB",
+            file_size / 1024
+        ));
     }
 
-    ftp_manager.download_file_with_progress(&path, &temp_path_str, |_| true)
+    ftp_manager
+        .download_file_with_progress(&path, &temp_path_str, |_| true)
         .await
         .map_err(|e| format!("Failed to download for preview: {}", e))?;
 
@@ -4442,10 +5300,10 @@ async fn preview_remote_file(
     let content = tokio::fs::read_to_string(&temp_path)
         .await
         .map_err(|e| format!("Failed to read preview content: {}", e))?;
-    
+
     // Clean up temp file
     let _ = tokio::fs::remove_file(&temp_path).await;
-    
+
     Ok(content)
 }
 
@@ -4464,20 +5322,27 @@ fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
             None => continue,
         };
         // Parse sizes like "48x48", "192x192"
-        let size = icon.get("sizes")
+        let size = icon
+            .get("sizes")
             .and_then(|s| s.as_str())
             .and_then(|s| s.split('x').next())
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0);
 
-        let is_png = src.ends_with(".png") || icon.get("type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("png"));
+        let is_png = src.ends_with(".png")
+            || icon
+                .get("type")
+                .and_then(|t| t.as_str())
+                .is_some_and(|t| t.contains("png"));
 
         match &best {
             None => best = Some((src.to_string(), size)),
             Some((_, best_size)) => {
                 // Prefer sizes between 48-192, favor PNG
-                if ((48..=192).contains(&size) && (!(48..=192).contains(best_size) || (is_png && size >= *best_size)))
-                    || (*best_size == 0 && size > 0) {
+                if ((48..=192).contains(&size)
+                    && (!(48..=192).contains(best_size) || (is_png && size >= *best_size)))
+                    || (*best_size == 0 && size > 0)
+                {
                     best = Some((src.to_string(), size));
                 }
             }
@@ -4490,39 +5355,63 @@ fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
 /// Guess MIME type from file extension (SVG rejected for XSS safety)
 fn guess_mime_from_path(path: &str) -> Option<&'static str> {
     let lower = path.to_lowercase();
-    if lower.ends_with(".svg") { return Some("image/svg+xml"); }
-    if lower.ends_with(".png") { Some("image/png") }
-    else if lower.ends_with(".ico") { Some("image/x-icon") }
-    else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") { Some("image/jpeg") }
-    else if lower.ends_with(".webp") { Some("image/webp") }
-    else if lower.ends_with(".gif") { Some("image/gif") }
-    else { Some("image/png") }
+    if lower.ends_with(".svg") {
+        return Some("image/svg+xml");
+    }
+    if lower.ends_with(".png") {
+        Some("image/png")
+    } else if lower.ends_with(".ico") {
+        Some("image/x-icon")
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        Some("image/jpeg")
+    } else if lower.ends_with(".webp") {
+        Some("image/webp")
+    } else if lower.ends_with(".gif") {
+        Some("image/gif")
+    } else {
+        Some("image/png")
+    }
 }
 
 /// Validate SVG content — must contain <svg tag (safe when rendered via <img> data URL)
 fn is_valid_svg(bytes: &[u8]) -> bool {
-    std::str::from_utf8(bytes).map(|s| s.contains("<svg")).unwrap_or(false)
+    std::str::from_utf8(bytes)
+        .map(|s| s.contains("<svg"))
+        .unwrap_or(false)
 }
 
 /// Validate image magic bytes (defense-in-depth against content spoofing)
 fn is_valid_image_magic(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 { return false; }
+    if bytes.len() < 4 {
+        return false;
+    }
     // PNG
-    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) { return true; }
+    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        return true;
+    }
     // JPEG
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) { return true; }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return true;
+    }
     // ICO / CUR
-    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || bytes.starts_with(&[0x00, 0x00, 0x02, 0x00]) { return true; }
+    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) || bytes.starts_with(&[0x00, 0x00, 0x02, 0x00])
+    {
+        return true;
+    }
     // GIF
-    if bytes.starts_with(b"GIF8") { return true; }
+    if bytes.starts_with(b"GIF8") {
+        return true;
+    }
     // WebP
-    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" { return true; }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return true;
+    }
     false
 }
 
 /// Convert bytes to base64 data URL
 fn bytes_to_data_url(bytes: &[u8], mime: &str) -> String {
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     format!("data:{};base64,{}", mime, STANDARD.encode(bytes))
 }
 
@@ -4568,43 +5457,59 @@ async fn detect_server_favicon(
     search_paths: Vec<String>,
 ) -> Result<Option<String>, String> {
     let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-    let mut ftp_manager = state.ftp_manager.lock().await;
+        let mut ftp_manager = state.ftp_manager.lock().await;
 
-    for base in &search_paths {
-        // 1) Try icon files in order of preference
-        for (filename, mime, use_magic) in &[
-            ("favicon.ico", "image/x-icon", true),
-            ("icon.png",    "image/png",    true),
-            ("icon.svg",    "image/svg+xml", false),
-        ] {
-            let path = make_path(base, filename);
-            let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
-            if file_size == 0 || file_size > 500_000 { continue; }
-            if let Ok(bytes) = ftp_manager.download_to_bytes(&path).await {
-                if bytes.is_empty() { continue; }
-                let valid = if *use_magic { is_valid_image_magic(&bytes) } else { is_valid_svg(&bytes) };
-                if valid {
-                    return Ok(Some(bytes_to_data_url(&bytes, mime)));
+        for base in &search_paths {
+            // 1) Try icon files in order of preference
+            for (filename, mime, use_magic) in &[
+                ("favicon.ico", "image/x-icon", true),
+                ("icon.png", "image/png", true),
+                ("icon.svg", "image/svg+xml", false),
+            ] {
+                let path = make_path(base, filename);
+                let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
+                if file_size == 0 || file_size > 500_000 {
+                    continue;
+                }
+                if let Ok(bytes) = ftp_manager.download_to_bytes(&path).await {
+                    if bytes.is_empty() {
+                        continue;
+                    }
+                    let valid = if *use_magic {
+                        is_valid_image_magic(&bytes)
+                    } else {
+                        is_valid_svg(&bytes)
+                    };
+                    if valid {
+                        return Ok(Some(bytes_to_data_url(&bytes, mime)));
+                    }
                 }
             }
-        }
 
-        // 2) Fallback: manifest.json / site.webmanifest → parse icon
-        for name in &["manifest.json", "site.webmanifest"] {
-            let manifest_path = make_path(base, name);
-            let manifest_size = ftp_manager.get_file_size(&manifest_path).await.unwrap_or(0);
-            if manifest_size == 0 || manifest_size > 500_000 { continue; }
+            // 2) Fallback: manifest.json / site.webmanifest → parse icon
+            for name in &["manifest.json", "site.webmanifest"] {
+                let manifest_path = make_path(base, name);
+                let manifest_size = ftp_manager.get_file_size(&manifest_path).await.unwrap_or(0);
+                if manifest_size == 0 || manifest_size > 500_000 {
+                    continue;
+                }
 
-            if let Ok(manifest_bytes) = ftp_manager.download_to_bytes(&manifest_path).await {
-                if manifest_bytes.is_empty() { continue; }
-                if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
-                    if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
-                        let icon_size = ftp_manager.get_file_size(&icon_full).await.unwrap_or(0);
-                        if icon_size > 0 && icon_size <= 500_000 {
-                            if let Ok(icon_bytes) = ftp_manager.download_to_bytes(&icon_full).await {
-                                if !icon_bytes.is_empty() && is_valid_image_magic(&icon_bytes) {
-                                    if let Some(mime) = guess_mime_from_path(&icon_full) {
-                                        return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+                if let Ok(manifest_bytes) = ftp_manager.download_to_bytes(&manifest_path).await {
+                    if manifest_bytes.is_empty() {
+                        continue;
+                    }
+                    if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
+                        if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
+                            let icon_size =
+                                ftp_manager.get_file_size(&icon_full).await.unwrap_or(0);
+                            if icon_size > 0 && icon_size <= 500_000 {
+                                if let Ok(icon_bytes) =
+                                    ftp_manager.download_to_bytes(&icon_full).await
+                                {
+                                    if !icon_bytes.is_empty() && is_valid_image_magic(&icon_bytes) {
+                                        if let Some(mime) = guess_mime_from_path(&icon_full) {
+                                            return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+                                        }
                                     }
                                 }
                             }
@@ -4613,10 +5518,10 @@ async fn detect_server_favicon(
                 }
             }
         }
-    }
 
-    Ok(None)
-    }).await;
+        Ok(None)
+    })
+    .await;
     match result {
         Ok(inner) => inner,
         Err(_) => Ok(None), // Timeout — no favicon found
@@ -4631,37 +5536,50 @@ async fn detect_provider_favicon(
     search_paths: Vec<String>,
 ) -> Result<Option<String>, String> {
     let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-    let mut provider_lock = state.provider.lock().await;
-    let provider: &mut Box<dyn providers::StorageProvider> = provider_lock.as_mut()
-        .ok_or("Not connected to any provider")?;
+        let mut provider_lock = state.provider.lock().await;
+        let provider: &mut Box<dyn providers::StorageProvider> = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
 
-    for base in &search_paths {
-        // 1) Try icon files in order of preference
-        for (filename, mime, use_magic) in &[
-            ("favicon.ico", "image/x-icon", true),
-            ("icon.png",    "image/png",    true),
-            ("icon.svg",    "image/svg+xml", false),
-        ] {
-            if let Ok(bytes) = provider.download_to_bytes(&make_path(base, filename)).await {
-                if bytes.is_empty() || bytes.len() > 500_000 { continue; }
-                let valid = if *use_magic { is_valid_image_magic(&bytes) } else { is_valid_svg(&bytes) };
-                if valid {
-                    return Ok(Some(bytes_to_data_url(&bytes, mime)));
+        for base in &search_paths {
+            // 1) Try icon files in order of preference
+            for (filename, mime, use_magic) in &[
+                ("favicon.ico", "image/x-icon", true),
+                ("icon.png", "image/png", true),
+                ("icon.svg", "image/svg+xml", false),
+            ] {
+                if let Ok(bytes) = provider.download_to_bytes(&make_path(base, filename)).await {
+                    if bytes.is_empty() || bytes.len() > 500_000 {
+                        continue;
+                    }
+                    let valid = if *use_magic {
+                        is_valid_image_magic(&bytes)
+                    } else {
+                        is_valid_svg(&bytes)
+                    };
+                    if valid {
+                        return Ok(Some(bytes_to_data_url(&bytes, mime)));
+                    }
                 }
             }
-        }
 
-        // 2) Fallback: manifest.json / site.webmanifest → parse icon
-        for name in &["manifest.json", "site.webmanifest"] {
-            let manifest_path = make_path(base, name);
-            if let Ok(manifest_bytes) = provider.download_to_bytes(&manifest_path).await {
-                if manifest_bytes.is_empty() || manifest_bytes.len() > 500_000 { continue; }
-                if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
-                    if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
-                        if let Ok(icon_bytes) = provider.download_to_bytes(&icon_full).await {
-                            if !icon_bytes.is_empty() && icon_bytes.len() <= 500_000 && is_valid_image_magic(&icon_bytes) {
-                                if let Some(mime) = guess_mime_from_path(&icon_full) {
-                                    return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+            // 2) Fallback: manifest.json / site.webmanifest → parse icon
+            for name in &["manifest.json", "site.webmanifest"] {
+                let manifest_path = make_path(base, name);
+                if let Ok(manifest_bytes) = provider.download_to_bytes(&manifest_path).await {
+                    if manifest_bytes.is_empty() || manifest_bytes.len() > 500_000 {
+                        continue;
+                    }
+                    if let Some(icon_src) = parse_manifest_icons(&manifest_bytes) {
+                        if let Some(icon_full) = resolve_icon_path(base, &icon_src) {
+                            if let Ok(icon_bytes) = provider.download_to_bytes(&icon_full).await {
+                                if !icon_bytes.is_empty()
+                                    && icon_bytes.len() <= 500_000
+                                    && is_valid_image_magic(&icon_bytes)
+                                {
+                                    if let Some(mime) = guess_mime_from_path(&icon_full) {
+                                        return Ok(Some(bytes_to_data_url(&icon_bytes, mime)));
+                                    }
                                 }
                             }
                         }
@@ -4669,10 +5587,10 @@ async fn detect_provider_favicon(
                 }
             }
         }
-    }
 
-    Ok(None)
-    }).await;
+        Ok(None)
+    })
+    .await;
     match result {
         Ok(inner) => inner,
         Err(_) => Ok(None), // Timeout — no favicon found
@@ -4694,12 +5612,24 @@ async fn save_local_file(path: String, content: String) -> Result<(), String> {
         std::path::Path::new(&path)
             .parent()
             .map(std::fs::canonicalize)
-            .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+            .unwrap_or(Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no parent",
+            )))
     });
     if let Ok(canonical) = resolved {
         let s = canonical.to_string_lossy();
-        let denied = ["/proc", "/sys", "/dev", "/boot", "/root",
-                      "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers"];
+        let denied = [
+            "/proc",
+            "/sys",
+            "/dev",
+            "/boot",
+            "/root",
+            "/etc/shadow",
+            "/etc/passwd",
+            "/etc/ssh",
+            "/etc/sudoers",
+        ];
         if denied.iter().any(|d| s.starts_with(d)) {
             return Err(format!("Access to system path denied: {}", s));
         }
@@ -4707,21 +5637,21 @@ async fn save_local_file(path: String, content: String) -> Result<(), String> {
 
     // Atomic write: temp file + rename prevents corruption on crash/power-loss (M35)
     let target = std::path::Path::new(&path);
-    let parent = target.parent()
+    let parent = target
+        .parent()
         .ok_or_else(|| "Cannot determine parent directory".to_string())?;
-    let tmp_path = parent.join(format!(".aeroftp_save_{}.tmp", chrono::Utc::now().timestamp_millis()));
-    tokio::fs::write(&tmp_path, &content)
-        .await
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp_path);
-            format!("Failed to write temp file: {}", e)
-        })?;
-    tokio::fs::rename(&tmp_path, &path)
-        .await
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp_path);
-            format!("Failed to finalize file save: {}", e)
-        })?;
+    let tmp_path = parent.join(format!(
+        ".aeroftp_save_{}.tmp",
+        chrono::Utc::now().timestamp_millis()
+    ));
+    tokio::fs::write(&tmp_path, &content).await.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("Failed to write temp file: {}", e)
+    })?;
+    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("Failed to finalize file save: {}", e)
+    })?;
 
     Ok(())
 }
@@ -4734,7 +5664,10 @@ async fn save_remote_file(
     content: String,
 ) -> Result<(), String> {
     // Write content to temp file first
-    let temp_path = std::env::temp_dir().join(format!("aeroftp_upload_{}", chrono::Utc::now().timestamp_millis()));
+    let temp_path = std::env::temp_dir().join(format!(
+        "aeroftp_upload_{}",
+        chrono::Utc::now().timestamp_millis()
+    ));
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     tokio::fs::write(&temp_path, &content)
@@ -4758,7 +5691,8 @@ async fn save_remote_file(
 
     // Fallback to FTP manager
     let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager.upload_file_with_progress(&temp_path_str, &path, content.len() as u64, |_| true)
+    ftp_manager
+        .upload_file_with_progress(&temp_path_str, &path, content.len() as u64, |_| true)
         .await
         .map_err(|e| format!("Failed to upload file: {}", e))?;
 
@@ -4812,7 +5746,9 @@ async fn app_ready(app: AppHandle) {
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
     // 3. Splash is dead — safe to set the global app menu
-    if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
+    if let Some(deferred) =
+        app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+    {
         if let Ok(mut guard) = deferred.lock() {
             if let Some(menu) = guard.take() {
                 let _ = app.set_menu(menu);
@@ -4825,9 +5761,8 @@ async fn app_ready(app: AppHandle) {
     // then show the main window without menu (frontend controls visibility via toggle_menu_bar)
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
-        let _ = main_window.restore_state(
-            StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
-        );
+        let _ = main_window
+            .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
         let _ = main_window.show();
         let _ = main_window.set_focus();
         info!("Main window shown");
@@ -4850,8 +5785,11 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
 }
 
 #[tauri::command]
-fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String>) -> Result<(), String> {
-    use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
+fn rebuild_menu(
+    app: AppHandle,
+    labels: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     let accel = |shortcut: &'static str| -> Option<&'static str> {
         #[cfg(target_os = "linux")]
@@ -4866,40 +5804,98 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
     };
 
     let get = |key: &str, fallback: &str| -> String {
-        labels.get(key).cloned().unwrap_or_else(|| fallback.to_string())
+        labels
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| fallback.to_string())
     };
 
-    let quit = MenuItem::with_id(&app, "quit", get("quit", "Quit AeroFTP"), true, accel("CmdOrCtrl+Q"))
-        .map_err(|e| e.to_string())?;
-    let about = MenuItem::with_id(&app, "about", get("about", "About AeroFTP"), true, None::<&str>)
-        .map_err(|e| e.to_string())?;
-    let settings = MenuItem::with_id(&app, "settings", get("settings", "Settings..."), true, accel("CmdOrCtrl+,"))
-        .map_err(|e| e.to_string())?;
-    let refresh = MenuItem::with_id(&app, "refresh", get("refresh", "Refresh"), true, accel("CmdOrCtrl+R"))
-        .map_err(|e| e.to_string())?;
-    let shortcuts = MenuItem::with_id(&app, "shortcuts", get("shortcuts", "Keyboard Shortcuts"), true, accel("F1"))
-        .map_err(|e| e.to_string())?;
-    let support = MenuItem::with_id(&app, "support", get("support", "Support Development"), true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+    let quit = MenuItem::with_id(
+        &app,
+        "quit",
+        get("quit", "Quit AeroFTP"),
+        true,
+        accel("CmdOrCtrl+Q"),
+    )
+    .map_err(|e| e.to_string())?;
+    let about = MenuItem::with_id(
+        &app,
+        "about",
+        get("about", "About AeroFTP"),
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+    let settings = MenuItem::with_id(
+        &app,
+        "settings",
+        get("settings", "Settings..."),
+        true,
+        accel("CmdOrCtrl+,"),
+    )
+    .map_err(|e| e.to_string())?;
+    let refresh = MenuItem::with_id(
+        &app,
+        "refresh",
+        get("refresh", "Refresh"),
+        true,
+        accel("CmdOrCtrl+R"),
+    )
+    .map_err(|e| e.to_string())?;
+    let shortcuts = MenuItem::with_id(
+        &app,
+        "shortcuts",
+        get("shortcuts", "Keyboard Shortcuts"),
+        true,
+        accel("F1"),
+    )
+    .map_err(|e| e.to_string())?;
+    let support = MenuItem::with_id(
+        &app,
+        "support",
+        get("support", "Support Development"),
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
 
     let file_menu = Submenu::with_items(
         &app,
         get("file", "File"),
         true,
         &[
-            &MenuItem::with_id(&app, "new_folder", get("newFolder", "New Folder"), true, accel("CmdOrCtrl+N"))
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "new_folder",
+                get("newFolder", "New Folder"),
+                true,
+                accel("CmdOrCtrl+N"),
+            )
+            .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &settings,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_debug_mode", get("debugMode", "Debug Mode"), true, accel("CmdOrCtrl+Shift+F12"))
-                .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "show_dependencies", get("dependencies", "Dependencies..."), true, None::<&str>)
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_debug_mode",
+                get("debugMode", "Debug Mode"),
+                true,
+                accel("CmdOrCtrl+Shift+F12"),
+            )
+            .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "show_dependencies",
+                get("dependencies", "Dependencies..."),
+                true,
+                None::<&str>,
+            )
+            .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &quit,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let edit_menu = Submenu::with_items(
         &app,
@@ -4917,27 +5913,59 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &MenuItem::with_id(&app, "rename", get("rename", "Rename"), true, accel("F2"))
                 .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "delete", get("delete", "Delete"), true, accel("Delete"))
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "delete",
+                get("delete", "Delete"),
+                true,
+                accel("Delete"),
+            )
+            .map_err(|e| e.to_string())?,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let devtools_submenu = Submenu::with_items(
         &app,
         get("devtools", "DevTools"),
         true,
         &[
-            &MenuItem::with_id(&app, "toggle_devtools", get("toggleDevtools", "Toggle DevTools"), true, accel("CmdOrCtrl+Shift+D"))
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_devtools",
+                get("toggleDevtools", "Toggle DevTools"),
+                true,
+                accel("CmdOrCtrl+Shift+D"),
+            )
+            .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_editor", get("toggleEditor", "Toggle Editor"), true, accel("CmdOrCtrl+1"))
-                .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_terminal", get("toggleTerminal", "Toggle Terminal"), true, accel("CmdOrCtrl+2"))
-                .map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_agent", get("toggleAgent", "Toggle Agent"), true, accel("CmdOrCtrl+3"))
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_editor",
+                get("toggleEditor", "Toggle Editor"),
+                true,
+                accel("CmdOrCtrl+1"),
+            )
+            .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_terminal",
+                get("toggleTerminal", "Toggle Terminal"),
+                true,
+                accel("CmdOrCtrl+2"),
+            )
+            .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_agent",
+                get("toggleAgent", "Toggle Agent"),
+                true,
+                accel("CmdOrCtrl+3"),
+            )
+            .map_err(|e| e.to_string())?,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let view_menu = Submenu::with_items(
         &app,
@@ -4946,15 +5974,28 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
         &[
             &refresh,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
-            &MenuItem::with_id(&app, "toggle_theme", get("toggleTheme", "Toggle Theme"), true, accel("CmdOrCtrl+T"))
-                .map_err(|e| e.to_string())?,
+            &MenuItem::with_id(
+                &app,
+                "toggle_theme",
+                get("toggleTheme", "Toggle Theme"),
+                true,
+                accel("CmdOrCtrl+T"),
+            )
+            .map_err(|e| e.to_string())?,
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &devtools_submenu,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
-    let check_update_item = MenuItem::with_id(&app, "check_update", get("checkForUpdates", "Check for Updates"), true, None::<&str>)
-        .map_err(|e| e.to_string())?;
+    let check_update_item = MenuItem::with_id(
+        &app,
+        "check_update",
+        get("checkForUpdates", "Check for Updates"),
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
 
     let help_menu = Submenu::with_items(
         &app,
@@ -4969,7 +6010,8 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
             &PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?,
             &about,
         ],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
         .map_err(|e| e.to_string())?;
@@ -4977,7 +6019,9 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
     // If splash is still open (APP_READY_DONE==false), store menu for later —
     // don't set globally (GTK applies global menus to ALL windows, causing flash).
     if !APP_READY_DONE.load(Ordering::SeqCst) {
-        if let Some(deferred) = app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
+        if let Some(deferred) =
+            app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+        {
             if let Ok(mut guard) = deferred.lock() {
                 *guard = Some(menu);
             }
@@ -4996,18 +6040,15 @@ fn rebuild_menu(app: AppHandle, labels: std::collections::HashMap<String, String
 
 // ============ Sync Commands ============
 
-use sync::{
-    CompareOptions, FileComparison, FileInfo, SyncIndex, SyncJournal,
-    VerifyPolicy, VerifyResult, RetryPolicy, SyncErrorInfo,
-    CanaryResult, CanarySummary, CanarySampleResult,
-    build_comparison_results_with_index, should_exclude,
-    load_sync_index, save_sync_index,
-    load_sync_journal, save_sync_journal, delete_sync_journal,
-    verify_local_file, classify_sync_error,
-    select_canary_sample, sign_journal, journal_sig_filename,
-};
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use std::collections::HashMap;
+use sync::{
+    build_comparison_results_with_index, classify_sync_error, delete_sync_journal,
+    journal_sig_filename, load_sync_index, load_sync_journal, save_sync_index, save_sync_journal,
+    select_canary_sample, should_exclude, sign_journal, verify_local_file, CanaryResult,
+    CanarySampleResult, CanarySummary, CompareOptions, FileComparison, FileInfo, RetryPolicy,
+    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+};
 
 #[tauri::command]
 async fn compare_directories(
@@ -5024,55 +6065,76 @@ async fn compare_directories(
         return Err("Remote path contains null bytes".to_string());
     }
 
-    info!("Comparing directories: local={}, remote={}", local_path, remote_path);
+    info!(
+        "Comparing directories: local={}, remote={}",
+        local_path, remote_path
+    );
 
     // Emit scan phase: scanning (both local and remote concurrently)
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "local",
-        "files_found": 0,
-    }));
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "local",
+            "files_found": 0,
+        }),
+    );
 
     // Run local and remote scans concurrently (F2 optimization)
     // Local scan runs on filesystem; remote scan holds FTP lock.
     // tokio::join! runs both futures on the same task but interleaves their I/O waits.
     let local_future = get_local_files_recursive(
-        &local_path, &local_path, &options.exclude_patterns,
-        options.compare_checksum, Some(&state.cancel_flag),
+        &local_path,
+        &local_path,
+        &options.exclude_patterns,
+        options.compare_checksum,
+        Some(&state.cancel_flag),
     );
 
     let remote_future = async {
         let mut ftp_manager = state.ftp_manager.lock().await;
         get_remote_files_recursive_with_progress(
-            &app, &mut ftp_manager, &remote_path, &remote_path,
-            &options.exclude_patterns, 0,
+            &app,
+            &mut ftp_manager,
+            &remote_path,
+            &remote_path,
+            &options.exclude_patterns,
+            0,
             Some(&state.cancel_flag),
-        ).await
+        )
+        .await
     };
 
     let (local_result, remote_result) = tokio::join!(local_future, remote_future);
-    let local_files = local_result
-        .map_err(|e| format!("Failed to scan local directory: {}", e))?;
-    let remote_files = remote_result
-        .map_err(|e| format!("Failed to scan remote directory: {}", e))?;
+    let local_files = local_result.map_err(|e| format!("Failed to scan local directory: {}", e))?;
+    let remote_files =
+        remote_result.map_err(|e| format!("Failed to scan remote directory: {}", e))?;
 
     // Emit scan phase: comparing
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "comparing",
-        "files_found": local_files.len() + remote_files.len(),
-    }));
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "comparing",
+            "files_found": local_files.len() + remote_files.len(),
+        }),
+    );
 
     // Load sync index if available for conflict detection
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results = build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    let results =
+        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
 
-    info!("Comparison complete: {} differences found (index: {})", results.len(), if index.is_some() { "used" } else { "none" });
+    info!(
+        "Comparison complete: {} differences found (index: {})",
+        results.len(),
+        if index.is_some() { "used" } else { "none" }
+    );
 
     Ok(results)
 }
 
 /// Compute SHA-256 hash of a local file (streaming, 64KB chunks)
 async fn compute_sha256(path: &std::path::Path) -> Option<String> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     use tokio::io::AsyncReadExt;
 
     let mut file = tokio::fs::File::open(path).await.ok()?;
@@ -5080,7 +6142,9 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
     let mut buf = vec![0u8; 65_536];
     loop {
         let n = file.read(&mut buf).await.ok()?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buf[..n]);
     }
     Some(format!("{:x}", hasher.finalize()))
@@ -5137,7 +6201,11 @@ pub async fn get_local_files_recursive(
             let metadata = tokio::fs::symlink_metadata(&path).await.ok();
 
             // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
-            if metadata.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            if metadata
+                .as_ref()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+            {
                 continue;
             }
 
@@ -5174,7 +6242,10 @@ pub async fn get_local_files_recursive(
 
             // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
             if files.len() >= 1_000_000 {
-                return Err("File scan exceeded 1,000,000 entries. Consider narrowing the scan scope.".to_string());
+                return Err(
+                    "File scan exceeded 1,000,000 entries. Consider narrowing the scan scope."
+                        .to_string(),
+                );
             }
 
             files.insert(relative_path, file_info);
@@ -5206,7 +6277,13 @@ pub async fn get_local_files_recursive_parallel(
 
     // Phase 1: Walk the directory tree (sequential — fast, mostly metadata)
     #[allow(clippy::type_complexity)]
-    let mut file_entries: Vec<(String, String, u64, Option<chrono::DateTime<chrono::Utc>>, bool)> = Vec::new();
+    let mut file_entries: Vec<(
+        String,
+        String,
+        u64,
+        Option<chrono::DateTime<chrono::Utc>>,
+        bool,
+    )> = Vec::new();
     let mut dirs_to_process = vec![base.clone()];
 
     while let Some(current_dir) = dirs_to_process.pop() {
@@ -5237,7 +6314,11 @@ pub async fn get_local_files_recursive_parallel(
             let metadata = tokio::fs::symlink_metadata(&path).await.ok();
 
             // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
-            if metadata.as_ref().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            if metadata
+                .as_ref()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+            {
                 continue;
             }
 
@@ -5248,12 +6329,19 @@ pub async fn get_local_files_recursive_parallel(
                     datetime
                 })
             });
-            let size = if is_dir { 0 } else { metadata.as_ref().map(|m| m.len()).unwrap_or(0) };
+            let size = if is_dir {
+                0
+            } else {
+                metadata.as_ref().map(|m| m.len()).unwrap_or(0)
+            };
             let abs_path = path.to_string_lossy().to_string();
 
             // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
             if file_entries.len() >= 1_000_000 {
-                return Err("File scan exceeded 1,000,000 entries. Consider narrowing the scan scope.".to_string());
+                return Err(
+                    "File scan exceeded 1,000,000 entries. Consider narrowing the scan scope."
+                        .to_string(),
+                );
             }
 
             file_entries.push((relative_path, abs_path, size, modified, is_dir));
@@ -5275,17 +6363,20 @@ pub async fn get_local_files_recursive_parallel(
 
         for (relative_path, abs_path, size, modified, is_dir) in file_entries {
             if is_dir {
-                files.insert(relative_path, FileInfo {
-                    name: std::path::Path::new(&abs_path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default(),
-                    path: abs_path,
-                    size,
-                    modified,
-                    is_dir: true,
-                    checksum: None,
-                });
+                files.insert(
+                    relative_path,
+                    FileInfo {
+                        name: std::path::Path::new(&abs_path)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        path: abs_path,
+                        size,
+                        modified,
+                        is_dir: true,
+                        checksum: None,
+                    },
+                );
                 continue;
             }
 
@@ -5306,14 +6397,17 @@ pub async fn get_local_files_recursive_parallel(
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
-                files.insert(rel_path, FileInfo {
-                    name,
-                    path: abs_path,
-                    size,
-                    modified,
-                    is_dir: false,
-                    checksum,
-                });
+                files.insert(
+                    rel_path,
+                    FileInfo {
+                        name,
+                        path: abs_path,
+                        size,
+                        modified,
+                        is_dir: false,
+                        checksum,
+                    },
+                );
             }
         }
     } else {
@@ -5323,14 +6417,17 @@ pub async fn get_local_files_recursive_parallel(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            files.insert(relative_path, FileInfo {
-                name,
-                path: abs_path,
-                size,
-                modified,
-                is_dir,
-                checksum: None,
-            });
+            files.insert(
+                relative_path,
+                FileInfo {
+                    name,
+                    path: abs_path,
+                    size,
+                    modified,
+                    is_dir,
+                    checksum: None,
+                },
+            );
         }
     }
 
@@ -5369,7 +6466,10 @@ async fn get_remote_files_recursive_with_progress(
             }
         }
         if let Err(e) = ftp_manager.change_dir(&current_dir).await {
-            info!("Warning: Could not change to directory {}: {}", current_dir, e);
+            info!(
+                "Warning: Could not change to directory {}: {}",
+                current_dir, e
+            );
             continue;
         }
 
@@ -5409,9 +6509,16 @@ async fn get_remote_files_recursive_with_progress(
                 modified: entry.modified.and_then(|s| {
                     let clean = s.strip_suffix('Z').unwrap_or(&s);
                     chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S"))
+                        .or_else(|_| {
+                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                        })
                         .ok()
-                        .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+                        .map(|dt| {
+                            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                dt,
+                                chrono::Utc,
+                            )
+                        })
                 }),
                 is_dir: entry.is_dir,
                 checksum: None,
@@ -5430,10 +6537,13 @@ async fn get_remote_files_recursive_with_progress(
         }
 
         // Emit progress after each directory listing
-        let _ = app.emit("sync_scan_progress", serde_json::json!({
-            "phase": "remote",
-            "files_found": local_count + files.len(),
-        }));
+        let _ = app.emit(
+            "sync_scan_progress",
+            serde_json::json!({
+                "phase": "remote",
+                "files_found": local_count + files.len(),
+            }),
+        );
     }
 
     let _ = ftp_manager.change_dir(base_path).await;
@@ -5446,7 +6556,10 @@ fn get_compare_options_default() -> CompareOptions {
 }
 
 #[tauri::command]
-fn load_sync_index_cmd(local_path: String, remote_path: String) -> Result<Option<SyncIndex>, String> {
+fn load_sync_index_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<Option<SyncIndex>, String> {
     validate_path(&local_path)?;
     validate_path(&remote_path)?;
     load_sync_index(&local_path, &remote_path)
@@ -5462,7 +6575,10 @@ fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
 // ============ Sync Journal Commands (Phase 2: Reliability) ============
 
 #[tauri::command]
-fn load_sync_journal_cmd(local_path: String, remote_path: String) -> Result<Option<SyncJournal>, String> {
+fn load_sync_journal_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<Option<SyncJournal>, String> {
     validate_path(&local_path)?;
     validate_path(&remote_path)?;
     load_sync_journal(&local_path, &remote_path)
@@ -5529,7 +6645,8 @@ async fn get_parallel_scan_files(
         compare_checksum,
         concurrency,
         None,
-    ).await
+    )
+    .await
 }
 
 #[tauri::command]
@@ -5551,10 +6668,15 @@ fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Valu
 
     // Returns a snapshot of the filesystem watcher status
     // Watcher lifecycle is managed by background_sync_worker, not directly from frontend
-    let native_backend = if cfg!(target_os = "linux") { "inotify" }
-        else if cfg!(target_os = "macos") { "fsevent" }
-        else if cfg!(target_os = "windows") { "readirectorychanges" }
-        else { "poll" };
+    let native_backend = if cfg!(target_os = "linux") {
+        "inotify"
+    } else if cfg!(target_os = "macos") {
+        "fsevent"
+    } else if cfg!(target_os = "windows") {
+        "readirectorychanges"
+    } else {
+        "poll"
+    };
 
     let inotify_info = if cfg!(target_os = "linux") {
         watch_path.as_ref().map(|p| {
@@ -5579,7 +6701,9 @@ fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Valu
 
 /// Get transfer optimization hints for the current cloud provider
 #[tauri::command]
-fn get_transfer_optimization_hints(provider_type: Option<String>) -> Result<providers::TransferOptimizationHints, String> {
+fn get_transfer_optimization_hints(
+    provider_type: Option<String>,
+) -> Result<providers::TransferOptimizationHints, String> {
     // Provider type is passed from frontend based on the connected server profile
     let ptype = provider_type.unwrap_or_default();
     let hints = match ptype.to_lowercase().as_str() {
@@ -5657,13 +6781,24 @@ fn export_sync_template_cmd(
     exclude_patterns: Vec<String>,
 ) -> Result<String, String> {
     let profiles = sync::load_sync_profiles()?;
-    let profile = profiles.iter()
+    let profile = profiles
+        .iter()
         .find(|p| p.id == profile_id)
         .ok_or_else(|| format!("Profile '{}' not found", profile_id))?;
     let schedule = sync_scheduler::load_sync_schedule();
-    let schedule_opt = if schedule.enabled { Some(&schedule) } else { None };
+    let schedule_opt = if schedule.enabled {
+        Some(&schedule)
+    } else {
+        None
+    };
     let template = sync::export_sync_template(
-        &name, &description, profile, &local_path, &remote_path, &exclude_patterns, schedule_opt,
+        &name,
+        &description,
+        profile,
+        &local_path,
+        &remote_path,
+        &exclude_patterns,
+        schedule_opt,
     )?;
     serde_json::to_string_pretty(&template).map_err(|e| e.to_string())
 }
@@ -5673,7 +6808,10 @@ fn import_sync_template_cmd(json_content: String) -> Result<sync::SyncTemplate, 
     let template: sync::SyncTemplate = serde_json::from_str(&json_content)
         .map_err(|e| format!("Invalid template format: {}", e))?;
     if template.schema_version != 1 {
-        return Err(format!("Unsupported template version: {}", template.schema_version));
+        return Err(format!(
+            "Unsupported template version: {}",
+            template.schema_version
+        ));
     }
     Ok(template)
 }
@@ -5692,13 +6830,308 @@ fn create_sync_snapshot_cmd(local_path: String, remote_path: String) -> Result<S
 }
 
 #[tauri::command]
-fn list_sync_snapshots_cmd() -> Result<Vec<sync::SyncSnapshot>, String> {
-    sync::list_sync_snapshots()
+fn list_sync_snapshots_cmd(
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<Vec<sync::SyncSnapshot>, String> {
+    let snapshots = sync::list_sync_snapshots()?;
+    Ok(filter_snapshots_for_pair(
+        snapshots,
+        local_path.as_deref(),
+        remote_path.as_deref(),
+    ))
 }
 
 #[tauri::command]
-fn delete_sync_snapshot_cmd(snapshot_id: String) -> Result<(), String> {
+fn delete_sync_snapshot_cmd(
+    snapshot_id: String,
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<(), String> {
+    let snapshot = sync::load_sync_snapshot(&snapshot_id)?;
+    if !snapshot_matches_pair(&snapshot, local_path.as_deref(), remote_path.as_deref()) {
+        return Err("Snapshot does not belong to the current sync pair".to_string());
+    }
     sync::delete_sync_snapshot(&snapshot_id)
+}
+
+#[tauri::command]
+fn load_sync_snapshot_cmd(
+    snapshot_id: String,
+    local_path: Option<String>,
+    remote_path: Option<String>,
+) -> Result<sync::SyncSnapshot, String> {
+    let snapshot = sync::load_sync_snapshot(&snapshot_id)?;
+    if !snapshot_matches_pair(&snapshot, local_path.as_deref(), remote_path.as_deref()) {
+        return Err("Snapshot does not belong to the current sync pair".to_string());
+    }
+    Ok(snapshot)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RestoreSnapshotResult {
+    restored_from_remote: u32,
+    restored_to_remote: u32,
+    skipped: u32,
+    failed: Vec<String>,
+}
+
+fn normalize_sync_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    if normalized == "/" {
+        normalized
+    } else {
+        normalized.trim_end_matches('/').to_string()
+    }
+}
+
+fn snapshot_matches_pair(
+    snapshot: &sync::SyncSnapshot,
+    local_path: Option<&str>,
+    remote_path: Option<&str>,
+) -> bool {
+    let local_ok = local_path
+        .map(|p| normalize_sync_path(&snapshot.local_path) == normalize_sync_path(p))
+        .unwrap_or(true);
+    let remote_ok = remote_path
+        .map(|p| normalize_sync_path(&snapshot.remote_path) == normalize_sync_path(p))
+        .unwrap_or(true);
+    local_ok && remote_ok
+}
+
+fn filter_snapshots_for_pair(
+    snapshots: Vec<sync::SyncSnapshot>,
+    local_path: Option<&str>,
+    remote_path: Option<&str>,
+) -> Vec<sync::SyncSnapshot> {
+    snapshots
+        .into_iter()
+        .filter(|snapshot| snapshot_matches_pair(snapshot, local_path, remote_path))
+        .collect()
+}
+
+fn parse_versioning_strategy(
+    versioning_strategy: Option<&str>,
+) -> sync_versioning::VersioningStrategy {
+    match versioning_strategy.unwrap_or("trash_can") {
+        "disabled" => sync_versioning::VersioningStrategy::Disabled,
+        "simple" => sync_versioning::VersioningStrategy::Simple { max_copies: 5 },
+        "staggered" => sync_versioning::VersioningStrategy::Staggered,
+        _ => sync_versioning::VersioningStrategy::TrashCan { max_age_days: 30 },
+    }
+}
+
+fn local_file_matches_snapshot(
+    file_path: &std::path::Path,
+    entry: &sync::FileSnapshotEntry,
+) -> Result<bool, String> {
+    let metadata = match std::fs::metadata(file_path) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        Ok(_) => return Ok(false),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(format!("Failed to read local metadata: {}", err)),
+    };
+
+    if metadata.len() != entry.size {
+        return Ok(false);
+    }
+
+    let current_modified = metadata
+        .modified()
+        .map_err(|err| format!("Failed to read local mtime: {}", err))?;
+    let current_modified: chrono::DateTime<chrono::Utc> = current_modified.into();
+    let expected_modified = match entry.modified.as_ref() {
+        Some(modified) => modified,
+        None => return Ok(true),
+    };
+
+    Ok((current_modified - *expected_modified).num_seconds().abs() <= 2)
+}
+
+#[tauri::command]
+async fn restore_sync_snapshot_cmd(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    snapshot_id: String,
+    local_path: String,
+    remote_path: String,
+    is_provider: bool,
+    versioning_strategy: Option<String>,
+) -> Result<RestoreSnapshotResult, String> {
+    let snapshot = sync::load_sync_snapshot(&snapshot_id)?;
+    if !snapshot_matches_pair(&snapshot, Some(&local_path), Some(&remote_path)) {
+        return Err("Snapshot does not belong to the current sync pair".to_string());
+    }
+
+    let local_root = std::path::PathBuf::from(&local_path);
+    let remote_root = normalize_sync_path(&remote_path);
+    let versioning = sync_versioning::SyncVersioning::new(
+        &local_root,
+        parse_versioning_strategy(versioning_strategy.as_deref()),
+    );
+    let mut result = RestoreSnapshotResult {
+        restored_from_remote: 0,
+        restored_to_remote: 0,
+        skipped: 0,
+        failed: Vec::new(),
+    };
+
+    let mut ftp_manager = if is_provider {
+        None
+    } else {
+        Some(state.ftp_manager.lock().await)
+    };
+    let mut provider_lock = if is_provider {
+        Some(provider_state.provider.lock().await)
+    } else {
+        None
+    };
+
+    for (relative_path, entry) in &snapshot.files {
+        sync::validate_relative_path(relative_path)?;
+        let local_file = local_root.join(relative_path);
+        if !local_file.starts_with(&local_root) {
+            result.failed.push(format!("{}: invalid local target path", relative_path));
+            continue;
+        }
+        let remote_file = format!("{}/{}", remote_root, relative_path);
+        let local_matches = local_file_matches_snapshot(&local_file, entry)?;
+
+        if local_matches {
+            let upload_result = if let Some(ftp) = ftp_manager.as_mut() {
+                ftp.upload_file(&local_file.to_string_lossy(), &remote_file)
+                    .await
+                    .map_err(|err| err.to_string())
+            } else if let Some(provider_guard) = provider_lock.as_mut() {
+                let provider = provider_guard
+                    .as_mut()
+                    .ok_or_else(|| "Not connected to any provider".to_string())?;
+                provider
+                    .upload(&local_file.to_string_lossy(), &remote_file, None)
+                    .await
+                    .map_err(|err| format!("Upload failed: {}", err))
+            } else {
+                Err("No active sync backend".to_string())
+            };
+
+            match upload_result {
+                Ok(_) => {
+                    result.restored_to_remote += 1;
+                    continue;
+                }
+                Err(upload_err) => {
+                    tracing::warn!(
+                        "[restore_sync_snapshot_cmd] Remote restore fallback failed for {}: {}",
+                        relative_path,
+                        upload_err
+                    );
+                }
+            }
+        }
+
+        if local_file.exists() && versioning.is_enabled() {
+            versioning
+                .archive(&local_file)
+                .map_err(|err| format!("Failed to archive {} before restore: {}", relative_path, err))?;
+        }
+
+        let download_result = if let Some(ftp) = ftp_manager.as_mut() {
+            ftp.download_file(&remote_file, &local_file.to_string_lossy())
+                .await
+                .map_err(|err| err.to_string())
+        } else if let Some(provider_guard) = provider_lock.as_mut() {
+            let provider = provider_guard
+                .as_mut()
+                .ok_or_else(|| "Not connected to any provider".to_string())?;
+            provider
+                .download(&remote_file, &local_file.to_string_lossy(), None)
+                .await
+                .map_err(|err| format!("Download failed: {}", err))
+        } else {
+            Err("No active sync backend".to_string())
+        };
+
+        match download_result {
+            Ok(_) => result.restored_from_remote += 1,
+            Err(download_err) => {
+                result.failed.push(format!("{}: {}", relative_path, download_err));
+                result.skipped += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// =============================
+// Rename Detection
+// =============================
+
+/// Detect file renames by matching SHA-256 hashes between local_only and remote_only files.
+/// Returns pairs of (old_path, new_path, size) that are likely renames rather than delete+create.
+#[tauri::command]
+async fn detect_renames_cmd(
+    local_path: String,
+    comparisons: Vec<sync::FileComparison>,
+) -> Result<Vec<serde_json::Value>, String> {
+    use std::collections::HashMap;
+
+    // Separate candidates: local_only = potential new files, remote_only = potential deleted files
+    let local_only: Vec<&sync::FileComparison> = comparisons
+        .iter()
+        .filter(|c| c.status == sync::SyncStatus::LocalOnly && !c.is_dir)
+        .collect();
+    let remote_only: Vec<&sync::FileComparison> = comparisons
+        .iter()
+        .filter(|c| c.status == sync::SyncStatus::RemoteOnly && !c.is_dir)
+        .collect();
+
+    if local_only.is_empty() || remote_only.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Hash local_only files
+    let mut local_hashes: HashMap<String, Vec<&sync::FileComparison>> = HashMap::new();
+    for comp in &local_only {
+        let file = std::path::PathBuf::from(&local_path).join(&comp.relative_path);
+        if let Ok(hash) = sha256_file_hex(&file) {
+            local_hashes.entry(hash).or_default().push(comp);
+        }
+    }
+
+    // Match remote_only files by size against local hashes
+    // (We can't hash remote files, so we match by size first, then confirm by local hash)
+    let mut renames = Vec::new();
+    let mut used_locals: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for remote_comp in &remote_only {
+        let remote_size = remote_comp
+            .remote_info
+            .as_ref()
+            .map(|i| i.size)
+            .unwrap_or(0);
+        // Find a local_only file with matching hash and similar size
+        for (hash, locals) in &local_hashes {
+            for local_comp in locals {
+                if used_locals.contains(&local_comp.relative_path) {
+                    continue;
+                }
+                let local_size = local_comp.local_info.as_ref().map(|i| i.size).unwrap_or(0);
+                if local_size == remote_size {
+                    renames.push(serde_json::json!({
+                        "old_path": remote_comp.relative_path,
+                        "new_path": local_comp.relative_path,
+                        "size": local_size,
+                        "hash": hash,
+                    }));
+                    used_locals.insert(local_comp.relative_path.clone());
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(renames)
 }
 
 // =============================
@@ -5715,12 +7148,16 @@ async fn delta_sync_analyze(
     validate_path(&remote_path)?;
 
     // Read local file
-    let local_data = tokio::fs::read(&local_path).await
+    let local_data = tokio::fs::read(&local_path)
+        .await
         .map_err(|e| format!("Failed to read local file: {}", e))?;
 
     if (local_data.len() as u64) < delta_sync::DELTA_MIN_FILE_SIZE {
-        return Err(format!("File too small for delta sync ({}B < {}B minimum)",
-            local_data.len(), delta_sync::DELTA_MIN_FILE_SIZE));
+        return Err(format!(
+            "File too small for delta sync ({}B < {}B minimum)",
+            local_data.len(),
+            delta_sync::DELTA_MIN_FILE_SIZE
+        ));
     }
 
     // For analysis, we use the local file as both source and simulate
@@ -5729,7 +7166,8 @@ async fn delta_sync_analyze(
     let sigs = delta_sync::compute_signatures(&local_data, block_size);
 
     // Read remote (local copy for now — real impl would use provider)
-    let remote_data = tokio::fs::read(&remote_path).await
+    let remote_data = tokio::fs::read(&remote_path)
+        .await
         .map_err(|e| format!("Failed to read remote file: {}", e))?;
 
     let (_, result) = delta_sync::compute_delta(&remote_data, &sigs);
@@ -5760,14 +7198,8 @@ async fn sync_canary_run(
 
     // Scan local files (no checksum for speed)
     let exclude_patterns = sync::CompareOptions::default().exclude_patterns;
-    let local_files = get_local_files_recursive(
-        &local_path,
-        &local_path,
-        &exclude_patterns,
-        false,
-        None,
-    )
-    .await?;
+    let local_files =
+        get_local_files_recursive(&local_path, &local_path, &exclude_patterns, false, None).await?;
 
     // Only count non-directory files for sampling
     let total_files = local_files.iter().filter(|(_, f)| !f.is_dir).count();
@@ -5898,21 +7330,24 @@ async fn get_journal_signing_key(
         .ok_or_else(|| "Cannot determine config directory".to_string())?
         .join("aeroftp")
         .join("sync-journal");
-    tokio::fs::create_dir_all(&key_dir).await
+    tokio::fs::create_dir_all(&key_dir)
+        .await
         .map_err(|e| format!("Failed to create journal dir: {}", e))?;
 
     let key_file = key_dir.join("signing.key");
 
     // Load existing key or generate a new one
     let secret = if key_file.exists() {
-        tokio::fs::read_to_string(&key_file).await
+        tokio::fs::read_to_string(&key_file)
+            .await
             .map_err(|e| format!("Failed to read signing key: {}", e))?
     } else {
         use rand::RngCore;
         let mut bytes = [0u8; 32];
         rand::rngs::OsRng.fill_bytes(&mut bytes);
         let hex_key = hex::encode(bytes);
-        tokio::fs::write(&key_file, &hex_key).await
+        tokio::fs::write(&key_file, &hex_key)
+            .await
             .map_err(|e| format!("Failed to write signing key: {}", e))?;
         // Restrict permissions on Unix
         #[cfg(unix)]
@@ -5928,10 +7363,10 @@ async fn get_journal_signing_key(
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
     let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
-    let key_bytes = hex::decode(secret.trim())
-        .map_err(|e| format!("Invalid signing key: {}", e))?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(&key_bytes)
-        .map_err(|e| format!("HMAC key error: {}", e))?;
+    let key_bytes =
+        hex::decode(secret.trim()).map_err(|e| format!("Invalid signing key: {}", e))?;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(|e| format!("HMAC key error: {}", e))?;
     mac.update(data.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
@@ -5954,8 +7389,8 @@ async fn sign_sync_journal(
         .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
 
     // Decode hex signing key
-    let key_bytes = hex::decode(&signing_key)
-        .map_err(|e| format!("Invalid hex signing key: {}", e))?;
+    let key_bytes =
+        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
     if key_bytes.is_empty() {
         return Err("Signing key cannot be empty".to_string());
     }
@@ -6007,8 +7442,8 @@ async fn verify_journal_signature(
         .map_err(|e| format!("Failed to read signature file: {}", e))?;
 
     // Decode hex signing key
-    let key_bytes = hex::decode(&signing_key)
-        .map_err(|e| format!("Invalid hex signing key: {}", e))?;
+    let key_bytes =
+        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
     if key_bytes.is_empty() {
         return Err("Signing key cannot be empty".to_string());
     }
@@ -6025,7 +7460,10 @@ async fn verify_journal_signature(
     let result = if a.len() != b.len() {
         false
     } else {
-        a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+        a.iter()
+            .zip(b.iter())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0
     };
     Ok(result)
 }
@@ -6074,11 +7512,14 @@ async fn parallel_sync_execute(
     );
 
     // Emit start event
-    let _ = app.emit("sync-parallel-progress", serde_json::json!({
-        "phase": "start",
-        "total": total_count,
-        "streams": max_streams,
-    }));
+    let _ = app.emit(
+        "sync-parallel-progress",
+        serde_json::json!({
+            "phase": "start",
+            "total": total_count,
+            "streams": max_streams,
+        }),
+    );
 
     let mut join_set = tokio::task::JoinSet::new();
 
@@ -6109,14 +7550,17 @@ async fn parallel_sync_execute(
             let stream_id = index % 8; // Visual stream assignment
 
             // Emit per-file start
-            let _ = app_clone.emit("sync-parallel-progress", serde_json::json!({
-                "phase": "file_start",
-                "stream_id": stream_id,
-                "relative_path": entry.relative_path,
-                "action": entry.action,
-                "index": index,
-                "total": total_count,
-            }));
+            let _ = app_clone.emit(
+                "sync-parallel-progress",
+                serde_json::json!({
+                    "phase": "file_start",
+                    "stream_id": stream_id,
+                    "relative_path": entry.relative_path,
+                    "action": entry.action,
+                    "index": index,
+                    "total": total_count,
+                }),
+            );
 
             // Skip directories (mkdir is handled separately)
             if entry.is_dir {
@@ -6139,7 +7583,8 @@ async fn parallel_sync_execute(
                 stream_id,
                 index,
                 total_count,
-            ).await;
+            )
+            .await;
 
             let mut r = res.lock().await;
             match transfer_result {
@@ -6150,7 +7595,8 @@ async fn parallel_sync_execute(
                     _ => r.skipped += 1,
                 },
                 Err(e) => {
-                    let retryable = sync::classify_sync_error(&e, Some(&entry.relative_path)).retryable;
+                    let retryable =
+                        sync::classify_sync_error(&e, Some(&entry.relative_path)).retryable;
                     r.errors.push(transfer_pool::ParallelTransferError {
                         relative_path: entry.relative_path.clone(),
                         action: entry.action.clone(),
@@ -6161,14 +7607,17 @@ async fn parallel_sync_execute(
             }
 
             // Emit per-file complete
-            let _ = app_clone.emit("sync-parallel-progress", serde_json::json!({
-                "phase": "file_complete",
-                "stream_id": stream_id,
-                "relative_path": entry.relative_path,
-                "action": entry.action,
-                "index": index,
-                "total": total_count,
-            }));
+            let _ = app_clone.emit(
+                "sync-parallel-progress",
+                serde_json::json!({
+                    "phase": "file_complete",
+                    "stream_id": stream_id,
+                    "relative_path": entry.relative_path,
+                    "action": entry.action,
+                    "index": index,
+                    "total": total_count,
+                }),
+            );
         });
     }
 
@@ -6203,13 +7652,16 @@ async fn parallel_sync_execute(
     );
 
     // Emit completion
-    let _ = app.emit("sync-parallel-progress", serde_json::json!({
-        "phase": "complete",
-        "uploaded": result_clone.uploaded,
-        "downloaded": result_clone.downloaded,
-        "errors": result_clone.errors.len(),
-        "duration_ms": result_clone.duration_ms,
-    }));
+    let _ = app.emit(
+        "sync-parallel-progress",
+        serde_json::json!({
+            "phase": "complete",
+            "uploaded": result_clone.uploaded,
+            "downloaded": result_clone.downloaded,
+            "errors": result_clone.errors.len(),
+            "duration_ms": result_clone.duration_ms,
+        }),
+    );
 
     Ok(result_clone)
 }
@@ -6229,9 +7681,11 @@ async fn execute_single_transfer(
 ) -> Result<String, String> {
     let mut ftp = ftp::FtpManager::new();
 
-    ftp.connect(host).await
+    ftp.connect(host)
+        .await
         .map_err(|e| format!("Stream {}: connect failed: {}", stream_id, e))?;
-    ftp.login(user, pass).await
+    ftp.login(user, pass)
+        .await
         .map_err(|e| format!("Stream {}: login failed: {}", stream_id, e))?;
 
     let result = match entry.action {
@@ -6262,10 +7716,16 @@ async fn execute_single_transfer(
                 file_size,
                 move |transferred| {
                     let elapsed = start_time.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                    let speed = if elapsed > 0.0 {
+                        (transferred as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
                     let pct = if file_size > 0 {
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
-                    } else { 0 };
+                    } else {
+                        0
+                    };
 
                     // Throttle: emit every 150ms or 2% delta (matches standard transfer path)
                     let is_complete = transferred >= file_size && file_size > 0;
@@ -6274,23 +7734,28 @@ async fn execute_single_transfer(
                     if time_ok || pct_ok || is_complete {
                         last_emit_time_ul = Instant::now();
                         last_emit_pct_ul = pct;
-                        let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
-                            "phase": "transfer_progress",
-                            "stream_id": stream_id,
-                            "transfer_id": transfer_id,
-                            "relative_path": filename,
-                            "direction": "upload",
-                            "transferred": transferred,
-                            "total": file_size,
-                            "percentage": pct,
-                            "speed_bps": speed,
-                            "index": index,
-                            "total_files": total,
-                        }));
+                        let _ = app_ref.emit(
+                            "sync-parallel-progress",
+                            serde_json::json!({
+                                "phase": "transfer_progress",
+                                "stream_id": stream_id,
+                                "transfer_id": transfer_id,
+                                "relative_path": filename,
+                                "direction": "upload",
+                                "transferred": transferred,
+                                "total": file_size,
+                                "percentage": pct,
+                                "speed_bps": speed,
+                                "index": index,
+                                "total_files": total,
+                            }),
+                        );
                     }
                     true // continue
                 },
-            ).await.map_err(|e| format!("Upload failed: {}", e))?;
+            )
+            .await
+            .map_err(|e| format!("Upload failed: {}", e))?;
 
             Ok("uploaded".to_string())
         }
@@ -6300,7 +7765,8 @@ async fn execute_single_transfer(
                 let _ = tokio::fs::create_dir_all(parent).await;
             }
 
-            let file_size = ftp.get_file_size(&entry.remote_path)
+            let file_size = ftp
+                .get_file_size(&entry.remote_path)
                 .await
                 .unwrap_or(entry.expected_size);
 
@@ -6316,10 +7782,16 @@ async fn execute_single_transfer(
                 &entry.local_path,
                 move |transferred| {
                     let elapsed = start_time.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                    let speed = if elapsed > 0.0 {
+                        (transferred as f64 / elapsed) as u64
+                    } else {
+                        0
+                    };
                     let pct = if file_size > 0 {
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
-                    } else { 0 };
+                    } else {
+                        0
+                    };
 
                     // Throttle: emit every 150ms or 2% delta (matches standard transfer path)
                     let is_complete = transferred >= file_size && file_size > 0;
@@ -6328,29 +7800,35 @@ async fn execute_single_transfer(
                     if time_ok || pct_ok || is_complete {
                         last_emit_time_dl = Instant::now();
                         last_emit_pct_dl = pct;
-                        let _ = app_ref.emit("sync-parallel-progress", serde_json::json!({
-                            "phase": "transfer_progress",
-                            "stream_id": stream_id,
-                            "transfer_id": transfer_id,
-                            "relative_path": filename,
-                            "direction": "download",
-                            "transferred": transferred,
-                            "total": file_size,
-                            "percentage": pct,
-                            "speed_bps": speed,
-                            "index": index,
-                            "total_files": total,
-                        }));
+                        let _ = app_ref.emit(
+                            "sync-parallel-progress",
+                            serde_json::json!({
+                                "phase": "transfer_progress",
+                                "stream_id": stream_id,
+                                "transfer_id": transfer_id,
+                                "relative_path": filename,
+                                "direction": "download",
+                                "transferred": transferred,
+                                "total": file_size,
+                                "percentage": pct,
+                                "speed_bps": speed,
+                                "index": index,
+                                "total_files": total,
+                            }),
+                        );
                     }
                     true // continue
                 },
-            ).await.map_err(|e| format!("Download failed: {}", e))?;
+            )
+            .await
+            .map_err(|e| format!("Download failed: {}", e))?;
 
             Ok("downloaded".to_string())
         }
         transfer_pool::TransferAction::Delete => {
             // Delete remote file
-            ftp.remove(&entry.remote_path).await
+            ftp.remove(&entry.remote_path)
+                .await
                 .map_err(|e| format!("Delete failed: {}", e))?;
             Ok("deleted".to_string())
         }
@@ -6382,9 +7860,17 @@ fn verify_local_transfer(
     policy: VerifyPolicy,
 ) -> VerifyResult {
     let mtime = expected_mtime.and_then(|s| {
-        chrono::DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&chrono::Utc))
+        chrono::DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
     });
-    verify_local_file(&local_path, expected_size, mtime, &policy, expected_hash.as_deref())
+    verify_local_file(
+        &local_path,
+        expected_size,
+        mtime,
+        &policy,
+        expected_hash.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -6396,9 +7882,7 @@ fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> Sync
 
 #[tauri::command]
 async fn ai_chat(request: ai::AIRequest) -> Result<ai::AIResponse, String> {
-    ai::call_ai(request)
-        .await
-        .map_err(|e| e.to_string())
+    ai::call_ai(request).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6432,8 +7916,14 @@ struct ToolRequest {
 
 // Allowed AI tool names (whitelist)
 const ALLOWED_AI_TOOLS: &[&str] = &[
-    "list_files", "read_file", "create_folder", "delete_file",
-    "rename_file", "download_file", "upload_file", "chmod",
+    "list_files",
+    "read_file",
+    "create_folder",
+    "delete_file",
+    "rename_file",
+    "download_file",
+    "upload_file",
+    "chmod",
 ];
 
 /// Validate and sanitize a path argument from AI tool calls.
@@ -6448,13 +7938,19 @@ fn validate_tool_path(path: &str, param_name: &str) -> Result<(), String> {
     // Reject path traversal: literal ".." components
     for component in path.split('/') {
         if component == ".." {
-            return Err(format!("{}: path traversal ('..') is not allowed", param_name));
+            return Err(format!(
+                "{}: path traversal ('..') is not allowed",
+                param_name
+            ));
         }
     }
     // Also check backslash-separated (Windows paths)
     for component in path.split('\\') {
         if component == ".." {
-            return Err(format!("{}: path traversal ('..') is not allowed", param_name));
+            return Err(format!(
+                "{}: path traversal ('..') is not allowed",
+                param_name
+            ));
         }
     }
     Ok(())
@@ -6484,13 +7980,16 @@ async fn ai_execute_tool(
     }
 
     let args = request.args;
-    
+
     match request.tool_name.as_str() {
         "list_files" => {
-            let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
+            let location = args
+                .get("location")
+                .and_then(|v| v.as_str())
+                .unwrap_or("remote");
             let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
             validate_tool_path(path, "path")?;
-            
+
             if location == "local" {
                 let files = get_local_files(path.to_string(), Some(true))
                     .await
@@ -6521,11 +8020,17 @@ async fn ai_execute_tool(
                     }).collect::<Vec<_>>()
                 }))
             }
-        },
-        
+        }
+
         "read_file" => {
-            let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
-            let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
+            let location = args
+                .get("location")
+                .and_then(|v| v.as_str())
+                .unwrap_or("remote");
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or("path required")?;
             validate_tool_path(path, "path")?;
 
             if location == "local" {
@@ -6541,12 +8046,16 @@ async fn ai_execute_tool(
                 // AI tool preview: use FTP manager directly (provider path handled by Tauri command)
                 let content = {
                     let mut ftp = state.ftp_manager.lock().await;
-                    let temp = std::env::temp_dir().join(format!("aeroftp_ai_preview_{}", chrono::Utc::now().timestamp_millis()));
+                    let temp = std::env::temp_dir().join(format!(
+                        "aeroftp_ai_preview_{}",
+                        chrono::Utc::now().timestamp_millis()
+                    ));
                     let temp_str = temp.to_string_lossy().to_string();
                     ftp.download_file_with_progress(path, &temp_str, |_| true)
                         .await
                         .map_err(|e| format!("Failed to download: {}", e))?;
-                    let c = tokio::fs::read_to_string(&temp).await
+                    let c = tokio::fs::read_to_string(&temp)
+                        .await
                         .map_err(|e| format!("Failed to read: {}", e))?;
                     let _ = tokio::fs::remove_file(&temp).await;
                     c
@@ -6557,11 +8066,17 @@ async fn ai_execute_tool(
                     "truncated": content.len() > 5000
                 }))
             }
-        },
-        
+        }
+
         "create_folder" => {
-            let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
-            let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
+            let location = args
+                .get("location")
+                .and_then(|v| v.as_str())
+                .unwrap_or("remote");
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or("path required")?;
             validate_tool_path(path, "path")?;
 
             if location == "local" {
@@ -6573,12 +8088,20 @@ async fn ai_execute_tool(
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            Ok(serde_json::json!({ "success": true, "message": format!("Created folder: {}", path) }))
-        },
-        
+            Ok(
+                serde_json::json!({ "success": true, "message": format!("Created folder: {}", path) }),
+            )
+        }
+
         "delete_file" => {
-            let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
-            let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
+            let location = args
+                .get("location")
+                .and_then(|v| v.as_str())
+                .unwrap_or("remote");
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or("path required")?;
             validate_tool_path(path, "path")?;
 
             if location == "local" {
@@ -6592,12 +8115,21 @@ async fn ai_execute_tool(
                     .map_err(|e| e.to_string())?;
             }
             Ok(serde_json::json!({ "success": true, "message": format!("Deleted: {}", path) }))
-        },
-        
+        }
+
         "rename_file" => {
-            let location = args.get("location").and_then(|v| v.as_str()).unwrap_or("remote");
-            let old_path = args.get("old_path").and_then(|v| v.as_str()).ok_or("old_path required")?;
-            let new_path = args.get("new_path").and_then(|v| v.as_str()).ok_or("new_path required")?;
+            let location = args
+                .get("location")
+                .and_then(|v| v.as_str())
+                .unwrap_or("remote");
+            let old_path = args
+                .get("old_path")
+                .and_then(|v| v.as_str())
+                .ok_or("old_path required")?;
+            let new_path = args
+                .get("new_path")
+                .and_then(|v| v.as_str())
+                .ok_or("new_path required")?;
             validate_tool_path(old_path, "old_path")?;
             validate_tool_path(new_path, "new_path")?;
 
@@ -6610,27 +8142,49 @@ async fn ai_execute_tool(
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            Ok(serde_json::json!({ "success": true, "message": format!("Renamed {} to {}", old_path, new_path) }))
-        },
-        
+            Ok(
+                serde_json::json!({ "success": true, "message": format!("Renamed {} to {}", old_path, new_path) }),
+            )
+        }
+
         "download_file" => {
-            let remote_path = args.get("remote_path").and_then(|v| v.as_str()).ok_or("remote_path required")?;
-            let local_path = args.get("local_path").and_then(|v| v.as_str()).ok_or("local_path required")?;
+            let remote_path = args
+                .get("remote_path")
+                .and_then(|v| v.as_str())
+                .ok_or("remote_path required")?;
+            let local_path = args
+                .get("local_path")
+                .and_then(|v| v.as_str())
+                .ok_or("local_path required")?;
             validate_tool_path(remote_path, "remote_path")?;
             validate_tool_path(local_path, "local_path")?;
 
-            download_file(app, state.clone(), DownloadParams {
-                remote_path: remote_path.to_string(),
-                local_path: local_path.to_string(),
-                modified: None,
-            }).await.map_err(|e| e.to_string())?;
-            
-            Ok(serde_json::json!({ "success": true, "message": format!("Downloaded {} to {}", remote_path, local_path) }))
-        },
-        
+            download_file(
+                app,
+                state.clone(),
+                DownloadParams {
+                    remote_path: remote_path.to_string(),
+                    local_path: local_path.to_string(),
+                    modified: None,
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+            Ok(
+                serde_json::json!({ "success": true, "message": format!("Downloaded {} to {}", remote_path, local_path) }),
+            )
+        }
+
         "upload_file" => {
-            let local_path = args.get("local_path").and_then(|v| v.as_str()).ok_or("local_path required")?;
-            let remote_path = args.get("remote_path").and_then(|v| v.as_str()).ok_or("remote_path required")?;
+            let local_path = args
+                .get("local_path")
+                .and_then(|v| v.as_str())
+                .ok_or("local_path required")?;
+            let remote_path = args
+                .get("remote_path")
+                .and_then(|v| v.as_str())
+                .ok_or("remote_path required")?;
             validate_tool_path(local_path, "local_path")?;
             validate_tool_path(remote_path, "remote_path")?;
 
@@ -6641,24 +8195,34 @@ async fn ai_execute_tool(
                     .await
                     .map_err(|e| format!("Upload failed: {}", e))?;
             }
-            
-            Ok(serde_json::json!({ "success": true, "message": format!("Uploaded {} to {}", local_path, remote_path) }))
-        },
-        
+
+            Ok(
+                serde_json::json!({ "success": true, "message": format!("Uploaded {} to {}", local_path, remote_path) }),
+            )
+        }
+
         "chmod" => {
-            let path = args.get("path").and_then(|v| v.as_str()).ok_or("path required")?;
-            let mode = args.get("mode").and_then(|v| v.as_str()).ok_or("mode required")?;
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or("path required")?;
+            let mode = args
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .ok_or("mode required")?;
             validate_tool_path(path, "path")?;
             validate_chmod_mode(mode)?;
 
             chmod_remote_file(state.clone(), path.to_string(), mode.to_string())
                 .await
                 .map_err(|e| e.to_string())?;
-            
-            Ok(serde_json::json!({ "success": true, "message": format!("Changed permissions of {} to {}", path, mode) }))
-        },
-        
-        _ => unreachable!() // tool_name already validated against ALLOWED_AI_TOOLS
+
+            Ok(
+                serde_json::json!({ "success": true, "message": format!("Changed permissions of {} to {}", path, mode) }),
+            )
+        }
+
+        _ => unreachable!(), // tool_name already validated against ALLOWED_AI_TOOLS
     }
 }
 
@@ -6706,7 +8270,10 @@ fn restore_file_version(archive_path: String, original_relative: String) -> Resu
         return Err("Invalid archive path: must be within .aeroversions/".to_string());
     }
     // Security: validate original_relative does not escape local_folder (path traversal)
-    if original_relative.contains("..") || original_relative.starts_with('/') || original_relative.starts_with('\\') {
+    if original_relative.contains("..")
+        || original_relative.starts_with('/')
+        || original_relative.starts_with('\\')
+    {
         return Err("Invalid restore target: path traversal detected".to_string());
     }
     let target = config.local_folder.join(&original_relative);
@@ -6737,10 +8304,34 @@ fn versions_disk_usage() -> u64 {
     v.disk_usage()
 }
 
+/// Archive a local file before deleting it during sync (backup-before-delete safety net).
+/// Uses TrashCan strategy with 30-day retention, archiving to <sync_root>/.aeroversions/.
+#[tauri::command]
+fn archive_before_sync_delete(
+    sync_root: String,
+    file_path: String,
+    versioning_strategy: Option<String>,
+) -> Result<String, String> {
+    // Security: validate file_path is within sync_root
+    let root = std::path::PathBuf::from(&sync_root);
+    let target = std::path::PathBuf::from(&file_path);
+    if file_path.contains("..") || !target.starts_with(&root) {
+        return Err("Invalid path: must be within sync root".to_string());
+    }
+    let v = sync_versioning::SyncVersioning::new(
+        &root,
+        parse_versioning_strategy(versioning_strategy.as_deref()),
+    );
+    let archived = v.archive(&target)?;
+    Ok(archived.to_string_lossy().to_string())
+}
+
 /// List remote folder tree for the selective sync UI.
 /// Returns a flat list of folder paths with metadata.
 #[tauri::command]
-async fn list_remote_folders_tree(max_depth: Option<u32>) -> Result<Vec<serde_json::Value>, String> {
+async fn list_remote_folders_tree(
+    max_depth: Option<u32>,
+) -> Result<Vec<serde_json::Value>, String> {
     let config = cloud_config::load_cloud_config();
     if !config.enabled {
         return Err("AeroCloud not configured".to_string());
@@ -6748,7 +8339,10 @@ async fn list_remote_folders_tree(max_depth: Option<u32>) -> Result<Vec<serde_js
 
     let max_d = max_depth.unwrap_or(3).min(5);
     let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
-    provider.connect().await.map_err(|e| format!("Connect failed: {}", e))?;
+    provider
+        .connect()
+        .await
+        .map_err(|e| format!("Connect failed: {}", e))?;
 
     let base = &config.remote_folder;
     let mut folders = Vec::new();
@@ -6761,13 +8355,23 @@ async fn list_remote_folders_tree(max_depth: Option<u32>) -> Result<Vec<serde_js
         if provider.cd(&path).await.is_err() {
             continue;
         }
-        let entries = provider.list(".").await.map_err(|e| format!("List failed: {}", e))?;
+        let entries = provider
+            .list(".")
+            .await
+            .map_err(|e| format!("List failed: {}", e))?;
         for entry in entries {
             if !entry.is_dir {
                 continue;
             }
-            let rel_path = if rel.is_empty() { entry.name.clone() } else { format!("{}/{}", rel, entry.name) };
-            let excluded = config.excluded_folders.iter().any(|ef| ef.trim_matches('/') == rel_path);
+            let rel_path = if rel.is_empty() {
+                entry.name.clone()
+            } else {
+                format!("{}/{}", rel, entry.name)
+            };
+            let excluded = config
+                .excluded_folders
+                .iter()
+                .any(|ef| ef.trim_matches('/') == rel_path);
             folders.push(serde_json::json!({
                 "path": rel_path,
                 "name": entry.name,
@@ -6825,8 +8429,10 @@ async fn setup_aerocloud(
     // Save configuration
     cloud_config::save_cloud_config(&config)?;
 
-    info!("AeroCloud setup complete: protocol={}, local={}, remote={}",
-        config.protocol_type, local_folder, remote_folder);
+    info!(
+        "AeroCloud setup complete: protocol={}, local={}, remote={}",
+        config.protocol_type, local_folder, remote_folder
+    );
 
     Ok(config)
 }
@@ -6834,11 +8440,11 @@ async fn setup_aerocloud(
 #[tauri::command]
 fn get_cloud_status() -> CloudSyncStatus {
     let config = cloud_config::load_cloud_config();
-    
+
     if !config.enabled {
         return CloudSyncStatus::NotConfigured;
     }
-    
+
     CloudSyncStatus::Idle {
         last_sync: config.last_sync,
         next_sync: None, // Will be calculated by sync service
@@ -6848,18 +8454,18 @@ fn get_cloud_status() -> CloudSyncStatus {
 #[tauri::command]
 fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
     let mut config = cloud_config::load_cloud_config();
-    
+
     if enabled {
         // Validate before enabling
         cloud_config::validate_config(&config)?;
         cloud_config::ensure_cloud_folder(&config)?;
     }
-    
+
     config.enabled = enabled;
     cloud_config::save_cloud_config(&config)?;
-    
+
     info!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
-    
+
     Ok(config)
 }
 
@@ -6868,17 +8474,19 @@ fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
 #[tauri::command]
 fn generate_share_link(local_path: String) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
-    
+
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
     }
-    
-    let public_base = config.public_url_base.as_ref()
-        .ok_or_else(|| "Public URL not configured. Go to AeroCloud Settings to set your public URL base.".to_string())?;
-    
+
+    let public_base = config.public_url_base.as_ref().ok_or_else(|| {
+        "Public URL not configured. Go to AeroCloud Settings to set your public URL base."
+            .to_string()
+    })?;
+
     let local_folder = config.local_folder.to_string_lossy();
     let local_path_str = local_path.clone();
-    
+
     // Check if file is within AeroCloud folder
     let local_folder_str: &str = local_folder.as_ref();
     if !local_path_str.starts_with(local_folder_str) {
@@ -6890,13 +8498,13 @@ fn generate_share_link(local_path: String) -> Result<String, String> {
         .strip_prefix(local_folder_str)
         .unwrap_or(&local_path_str)
         .trim_start_matches('/');
-    
+
     // Construct public URL
     let base = public_base.trim_end_matches('/');
     let url = format!("{}/{}", base, relative_path);
-    
+
     info!("Generated share link: {}", url);
-    
+
     Ok(url)
 }
 
@@ -6904,32 +8512,34 @@ fn generate_share_link(local_path: String) -> Result<String, String> {
 #[tauri::command]
 fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
-    
+
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
     }
-    
-    let public_base = config.public_url_base.as_ref()
-        .ok_or_else(|| "Public URL not configured. Go to AeroCloud Settings to set your public URL base.".to_string())?;
-    
+
+    let public_base = config.public_url_base.as_ref().ok_or_else(|| {
+        "Public URL not configured. Go to AeroCloud Settings to set your public URL base."
+            .to_string()
+    })?;
+
     // Check if path is within AeroCloud remote folder
     let remote_folder = config.remote_folder.trim_end_matches('/');
     if !remote_path.starts_with(remote_folder) {
         return Err("File is not in AeroCloud remote folder".to_string());
     }
-    
+
     // Get relative path from remote folder
     let relative_path = remote_path
         .strip_prefix(remote_folder)
         .unwrap_or(&remote_path)
         .trim_start_matches('/');
-    
+
     // Construct public URL
     let base = public_base.trim_end_matches('/');
     let url = format!("{}/{}", base, relative_path);
-    
+
     info!("Generated share link (remote): {}", url);
-    
+
     Ok(url)
 }
 
@@ -6994,12 +8604,17 @@ fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn trigger_cloud_sync(app: AppHandle, _state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn trigger_cloud_sync(
+    app: AppHandle,
+    _state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     info!("AeroCloud: manual sync started");
-    info!("Config - enabled: {}, local: {:?}, remote: {}, protocol: {}",
-        config.enabled, config.local_folder, config.remote_folder, config.protocol_type);
+    info!(
+        "Config - enabled: {}, local: {:?}, remote: {}, protocol: {}",
+        config.enabled, config.local_folder, config.remote_folder, config.protocol_type
+    );
 
     if !config.enabled {
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
@@ -7012,12 +8627,19 @@ async fn trigger_cloud_sync(app: AppHandle, _state: tauri::State<'_, AppState>) 
         Ok(result) => {
             // Update global last sync timestamp so watcher cooldown applies
             LAST_SYNC_EPOCH.store(
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
                 Ordering::SeqCst,
             );
             let summary = format!(
                 "Sync complete: {} uploaded, {} downloaded, {} conflicts, {} skipped, {} errors",
-                result.uploaded, result.downloaded, result.conflicts, result.skipped, result.errors.len()
+                result.uploaded,
+                result.downloaded,
+                result.conflicts,
+                result.skipped,
+                result.errors.len()
             );
             info!("{}", summary);
             if !result.errors.is_empty() {
@@ -7068,10 +8690,13 @@ async fn background_sync_worker(app: AppHandle) {
             match fw.start(&local_path, file_watcher::WatcherMode::Auto) {
                 Ok(()) => {
                     info!("Filesystem watcher active on {}", local_path.display());
-                    let _ = app.emit("cloud-watcher-status", serde_json::json!({
-                        "active": true,
-                        "path": local_path.to_string_lossy(),
-                    }));
+                    let _ = app.emit(
+                        "cloud-watcher-status",
+                        serde_json::json!({
+                            "active": true,
+                            "path": local_path.to_string_lossy(),
+                        }),
+                    );
                     watcher = Some(fw);
                 }
                 Err(e) => {
@@ -7099,10 +8724,13 @@ async fn background_sync_worker(app: AppHandle) {
             info!("AeroCloud disabled, stopping background sync");
             BACKGROUND_SYNC_RUNNING.store(false, Ordering::SeqCst);
             tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
-            let _ = app.emit("cloud-sync-status", serde_json::json!({
-                "status": "disabled",
-                "message": "AeroCloud is disabled"
-            }));
+            let _ = app.emit(
+                "cloud-sync-status",
+                serde_json::json!({
+                    "status": "disabled",
+                    "message": "AeroCloud is disabled"
+                }),
+            );
             break;
         }
 
@@ -7121,12 +8749,15 @@ async fn background_sync_worker(app: AppHandle) {
 
             // Emit schedule countdown to frontend
             if let Some(next_secs) = schedule.next_sync_in() {
-                let _ = app.emit("cloud-sync-schedule", serde_json::json!({
-                    "next_sync_in_secs": next_secs,
-                    "enabled": schedule.enabled,
-                    "paused": schedule.paused,
-                    "in_time_window": schedule.is_in_time_window(),
-                }));
+                let _ = app.emit(
+                    "cloud-sync-schedule",
+                    serde_json::json!({
+                        "next_sync_in_secs": next_secs,
+                        "enabled": schedule.enabled,
+                        "paused": schedule.paused,
+                        "in_time_window": schedule.is_in_time_window(),
+                    }),
+                );
             }
 
             // Compute sleep duration: min of scheduler interval and 5s poll
@@ -7205,35 +8836,51 @@ async fn background_sync_worker(app: AppHandle) {
             transfer_pool::SyncTrigger::Stop => break,
         };
 
-        info!("Background sync: starting cycle (trigger: {})", trigger_label);
+        info!(
+            "Background sync: starting cycle (trigger: {})",
+            trigger_label
+        );
 
         // Update tray badge and emit status
         tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Syncing);
-        let _ = app.emit("cloud-sync-status", serde_json::json!({
-            "status": "syncing",
-            "message": "Syncing...",
-            "trigger": trigger_label,
-        }));
+        let _ = app.emit(
+            "cloud-sync-status",
+            serde_json::json!({
+                "status": "syncing",
+                "message": "Syncing...",
+                "trigger": trigger_label,
+            }),
+        );
 
         {
             let local_folder = std::path::Path::new(&config.local_folder);
-            sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Syncing).await;
+            sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Syncing)
+                .await;
         }
 
         match perform_background_sync(&config).await {
             Ok(result) => {
-                info!("Background sync completed: {} uploaded, {} downloaded, {} errors",
-                    result.uploaded, result.downloaded, result.errors.len());
+                info!(
+                    "Background sync completed: {} uploaded, {} downloaded, {} errors",
+                    result.uploaded,
+                    result.downloaded,
+                    result.errors.len()
+                );
 
                 // Mark sync completed and drain watcher events generated by the sync itself
                 last_sync_completed = tokio::time::Instant::now();
                 LAST_SYNC_EPOCH.store(
-                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
                     Ordering::SeqCst,
                 );
                 let drained = {
                     let mut count = 0u32;
-                    while watcher_rx.try_recv().is_ok() { count += 1; }
+                    while watcher_rx.try_recv().is_ok() {
+                        count += 1;
+                    }
                     count
                 };
                 if drained > 0 {
@@ -7242,7 +8889,11 @@ async fn background_sync_worker(app: AppHandle) {
 
                 {
                     let local_folder = std::path::Path::new(&config.local_folder);
-                    sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Synced).await;
+                    sync_badge::update_directory_state(
+                        local_folder,
+                        sync_badge::SyncBadgeState::Synced,
+                    )
+                    .await;
                 }
 
                 tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
@@ -7252,10 +8903,13 @@ async fn background_sync_worker(app: AppHandle) {
                 schedule.last_sync = Some(chrono::Utc::now());
                 let _ = sync_scheduler::save_sync_schedule(&schedule);
 
-                let _ = app.emit("cloud-sync-status", serde_json::json!({
-                    "status": "active",
-                    "message": format!("Synced: ↑{} ↓{}", result.uploaded, result.downloaded)
-                }));
+                let _ = app.emit(
+                    "cloud-sync-status",
+                    serde_json::json!({
+                        "status": "active",
+                        "message": format!("Synced: ↑{} ↓{}", result.uploaded, result.downloaded)
+                    }),
+                );
                 let _ = app.emit("cloud_sync_complete", &result);
             }
             Err(e) => {
@@ -7267,15 +8921,22 @@ async fn background_sync_worker(app: AppHandle) {
 
                 {
                     let local_folder = std::path::Path::new(&config.local_folder);
-                    sync_badge::update_directory_state(local_folder, sync_badge::SyncBadgeState::Error).await;
+                    sync_badge::update_directory_state(
+                        local_folder,
+                        sync_badge::SyncBadgeState::Error,
+                    )
+                    .await;
                 }
 
                 tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Error);
 
-                let _ = app.emit("cloud-sync-status", serde_json::json!({
-                    "status": "error",
-                    "message": format!("Sync failed: {}", e)
-                }));
+                let _ = app.emit(
+                    "cloud-sync-status",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": format!("Sync failed: {}", e)
+                    }),
+                );
 
                 // On error, wait before retrying
                 tokio::time::sleep(Duration::from_secs(30)).await;
@@ -7288,9 +8949,12 @@ async fn background_sync_worker(app: AppHandle) {
         fw.stop();
         info!("Filesystem watcher stopped");
     }
-    let _ = app.emit("cloud-watcher-status", serde_json::json!({
-        "active": false,
-    }));
+    let _ = app.emit(
+        "cloud-watcher-status",
+        serde_json::json!({
+            "active": false,
+        }),
+    );
 
     info!("Background sync worker exited");
 }
@@ -7298,17 +8962,28 @@ async fn background_sync_worker(app: AppHandle) {
 /// Perform a sync cycle with a dedicated provider connection.
 /// Creates the appropriate provider based on config.protocol_type (FTP, SFTP, S3, Google Drive, etc.)
 /// and uses the generic perform_full_sync_with_provider method.
-async fn perform_background_sync(config: &cloud_config::CloudConfig) -> Result<cloud_service::SyncOperationResult, String> {
+async fn perform_background_sync(
+    config: &cloud_config::CloudConfig,
+) -> Result<cloud_service::SyncOperationResult, String> {
     perform_background_sync_with_app(config, None).await
 }
 
-async fn perform_background_sync_with_app(config: &cloud_config::CloudConfig, app: Option<&AppHandle>) -> Result<cloud_service::SyncOperationResult, String> {
+async fn perform_background_sync_with_app(
+    config: &cloud_config::CloudConfig,
+    app: Option<&AppHandle>,
+) -> Result<cloud_service::SyncOperationResult, String> {
     // Prevent concurrent syncs — if one is already running, skip
     if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
         info!("Sync skipped: another sync is already in progress");
         return Ok(cloud_service::SyncOperationResult {
-            uploaded: 0, downloaded: 0, deleted: 0, skipped: 0,
-            conflicts: 0, errors: Vec::new(), duration_secs: 0, file_details: Vec::new(),
+            uploaded: 0,
+            downloaded: 0,
+            deleted: 0,
+            skipped: 0,
+            conflicts: 0,
+            errors: Vec::new(),
+            duration_secs: 0,
+            file_details: Vec::new(),
         });
     }
 
@@ -7317,9 +8992,14 @@ async fn perform_background_sync_with_app(config: &cloud_config::CloudConfig, ap
     result
 }
 
-async fn perform_background_sync_inner(config: &cloud_config::CloudConfig, app: Option<&AppHandle>) -> Result<cloud_service::SyncOperationResult, String> {
-    info!("Background sync: creating {} provider for profile '{}'",
-        config.protocol_type, config.server_profile);
+async fn perform_background_sync_inner(
+    config: &cloud_config::CloudConfig,
+    app: Option<&AppHandle>,
+) -> Result<cloud_service::SyncOperationResult, String> {
+    info!(
+        "Background sync: creating {} provider for profile '{}'",
+        config.protocol_type, config.server_profile
+    );
 
     // Create and connect the provider via multi-protocol factory
     let mut provider = cloud_provider_factory::create_cloud_provider(config).await?;
@@ -7330,7 +9010,9 @@ async fn perform_background_sync_inner(config: &cloud_config::CloudConfig, app: 
     if provider.cd(&config.remote_folder).await.is_err() {
         // Try to create it
         let _ = provider.mkdir(&config.remote_folder).await;
-        provider.cd(&config.remote_folder).await
+        provider
+            .cd(&config.remote_folder)
+            .await
             .map_err(|e| format!("Failed to navigate to remote folder: {}", e))?;
     }
 
@@ -7341,7 +9023,9 @@ async fn perform_background_sync_inner(config: &cloud_config::CloudConfig, app: 
     }
     cloud_service.init(config.clone()).await;
 
-    let result = cloud_service.perform_full_sync_with_provider(provider.as_mut()).await?;
+    let result = cloud_service
+        .perform_full_sync_with_provider(provider.as_mut())
+        .await?;
 
     // Disconnect
     let _ = provider.disconnect().await;
@@ -7382,16 +9066,25 @@ async fn start_background_sync(
     tokio::spawn(async move {
         background_sync_worker(app_clone).await;
     });
-    
-    // Emit status
-    let _ = app.emit("cloud-sync-status", serde_json::json!({
-        "status": "active",
-        "message": "Background sync started"
-    }));
 
-    info!("Background sync started with interval: {}s", config.sync_interval_secs);
-    
-    Ok(format!("Background sync started (interval: {}s)", config.sync_interval_secs))
+    // Emit status
+    let _ = app.emit(
+        "cloud-sync-status",
+        serde_json::json!({
+            "status": "active",
+            "message": "Background sync started"
+        }),
+    );
+
+    info!(
+        "Background sync started with interval: {}s",
+        config.sync_interval_secs
+    );
+
+    Ok(format!(
+        "Background sync started (interval: {}s)",
+        config.sync_interval_secs
+    ))
 }
 
 #[tauri::command]
@@ -7410,10 +9103,13 @@ async fn stop_background_sync(app: AppHandle) -> Result<String, String> {
     tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
 
     // Emit status
-    let _ = app.emit("cloud-sync-status", serde_json::json!({
-        "status": "idle",
-        "message": "Background sync stopped"
-    }));
+    let _ = app.emit(
+        "cloud-sync-status",
+        serde_json::json!({
+            "status": "idle",
+            "message": "Background sync stopped"
+        }),
+    );
 
     info!("Background sync stopped");
 
@@ -7426,11 +9122,18 @@ fn is_background_sync_running() -> bool {
 }
 
 #[tauri::command]
-async fn set_tray_status(app: AppHandle, status: String, tooltip: Option<String>) -> Result<(), String> {
-    let _ = app.emit("tray-status-update", serde_json::json!({
-        "status": status,
-        "tooltip": tooltip.unwrap_or_else(|| "AeroCloud".to_string())
-    }));
+async fn set_tray_status(
+    app: AppHandle,
+    status: String,
+    tooltip: Option<String>,
+) -> Result<(), String> {
+    let _ = app.emit(
+        "tray-status-update",
+        serde_json::json!({
+            "status": status,
+            "tooltip": tooltip.unwrap_or_else(|| "AeroCloud".to_string())
+        }),
+    );
 
     info!("Tray status updated: {}", status);
     Ok(())
@@ -7460,10 +9163,9 @@ async fn save_server_credentials(
         "password": password,
     });
 
-    store.store(
-        &format!("server_{}", profile_name),
-        &value.to_string(),
-    ).map_err(|e| format!("Failed to save credentials: {}", e))?;
+    store
+        .store(&format!("server_{}", profile_name), &value.to_string())
+        .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
     info!("Saved credentials for profile: {}", profile_name);
     Ok(())
@@ -7534,13 +9236,16 @@ async fn get_credential_store_status(
         .map(|accounts| {
             let cats = keystore_export::categorize_accounts(&accounts);
             let count = accounts.len() as u32;
-            (count, Some(VaultCategories {
-                server_credentials: cats.server_credentials,
-                server_profiles: cats.server_profiles,
-                ai_keys: cats.ai_keys,
-                oauth_tokens: cats.oauth_tokens,
-                config_entries: cats.config_entries,
-            }))
+            (
+                count,
+                Some(VaultCategories {
+                    server_credentials: cats.server_credentials,
+                    server_profiles: cats.server_profiles,
+                    ai_keys: cats.ai_keys,
+                    oauth_tokens: cats.oauth_tokens,
+                    config_entries: cats.config_entries,
+                }),
+            )
         })
         .unwrap_or((0, None));
 
@@ -7558,7 +9263,8 @@ async fn get_credential_store_status(
 async fn store_credential(account: String, password: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store.store(&account, &password)
+    store
+        .store(&account, &password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
@@ -7566,7 +9272,8 @@ async fn store_credential(account: String, password: String) -> Result<(), Strin
 async fn get_credential(account: String) -> Result<String, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store.get(&account)
+    store
+        .get(&account)
         .map_err(|e| format!("Failed to get credential: {}", e))
 }
 
@@ -7574,7 +9281,8 @@ async fn get_credential(account: String) -> Result<String, String> {
 async fn delete_credential(account: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store.delete(&account)
+    store
+        .delete(&account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
@@ -7592,7 +9300,8 @@ async fn unlock_credential_store(
 
     // A2-08: Step 1: Verify master password WITHOUT caching vault key.
     // The vault key is only cached after TOTP verification succeeds.
-    let (vault_path, vault_key) = match credential_store::CredentialStore::verify_master(&password) {
+    let (vault_path, vault_key) = match credential_store::CredentialStore::verify_master(&password)
+    {
         Ok(result) => {
             state.reset_throttle();
             result
@@ -7618,18 +9327,16 @@ async fn unlock_credential_store(
     if let Some(secret) = totp_secret {
         if !secret.is_empty() {
             // TOTP is enabled — load secret into state and verify code
-            totp::load_secret_internal(&totp_state, &secret)
-                .map_err(|e| {
-                    state.set_locked(true);
-                    format!("Failed to load TOTP secret: {}", e)
-                })?;
+            totp::load_secret_internal(&totp_state, &secret).map_err(|e| {
+                state.set_locked(true);
+                format!("Failed to load TOTP secret: {}", e)
+            })?;
 
             match totp_code {
                 Some(ref code) if !code.is_empty() => {
-                    let valid = totp::verify_internal(&totp_state, code)
-                        .inspect_err(|_e| {
-                            state.set_locked(true);
-                        })?;
+                    let valid = totp::verify_internal(&totp_state, code).inspect_err(|_e| {
+                        state.set_locked(true);
+                    })?;
                     if !valid {
                         state.set_locked(true);
                         return Err("2FA_INVALID".to_string());
@@ -7689,10 +9396,7 @@ async fn disable_master_password(
 }
 
 #[tauri::command]
-async fn change_master_password(
-    old_password: String,
-    new_password: String,
-) -> Result<(), String> {
+async fn change_master_password(old_password: String, new_password: String) -> Result<(), String> {
     credential_store::CredentialStore::change_master_password(&old_password, &new_password)
         .map_err(|e| e.to_string())
 }
@@ -7758,8 +9462,8 @@ async fn export_server_profiles(
     include_credentials: bool,
     file_path: String,
 ) -> Result<profile_export::ExportMetadata, String> {
-    let mut servers: Vec<profile_export::ServerProfileExport> = serde_json::from_str(&servers_json)
-        .map_err(|e| format!("Invalid server data: {}", e))?;
+    let mut servers: Vec<profile_export::ServerProfileExport> =
+        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
 
     // Fetch credentials from secure store if requested
     if include_credentials {
@@ -7786,8 +9490,9 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
 ) -> Result<serde_json::Value, String> {
-    let (servers, metadata) = profile_export::import_profiles(std::path::Path::new(&file_path), &password)
-        .map_err(|e| e.to_string())?;
+    let (servers, metadata) =
+        profile_export::import_profiles(std::path::Path::new(&file_path), &password)
+            .map_err(|e| e.to_string())?;
 
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
@@ -7805,7 +9510,10 @@ async fn import_server_profiles(
             // Vault not ready — credentials cannot be stored
             let cred_count = servers.iter().filter(|s| s.credential.is_some()).count();
             if cred_count > 0 {
-                cred_errors.push(format!("Vault not ready, {} credentials not stored", cred_count));
+                cred_errors.push(format!(
+                    "Vault not ready, {} credentials not stored",
+                    cred_count
+                ));
             }
         }
     }
@@ -7815,23 +9523,26 @@ async fn import_server_profiles(
 
     // H16 fix: Redact credentials before returning to renderer.
     // Only return non-sensitive fields + a boolean flag indicating stored credentials.
-    let redacted_servers: Vec<serde_json::Value> = servers.iter().map(|s| {
-        serde_json::json!({
-            "id": s.id,
-            "name": s.name,
-            "host": s.host,
-            "port": s.port,
-            "username": s.username,
-            "protocol": s.protocol,
-            "initialPath": s.initial_path,
-            "localInitialPath": s.local_initial_path,
-            "color": s.color,
-            "lastConnected": s.last_connected,
-            "options": s.options,
-            "providerId": s.provider_id,
-            "hasStoredCredential": s.credential.is_some(),
+    let redacted_servers: Vec<serde_json::Value> = servers
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "host": s.host,
+                "port": s.port,
+                "username": s.username,
+                "protocol": s.protocol,
+                "initialPath": s.initial_path,
+                "localInitialPath": s.local_initial_path,
+                "color": s.color,
+                "lastConnected": s.last_connected,
+                "options": s.options,
+                "providerId": s.provider_id,
+                "hasStoredCredential": s.credential.is_some(),
+            })
         })
-    }).collect();
+        .collect();
 
     let result = serde_json::json!({
         "servers": redacted_servers,
@@ -7842,14 +9553,16 @@ async fn import_server_profiles(
 
 #[tauri::command]
 async fn read_export_metadata(file_path: String) -> Result<profile_export::ExportMetadata, String> {
-    profile_export::read_metadata(std::path::Path::new(&file_path))
-        .map_err(|e| e.to_string())
+    profile_export::read_metadata(std::path::Path::new(&file_path)).map_err(|e| e.to_string())
 }
 
 // ============ Full Keystore Export/Import ============
 
 #[tauri::command]
-async fn export_keystore(password: String, file_path: String) -> Result<keystore_export::KeystoreMetadata, String> {
+async fn export_keystore(
+    password: String,
+    file_path: String,
+) -> Result<keystore_export::KeystoreMetadata, String> {
     keystore_export::export_keystore(&password, std::path::Path::new(&file_path))
         .map_err(|e| e.to_string())
 }
@@ -7862,22 +9575,28 @@ async fn import_keystore(
     merge_strategy: String,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
     let progress_cb = move |phase: &str, current: u32, total: u32| {
-        let _ = app.emit("keystore-import-progress", serde_json::json!({
-            "phase": phase,
-            "current": current,
-            "total": total,
-        }));
+        let _ = app.emit(
+            "keystore-import-progress",
+            serde_json::json!({
+                "phase": phase,
+                "current": current,
+                "total": total,
+            }),
+        );
     };
     keystore_export::import_keystore(
         &password,
         std::path::Path::new(&file_path),
         &merge_strategy,
         Some(&progress_cb),
-    ).map_err(|e| e.to_string())
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::KeystoreMetadata, String> {
+async fn read_keystore_metadata(
+    file_path: String,
+) -> Result<keystore_export::KeystoreMetadata, String> {
     keystore_export::read_keystore_metadata(std::path::Path::new(&file_path))
         .map_err(|e| e.to_string())
 }
@@ -7886,27 +9605,56 @@ async fn read_keystore_metadata(file_path: String) -> Result<keystore_export::Ke
 // Cannot make #[tauri::command] functions pub (Tauri 2 macro conflict),
 // so we expose thin wrappers that ai_tools.rs can call via crate::
 
-pub async fn compress_files_core(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+pub async fn compress_files_core(
+    paths: Vec<String>,
+    output_path: String,
+    password: Option<String>,
+    compression_level: Option<i64>,
+) -> Result<String, String> {
     compress_files(paths, output_path, password, compression_level).await
 }
 
-pub async fn extract_archive_core(archive_path: String, output_dir: String, create_subfolder: bool, password: Option<String>) -> Result<String, String> {
+pub async fn extract_archive_core(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+    password: Option<String>,
+) -> Result<String, String> {
     extract_archive(archive_path, output_dir, create_subfolder, password).await
 }
 
-pub async fn compress_7z_core(paths: Vec<String>, output_path: String, password: Option<String>, compression_level: Option<i64>) -> Result<String, String> {
+pub async fn compress_7z_core(
+    paths: Vec<String>,
+    output_path: String,
+    password: Option<String>,
+    compression_level: Option<i64>,
+) -> Result<String, String> {
     compress_7z(paths, output_path, password, compression_level).await
 }
 
-pub async fn extract_7z_core(archive_path: String, output_dir: String, password: Option<String>, create_subfolder: bool) -> Result<String, String> {
+pub async fn extract_7z_core(
+    archive_path: String,
+    output_dir: String,
+    password: Option<String>,
+    create_subfolder: bool,
+) -> Result<String, String> {
     extract_7z(archive_path, output_dir, password, create_subfolder).await
 }
 
-pub async fn compress_tar_core(paths: Vec<String>, output_path: String, format: String, compression_level: Option<i64>) -> Result<String, String> {
+pub async fn compress_tar_core(
+    paths: Vec<String>,
+    output_path: String,
+    format: String,
+    compression_level: Option<i64>,
+) -> Result<String, String> {
     compress_tar(paths, output_path, format, compression_level).await
 }
 
-pub async fn extract_tar_core(archive_path: String, output_dir: String, create_subfolder: bool) -> Result<String, String> {
+pub async fn extract_tar_core(
+    archive_path: String,
+    output_dir: String,
+    create_subfolder: bool,
+) -> Result<String, String> {
     extract_tar(archive_path, output_dir, create_subfolder).await
 }
 
@@ -7914,7 +9662,7 @@ pub async fn extract_tar_core(archive_path: String, output_dir: String, create_s
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     // Fix WebKitGTK rendering issues on Linux: disable DMA-BUF renderer
     // which causes canvas/WebGL artifacts in Monaco and xterm.js.
@@ -7965,9 +9713,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -7985,7 +9735,8 @@ pub fn run() {
                     let meta = std::fs::symlink_metadata(&canonical);
                     if meta.map(|m| m.is_file()).unwrap_or(false) {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit("vault-open-file", canonical.to_string_lossy().to_string());
+                            let _ = window
+                                .emit("vault-open-file", canonical.to_string_lossy().to_string());
                         }
                     }
                 }
@@ -8003,7 +9754,7 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
-            use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
             use tauri_plugin_window_state::{StateFlags, WindowExt};
 
             // Ensure AppConfig directory exists with restricted permissions (0700)
@@ -8012,7 +9763,10 @@ pub fn run() {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    let _ = std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o700));
+                    let _ = std::fs::set_permissions(
+                        &config_dir,
+                        std::fs::Permissions::from_mode(0o700),
+                    );
                 }
             }
 
@@ -8027,8 +9781,7 @@ pub fn run() {
                 Err(e) => {
                     log::error!("Chat history DB init failed: {e}");
                     // Fallback: in-memory DB so commands don't panic
-                    let conn = rusqlite::Connection::open_in_memory()
-                        .expect("in-memory SQLite");
+                    let conn = rusqlite::Connection::open_in_memory().expect("in-memory SQLite");
                     let _ = chat_history::init_db_schema(&conn);
                     app.manage(chat_history::ChatHistoryDb(std::sync::Mutex::new(conn)));
                 }
@@ -8041,8 +9794,7 @@ pub fn run() {
                 }
                 Err(e) => {
                     log::error!("File tags DB init failed: {e}");
-                    let conn = rusqlite::Connection::open_in_memory()
-                        .expect("in-memory SQLite");
+                    let conn = rusqlite::Connection::open_in_memory().expect("in-memory SQLite");
                     let _ = file_tags::init_db_schema(&conn);
                     app.manage(file_tags::FileTagsDb(std::sync::Mutex::new(conn)));
                 }
@@ -8055,8 +9807,7 @@ pub fn run() {
                 }
                 Err(e) => {
                     log::error!("Agent memory DB init failed: {e}");
-                    let conn = rusqlite::Connection::open_in_memory()
-                        .expect("in-memory SQLite");
+                    let conn = rusqlite::Connection::open_in_memory().expect("in-memory SQLite");
                     let _ = agent_memory_db::init_db_schema(&conn);
                     app.manage(agent_memory_db::AgentMemoryDb(std::sync::Mutex::new(conn)));
                 }
@@ -8075,8 +9826,8 @@ pub fn run() {
                     }
                     Err(e) => {
                         log::error!("Vault history DB open failed: {e}");
-                        let conn = rusqlite::Connection::open_in_memory()
-                            .expect("in-memory SQLite");
+                        let conn =
+                            rusqlite::Connection::open_in_memory().expect("in-memory SQLite");
                         if let Err(e2) = vault_history::init_db(&conn) {
                             log::error!("Vault history in-memory schema init failed: {e2}");
                         }
@@ -8114,28 +9865,49 @@ pub fn run() {
             // Create menu items
             let quit = MenuItem::with_id(app, "quit", "Quit AeroFTP", true, accel("CmdOrCtrl+Q"))?;
             let about = MenuItem::with_id(app, "about", "About AeroFTP", true, None::<&str>)?;
-            let settings = MenuItem::with_id(app, "settings", "Settings...", true, accel("CmdOrCtrl+,"))?;
+            let settings =
+                MenuItem::with_id(app, "settings", "Settings...", true, accel("CmdOrCtrl+,"))?;
             let refresh = MenuItem::with_id(app, "refresh", "Refresh", true, accel("CmdOrCtrl+R"))?;
-            let shortcuts = MenuItem::with_id(app, "shortcuts", "Keyboard Shortcuts", true, accel("F1"))?;
-            let support = MenuItem::with_id(app, "support", "Support Development ❤️", true, None::<&str>)?;
-            
+            let shortcuts =
+                MenuItem::with_id(app, "shortcuts", "Keyboard Shortcuts", true, accel("F1"))?;
+            let support =
+                MenuItem::with_id(app, "support", "Support Development ❤️", true, None::<&str>)?;
+
             // File menu
             let file_menu = Submenu::with_items(
                 app,
                 "File",
                 true,
                 &[
-                    &MenuItem::with_id(app, "new_folder", "New Folder", true, accel("CmdOrCtrl+N"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "new_folder",
+                        "New Folder",
+                        true,
+                        accel("CmdOrCtrl+N"),
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &settings,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_debug_mode", "Debug Mode", true, accel("CmdOrCtrl+Shift+F12"))?,
-                    &MenuItem::with_id(app, "show_dependencies", "Dependencies...", true, None::<&str>)?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_debug_mode",
+                        "Debug Mode",
+                        true,
+                        accel("CmdOrCtrl+Shift+F12"),
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "show_dependencies",
+                        "Dependencies...",
+                        true,
+                        None::<&str>,
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &quit,
                 ],
             )?;
-            
+
             // Edit menu
             let edit_menu = Submenu::with_items(
                 app,
@@ -8155,38 +9927,75 @@ pub fn run() {
                     &MenuItem::with_id(app, "delete", "Delete", true, accel("Delete"))?,
                 ],
             )?;
-            
+
             // View menu
             let devtools_submenu = Submenu::with_items(
                 app,
                 "DevTools",
                 true,
                 &[
-                    &MenuItem::with_id(app, "toggle_devtools", "Toggle DevTools", true, accel("CmdOrCtrl+Shift+D"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_devtools",
+                        "Toggle DevTools",
+                        true,
+                        accel("CmdOrCtrl+Shift+D"),
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_editor", "Toggle Editor", true, accel("CmdOrCtrl+1"))?,
-                    &MenuItem::with_id(app, "toggle_terminal", "Toggle Terminal", true, accel("CmdOrCtrl+2"))?,
-                    &MenuItem::with_id(app, "toggle_agent", "Toggle Agent", true, accel("CmdOrCtrl+3"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_editor",
+                        "Toggle Editor",
+                        true,
+                        accel("CmdOrCtrl+1"),
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_terminal",
+                        "Toggle Terminal",
+                        true,
+                        accel("CmdOrCtrl+2"),
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_agent",
+                        "Toggle Agent",
+                        true,
+                        accel("CmdOrCtrl+3"),
+                    )?,
                 ],
             )?;
-            
+
             let view_menu = Submenu::with_items(
                 app,
                 "View",
                 true,
                 &[
-                    &MenuItem::with_id(app, "toggle_aerofile", "AeroFile", true, accel("CmdOrCtrl+L"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_aerofile",
+                        "AeroFile",
+                        true,
+                        accel("CmdOrCtrl+L"),
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &refresh,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, accel("CmdOrCtrl+T"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "toggle_theme",
+                        "Toggle Theme",
+                        true,
+                        accel("CmdOrCtrl+T"),
+                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &devtools_submenu,
                 ],
             )?;
-            
+
             // Help menu
-            let check_update = MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
+            let check_update =
+                MenuItem::with_id(app, "check_update", "Check for Updates", true, None::<&str>)?;
 
             let help_menu = Submenu::with_items(
                 app,
@@ -8202,18 +10011,28 @@ pub fn run() {
                     &about,
                 ],
             )?;
-            
+
             // === Splash Screen ===
             // Create splash BEFORE setting the global app menu so it never inherits it.
             // The main window is hidden (visible: false in tauri.conf.json) until
             // the frontend signals readiness via the `app_ready` command.
             let splash_url = {
                 #[cfg(dev)]
-                { WebviewUrl::External(url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap()) }
+                {
+                    WebviewUrl::External(
+                        url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap(),
+                    )
+                }
                 #[cfg(all(not(dev), target_os = "linux"))]
-                { WebviewUrl::External(url::Url::parse(&format!("http://127.0.0.1:{}/splash.html", port)).unwrap()) }
+                {
+                    WebviewUrl::External(
+                        url::Url::parse(&format!("http://127.0.0.1:{}/splash.html", port)).unwrap(),
+                    )
+                }
                 #[cfg(all(not(dev), not(target_os = "linux")))]
-                { WebviewUrl::App("splash.html".into()) }
+                {
+                    WebviewUrl::App("splash.html".into())
+                }
             };
 
             let _splash = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
@@ -8247,7 +10066,9 @@ pub fn run() {
                     let _ = splash.close();
                 }
                 // Set deferred menu
-                if let Some(deferred) = app_handle.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>() {
+                if let Some(deferred) = app_handle
+                    .try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
+                {
                     if let Ok(mut guard) = deferred.lock() {
                         if let Some(menu) = guard.take() {
                             let _ = app_handle.set_menu(menu);
@@ -8265,33 +10086,52 @@ pub fn run() {
             });
             // ============ System Tray Icon ============
             // Create tray menu
-            let tray_sync_now = MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
-            let tray_pause = MenuItem::with_id(app, "tray_pause", "Pause Sync", true, None::<&str>)?;
-            let tray_open_folder = MenuItem::with_id(app, "tray_open_folder", "Open Cloud Folder", true, None::<&str>)?;
-            let tray_check_update = MenuItem::with_id(app, "tray_check_update", "Check for Updates", true, None::<&str>)?;
+            let tray_sync_now =
+                MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
+            let tray_pause =
+                MenuItem::with_id(app, "tray_pause", "Pause Sync", true, None::<&str>)?;
+            let tray_open_folder = MenuItem::with_id(
+                app,
+                "tray_open_folder",
+                "Open Cloud Folder",
+                true,
+                None::<&str>,
+            )?;
+            let tray_check_update = MenuItem::with_id(
+                app,
+                "tray_check_update",
+                "Check for Updates",
+                true,
+                None::<&str>,
+            )?;
             let tray_separator = PredefinedMenuItem::separator(app)?;
-            let tray_show = MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?;
+            let tray_show =
+                MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?;
             let tray_quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
-            
-            let tray_menu = Menu::with_items(app, &[
-                &tray_sync_now,
-                &tray_pause,
-                &tray_separator,
-                &tray_open_folder,
-                &tray_check_update,
-                &PredefinedMenuItem::separator(app)?,
-                &tray_show,
-                &tray_quit,
-            ])?;
-            
+
+            let tray_menu = Menu::with_items(
+                app,
+                &[
+                    &tray_sync_now,
+                    &tray_pause,
+                    &tray_separator,
+                    &tray_open_folder,
+                    &tray_check_update,
+                    &PredefinedMenuItem::separator(app)?,
+                    &tray_show,
+                    &tray_quit,
+                ],
+            )?;
+
             // Build tray icon using white monochrome icon (standard for system tray)
-            let tray_png = image::load_from_memory(
-                include_bytes!("../../icons/AeroFTP_simbol_white_120x120.png")
-            ).expect("Failed to decode tray icon");
+            let tray_png = image::load_from_memory(include_bytes!(
+                "../../icons/AeroFTP_simbol_white_120x120.png"
+            ))
+            .expect("Failed to decode tray icon");
             let tray_rgba = tray_png.to_rgba8();
             let (w, h) = tray_rgba.dimensions();
             let icon = tauri::image::Image::new_owned(tray_rgba.into_raw(), w, h);
-            
+
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .tooltip("AeroCloud - Idle")
@@ -8326,7 +10166,12 @@ pub fn run() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     // Click on tray icon shows the window
-                    if let tauri::tray::TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         if let Some(window) = tray.app_handle().get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -8334,7 +10179,7 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            
+
             info!("System tray icon initialized");
 
             // Handle .aerovault file passed as CLI argument on first launch
@@ -8485,6 +10330,9 @@ pub fn run() {
             import_sync_template_cmd,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,
+            load_sync_snapshot_cmd,
+            restore_sync_snapshot_cmd,
+            detect_renames_cmd,
             delete_sync_snapshot_cmd,
             delta_sync_analyze,
             sync_canary_run,
@@ -8508,6 +10356,7 @@ pub fn run() {
             restore_file_version,
             cleanup_versions,
             versions_disk_usage,
+            archive_before_sync_delete,
             generate_share_link,
             generate_share_link_remote,
             generate_server_share_link,

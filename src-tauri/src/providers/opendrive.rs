@@ -18,9 +18,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use url::form_urlencoded;
 
 use super::{
-    response_bytes_with_limit, sanitize_api_error, MAX_DOWNLOAD_TO_BYTES, ProviderConfig,
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    response_bytes_with_limit, sanitize_api_error, ProviderConfig, ProviderError, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
 
 #[derive(Debug, Clone)]
@@ -309,7 +309,10 @@ fn parse_boolish(value: Option<&serde_json::Value>) -> bool {
         Some(serde_json::Value::Bool(b)) => *b,
         Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) != 0,
         Some(serde_json::Value::String(s)) => {
-            matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+            matches!(
+                s.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
         }
         _ => false,
     }
@@ -415,8 +418,10 @@ impl OpenDriveProvider {
         }
         // OpenDrive sessions expire after ~60 min. Refresh proactively at 50 min.
         if self.last_activity.elapsed() > std::time::Duration::from_secs(50 * 60) {
-            tracing::info!("[OpenDrive] Session likely expired ({}s idle), re-authenticating",
-                self.last_activity.elapsed().as_secs());
+            tracing::info!(
+                "[OpenDrive] Session likely expired ({}s idle), re-authenticating",
+                self.last_activity.elapsed().as_secs()
+            );
             self.reauth().await?;
         }
         Ok(())
@@ -436,9 +441,9 @@ impl OpenDriveProvider {
             )
             .await?;
 
-        self.session_id = response
-            .session_id
-            .ok_or_else(|| ProviderError::AuthenticationFailed("Missing SessionID on reauth".into()))?;
+        self.session_id = response.session_id.ok_or_else(|| {
+            ProviderError::AuthenticationFailed("Missing SessionID on reauth".into())
+        })?;
         self.account_name = response.user_name.or(self.account_name.take());
         self.user_plan = response.user_plan.or(self.user_plan.take());
         self.last_activity = std::time::Instant::now();
@@ -457,7 +462,11 @@ impl OpenDriveProvider {
         if path.starts_with('/') {
             normalize_path(path)
         } else {
-            normalize_path(&format!("{}/{}", self.current_path.trim_end_matches('/'), path))
+            normalize_path(&format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                path
+            ))
         }
     }
 
@@ -509,7 +518,10 @@ impl OpenDriveProvider {
         let resp = self
             .client
             .post(self.endpoint(endpoint))
-            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
             .body(body)
             .send()
             .await
@@ -524,7 +536,11 @@ impl OpenDriveProvider {
             .map_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
-    async fn post_form_unit(&self, endpoint: &str, params: &[(&str, String)]) -> Result<(), ProviderError> {
+    async fn post_form_unit(
+        &self,
+        endpoint: &str,
+        params: &[(&str, String)],
+    ) -> Result<(), ProviderError> {
         let body = {
             let mut serializer = form_urlencoded::Serializer::new(String::new());
             for (key, value) in params {
@@ -536,7 +552,10 @@ impl OpenDriveProvider {
         let resp = self
             .client
             .post(self.endpoint(endpoint))
-            .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
             .body(body)
             .send()
             .await
@@ -584,8 +603,11 @@ impl OpenDriveProvider {
     }
 
     async fn folder_info(&self, folder_id: &str) -> Result<FolderInfoResponse, ProviderError> {
-        self.get_json(&self.endpoint(&format!("folder/info.json/{}/{}", self.session_id, folder_id)))
-            .await
+        self.get_json(&self.endpoint(&format!(
+            "folder/info.json/{}/{}",
+            self.session_id, folder_id
+        )))
+        .await
     }
 
     async fn session_info(&self) -> Result<SessionInfoResponse, ProviderError> {
@@ -598,12 +620,21 @@ impl OpenDriveProvider {
             .await
     }
 
-    async fn list_folder_response(&self, folder_id: &str) -> Result<FolderListResponse, ProviderError> {
-        self.get_json(&self.endpoint(&format!("folder/list.json/{}/{}", self.session_id, folder_id)))
-            .await
+    async fn list_folder_response(
+        &self,
+        folder_id: &str,
+    ) -> Result<FolderListResponse, ProviderError> {
+        self.get_json(&self.endpoint(&format!(
+            "folder/list.json/{}/{}",
+            self.session_id, folder_id
+        )))
+        .await
     }
 
-    async fn find_file_in_parent_by_name(&self, path: &str) -> Result<OpenDriveFile, ProviderError> {
+    async fn find_file_in_parent_by_name(
+        &self,
+        path: &str,
+    ) -> Result<OpenDriveFile, ProviderError> {
         let normalized = normalize_path(path)?;
         let (parent_path, file_name) = split_parent_child(&normalized);
         if file_name.is_empty() {
@@ -630,8 +661,9 @@ impl OpenDriveProvider {
         }
 
         let file = self.find_file_in_parent_by_name(&normalized).await?;
-        file.file_id
-            .ok_or_else(|| ProviderError::ParseError("Missing FileId in folder list response".into()))
+        file.file_id.ok_or_else(|| {
+            ProviderError::ParseError("Missing FileId in folder list response".into())
+        })
     }
 
     async fn file_info(&self, file_id: &str) -> Result<FileInfoResponse, ProviderError> {
@@ -677,13 +709,17 @@ impl OpenDriveProvider {
         let mut entry = RemoteEntry::directory(name, path);
         entry.modified = parse_timestamp_to_iso(folder.date_modified.as_ref());
         if let Some(folder_id) = folder.folder_id {
-            entry.metadata.insert("opendrive_folder_id".into(), folder_id);
+            entry
+                .metadata
+                .insert("opendrive_folder_id".into(), folder_id);
         }
         if let Some(link) = folder.link {
             entry.metadata.insert("opendrive_link".into(), link);
         }
         if let Some(encrypted) = folder.encrypted {
-            entry.metadata.insert("opendrive_encrypted".into(), encrypted);
+            entry
+                .metadata
+                .insert("opendrive_encrypted".into(), encrypted);
         }
         entry.metadata.insert(
             "opendrive_access".into(),
@@ -709,16 +745,24 @@ impl OpenDriveProvider {
             entry.metadata.insert("opendrive_link".into(), link);
         }
         if let Some(download_link) = file.download_link {
-            entry.metadata.insert("opendrive_download_link".into(), download_link);
+            entry
+                .metadata
+                .insert("opendrive_download_link".into(), download_link);
         }
         if let Some(streaming_link) = file.streaming_link {
-            entry.metadata.insert("opendrive_streaming_link".into(), streaming_link);
+            entry
+                .metadata
+                .insert("opendrive_streaming_link".into(), streaming_link);
         }
         if let Some(thumb_link) = file.thumb_link {
-            entry.metadata.insert("opendrive_thumb_link".into(), thumb_link);
+            entry
+                .metadata
+                .insert("opendrive_thumb_link".into(), thumb_link);
         }
         if let Some(file_hash) = file.file_hash {
-            entry.metadata.insert("opendrive_file_hash".into(), file_hash);
+            entry
+                .metadata
+                .insert("opendrive_file_hash".into(), file_hash);
         }
         entry.metadata.insert(
             "opendrive_access".into(),
@@ -737,7 +781,10 @@ impl OpenDriveProvider {
         let mut buffer = vec![0_u8; 64 * 1024];
 
         loop {
-            let read = file.read(&mut buffer).await.map_err(ProviderError::IoError)?;
+            let read = file
+                .read(&mut buffer)
+                .await
+                .map_err(ProviderError::IoError)?;
             if read == 0 {
                 break;
             }
@@ -757,7 +804,9 @@ impl OpenDriveProvider {
         require_compression: bool,
     ) -> Result<bool, ProviderError> {
         let (body_bytes, compressed) = if require_compression {
-            let bytes = tokio::fs::read(local_path).await.map_err(ProviderError::IoError)?;
+            let bytes = tokio::fs::read(local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
             let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(6));
             encoder
                 .write_all(&bytes)
@@ -767,7 +816,12 @@ impl OpenDriveProvider {
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             (compressed_bytes, true)
         } else {
-            (tokio::fs::read(local_path).await.map_err(ProviderError::IoError)?, false)
+            (
+                tokio::fs::read(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?,
+                false,
+            )
         };
         let chunk_size = body_bytes.len().to_string();
         let body_part = multipart::Part::bytes(body_bytes).file_name(file_name.to_string());
@@ -866,7 +920,9 @@ impl OpenDriveProvider {
         if let Some(folder_id) = folder.folder_id {
             entry.metadata.insert("opendrive_item_id".into(), folder_id);
         }
-        entry.metadata.insert("opendrive_trash_type".into(), "folder".into());
+        entry
+            .metadata
+            .insert("opendrive_trash_type".into(), "folder".into());
         if let Some(link) = folder.link {
             entry.metadata.insert("opendrive_link".into(), link);
         }
@@ -894,12 +950,16 @@ impl OpenDriveProvider {
         if let Some(file_id) = file.file_id {
             entry.metadata.insert("opendrive_item_id".into(), file_id);
         }
-        entry.metadata.insert("opendrive_trash_type".into(), "file".into());
+        entry
+            .metadata
+            .insert("opendrive_trash_type".into(), "file".into());
         if let Some(link) = file.link {
             entry.metadata.insert("opendrive_link".into(), link);
         }
         if let Some(thumb_link) = file.thumb_link {
-            entry.metadata.insert("opendrive_thumb_link".into(), thumb_link);
+            entry
+                .metadata
+                .insert("opendrive_thumb_link".into(), thumb_link);
         }
         entry.metadata.insert(
             "opendrive_access".into(),
@@ -931,7 +991,11 @@ impl OpenDriveProvider {
         Ok(entries)
     }
 
-    pub async fn restore_from_trash(&mut self, item_id: &str, is_dir: bool) -> Result<(), ProviderError> {
+    pub async fn restore_from_trash(
+        &mut self,
+        item_id: &str,
+        is_dir: bool,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -957,7 +1021,11 @@ impl OpenDriveProvider {
         }
     }
 
-    pub async fn permanent_delete_from_trash(&mut self, item_id: &str, is_dir: bool) -> Result<(), ProviderError> {
+    pub async fn permanent_delete_from_trash(
+        &mut self,
+        item_id: &str,
+        is_dir: bool,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1060,7 +1128,10 @@ impl StorageProvider for OpenDriveProvider {
         let resolved = self.resolve_path(path)?;
         let folder_id = self.folder_id_by_path(&resolved).await?;
         let result: Result<FolderListResponse, _> = self
-            .get_json(&self.endpoint(&format!("folder/list.json/{}/{}", self.session_id, folder_id)))
+            .get_json(&self.endpoint(&format!(
+                "folder/list.json/{}/{}",
+                self.session_id, folder_id
+            )))
             .await;
 
         // Retry once on auth failure (session expired mid-operation)
@@ -1069,8 +1140,11 @@ impl StorageProvider for OpenDriveProvider {
                 tracing::warn!("[OpenDrive] Session expired during list, re-authenticating");
                 self.reauth().await?;
                 let folder_id = self.folder_id_by_path(&resolved).await?;
-                self.get_json(&self.endpoint(&format!("folder/list.json/{}/{}", self.session_id, folder_id)))
-                    .await?
+                self.get_json(&self.endpoint(&format!(
+                    "folder/list.json/{}/{}",
+                    self.session_id, folder_id
+                )))
+                .await?
             }
             other => other?,
         };
@@ -1103,7 +1177,11 @@ impl StorageProvider for OpenDriveProvider {
             return Ok(());
         }
         let (parent, _) = split_parent_child(&self.current_path);
-        self.current_path = if parent.is_empty() { "/".to_string() } else { parent };
+        self.current_path = if parent.is_empty() {
+            "/".to_string()
+        } else {
+            parent
+        };
         Ok(())
     }
 
@@ -1118,8 +1196,9 @@ impl StorageProvider for OpenDriveProvider {
         let resolved = self.resolve_path(remote_path)?;
         let file_id = self.resolve_file_id(&resolved).await?;
 
-        let mut url = reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        let mut url =
+            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
+                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         url.query_pairs_mut()
             .append_pair("session_id", &self.session_id);
 
@@ -1145,7 +1224,10 @@ impl StorageProvider for OpenDriveProvider {
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await.map_err(ProviderError::IoError)?;
+            atomic
+                .write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total);
@@ -1165,8 +1247,9 @@ impl StorageProvider for OpenDriveProvider {
         let resolved = self.resolve_path(remote_path)?;
         let file_id = self.resolve_file_id(&resolved).await?;
 
-        let mut url = reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        let mut url =
+            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
+                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         url.query_pairs_mut()
             .append_pair("session_id", &self.session_id);
 
@@ -1248,7 +1331,9 @@ impl StorageProvider for OpenDriveProvider {
         let temp_location = opened
             .temp_location
             .or(created.temp_location)
-            .ok_or_else(|| ProviderError::ParseError("Missing TempLocation from upload flow".into()))?;
+            .ok_or_else(|| {
+                ProviderError::ParseError("Missing TempLocation from upload flow".into())
+            })?;
         let mut file_compressed = false;
 
         if file_size > 0 {
@@ -1350,7 +1435,9 @@ impl StorageProvider for OpenDriveProvider {
         self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
         if resolved == "/" {
-            return Err(ProviderError::InvalidPath("Cannot remove root folder".into()));
+            return Err(ProviderError::InvalidPath(
+                "Cannot remove root folder".into(),
+            ));
         }
         let folder_id = self.folder_id_by_path(&resolved).await?;
         self.post_form_unit(
@@ -1369,7 +1456,9 @@ impl StorageProvider for OpenDriveProvider {
         let from_resolved = self.resolve_path(from)?;
         let to_resolved = self.resolve_path(to)?;
         if from_resolved == "/" {
-            return Err(ProviderError::InvalidPath("Cannot rename root folder".into()));
+            return Err(ProviderError::InvalidPath(
+                "Cannot rename root folder".into(),
+            ));
         }
 
         let (from_parent_path, _) = split_parent_child(&from_resolved);
@@ -1425,23 +1514,24 @@ impl StorageProvider for OpenDriveProvider {
         let to_parent_id = self.folder_id_by_path(&to_parent_path).await?;
         match self
             .post_form_unit(
-            "file/move_copy.json",
-            &[
-                ("session_id", self.session_id.clone()),
-                ("src_file_id", file_id),
-                ("dst_folder_id", to_parent_id),
-                ("move", "true".to_string()),
-                ("overwrite_if_exists", "true".to_string()),
-                ("new_file_name", to_name),
-            ],
-        )
-        .await
+                "file/move_copy.json",
+                &[
+                    ("session_id", self.session_id.clone()),
+                    ("src_file_id", file_id),
+                    ("dst_folder_id", to_parent_id),
+                    ("move", "true".to_string()),
+                    ("overwrite_if_exists", "true".to_string()),
+                    ("new_file_name", to_name),
+                ],
+            )
+            .await
         {
             Ok(()) => Ok(()),
             Err(ProviderError::InvalidPath(message))
                 if message.contains("Invalid value specified for `move`") =>
             {
-                self.move_file_via_temp_copy(&from_resolved, &to_resolved).await
+                self.move_file_via_temp_copy(&from_resolved, &to_resolved)
+                    .await
             }
             Err(error) => Err(error),
         }
@@ -1486,7 +1576,11 @@ impl StorageProvider for OpenDriveProvider {
         }
         let info: SessionInfoResponse = self.session_info().await?;
         let mut parts = vec!["OpenDrive".to_string()];
-        if let Some(name) = info.drive_name.or(info.user_name).or(self.account_name.clone()) {
+        if let Some(name) = info
+            .drive_name
+            .or(info.user_name)
+            .or(self.account_name.clone())
+        {
             parts.push(name);
         }
         if let Some(plan) = info.user_plan.or(self.user_plan.clone()) {
@@ -1519,7 +1613,9 @@ impl StorageProvider for OpenDriveProvider {
 
         let resolved = self.resolve_path(path)?;
         let expiry = chrono::Utc::now()
-            + chrono::Duration::seconds(options.expires_in_secs.unwrap_or(365 * 24 * 60 * 60) as i64);
+            + chrono::Duration::seconds(
+                options.expires_in_secs.unwrap_or(365 * 24 * 60 * 60) as i64
+            );
         let expiry_date = expiry.format("%Y-%m-%d").to_string();
         let expires_at_str = expiry.to_rfc3339();
 

@@ -28,8 +28,7 @@ use windows::Win32::Storage::FileSystem::{
 use crate::sync_badge::SyncBadgeState;
 
 /// Track registered sync roots so we can clean up on exit
-static REGISTERED_ROOTS: LazyLock<RwLock<Vec<PathBuf>>> =
-    LazyLock::new(|| RwLock::new(Vec::new()));
+static REGISTERED_ROOTS: LazyLock<RwLock<Vec<PathBuf>>> = LazyLock::new(|| RwLock::new(Vec::new()));
 
 /// Register a directory as a Cloud Filter sync root.
 /// This enables Explorer to show native sync status badges for files under this path.
@@ -83,8 +82,7 @@ pub fn unregister_cloud_sync_root(path: &Path) -> Result<(), String> {
     let h_path = HSTRING::from(path_str);
 
     unsafe {
-        CfUnregisterSyncRoot(&h_path)
-            .map_err(|e| format!("CfUnregisterSyncRoot failed: {}", e))?;
+        CfUnregisterSyncRoot(&h_path).map_err(|e| format!("CfUnregisterSyncRoot failed: {}", e))?;
     }
 
     {
@@ -153,7 +151,10 @@ pub fn cleanup_all_roots() -> Result<(), String> {
     }
 
     if errors.is_empty() {
-        info!("All Cloud Filter sync roots cleaned up ({} total)", roots.len());
+        info!(
+            "All Cloud Filter sync roots cleaned up ({} total)",
+            roots.len()
+        );
         Ok(())
     } else {
         Err(format!("{} root(s) failed to deregister", errors.len()))

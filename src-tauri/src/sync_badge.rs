@@ -247,8 +247,7 @@ async fn read_line_limited_generic<R: tokio::io::AsyncBufRead + Unpin>(
             ));
         }
 
-        let s = std::str::from_utf8(&chunk)
-            .map_err(|e| format!("UTF-8 error: {}", e))?;
+        let s = std::str::from_utf8(&chunk).map_err(|e| format!("UTF-8 error: {}", e))?;
         buf.push_str(s);
         total += chunk_len;
         reader.consume(chunk_len);
@@ -409,11 +408,12 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
 
     // Create socket directory
     if let Some(parent) = socket_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create socket dir: {}", e))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create socket dir: {}", e))?;
 
         // Set directory permissions to 0700
-        let metadata = std::fs::metadata(parent)
-            .map_err(|e| format!("Failed to get dir metadata: {}", e))?;
+        let metadata =
+            std::fs::metadata(parent).map_err(|e| format!("Failed to get dir metadata: {}", e))?;
         let mut permissions = metadata.permissions();
         permissions.set_mode(0o700);
         std::fs::set_permissions(parent, permissions)
@@ -424,8 +424,8 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
     let _ = std::fs::remove_file(&socket_path);
 
     // Create Unix socket listener
-    let listener = UnixListener::bind(&socket_path)
-        .map_err(|e| format!("Failed to bind socket: {}", e))?;
+    let listener =
+        UnixListener::bind(&socket_path).map_err(|e| format!("Failed to bind socket: {}", e))?;
 
     // Set socket permissions to 0600
     let metadata = std::fs::metadata(&socket_path)
@@ -597,7 +597,11 @@ pub async fn stop_badge_server() {
     info!("Stopping badge server");
 
     // Send shutdown signal (audit fix GB-005: handle poisoned lock)
-    if let Some(tx) = SHUTDOWN_TX.write().unwrap_or_else(|p| p.into_inner()).take() {
+    if let Some(tx) = SHUTDOWN_TX
+        .write()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    {
         let _ = tx.send(());
     }
 
@@ -618,7 +622,11 @@ pub async fn stop_badge_server() {
 
     info!("Stopping Named Pipe badge server");
 
-    if let Some(tx) = SHUTDOWN_TX.write().unwrap_or_else(|p| p.into_inner()).take() {
+    if let Some(tx) = SHUTDOWN_TX
+        .write()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    {
         let _ = tx.send(());
     }
 
@@ -687,7 +695,6 @@ pub async fn register_sync_root(path: PathBuf) {
         }
     }
 }
-
 
 /// Clear all tracked states
 pub async fn clear_all_states() {
@@ -763,7 +770,14 @@ pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), S
         .ok_or_else(|| "Invalid UTF-8 in path".to_string())?;
 
     let output = std::process::Command::new("gio")
-        .args(["set", path_str, "-t", "stringv", "metadata::emblems", emblem_name])
+        .args([
+            "set",
+            path_str,
+            "-t",
+            "stringv",
+            "metadata::emblems",
+            emblem_name,
+        ])
         .output()
         .map_err(|e| format!("Failed to execute gio: {}", e))?;
 
@@ -826,13 +840,11 @@ pub fn install_shell_extension() -> Result<String, String> {
         .map_err(|e| format!("metadata: {}", e))?
         .permissions();
     perms.set_mode(0o644);
-    std::fs::set_permissions(&nautilus_file, perms)
-        .map_err(|e| format!("permissions: {}", e))?;
+    std::fs::set_permissions(&nautilus_file, perms).map_err(|e| format!("permissions: {}", e))?;
 
     // Nemo
     let nemo_dir = home_path.join(".local/share/nemo-python/extensions");
-    std::fs::create_dir_all(&nemo_dir)
-        .map_err(|e| format!("Failed to create Nemo dir: {}", e))?;
+    std::fs::create_dir_all(&nemo_dir).map_err(|e| format!("Failed to create Nemo dir: {}", e))?;
 
     let nemo_file = nemo_dir.join("aerocloud.py");
     std::fs::write(&nemo_file, nemo_extension)
@@ -842,8 +854,7 @@ pub fn install_shell_extension() -> Result<String, String> {
         .map_err(|e| format!("metadata: {}", e))?
         .permissions();
     perms.set_mode(0o644);
-    std::fs::set_permissions(&nemo_file, perms)
-        .map_err(|e| format!("permissions: {}", e))?;
+    std::fs::set_permissions(&nemo_file, perms).map_err(|e| format!("permissions: {}", e))?;
 
     // Install emblems
     install_emblems(&home_path)?;
@@ -891,7 +902,10 @@ pub fn uninstall_shell_extension() -> Result<String, String> {
 
     uninstall_emblems(&home_path)?;
 
-    Ok("Shell extensions removed. Click \"Restart File Manager\" below or restart it manually.".to_string())
+    Ok(
+        "Shell extensions removed. Click \"Restart File Manager\" below or restart it manually."
+            .to_string(),
+    )
 }
 
 /// Disable FinderSync extension guide (macOS)
@@ -1044,7 +1058,9 @@ pub async fn set_file_badge(path: String, state: String) -> Result<(), String> {
 
     // Also set GIO emblem as fallback (Linux only — gio command doesn't exist on macOS/Windows)
     #[cfg(target_os = "linux")]
-    { let _ = set_gio_emblem(&path_buf, badge_state); }
+    {
+        let _ = set_gio_emblem(&path_buf, badge_state);
+    }
 
     Ok(())
 }
@@ -1059,7 +1075,9 @@ pub async fn clear_file_badge(path: String) -> Result<(), String> {
     }
 
     #[cfg(target_os = "linux")]
-    { let _ = clear_gio_emblem(&path_buf); }
+    {
+        let _ = clear_gio_emblem(&path_buf);
+    }
 
     notify_update(&path_buf).await;
     Ok(())
@@ -1119,7 +1137,10 @@ pub async fn restart_file_manager_cmd() -> Result<String, String> {
     if restarted.is_empty() {
         Ok("No file manager found to restart. Open a folder to load the extensions.".to_string())
     } else {
-        Ok(format!("{} restarted. Open a folder to see the badges!", restarted.join(" & ")))
+        Ok(format!(
+            "{} restarted. Open a folder to see the badges!",
+            restarted.join(" & ")
+        ))
     }
 }
 
@@ -1138,9 +1159,9 @@ pub async fn restart_file_manager_cmd() -> Result<String, String> {
         Ok(s) if s.success() => {
             Ok("Finder restarted. FinderSync extension will reload automatically.".to_string())
         }
-        _ => {
-            Ok("Could not restart Finder. Open a Finder window to reload the extension.".to_string())
-        }
+        _ => Ok(
+            "Could not restart Finder. Open a Finder window to reload the extension.".to_string(),
+        ),
     }
 }
 

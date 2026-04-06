@@ -81,8 +81,7 @@ pub fn export_profiles(
 ) -> Result<ExportMetadata, ExportError> {
     // A2-06: Use strong KDF (128 MiB) — same strength as vault
     let salt = crate::crypto::random_bytes(32);
-    let key = crate::crypto::derive_key_strong(password, &salt)
-        .map_err(ExportError::Encryption)?;
+    let key = crate::crypto::derive_key_strong(password, &salt).map_err(ExportError::Encryption)?;
 
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
@@ -134,13 +133,21 @@ pub fn import_profiles(
     // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
     let key_strong = crate::crypto::derive_key_strong(password, &export_file.salt)
         .map_err(ExportError::Encryption)?;
-    let payload_json = match crate::crypto::decrypt_aes_gcm(&key_strong, &export_file.nonce, &export_file.encrypted_payload) {
+    let payload_json = match crate::crypto::decrypt_aes_gcm(
+        &key_strong,
+        &export_file.nonce,
+        &export_file.encrypted_payload,
+    ) {
         Ok(data) => data,
         Err(_) => {
             let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
                 .map_err(ExportError::Encryption)?;
-            crate::crypto::decrypt_aes_gcm(&key_legacy, &export_file.nonce, &export_file.encrypted_payload)
-                .map_err(|_| ExportError::InvalidPassword)?
+            crate::crypto::decrypt_aes_gcm(
+                &key_legacy,
+                &export_file.nonce,
+                &export_file.encrypted_payload,
+            )
+            .map_err(|_| ExportError::InvalidPassword)?
         }
     };
 

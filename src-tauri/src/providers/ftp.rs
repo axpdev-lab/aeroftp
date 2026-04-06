@@ -6,17 +6,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use std::sync::Arc;
 use async_trait::async_trait;
 use globset::GlobBuilder;
+use std::sync::Arc;
 use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::types::FileType;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, FtpConfig,
-    FtpTlsMode,
-};
+use super::{FtpConfig, FtpTlsMode, ProviderError, ProviderType, RemoteEntry, StorageProvider};
 
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
@@ -72,9 +69,8 @@ impl FtpProvider {
                 .with_custom_certificate_verifier(Arc::new(danger::NoVerifier))
                 .with_no_client_auth()
         } else {
-            let mut root_store = rustls::RootCertStore::from_iter(
-                webpki_roots::TLS_SERVER_ROOTS.iter().cloned()
-            );
+            let mut root_store =
+                rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
             // Load native OS certificate store (Windows/macOS/Linux) so that
             // system-trusted CAs (e.g. Let's Encrypt via Windows cert store,
             // enterprise CAs, custom roots) are accepted alongside the
@@ -82,7 +78,10 @@ impl FtpProvider {
             // store can't be read we still have webpki-roots as fallback.
             let native = rustls_native_certs::load_native_certs();
             if !native.errors.is_empty() {
-                tracing::warn!("[FTP] Errors loading native certificates: {:?}", native.errors);
+                tracing::warn!(
+                    "[FTP] Errors loading native certificates: {:?}",
+                    native.errors
+                );
             }
             let count = native.certs.len();
             let mut added = 0u32;
@@ -100,10 +99,10 @@ impl FtpProvider {
         };
 
         Ok(AsyncRustlsConnector::from(
-            tokio_rustls::TlsConnector::from(Arc::new(config))
+            tokio_rustls::TlsConnector::from(Arc::new(config)),
         ))
     }
-    
+
     /// Parse FTP listing into RemoteEntry
     fn parse_listing(&self, line: &str) -> Option<RemoteEntry> {
         // Try Unix format first, then DOS format
@@ -132,50 +131,53 @@ impl FtpProvider {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| name.to_string())
     }
-    
+
     /// Parse Unix-style listing (ls -l format)
     fn parse_unix_listing(&self, line: &str) -> Option<RemoteEntry> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 9 {
             return None;
         }
-        
+
         let permissions = parts[0];
         let is_dir = permissions.starts_with('d');
         let is_symlink = permissions.starts_with('l');
-        
+
         // Get size (might be in different position depending on format)
         let size: u64 = parts[4].parse().unwrap_or(0);
-        
+
         // Name is everything after the 8th part (to handle spaces in names)
         let name = parts[8..].join(" ");
-        
+
         // Handle symlinks (name -> target)
         let (actual_name, link_target) = if is_symlink && name.contains(" -> ") {
             let parts: Vec<&str> = name.splitn(2, " -> ").collect();
-            (parts[0].to_string(), Some(parts.get(1).unwrap_or(&"").to_string()))
+            (
+                parts[0].to_string(),
+                Some(parts.get(1).unwrap_or(&"").to_string()),
+            )
         } else {
             (name, None)
         };
-        
+
         // Skip . and .. entries
         if actual_name == "." || actual_name == ".." {
             return None;
         }
-        
+
         let path = if self.current_path.ends_with('/') {
             format!("{}{}", self.current_path, actual_name)
         } else {
             format!("{}/{}", self.current_path, actual_name)
         };
-        
+
         // Parse date (parts[5..8] typically contain month day time/year)
         let modified = if parts.len() >= 8 {
             Some(format!("{} {} {}", parts[5], parts[6], parts[7]))
         } else {
             None
         };
-        
+
         Some(RemoteEntry {
             name: actual_name,
             path,
@@ -191,34 +193,38 @@ impl FtpProvider {
             metadata: Default::default(),
         })
     }
-    
+
     /// Parse DOS-style listing (Windows FTP servers)
     fn parse_dos_listing(&self, line: &str) -> Option<RemoteEntry> {
         // DOS format: 01-23-24  10:30AM       <DIR>          folder_name
         // Or:         01-23-24  10:30AM           12345      file.txt
-        
+
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 4 {
             return None;
         }
-        
+
         let is_dir = parts[2] == "<DIR>";
-        let size: u64 = if is_dir { 0 } else { parts[2].parse().unwrap_or(0) };
+        let size: u64 = if is_dir {
+            0
+        } else {
+            parts[2].parse().unwrap_or(0)
+        };
         let name = parts[3..].join(" ");
-        
+
         // Skip . and .. entries
         if name == "." || name == ".." {
             return None;
         }
-        
+
         let path = if self.current_path.ends_with('/') {
             format!("{}{}", self.current_path, name)
         } else {
             format!("{}/{}", self.current_path, name)
         };
-        
+
         let modified = Some(format!("{} {}", parts[0], parts[1]));
-        
+
         Some(RemoteEntry {
             name,
             path,
@@ -298,7 +304,9 @@ impl FtpProvider {
         }
 
         // Skip cdir/pdir (current/parent directory entries)
-        if facts_str.to_lowercase().contains("type=cdir") || facts_str.to_lowercase().contains("type=pdir") {
+        if facts_str.to_lowercase().contains("type=cdir")
+            || facts_str.to_lowercase().contains("type=pdir")
+        {
             return None;
         }
 
@@ -326,8 +334,12 @@ impl FtpProvider {
         if ts.len() >= 14 {
             format!(
                 "{}-{}-{} {}:{}:{}Z",
-                &ts[0..4], &ts[4..6], &ts[6..8],
-                &ts[8..10], &ts[10..12], &ts[12..14]
+                &ts[0..4],
+                &ts[4..6],
+                &ts[6..8],
+                &ts[8..10],
+                &ts[10..12],
+                &ts[12..14]
             )
         } else if ts.len() >= 8 {
             format!("{}-{}-{}", &ts[0..4], &ts[4..6], &ts[6..8])
@@ -339,7 +351,9 @@ impl FtpProvider {
 
 #[async_trait]
 impl StorageProvider for FtpProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         if self.config.tls_mode != FtpTlsMode::None {
@@ -348,11 +362,11 @@ impl StorageProvider for FtpProvider {
             ProviderType::Ftp
         }
     }
-    
+
     fn display_name(&self) -> String {
         format!("{}@{}", self.config.username, self.config.host)
     }
-    
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let addr = format!("{}:{}", self.config.host, self.config.port);
         let domain = self.config.host.clone();
@@ -371,9 +385,9 @@ impl StorageProvider for FtpProvider {
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = self.make_tls_connector()?;
-                stream.into_secure(connector, &domain)
-                    .await
-                    .map_err(|e| ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e)))?
+                stream.into_secure(connector, &domain).await.map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e))
+                })?
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
@@ -381,7 +395,9 @@ impl StorageProvider for FtpProvider {
                 #[allow(deprecated)]
                 AsyncRustlsFtpStream::connect_secure_implicit(&addr, connector, &domain)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e)))?
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e))
+                    })?
             }
             FtpTlsMode::ExplicitIfAvailable => {
                 // A3-02: Try explicit TLS, but NEVER fall back to plaintext silently.
@@ -400,7 +416,9 @@ impl StorageProvider for FtpProvider {
                         tracing::warn!(
                             "SECURITY: TLS upgrade failed for {}:{} ({}). \
                              Refusing to send credentials over plaintext.",
-                            self.config.host, self.config.port, e
+                            self.config.host,
+                            self.config.port,
+                            e
                         );
                         return Err(ProviderError::ConnectionFailed(format!(
                             "TLS upgrade failed: {}. Connection would be unencrypted. \
@@ -439,7 +457,8 @@ impl StorageProvider for FtpProvider {
         // Check FEAT for MLSD and MFMT support (RFC 3659)
         match stream.feat().await {
             Ok(features) => {
-                self.mlsd_supported = features.contains_key("MLST") || features.contains_key("MLSD");
+                self.mlsd_supported =
+                    features.contains_key("MLST") || features.contains_key("MLSD");
                 self.mfmt_supported = features.contains_key("MFMT");
                 // B3: Detect hash/checksum commands (prefer HASH > XMD5 > XCRC > XSHA1)
                 self.hash_supported = if features.contains_key("HASH") {
@@ -453,8 +472,12 @@ impl StorageProvider for FtpProvider {
                 } else {
                     None
                 };
-                tracing::debug!("FTP FEAT: MLSD={}, MFMT={}, HASH={:?}",
-                    self.mlsd_supported, self.mfmt_supported, self.hash_supported);
+                tracing::debug!(
+                    "FTP FEAT: MLSD={}, MFMT={}, HASH={:?}",
+                    self.mlsd_supported,
+                    self.mfmt_supported,
+                    self.hash_supported
+                );
             }
             Err(_) => {
                 self.mlsd_supported = false;
@@ -473,18 +496,18 @@ impl StorageProvider for FtpProvider {
         self.stream = Some(stream);
         Ok(())
     }
-    
+
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         if let Some(mut stream) = self.stream.take() {
             let _ = stream.quit().await;
         }
         Ok(())
     }
-    
+
     fn is_connected(&self) -> bool {
         self.stream.is_some()
     }
-    
+
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let list_path = if path.is_empty() || path == "." {
             None
@@ -492,7 +515,10 @@ impl StorageProvider for FtpProvider {
             Some(path.to_string())
         };
 
-        let base_path = list_path.as_deref().unwrap_or(&self.current_path).to_string();
+        let base_path = list_path
+            .as_deref()
+            .unwrap_or(&self.current_path)
+            .to_string();
 
         // Prefer MLSD when supported
         if self.mlsd_supported {
@@ -525,7 +551,7 @@ impl StorageProvider for FtpProvider {
 
         Ok(entries)
     }
-    
+
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         let stream = self.stream_mut()?;
         let path = stream
@@ -536,14 +562,14 @@ impl StorageProvider for FtpProvider {
         self.current_path = path.clone();
         Ok(path)
     }
-    
+
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
             .cwd(path)
             .await
             .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-        
+
         self.current_path = stream
             .pwd()
             .await
@@ -559,7 +585,7 @@ impl StorageProvider for FtpProvider {
             .cdup()
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         self.current_path = stream
             .pwd()
             .await
@@ -576,19 +602,16 @@ impl StorageProvider for FtpProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
-        
+
         // Get file size for progress
-        let total_size = stream
-            .size(remote_path)
-            .await
-            .unwrap_or(0) as u64;
-        
+        let total_size = stream.size(remote_path).await.unwrap_or(0) as u64;
+
         // Set binary mode
         stream
             .transfer_type(FileType::Binary)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         // Download using retr_as_stream — stream directly to disk (no full-file RAM buffer)
         let mut data_stream = stream
             .retr_as_stream(remote_path)
@@ -629,10 +652,10 @@ impl StorageProvider for FtpProvider {
             .finalize_retr_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        
+
         Ok(())
     }
-    
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         use tokio::io::AsyncReadExt;
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
@@ -667,11 +690,17 @@ impl StorageProvider for FtpProvider {
         let limit_usize = (limit + 1) as usize;
         loop {
             let mut buf = [0u8; 8192];
-            let n = data_stream.read(&mut buf).await
+            let n = data_stream
+                .read(&mut buf)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             data.extend_from_slice(&buf[..n]);
-            if data.len() > limit_usize { break; }
+            if data.len() > limit_usize {
+                break;
+            }
         }
         let bytes_read = data.len();
 
@@ -691,30 +720,32 @@ impl StorageProvider for FtpProvider {
 
         Ok(data)
     }
-    
+
     async fn upload(
         &mut self,
         local_path: &str,
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncReadExt;
         use suppaftp::types::FileType;
+        use tokio::io::AsyncReadExt;
 
         let stream = self.stream_mut()?;
 
         // Set binary transfer mode explicitly
-        stream.transfer_type(FileType::Binary)
+        stream
+            .transfer_type(FileType::Binary)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        let mut file = tokio::fs::File::open(local_path).await
+        let mut file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await
-            .map_err(ProviderError::IoError)?.len();
+        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
 
         // Open streaming upload channel (PASV + STOR)
-        let mut data_stream = stream.put_with_stream(remote_path)
+        let mut data_stream = stream
+            .put_with_stream(remote_path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -723,11 +754,15 @@ impl StorageProvider for FtpProvider {
         let mut total_written: u64 = 0;
 
         loop {
-            let n = file.read(&mut chunk).await.map_err(ProviderError::IoError)?;
+            let n = file
+                .read(&mut chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
             if n == 0 {
                 break;
             }
-            data_stream.write_all(&chunk[..n])
+            data_stream
+                .write_all(&chunk[..n])
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Data write error: {}", e)))?;
             total_written += n as u64;
@@ -737,7 +772,8 @@ impl StorageProvider for FtpProvider {
         }
 
         // Flush all TLS buffers to the wire
-        data_stream.flush()
+        data_stream
+            .flush()
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
@@ -747,7 +783,8 @@ impl StorageProvider for FtpProvider {
         tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
 
         // Finalize: sends TLS close_notify, reads 226 from control channel
-        stream.finalize_put_stream(data_stream)
+        stream
+            .finalize_put_stream(data_stream)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -764,10 +801,9 @@ impl StorageProvider for FtpProvider {
                             if let Some(stream) = self.stream.as_mut() {
                                 // MFMT <time-val> <pathname> — expects 213 response
                                 let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
-                                if let Err(e) = stream.custom_command(
-                                    &cmd,
-                                    &[suppaftp::Status::File],
-                                ).await {
+                                if let Err(e) =
+                                    stream.custom_command(&cmd, &[suppaftp::Status::File]).await
+                                {
                                     tracing::debug!("FTP MFMT failed (non-fatal): {}", e);
                                 }
                             }
@@ -779,7 +815,7 @@ impl StorageProvider for FtpProvider {
 
         Ok(())
     }
-    
+
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -788,7 +824,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -797,7 +833,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -806,11 +842,11 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         // Get list of contents
         let entries = self.list(path).await?;
-        
+
         // Delete contents first
         for entry in entries {
             if entry.is_dir {
@@ -820,11 +856,11 @@ impl StorageProvider for FtpProvider {
                 self.delete(&entry.path).await?;
             }
         }
-        
+
         // Now delete the empty directory
         self.rmdir(path).await
     }
-    
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -833,7 +869,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         // Use MLST when available for direct single-file info
         if self.mlsd_supported {
@@ -867,7 +903,7 @@ impl StorageProvider for FtpProvider {
             .find(|e| e.name == name)
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))
     }
-    
+
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let stream = self.stream_mut()?;
         let size = stream
@@ -876,7 +912,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(size as u64)
     }
-    
+
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         match self.stat(path).await {
             Ok(_) => Ok(true),
@@ -884,7 +920,7 @@ impl StorageProvider for FtpProvider {
             Err(e) => Err(e),
         }
     }
-    
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
         stream
@@ -893,7 +929,7 @@ impl StorageProvider for FtpProvider {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         Ok(())
     }
-    
+
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         // FTP doesn't have a standard server info command
         // Return basic connection info
@@ -902,7 +938,7 @@ impl StorageProvider for FtpProvider {
             self.config.host, self.config.port
         ))
     }
-    
+
     fn supports_find(&self) -> bool {
         true
     }
@@ -912,7 +948,9 @@ impl StorageProvider for FtpProvider {
             .case_insensitive(true)
             .literal_separator(true)
             .build()
-            .map_err(|e| ProviderError::InvalidConfig(format!("Invalid find pattern '{}': {}", pattern, e)))?
+            .map_err(|e| {
+                ProviderError::InvalidConfig(format!("Invalid find pattern '{}': {}", pattern, e))
+            })?
             .compile_matcher();
         let mut results = Vec::new();
         let search_path = if path.is_empty() || path == "." {
@@ -963,15 +1001,12 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt as _, AsyncSeekExt};
+        use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt as _};
 
         let stream = self.stream_mut()?;
 
         // Get total file size
-        let total_size = stream
-            .size(remote_path)
-            .await
-            .unwrap_or(0) as u64;
+        let total_size = stream.size(remote_path).await.unwrap_or(0) as u64;
 
         stream
             .transfer_type(FileType::Binary)
@@ -1045,17 +1080,21 @@ impl StorageProvider for FtpProvider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncSeekExt;
 
-        let total_size = tokio::fs::metadata(local_path).await
-            .map_err(ProviderError::IoError)?.len();
+        let total_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?
+            .len();
 
         if offset >= total_size {
             return Ok(()); // Nothing to upload
         }
 
         // Open file and seek to offset for streaming append
-        let mut file = tokio::fs::File::open(local_path).await
+        let mut file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
-        file.seek(std::io::SeekFrom::Start(offset)).await
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
             .map_err(ProviderError::IoError)?;
 
         let stream = self.stream_mut()?;
@@ -1079,17 +1118,17 @@ impl StorageProvider for FtpProvider {
     fn supports_chmod(&self) -> bool {
         true
     }
-    
+
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
-        
+
         // SITE CHMOD command
         let chmod_cmd = format!("CHMOD {:o} {}", mode, path);
         stream
             .site(&chmod_cmd)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        
+
         Ok(())
     }
 
@@ -1097,7 +1136,10 @@ impl StorageProvider for FtpProvider {
         self.hash_supported.is_some()
     }
 
-    async fn checksum(&mut self, path: &str) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
         self.remote_checksum(path).await
     }
 
@@ -1110,28 +1152,37 @@ impl StorageProvider for FtpProvider {
         }
     }
 
-    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
         use tokio::io::AsyncReadExt;
 
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(
-                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
-            ));
+            return Err(ProviderError::Other(format!(
+                "Read range size {} exceeds maximum {} bytes",
+                len, MAX_READ_RANGE
+            )));
         }
 
         let stream = self.stream_mut()?;
 
-        stream.transfer_type(FileType::Binary)
+        stream
+            .transfer_type(FileType::Binary)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
         // REST sets the byte offset for the next RETR
-        stream.resume_transfer(offset as usize)
+        stream
+            .resume_transfer(offset as usize)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
 
-        let mut data_stream = stream.retr_as_stream(path)
+        let mut data_stream = stream
+            .retr_as_stream(path)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
@@ -1139,10 +1190,13 @@ impl StorageProvider for FtpProvider {
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
         while total_read < len as usize {
-            let n = data_stream.read(&mut buf[total_read..])
+            let n = data_stream
+                .read(&mut buf[total_read..])
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             total_read += n;
         }
         buf.truncate(total_read);
@@ -1169,9 +1223,13 @@ impl StorageProvider for FtpProvider {
 impl FtpProvider {
     /// Compute a remote file checksum using the best available command.
     /// Returns a map like {"MD5": "abc123..."} or {"CRC32": "..."} etc.
-    pub async fn remote_checksum(&mut self, path: &str) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        let hash_cmd = self.hash_supported.clone()
-            .ok_or_else(|| ProviderError::Other("Server does not support hash commands".to_string()))?;
+    pub async fn remote_checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let hash_cmd = self.hash_supported.clone().ok_or_else(|| {
+            ProviderError::Other("Server does not support hash commands".to_string())
+        })?;
 
         let stream = self.stream_mut()?;
 
@@ -1180,11 +1238,19 @@ impl FtpProvider {
             "XMD5" => (format!("XMD5 {}", path), "MD5"),
             "XCRC" => (format!("XCRC {}", path), "CRC32"),
             "XSHA1" => (format!("XSHA1 {}", path), "SHA-1"),
-            _ => return Err(ProviderError::Other(format!("Unknown hash command: {}", hash_cmd))),
+            _ => {
+                return Err(ProviderError::Other(format!(
+                    "Unknown hash command: {}",
+                    hash_cmd
+                )))
+            }
         };
 
         let response = stream
-            .custom_command(&cmd_str, &[suppaftp::Status::File, suppaftp::Status::CommandOk])
+            .custom_command(
+                &cmd_str,
+                &[suppaftp::Status::File, suppaftp::Status::CommandOk],
+            )
             .await
             .map_err(|e| ProviderError::ServerError(format!("Hash command failed: {}", e)))?;
 
@@ -1214,7 +1280,7 @@ impl FtpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_unix_listing() {
         let provider = FtpProvider::new(FtpConfig {
@@ -1226,15 +1292,15 @@ mod tests {
             verify_cert: true,
             initial_path: None,
         });
-        
+
         let line = "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects";
         let entry = provider.parse_unix_listing(line).unwrap();
-        
+
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
         assert_eq!(entry.size, 4096);
     }
-    
+
     #[test]
     fn test_parse_mlsd_entry() {
         let provider = FtpProvider::new(FtpConfig {
@@ -1290,8 +1356,12 @@ mod tests {
             initial_path: None,
         });
 
-        assert!(provider.parse_mlsd_entry("type=cdir;modify=20260101000000; .", "/").is_none());
-        assert!(provider.parse_mlsd_entry("type=pdir;modify=20260101000000; ..", "/").is_none());
+        assert!(provider
+            .parse_mlsd_entry("type=cdir;modify=20260101000000; .", "/")
+            .is_none());
+        assert!(provider
+            .parse_mlsd_entry("type=pdir;modify=20260101000000; ..", "/")
+            .is_none());
     }
 
     #[test]
@@ -1305,10 +1375,10 @@ mod tests {
             verify_cert: true,
             initial_path: None,
         });
-        
+
         let line = "01-20-26  10:00AM       <DIR>          Projects";
         let entry = provider.parse_dos_listing(line).unwrap();
-        
+
         assert_eq!(entry.name, "Projects");
         assert!(entry.is_dir);
     }

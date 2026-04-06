@@ -52,7 +52,7 @@
     box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
     width: 90%;
     max-width: 900px;
-    max-height: 85vh;
+    max-height: 92vh;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--sync-border);

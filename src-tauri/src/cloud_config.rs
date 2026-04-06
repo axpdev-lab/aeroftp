@@ -148,13 +148,9 @@ pub enum CloudSyncStatus {
     /// Paused by user
     Paused,
     /// Has conflicts that need resolution
-    HasConflicts {
-        count: u32,
-    },
+    HasConflicts { count: u32 },
     /// Error state
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// Cloud sync statistics
@@ -179,23 +175,21 @@ fn get_config_path() -> PathBuf {
 /// Load cloud configuration from disk
 pub fn load_cloud_config() -> CloudConfig {
     let config_path = get_config_path();
-    
+
     if config_path.exists() {
         match fs::read_to_string(&config_path) {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(config) => return config,
-                    Err(e) => {
-                        tracing::warn!("Failed to parse cloud config: {}", e);
-                    }
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(config) => return config,
+                Err(e) => {
+                    tracing::warn!("Failed to parse cloud config: {}", e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::warn!("Failed to read cloud config: {}", e);
             }
         }
     }
-    
+
     CloudConfig::default()
 }
 
@@ -218,8 +212,7 @@ pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
 
     // Atomic write: temp file + rename to prevent corruption on crash
     let tmp_path = config_path.with_extension("tmp");
-    fs::write(&tmp_path, content)
-        .map_err(|e| format!("Failed to write temp config: {}", e))?;
+    fs::write(&tmp_path, content).map_err(|e| format!("Failed to write temp config: {}", e))?;
     fs::rename(&tmp_path, &config_path)
         .map_err(|e| format!("Failed to rename temp config: {}", e))?;
 
@@ -230,13 +223,12 @@ pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
 /// Ensure the local cloud folder exists
 pub fn ensure_cloud_folder(config: &CloudConfig) -> Result<PathBuf, String> {
     let path = &config.local_folder;
-    
+
     if !path.exists() {
-        fs::create_dir_all(path)
-            .map_err(|e| format!("Failed to create cloud folder: {}", e))?;
+        fs::create_dir_all(path).map_err(|e| format!("Failed to create cloud folder: {}", e))?;
         tracing::info!("Created cloud folder: {:?}", path);
     }
-    
+
     Ok(path.clone())
 }
 
@@ -249,19 +241,30 @@ const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 /// Validate cloud configuration
 pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     // Server-based protocols require a server_profile for credential lookup
-    if SERVER_PROTOCOLS.contains(&config.protocol_type.as_str())
-        && config.server_profile.is_empty()
+    if SERVER_PROTOCOLS.contains(&config.protocol_type.as_str()) && config.server_profile.is_empty()
     {
         return Err("No server profile selected".to_string());
     }
 
     // OAuth2/cloud providers require connection_params with credentials
-    let oauth_providers = ["googledrive", "dropbox", "onedrive", "box", "pcloud", "zohoworkdrive"];
+    let oauth_providers = [
+        "googledrive",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "zohoworkdrive",
+    ];
     if oauth_providers.contains(&config.protocol_type.as_str()) {
         let params = config.connection_params.as_object();
-        if params.is_none() || params.is_some_and(|p| {
-            p.get("client_id").and_then(|v| v.as_str()).unwrap_or("").is_empty()
-        }) {
+        if params.is_none()
+            || params.is_some_and(|p| {
+                p.get("client_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .is_empty()
+            })
+        {
             return Err("OAuth2 provider requires client_id in connection_params".to_string());
         }
     }

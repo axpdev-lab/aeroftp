@@ -5,9 +5,9 @@
 // Exports ALL vault entries as encrypted .aeroftp-keystore file
 // Uses Argon2id + AES-256-GCM (same as profile_export)
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 const FILE_VERSION: u32 = 1;
 
@@ -27,7 +27,10 @@ fn normalize_merge_strategy(merge_strategy: &str) -> Result<&'static str, Keysto
     match merge_strategy {
         "skip" | "skip_existing" => Ok("skip_existing"),
         "overwrite" | "overwrite_all" => Ok("overwrite"),
-        other => Err(KeystoreExportError::Encryption(format!("Invalid merge strategy: {}", other))),
+        other => Err(KeystoreExportError::Encryption(format!(
+            "Invalid merge strategy: {}",
+            other
+        ))),
     }
 }
 
@@ -133,13 +136,16 @@ pub fn export_keystore(
 ) -> Result<KeystoreMetadata, KeystoreExportError> {
     // A2-05: Backend password minimum length check
     if password.len() < 8 {
-        return Err(KeystoreExportError::Encryption("Password must be at least 8 characters".into()));
+        return Err(KeystoreExportError::Encryption(
+            "Password must be at least 8 characters".into(),
+        ));
     }
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or(KeystoreExportError::VaultNotReady)?;
 
     // List all accounts and read their values
-    let accounts = store.list_accounts()
+    let accounts = store
+        .list_accounts()
         .map_err(|e| KeystoreExportError::Encryption(e.to_string()))?;
 
     let mut entries: HashMap<String, String> = HashMap::new();
@@ -190,7 +196,11 @@ pub fn export_keystore(
         let _ = std::fs::set_permissions(file_path, std::fs::Permissions::from_mode(0o600));
     }
 
-    tracing::info!("Keystore exported: {} entries to {:?}", entries.len(), file_path);
+    tracing::info!(
+        "Keystore exported: {} entries to {:?}",
+        entries.len(),
+        file_path
+    );
     Ok(metadata)
 }
 
@@ -223,14 +233,22 @@ pub fn import_keystore(
     // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
     let key_strong = crate::crypto::derive_key_strong(password, &export_file.salt)
         .map_err(KeystoreExportError::Encryption)?;
-    let payload_json = match crate::crypto::decrypt_aes_gcm(&key_strong, &export_file.nonce, &export_file.encrypted_payload) {
+    let payload_json = match crate::crypto::decrypt_aes_gcm(
+        &key_strong,
+        &export_file.nonce,
+        &export_file.encrypted_payload,
+    ) {
         Ok(data) => data,
         Err(_) => {
             // Legacy fallback: file was exported with derive_key (64 MiB)
             let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
                 .map_err(KeystoreExportError::Encryption)?;
-            crate::crypto::decrypt_aes_gcm(&key_legacy, &export_file.nonce, &export_file.encrypted_payload)
-                .map_err(|_| KeystoreExportError::InvalidPassword)?
+            crate::crypto::decrypt_aes_gcm(
+                &key_legacy,
+                &export_file.nonce,
+                &export_file.encrypted_payload,
+            )
+            .map_err(|_| KeystoreExportError::InvalidPassword)?
         }
     };
 
@@ -239,7 +257,8 @@ pub fn import_keystore(
 
     // Get existing accounts for merge strategy
     let existing = if merge_strategy == "skip_existing" {
-        store.list_accounts()
+        store
+            .list_accounts()
             .map_err(|e| KeystoreExportError::Encryption(e.to_string()))?
             .into_iter()
             .collect::<HashSet<_>>()
@@ -296,7 +315,12 @@ pub fn import_keystore(
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to import keystore entry '{}': {} — rolling back {} committed entries", account, e, committed.len());
+                tracing::error!(
+                    "Failed to import keystore entry '{}': {} — rolling back {} committed entries",
+                    account,
+                    e,
+                    committed.len()
+                );
                 // Rollback: restore prior values for overwrites, delete only newly inserted entries
                 for rollback_account in committed.iter().rev() {
                     let rollback_result = match originals.get(rollback_account) {
@@ -308,25 +332,39 @@ pub fn import_keystore(
                         tracing::warn!("Rollback failed for '{}': {}", rollback_account, re);
                     }
                 }
-                return Err(KeystoreExportError::Encryption(
-                    format!("Import failed at '{}': {}. {} entries rolled back.", account, e, committed.len())
-                ));
+                return Err(KeystoreExportError::Encryption(format!(
+                    "Import failed at '{}': {}. {} entries rolled back.",
+                    account,
+                    e,
+                    committed.len()
+                )));
             }
         }
     }
 
     let imported = committed.len() as u32;
-    tracing::info!("Keystore imported: {} entries ({} skipped) from {:?}", imported, skipped, file_path);
-    Ok(KeystoreImportResult { imported, skipped, total })
+    tracing::info!(
+        "Keystore imported: {} entries ({} skipped) from {:?}",
+        imported,
+        skipped,
+        file_path
+    );
+    Ok(KeystoreImportResult {
+        imported,
+        skipped,
+        total,
+    })
 }
 
 /// Merge two server profile JSON arrays by "id" field.
 /// Returns union: existing profiles + any backup profiles not already present.
 fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
-    let mut existing: Vec<serde_json::Value> = serde_json::from_str(existing_json).unwrap_or_default();
+    let mut existing: Vec<serde_json::Value> =
+        serde_json::from_str(existing_json).unwrap_or_default();
     let backup: Vec<serde_json::Value> = serde_json::from_str(backup_json).unwrap_or_default();
 
-    let existing_ids: HashSet<String> = existing.iter()
+    let existing_ids: HashSet<String> = existing
+        .iter()
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
@@ -341,7 +379,10 @@ fn merge_profile_lists(existing_json: &str, backup_json: &str) -> String {
     }
 
     if added > 0 {
-        tracing::info!("Merged {} server profiles from backup into existing list", added);
+        tracing::info!(
+            "Merged {} server profiles from backup into existing list",
+            added
+        );
     }
 
     serde_json::to_string(&existing).unwrap_or_else(|_| existing_json.to_string())

@@ -148,7 +148,12 @@ impl AeroIgnore {
     /// Check whether a path should be excluded, considering both
     /// .aeroignore rules AND config exclude_patterns.
     /// .aeroignore `!` negation overrides config patterns.
-    pub fn should_exclude(&self, relative_path: &str, is_dir: bool, config_patterns: &[String]) -> bool {
+    pub fn should_exclude(
+        &self,
+        relative_path: &str,
+        is_dir: bool,
+        config_patterns: &[String],
+    ) -> bool {
         // First check .aeroignore (has negation support)
         let aeroignore_result = self.is_ignored(relative_path, is_dir);
 

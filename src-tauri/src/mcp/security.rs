@@ -51,8 +51,15 @@ pub fn validate_local_path(path: &str) -> Result<(), String> {
 
     // Deny sensitive system prefixes
     const DENIED_PREFIXES: &[&str] = &[
-        "/etc", "/boot", "/proc", "/sys", "/dev",
-        "/usr/sbin", "/sbin", "/root", "/run/secrets",
+        "/etc",
+        "/boot",
+        "/proc",
+        "/sys",
+        "/dev",
+        "/usr/sbin",
+        "/sbin",
+        "/root",
+        "/run/secrets",
     ];
 
     // Check raw path first
@@ -124,7 +131,10 @@ pub fn validate_server_query(query: &str) -> Result<(), String> {
 /// Validate inline text content length.
 pub fn validate_text_content(text: &str) -> Result<(), String> {
     if text.len() > MAX_TEXT_LEN {
-        return Err(format!("Text content exceeds {} character limit", MAX_TEXT_LEN));
+        return Err(format!(
+            "Text content exceeds {} character limit",
+            MAX_TEXT_LEN
+        ));
     }
     Ok(())
 }
@@ -207,7 +217,11 @@ impl Default for RateLimiter {
 impl RateLimiter {
     pub fn new() -> Self {
         let mut buckets = HashMap::new();
-        for cat in [RateCategory::ReadOnly, RateCategory::Mutative, RateCategory::Destructive] {
+        for cat in [
+            RateCategory::ReadOnly,
+            RateCategory::Mutative,
+            RateCategory::Destructive,
+        ] {
             buckets.insert(cat, TokenBucket::new(cat.max_per_minute()));
         }
         Self {
@@ -230,7 +244,13 @@ impl RateLimiter {
 // ─── Audit Logging ───────────────────────────────────────────────────
 
 /// Log a tool call to stderr as JSON. Never includes file contents or passwords.
-pub fn audit_log(tool: &str, server: Option<&str>, path: Option<&str>, status: &str, duration_ms: u64) {
+pub fn audit_log(
+    tool: &str,
+    server: Option<&str>,
+    path: Option<&str>,
+    status: &str,
+    duration_ms: u64,
+) {
     let entry = serde_json::json!({
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "tool": tool,

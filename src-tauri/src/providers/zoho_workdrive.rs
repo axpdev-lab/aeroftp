@@ -15,13 +15,12 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
-    sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 /// Zoho WorkDrive provider configuration
@@ -312,21 +311,22 @@ pub struct ZohoLabelAttributes {
 /// When downloading native docs, we use the Zoho Writer/Sheet/Show API for conversion.
 const ZOHO_NATIVE_EXPORT_MAP: &[(&str, &str, &str, &str)] = &[
     // (extension/file_type, API product path, export format, Office extension)
-    ("zw",          "writer", "docx", ".docx"),
-    ("zohowriter",  "writer", "docx", ".docx"),
-    ("writer",      "writer", "docx", ".docx"),
-    ("zs",          "sheet",  "xlsx", ".xlsx"),
-    ("zohosheet",   "sheet",  "xlsx", ".xlsx"),
-    ("spreadsheet", "sheet",  "xlsx", ".xlsx"),
-    ("zp",          "show",   "pptx", ".pptx"),
-    ("zohoshow",    "show",   "pptx", ".pptx"),
-    ("presentation","show",   "pptx", ".pptx"),
+    ("zw", "writer", "docx", ".docx"),
+    ("zohowriter", "writer", "docx", ".docx"),
+    ("writer", "writer", "docx", ".docx"),
+    ("zs", "sheet", "xlsx", ".xlsx"),
+    ("zohosheet", "sheet", "xlsx", ".xlsx"),
+    ("spreadsheet", "sheet", "xlsx", ".xlsx"),
+    ("zp", "show", "pptx", ".pptx"),
+    ("zohoshow", "show", "pptx", ".pptx"),
+    ("presentation", "show", "pptx", ".pptx"),
 ];
 
 /// Check if file extension is a Zoho native document, return export info
 fn zoho_native_export_info(extn: &str) -> Option<(&'static str, &'static str, &'static str)> {
     let lower = extn.to_lowercase();
-    ZOHO_NATIVE_EXPORT_MAP.iter()
+    ZOHO_NATIVE_EXPORT_MAP
+        .iter()
         .find(|(ext, _, _, _)| *ext == lower)
         .map(|(_, product, format, office_ext)| (*product, *format, *office_ext))
 }
@@ -361,10 +361,7 @@ impl ZohoWorkdriveProvider {
     pub fn new(config: ZohoWorkdriveConfig) -> Self {
         // Build HTTP client with default Accept header required by Zoho JSON:API
         let mut default_headers = reqwest::header::HeaderMap::new();
-        default_headers.insert(
-            ACCEPT,
-            HeaderValue::from_static("application/vnd.api+json"),
-        );
+        default_headers.insert(ACCEPT, HeaderValue::from_static("application/vnd.api+json"));
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .default_headers(default_headers)
@@ -390,13 +387,20 @@ impl ZohoWorkdriveProvider {
 
     /// Get OAuth config for token operations
     fn oauth_config(&self) -> OAuthConfig {
-        OAuthConfig::zoho(&self.config.client_id, &self.config.client_secret, &self.config.region)
+        OAuthConfig::zoho(
+            &self.config.client_id,
+            &self.config.client_secret,
+            &self.config.region,
+        )
     }
 
     /// Get authorization header with valid token
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
-        let token = self.oauth_manager.get_valid_token(&self.oauth_config()).await?;
+        let token = self
+            .oauth_manager
+            .get_valid_token(&self.oauth_config())
+            .await?;
         // Zoho uses "Zoho-oauthtoken" format, but "Bearer" also works with newer APIs
         HeaderValue::from_str(&format!("Zoho-oauthtoken {}", token.expose_secret()))
             .map_err(|_| ProviderError::Other("Invalid token characters".into()))
@@ -419,56 +423,79 @@ impl ZohoWorkdriveProvider {
             }
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .patch(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status_code = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "PATCH status {} failed ({}): {}", status, status_code, sanitize_api_error(&text)
+                "PATCH status {} failed ({}): {}",
+                status,
+                status_code,
+                sanitize_api_error(&text)
             )));
         }
         Ok(())
     }
 
     /// Helper: PATCH multiple files/folders status in batch (max 200 per Zoho API)
-    async fn patch_files_status_batch(&self, file_ids: &[String], status: &str) -> Result<(), ProviderError> {
+    async fn patch_files_status_batch(
+        &self,
+        file_ids: &[String],
+        status: &str,
+    ) -> Result<(), ProviderError> {
         if file_ids.is_empty() {
             return Ok(());
         }
 
         // Zoho allows max 200 objects per batch
         for chunk in file_ids.chunks(200) {
-            let items: Vec<serde_json::Value> = chunk.iter().map(|id| {
-                serde_json::json!({
-                    "attributes": { "status": status },
-                    "id": id,
-                    "type": "files"
+            let items: Vec<serde_json::Value> = chunk
+                .iter()
+                .map(|id| {
+                    serde_json::json!({
+                        "attributes": { "status": status },
+                        "id": id,
+                        "type": "files"
+                    })
                 })
-            }).collect();
+                .collect();
 
             let body = serde_json::json!({ "data": items });
             let url = format!("{}/files", self.api_base());
 
-            let resp = self.client
+            let resp = self
+                .client
                 .patch(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/vnd.api+json"),
+                )
                 .body(body.to_string())
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status_code = resp.status();
                 let text = resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
-                    "Batch PATCH status {} failed ({}): {}", status, status_code, sanitize_api_error(&text)
+                    "Batch PATCH status {} failed ({}): {}",
+                    status,
+                    status_code,
+                    sanitize_api_error(&text)
                 )));
             }
         }
@@ -485,7 +512,10 @@ impl ZohoWorkdriveProvider {
 
     /// Permanently delete multiple files/folders in batch (max 200 per request)
     pub async fn permanent_delete_batch(&self, file_ids: &[String]) -> Result<(), ProviderError> {
-        info!("Zoho WorkDrive permanent delete batch: {} items", file_ids.len());
+        info!(
+            "Zoho WorkDrive permanent delete batch: {} items",
+            file_ids.len()
+        );
         self.patch_files_status_batch(file_ids, "61").await?;
         info!("Permanently deleted {} items", file_ids.len());
         Ok(())
@@ -518,22 +548,33 @@ impl ZohoWorkdriveProvider {
             loop {
                 let url = format!(
                     "{}/privatespace/{}/trashedfiles?page%5Blimit%5D={}&page%5Boffset%5D={}",
-                    self.api_base(), ps_id, page_limit, offset
+                    self.api_base(),
+                    ps_id,
+                    page_limit,
+                    offset
                 );
                 info!("Zoho WorkDrive list trash: GET {}", url);
 
-                let resp = self.client
+                let resp = self
+                    .client
                     .get(&url)
                     .header(AUTHORIZATION, self.auth_header().await?)
-                    .send().await
+                    .send()
+                    .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
-                if !resp.status().is_success() { break; }
+                if !resp.status().is_success() {
+                    break;
+                }
 
                 let body = resp.text().await.unwrap_or_default();
-                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body) {
+                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body)
+                {
                     let count = parsed.data.len();
-                    info!("Zoho WorkDrive trash (privatespace): {} items at offset {}", count, offset);
+                    info!(
+                        "Zoho WorkDrive trash (privatespace): {} items at offset {}",
+                        count, offset
+                    );
                     for file in &parsed.data {
                         results.push(self.to_remote_entry(file, "[Trash]"));
                     }
@@ -553,13 +594,18 @@ impl ZohoWorkdriveProvider {
             loop {
                 let url = format!(
                     "{}/teamfolders/{}/trashedfiles?page%5Blimit%5D={}&page%5Boffset%5D={}",
-                    self.api_base(), tf.0, page_limit, offset
+                    self.api_base(),
+                    tf.0,
+                    page_limit,
+                    offset
                 );
 
-                let resp = self.client
+                let resp = self
+                    .client
                     .get(&url)
                     .header(AUTHORIZATION, self.auth_header().await?)
-                    .send().await;
+                    .send()
+                    .await;
 
                 let resp = match resp {
                     Ok(r) if r.status().is_success() => r,
@@ -567,9 +613,13 @@ impl ZohoWorkdriveProvider {
                 };
 
                 let body = resp.text().await.unwrap_or_default();
-                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body) {
+                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body)
+                {
                     let count = parsed.data.len();
-                    info!("Zoho WorkDrive trash (team folder {}): {} items at offset {}", tf.1, count, offset);
+                    info!(
+                        "Zoho WorkDrive trash (team folder {}): {} items at offset {}",
+                        tf.1, count, offset
+                    );
                     for file in &parsed.data {
                         results.push(self.to_remote_entry(file, &format!("[Trash/{}]", tf.1)));
                     }
@@ -591,16 +641,20 @@ impl ZohoWorkdriveProvider {
 
     /// List all labels available for the current user
     pub async fn list_team_labels(&self) -> Result<Vec<ZohoLabel>, ProviderError> {
-        let user_id = self.team_user_id.as_ref()
+        let user_id = self
+            .team_user_id
+            .as_ref()
             .ok_or_else(|| ProviderError::Other("Team user ID not available".to_string()))?;
 
         let url = format!("{}/users/{}/labels", self.api_base(), user_id);
         info!("Zoho WorkDrive list user labels: GET {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -608,11 +662,16 @@ impl ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "List team labels failed ({}): {}", status, sanitize_api_error(&body)
+                "List team labels failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
-        debug!("Zoho WorkDrive team labels response: {}", &body[..body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive team labels response: {}",
+            &body[..body.len().min(500)]
+        );
         let parsed: JsonApiListResponse<ZohoLabel> = serde_json::from_str(&body)
             .map_err(|e| ProviderError::ParseError(format!("Parse labels: {}", e)))?;
 
@@ -629,10 +688,12 @@ impl ZohoWorkdriveProvider {
         let url = format!("{}/files/{}", self.api_base(), file_id);
         info!("Zoho WorkDrive get file metadata for labels: GET {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -640,11 +701,16 @@ impl ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "Get file metadata failed ({}): {}", status, sanitize_api_error(&body)
+                "Get file metadata failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
-        debug!("Zoho WorkDrive file metadata response: {}", &body[..body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive file metadata response: {}",
+            &body[..body.len().min(500)]
+        );
 
         // Parse the labels array from file attributes
         // The response is: { data: { id, type, attributes: { labels: [...], ... } } }
@@ -677,15 +743,27 @@ impl ZohoWorkdriveProvider {
             }
         }
 
-        info!("Zoho WorkDrive file labels: {} labels on {}", result.len(), path);
+        info!(
+            "Zoho WorkDrive file labels: {} labels on {}",
+            result.len(),
+            path
+        );
         Ok(result)
     }
 
     /// Add a label to a file by label ID
-    pub async fn add_file_label(&mut self, path: &str, label_id: &str) -> Result<(), ProviderError> {
+    pub async fn add_file_label(
+        &mut self,
+        path: &str,
+        label_id: &str,
+    ) -> Result<(), ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
 
-        let url = format!("{}/labels/{}/relationships/files", self.api_base(), label_id);
+        let url = format!(
+            "{}/labels/{}/relationships/files",
+            self.api_base(),
+            label_id
+        );
         let body = serde_json::json!({
             "data": [{
                 "attributes": { "resource_id": file_id },
@@ -694,14 +772,22 @@ impl ZohoWorkdriveProvider {
             }]
         });
 
-        info!("Zoho WorkDrive add label {} to file {}: POST {}", label_id, file_id, url);
+        info!(
+            "Zoho WorkDrive add label {} to file {}: POST {}",
+            label_id, file_id, url
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status_code = resp.status().as_u16();
@@ -709,7 +795,9 @@ impl ZohoWorkdriveProvider {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Add label failed ({}): {}", status, sanitize_api_error(&text)
+                "Add label failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
             )));
         }
 
@@ -730,14 +818,22 @@ impl ZohoWorkdriveProvider {
             }
         });
 
-        info!("Zoho WorkDrive create label '{}' (color {}): POST {}", name, color, url);
+        info!(
+            "Zoho WorkDrive create label '{}' (color {}): POST {}",
+            name, color, url
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -745,11 +841,16 @@ impl ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "Create label failed ({}): {}", status, sanitize_api_error(&resp_body)
+                "Create label failed ({}): {}",
+                status,
+                sanitize_api_error(&resp_body)
             )));
         }
 
-        debug!("Zoho WorkDrive create label response: {}", &resp_body[..resp_body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive create label response: {}",
+            &resp_body[..resp_body.len().min(500)]
+        );
         let parsed: JsonApiResponse<ZohoLabel> = serde_json::from_str(&resp_body)
             .map_err(|e| ProviderError::ParseError(format!("Parse create label: {}", e)))?;
 
@@ -758,10 +859,18 @@ impl ZohoWorkdriveProvider {
     }
 
     /// Remove a label from a file
-    pub async fn remove_file_label(&mut self, path: &str, label_id: &str) -> Result<(), ProviderError> {
+    pub async fn remove_file_label(
+        &mut self,
+        path: &str,
+        label_id: &str,
+    ) -> Result<(), ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
 
-        let url = format!("{}/labels/{}/relationships/files", self.api_base(), label_id);
+        let url = format!(
+            "{}/labels/{}/relationships/files",
+            self.api_base(),
+            label_id
+        );
         let body = serde_json::json!({
             "data": [{
                 "attributes": { "resource_id": file_id },
@@ -770,14 +879,22 @@ impl ZohoWorkdriveProvider {
             }]
         });
 
-        info!("Zoho WorkDrive remove label {} from file {}: DELETE {}", label_id, file_id, url);
+        info!(
+            "Zoho WorkDrive remove label {} from file {}: DELETE {}",
+            label_id, file_id, url
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .delete(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status_code = resp.status().as_u16();
@@ -785,7 +902,9 @@ impl ZohoWorkdriveProvider {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Remove label failed ({}): {}", status, sanitize_api_error(&text)
+                "Remove label failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
             )));
         }
 
@@ -798,30 +917,38 @@ impl ZohoWorkdriveProvider {
     /// Get authenticated user info (MCP parity: getUserInfo)
     pub async fn get_user_info(&self) -> Result<ZohoUserInfo, ProviderError> {
         let user_url = format!("{}/users/me", self.api_base());
-        let resp = self.client
+        let resp = self
+            .client
             .get(&user_url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Get user info failed ({}): {}", status, sanitize_api_error(&text)
+                "Get user info failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
             )));
         }
 
-        let user: JsonApiResponse<UserResource> = resp.json().await
+        let user: JsonApiResponse<UserResource> = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(format!("Parse user info: {}", e)))?;
 
         // Get team name if we have a team_id
         let team_name = if let Some(ref team_id) = self.team_id {
             let url = format!("{}/teams/{}", self.api_base(), team_id);
-            let resp = self.client
+            let resp = self
+                .client
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .send().await;
+                .send()
+                .await;
             if let Ok(resp) = resp {
                 if let Ok(body) = resp.json::<JsonApiResponse<TeamResource>>().await {
                     body.data.attributes.name
@@ -845,16 +972,24 @@ impl ZohoWorkdriveProvider {
     }
 
     /// List all share links for a file/folder (MCP parity: getFileShareLinks)
-    pub async fn get_file_share_links(&mut self, path: &str) -> Result<Vec<ZohoShareLink>, ProviderError> {
+    pub async fn get_file_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ZohoShareLink>, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
 
         let url = format!("{}/files/{}/links", self.api_base(), file_id);
-        info!("Zoho WorkDrive get share links: GET {} for file {}", url, file_id);
+        info!(
+            "Zoho WorkDrive get share links: GET {} for file {}",
+            url, file_id
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -862,7 +997,9 @@ impl ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "Get share links failed ({}): {}", status, sanitize_api_error(&resp_body)
+                "Get share links failed ({}): {}",
+                status,
+                sanitize_api_error(&resp_body)
             )));
         }
 
@@ -878,18 +1015,25 @@ impl ZohoWorkdriveProvider {
         let url = format!("{}/links/{}", self.api_base(), link_id);
         info!("Zoho WorkDrive delete share link: DELETE {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .delete(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
-            .send().await
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status_code = resp.status().as_u16();
         if status_code != 200 && status_code != 204 {
             let resp_body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Delete share link failed ({}): {}", status_code, sanitize_api_error(&resp_body)
+                "Delete share link failed ({}): {}",
+                status_code,
+                sanitize_api_error(&resp_body)
             )));
         }
 
@@ -899,15 +1043,23 @@ impl ZohoWorkdriveProvider {
 
     /// Create a native Zoho document (MCP parity: createNativeDocument)
     /// doc_type: "zw" (Writer), "zs" (Sheet), "zp" (Show/Presentation)
-    pub async fn create_native_document(&mut self, name: &str, doc_type: &str, folder_path: &str) -> Result<String, ProviderError> {
+    pub async fn create_native_document(
+        &mut self,
+        name: &str,
+        doc_type: &str,
+        folder_path: &str,
+    ) -> Result<String, ProviderError> {
         // Validate doc_type
         let zoho_type = match doc_type {
             "writer" | "zw" => "zw",
             "sheet" | "zs" => "zs",
             "show" | "presentation" | "zp" => "zp",
-            _ => return Err(ProviderError::Other(format!(
-                "Invalid document type '{}'. Use: writer/zw, sheet/zs, show/zp", doc_type
-            ))),
+            _ => {
+                return Err(ProviderError::Other(format!(
+                    "Invalid document type '{}'. Use: writer/zw, sheet/zs, show/zp",
+                    doc_type
+                )))
+            }
         };
 
         // Resolve parent folder
@@ -930,14 +1082,22 @@ impl ZohoWorkdriveProvider {
         });
 
         let url = format!("{}/files", self.api_base());
-        info!("Zoho WorkDrive create native doc '{}' (type {}): POST {}", name, zoho_type, url);
+        info!(
+            "Zoho WorkDrive create native doc '{}' (type {}): POST {}",
+            name, zoho_type, url
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -945,7 +1105,9 @@ impl ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "Create native document failed ({}): {}", status, sanitize_api_error(&resp_body)
+                "Create native document failed ({}): {}",
+                status,
+                sanitize_api_error(&resp_body)
             )));
         }
 
@@ -957,12 +1119,17 @@ impl ZohoWorkdriveProvider {
             .as_str()
             .unwrap_or("");
 
-        let file_id = parsed["data"]["id"]
-            .as_str()
-            .unwrap_or("unknown");
+        let file_id = parsed["data"]["id"].as_str().unwrap_or("unknown");
 
-        info!("Created native Zoho document '{}' (id: {}, type: {})", name, file_id, zoho_type);
-        Ok(if permalink.is_empty() { file_id.to_string() } else { permalink.to_string() })
+        info!(
+            "Created native Zoho document '{}' (id: {}, type: {})",
+            name, file_id, zoho_type
+        );
+        Ok(if permalink.is_empty() {
+            file_id.to_string()
+        } else {
+            permalink.to_string()
+        })
     }
 
     /// Resolve a file path to its Zoho ID (helper that splits parent/file)
@@ -980,7 +1147,9 @@ impl ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         Ok(file.id)
@@ -996,10 +1165,12 @@ impl ZohoWorkdriveProvider {
         // Step 1: Get user info and user ID
         let user_url = format!("{}/users/me", self.api_base());
         info!("Zoho WorkDrive: GET {}", user_url);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&user_url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let mut user_id: Option<String> = None;
@@ -1007,7 +1178,11 @@ impl ZohoWorkdriveProvider {
             if let Ok(body) = resp.json::<JsonApiResponse<UserResource>>().await {
                 self.account_email = body.data.attributes.email_id.clone();
                 user_id = Some(body.data.id.clone());
-                info!("Zoho WorkDrive user: {} ({})", body.data.attributes.email_id.as_deref().unwrap_or("?"), body.data.id);
+                info!(
+                    "Zoho WorkDrive user: {} ({})",
+                    body.data.attributes.email_id.as_deref().unwrap_or("?"),
+                    body.data.id
+                );
             }
         } else {
             let status = resp.status();
@@ -1018,21 +1193,26 @@ impl ZohoWorkdriveProvider {
         // Step 2: Get teams — try /teams first, then /users/{id}/teams as fallback
         let teams_url = format!("{}/teams", self.api_base());
         info!("Zoho WorkDrive: GET {}", teams_url);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&teams_url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let team = if resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive /teams response: {}", &body[..body.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive /teams response: {}",
+                &body[..body.len().min(500)]
+            );
             match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
-                Ok(teams) if !teams.data.is_empty() => {
-                    teams.data.into_iter().next()
-                }
+                Ok(teams) if !teams.data.is_empty() => teams.data.into_iter().next(),
                 Ok(_) => {
-                    info!("Zoho WorkDrive /teams returned empty list, trying user-specific endpoint");
+                    info!(
+                        "Zoho WorkDrive /teams returned empty list, trying user-specific endpoint"
+                    );
                     None
                 }
                 Err(e) => {
@@ -1043,7 +1223,11 @@ impl ZohoWorkdriveProvider {
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive /teams failed ({}): {}", status, &text[..text.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive /teams failed ({}): {}",
+                status,
+                &text[..text.len().min(500)]
+            );
             None
         };
 
@@ -1053,15 +1237,21 @@ impl ZohoWorkdriveProvider {
         } else if let Some(ref uid) = user_id {
             let user_teams_url = format!("{}/users/{}/teams", self.api_base(), uid);
             info!("Zoho WorkDrive: GET {} (fallback)", user_teams_url);
-            let resp = self.client
+            let resp = self
+                .client
                 .get(&user_teams_url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                debug!("Zoho WorkDrive /users/{}/teams response: {}", uid, &body[..body.len().min(500)]);
+                debug!(
+                    "Zoho WorkDrive /users/{}/teams response: {}",
+                    uid,
+                    &body[..body.len().min(500)]
+                );
                 match serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
                     Ok(teams) => teams.data.into_iter().next(),
                     Err(e) => {
@@ -1072,7 +1262,12 @@ impl ZohoWorkdriveProvider {
             } else {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                debug!("Zoho WorkDrive /users/{}/teams failed ({}): {}", uid, status, &text[..text.len().min(500)]);
+                debug!(
+                    "Zoho WorkDrive /users/{}/teams failed ({}): {}",
+                    uid,
+                    status,
+                    &text[..text.len().min(500)]
+                );
                 None
             }
         } else {
@@ -1084,21 +1279,29 @@ impl ZohoWorkdriveProvider {
         ))?;
 
         self.team_id = Some(team.id.clone());
-        info!("Zoho WorkDrive team: {} ({})", team.attributes.name, team.id);
+        info!(
+            "Zoho WorkDrive team: {} ({})",
+            team.attributes.name, team.id
+        );
 
         // Step 3: Get team-specific user ID (different from ZUID)
         // rclone flow: /teams/{teamID}/currentuser → teamUserID
         let cu_url = format!("{}/teams/{}/currentuser", self.api_base(), team.id);
         info!("Zoho WorkDrive: GET {}", cu_url);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&cu_url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let team_user_id = if resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive /currentuser response: {}", &body_text[..body_text.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive /currentuser response: {}",
+                &body_text[..body_text.len().min(500)]
+            );
             match serde_json::from_str::<JsonApiResponse<TeamCurrentUserResource>>(&body_text) {
                 Ok(cu) => {
                     info!("Zoho WorkDrive teamUserID: {}", cu.data.id);
@@ -1112,31 +1315,44 @@ impl ZohoWorkdriveProvider {
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive /currentuser failed ({}): {}", status, &text[..text.len().min(300)]);
+            debug!(
+                "Zoho WorkDrive /currentuser failed ({}): {}",
+                status,
+                &text[..text.len().min(300)]
+            );
             None
         };
         self.team_user_id = team_user_id.clone();
 
         // Step 4: Get privatespace (My Folders) root using teamUserID
         // rclone flow: /users/{teamUserID}/privatespace → root folder ID
-        let ps_user_id = team_user_id.as_deref().unwrap_or(
-            user_id.as_deref().unwrap_or(&team.id)
-        );
+        let ps_user_id = team_user_id
+            .as_deref()
+            .unwrap_or(user_id.as_deref().unwrap_or(&team.id));
         let private_url = format!("{}/users/{}/privatespace", self.api_base(), ps_user_id);
         info!("Zoho WorkDrive: GET {}", private_url);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&private_url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive privatespace response: {}", &body_text[..body_text.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive privatespace response: {}",
+                &body_text[..body_text.len().min(500)]
+            );
             // Zoho returns {"data": [...]} (array), try array first, then single object
-            let ps_id = if let Ok(body) = serde_json::from_str::<JsonApiListResponse<WorkspaceResource>>(&body_text) {
+            let ps_id = if let Ok(body) =
+                serde_json::from_str::<JsonApiListResponse<WorkspaceResource>>(&body_text)
+            {
                 body.data.into_iter().next().map(|r| r.id)
-            } else if let Ok(body) = serde_json::from_str::<JsonApiResponse<WorkspaceResource>>(&body_text) {
+            } else if let Ok(body) =
+                serde_json::from_str::<JsonApiResponse<WorkspaceResource>>(&body_text)
+            {
                 Some(body.data.id)
             } else {
                 info!("Zoho WorkDrive privatespace parse failed for both array and object formats");
@@ -1147,14 +1363,22 @@ impl ZohoWorkdriveProvider {
                 self.privatespace_id = Some(id.clone());
                 self.current_folder_id = id.clone();
                 self.folder_cache.insert("/".to_string(), id);
-                info!("Zoho WorkDrive privatespace root: {}", self.current_folder_id);
+                info!(
+                    "Zoho WorkDrive privatespace root: {}",
+                    self.current_folder_id
+                );
                 self.discover_team_folders(&team.id).await;
                 return Ok(());
             }
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive /users/{}/privatespace failed ({}): {}", ps_user_id, status, &text[..text.len().min(300)]);
+            debug!(
+                "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
+                ps_user_id,
+                status,
+                &text[..text.len().min(300)]
+            );
         }
 
         // Last fallback: use team ID as root
@@ -1183,7 +1407,13 @@ impl ZohoWorkdriveProvider {
             }
         };
 
-        let resp = match self.client.get(&tf_url).header(AUTHORIZATION, auth).send().await {
+        let resp = match self
+            .client
+            .get(&tf_url)
+            .header(AUTHORIZATION, auth)
+            .send()
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 info!("Zoho WorkDrive: team folders request failed: {}", e);
@@ -1193,35 +1423,59 @@ impl ZohoWorkdriveProvider {
 
         if resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive teamfolders response: {}", &body[..body.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive teamfolders response: {}",
+                &body[..body.len().min(500)]
+            );
 
-            if let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body) {
+            if let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
+            {
                 for tf in tfs.data {
-                    info!("Zoho WorkDrive team folder: {} ({})", tf.attributes.name, tf.id);
-                    self.folder_cache.insert(format!("/{}", tf.attributes.name), tf.id.clone());
+                    info!(
+                        "Zoho WorkDrive team folder: {} ({})",
+                        tf.attributes.name, tf.id
+                    );
+                    self.folder_cache
+                        .insert(format!("/{}", tf.attributes.name), tf.id.clone());
                     self.team_folders.push((tf.id, tf.attributes.name));
                 }
                 if !self.team_folders.is_empty() {
-                    info!("Zoho WorkDrive discovered {} team folders", self.team_folders.len());
+                    info!(
+                        "Zoho WorkDrive discovered {} team folders",
+                        self.team_folders.len()
+                    );
                     return;
                 }
             }
         } else {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive teamfolders failed ({}): {}", status, &text[..text.len().min(300)]);
+            debug!(
+                "Zoho WorkDrive teamfolders failed ({}): {}",
+                status,
+                &text[..text.len().min(300)]
+            );
         }
 
         // Fallback: use workspaces as team folders (they appear as "Cartelle Team" in the UI)
         let ws_url = format!("{}/teams/{}/workspaces", self.api_base(), team_id);
-        info!("Zoho WorkDrive: GET {} (fallback — treating workspaces as team folders)", ws_url);
+        info!(
+            "Zoho WorkDrive: GET {} (fallback — treating workspaces as team folders)",
+            ws_url
+        );
 
         let auth = match self.auth_header().await {
             Ok(h) => h,
             Err(_) => return,
         };
 
-        let resp = match self.client.get(&ws_url).header(AUTHORIZATION, auth).send().await {
+        let resp = match self
+            .client
+            .get(&ws_url)
+            .header(AUTHORIZATION, auth)
+            .send()
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 info!("Zoho WorkDrive: workspaces request failed: {}", e);
@@ -1232,22 +1486,38 @@ impl ZohoWorkdriveProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive workspaces failed ({}): {}", status, &text[..text.len().min(300)]);
+            debug!(
+                "Zoho WorkDrive workspaces failed ({}): {}",
+                status,
+                &text[..text.len().min(300)]
+            );
             return;
         }
 
         let body = resp.text().await.unwrap_or_default();
-        debug!("Zoho WorkDrive workspaces response: {}", &body[..body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive workspaces response: {}",
+            &body[..body.len().min(500)]
+        );
 
-        if let Ok(ws_list) = serde_json::from_str::<JsonApiListResponse<WorkspaceListResource>>(&body) {
+        if let Ok(ws_list) =
+            serde_json::from_str::<JsonApiListResponse<WorkspaceListResource>>(&body)
+        {
             for ws in ws_list.data {
-                info!("Zoho WorkDrive workspace as team folder: {} ({})", ws.attributes.name, ws.id);
-                self.folder_cache.insert(format!("/{}", ws.attributes.name), ws.id.clone());
+                info!(
+                    "Zoho WorkDrive workspace as team folder: {} ({})",
+                    ws.attributes.name, ws.id
+                );
+                self.folder_cache
+                    .insert(format!("/{}", ws.attributes.name), ws.id.clone());
                 self.team_folders.push((ws.id, ws.attributes.name));
             }
         }
 
-        info!("Zoho WorkDrive discovered {} team folders (via workspaces)", self.team_folders.len());
+        info!(
+            "Zoho WorkDrive discovered {} team folders (via workspaces)",
+            self.team_folders.len()
+        );
     }
 
     /// List files in a folder by ID.
@@ -1265,37 +1535,62 @@ impl ZohoWorkdriveProvider {
             let url = if is_privatespace {
                 format!(
                     "{}/privatespace/{}/files?page%5Blimit%5D={}&page%5Boffset%5D={}",
-                    self.api_base(), folder_id, limit, offset
+                    self.api_base(),
+                    folder_id,
+                    limit,
+                    offset
                 )
             } else {
                 format!(
                     "{}/files/{}/files?page%5Blimit%5D={}&page%5Boffset%5D={}",
-                    self.api_base(), folder_id, limit, offset
+                    self.api_base(),
+                    folder_id,
+                    limit,
+                    offset
                 )
             };
 
             info!("Zoho WorkDrive list: GET {}", url);
 
-            let resp = self.client
+            let resp = self
+                .client
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
 
             if !status.is_success() {
-                debug!("Zoho WorkDrive list error ({}): {}", status, &body_text[..body_text.len().min(300)]);
-                return Err(ProviderError::Other(
-                    format!("List files error {} (folder_id={}): {}", status, folder_id, sanitize_api_error(&body_text))
-                ));
+                debug!(
+                    "Zoho WorkDrive list error ({}): {}",
+                    status,
+                    &body_text[..body_text.len().min(300)]
+                );
+                return Err(ProviderError::Other(format!(
+                    "List files error {} (folder_id={}): {}",
+                    status,
+                    folder_id,
+                    sanitize_api_error(&body_text)
+                )));
             }
 
-            debug!("Zoho WorkDrive list response ({} bytes): {}", body_text.len(), &body_text[..body_text.len().min(500)]);
+            debug!(
+                "Zoho WorkDrive list response ({} bytes): {}",
+                body_text.len(),
+                &body_text[..body_text.len().min(500)]
+            );
 
             let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body_text)
-                .map_err(|e| ProviderError::Other(format!("Parse files error: {} — body: {}", e, sanitize_api_error(&body_text))))?;
+                .map_err(|e| {
+                    ProviderError::Other(format!(
+                        "Parse files error: {} — body: {}",
+                        e,
+                        sanitize_api_error(&body_text)
+                    ))
+                })?;
 
             let count = list.data.len();
             info!("Zoho WorkDrive list parsed {} items", count);
@@ -1312,9 +1607,11 @@ impl ZohoWorkdriveProvider {
 
     /// Convert a FileResource to RemoteEntry
     fn to_remote_entry(&self, file: &FileResource, parent_path: &str) -> RemoteEntry {
-        let is_dir = file.attributes.file_type == "folder"
-            || file.attributes.is_folder.unwrap_or(false);
-        let size = file.attributes.storage_info
+        let is_dir =
+            file.attributes.file_type == "folder" || file.attributes.is_folder.unwrap_or(false);
+        let size = file
+            .attributes
+            .storage_info
             .as_ref()
             .and_then(|s| s.size_in_bytes)
             .unwrap_or(0);
@@ -1322,7 +1619,11 @@ impl ZohoWorkdriveProvider {
         let path = if parent_path == "/" {
             format!("/{}", file.attributes.name)
         } else {
-            format!("{}/{}", parent_path.trim_end_matches('/'), file.attributes.name)
+            format!(
+                "{}/{}",
+                parent_path.trim_end_matches('/'),
+                file.attributes.name
+            )
         };
 
         let mut metadata = HashMap::new();
@@ -1331,23 +1632,35 @@ impl ZohoWorkdriveProvider {
         // Include labels in metadata if present (serialized as JSON array of {name, color})
         if let Some(labels) = &file.attributes.labels {
             if !labels.is_empty() {
-                let label_data: Vec<serde_json::Value> = labels.iter().filter_map(|lv| {
-                    // Labels can be full objects or just ID strings
-                    if let Some(obj) = lv.as_object() {
-                        let attrs = obj.get("attributes").and_then(|a| a.as_object());
-                        let name = attrs.and_then(|a| a.get("name")).and_then(|v| v.as_str()).unwrap_or("");
-                        let color = attrs.and_then(|a| a.get("color")).and_then(|v| v.as_str()).unwrap_or("");
-                        if !name.is_empty() {
-                            Some(serde_json::json!({"name": name, "color": color}))
+                let label_data: Vec<serde_json::Value> = labels
+                    .iter()
+                    .filter_map(|lv| {
+                        // Labels can be full objects or just ID strings
+                        if let Some(obj) = lv.as_object() {
+                            let attrs = obj.get("attributes").and_then(|a| a.as_object());
+                            let name = attrs
+                                .and_then(|a| a.get("name"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let color = attrs
+                                .and_then(|a| a.get("color"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            if !name.is_empty() {
+                                Some(serde_json::json!({"name": name, "color": color}))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
-                    } else {
-                        None
-                    }
-                }).collect();
+                    })
+                    .collect();
                 if !label_data.is_empty() {
-                    metadata.insert("zoho_labels".to_string(), serde_json::to_string(&label_data).unwrap_or_default());
+                    metadata.insert(
+                        "zoho_labels".to_string(),
+                        serde_json::to_string(&label_data).unwrap_or_default(),
+                    );
                 }
             }
         }
@@ -1361,7 +1674,10 @@ impl ZohoWorkdriveProvider {
         }
 
         // Detect Zoho native documents by extn OR file_type
-        let native_export = file.attributes.extn.as_deref()
+        let native_export = file
+            .attributes
+            .extn
+            .as_deref()
             .and_then(zoho_native_export_info)
             .or_else(|| zoho_native_export_info(&file.attributes.file_type));
         if let Some((_, format, office_ext)) = native_export {
@@ -1375,7 +1691,10 @@ impl ZohoWorkdriveProvider {
             path,
             is_dir,
             size,
-            modified: file.attributes.modified_time_i18.clone()
+            modified: file
+                .attributes
+                .modified_time_i18
+                .clone()
                 .or_else(|| file.attributes.modified_time.clone()),
             permissions: None,
             owner: None,
@@ -1419,7 +1738,11 @@ impl ZohoWorkdriveProvider {
                     for f in &files {
                         entries.push(self.to_remote_entry(f, "/"));
                     }
-                    info!("Zoho WorkDrive root: {} team folders + {} privatespace items", self.team_folders.len(), files.len());
+                    info!(
+                        "Zoho WorkDrive root: {} team folders + {} privatespace items",
+                        self.team_folders.len(),
+                        files.len()
+                    );
                 }
                 Err(e) => {
                     info!("Zoho WorkDrive privatespace list error: {}", e);
@@ -1434,14 +1757,20 @@ impl ZohoWorkdriveProvider {
         }
 
         if entries.is_empty() {
-            info!("Zoho WorkDrive root listing is empty — no team folders and no privatespace files");
+            info!(
+                "Zoho WorkDrive root listing is empty — no team folders and no privatespace files"
+            );
         }
 
         Ok(entries)
     }
 
     /// Find a file/folder by name in a parent folder
-    async fn find_by_name(&self, name: &str, parent_id: &str) -> Result<Option<FileResource>, ProviderError> {
+    async fn find_by_name(
+        &self,
+        name: &str,
+        parent_id: &str,
+    ) -> Result<Option<FileResource>, ProviderError> {
         let files = self.list_folder(parent_id).await?;
         Ok(files.into_iter().find(|f| f.attributes.name == name))
     }
@@ -1451,7 +1780,9 @@ impl ZohoWorkdriveProvider {
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
         let path = path.trim_matches('/');
         if path.is_empty() {
-            return Ok(self.folder_cache.get("/")
+            return Ok(self
+                .folder_cache
+                .get("/")
                 .cloned()
                 .unwrap_or_else(|| self.current_folder_id.clone()));
         }
@@ -1469,17 +1800,26 @@ impl ZohoWorkdriveProvider {
 
         let mut current_id = if let Some(cached) = self.folder_cache.get(&current_path) {
             cached.clone()
-        } else if let Some((tf_id, _)) = self.team_folders.iter().find(|(_, name)| name.as_str() == first) {
+        } else if let Some((tf_id, _)) = self
+            .team_folders
+            .iter()
+            .find(|(_, name)| name.as_str() == first)
+        {
             let id = tf_id.clone();
             self.folder_cache.insert(current_path.clone(), id.clone());
             id
         } else {
             // Try privatespace listing
-            let root_id = self.privatespace_id.as_deref()
+            let root_id = self
+                .privatespace_id
+                .as_deref()
                 .unwrap_or(&self.current_folder_id);
-            let file = self.find_by_name(first, root_id).await?
+            let file = self
+                .find_by_name(first, root_id)
+                .await?
                 .ok_or_else(|| ProviderError::NotFound(current_path.clone()))?;
-            self.folder_cache.insert(current_path.clone(), file.id.clone());
+            self.folder_cache
+                .insert(current_path.clone(), file.id.clone());
             file.id
         };
 
@@ -1492,7 +1832,9 @@ impl ZohoWorkdriveProvider {
                 continue;
             }
 
-            let file = self.find_by_name(part, &current_id).await?
+            let file = self
+                .find_by_name(part, &current_id)
+                .await?
                 .ok_or_else(|| ProviderError::NotFound(current_path.clone()))?;
 
             current_id = file.id.clone();
@@ -1505,7 +1847,9 @@ impl ZohoWorkdriveProvider {
 
 #[async_trait]
 impl StorageProvider for ZohoWorkdriveProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::ZohoWorkdrive
@@ -1522,7 +1866,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if !self.is_authenticated() {
             return Err(ProviderError::AuthenticationFailed(
-                "Not authenticated. Complete OAuth2 flow first.".to_string()
+                "Not authenticated. Complete OAuth2 flow first.".to_string(),
             ));
         }
 
@@ -1531,7 +1875,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         self.connected = true;
         self.current_path = "/".to_string();
-        info!("Connected to Zoho WorkDrive ({})", self.account_email.as_deref().unwrap_or("unknown"));
+        info!(
+            "Connected to Zoho WorkDrive ({})",
+            self.account_email.as_deref().unwrap_or("unknown")
+        );
         Ok(())
     }
 
@@ -1570,7 +1917,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let files = self.list_folder(&folder_id).await?;
 
-        Ok(files.iter()
+        Ok(files
+            .iter()
             .map(|f| self.to_remote_entry(f, &effective_path))
             .collect())
     }
@@ -1583,7 +1931,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let new_path = if path.starts_with('/') {
             path.to_string()
         } else if path == ".." {
-            let mut parts: Vec<&str> = self.current_path.split('/').filter(|s| !s.is_empty()).collect();
+            let mut parts: Vec<&str> = self
+                .current_path
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
             parts.pop();
             if parts.is_empty() {
                 "/".to_string()
@@ -1596,7 +1948,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let folder_id = self.resolve_path(&new_path).await?;
         self.current_folder_id = folder_id;
-        self.current_path = if new_path.is_empty() { "/".to_string() } else { new_path };
+        self.current_path = if new_path.is_empty() {
+            "/".to_string()
+        } else {
+            new_path
+        };
         Ok(())
     }
 
@@ -1623,17 +1979,23 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         // WorkDrive download URL (same for regular files and native docs — auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
-            self.config.download_domain(), file.id
+            self.config.download_domain(),
+            file.id
         );
 
         // For native Zoho docs, append Office extension to local path
-        let actual_local_path = if let Some((_, _, office_ext)) = file.attributes.extn.as_deref()
+        let actual_local_path = if let Some((_, _, office_ext)) = file
+            .attributes
+            .extn
+            .as_deref()
             .and_then(zoho_native_export_info)
             .or_else(|| zoho_native_export_info(&file.attributes.file_type))
         {
@@ -1649,21 +2011,35 @@ impl StorageProvider for ZohoWorkdriveProvider {
         info!("Zoho WorkDrive download: GET {}", download_url);
         let auth = self.auth_header().await?;
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&download_url)
             .header(AUTHORIZATION, auth)
             .header(ACCEPT, HeaderValue::from_static("*/*"))
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let final_url = resp.url().to_string();
-        debug!("Zoho WorkDrive download response: {} (content-length: {:?}, final_url: {})", status, resp.content_length(), final_url);
+        debug!(
+            "Zoho WorkDrive download response: {} (content-length: {:?}, final_url: {})",
+            status,
+            resp.content_length(),
+            final_url
+        );
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive download error body: {}", &text[..text.len().min(1000)]);
-            return Err(ProviderError::Other(format!("Download failed ({}): {}", status, sanitize_api_error(&text))));
+            debug!(
+                "Zoho WorkDrive download error body: {}",
+                &text[..text.len().min(1000)]
+            );
+            return Err(ProviderError::Other(format!(
+                "Download failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         // Streaming download: write chunks to file as they arrive
@@ -1671,23 +2047,30 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(&actual_local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(&actual_local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await
+            atomic
+                .write_all(&chunk)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
             }
         }
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
-        info!("Downloaded {} to {} ({} bytes)", remote_path, actual_local_path, downloaded);
+        info!(
+            "Downloaded {} to {} ({} bytes)",
+            remote_path, actual_local_path, downloaded
+        );
         Ok(())
     }
 
@@ -1705,28 +2088,41 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         // Check if this is a Zoho native doc — use same download URL (WorkDrive auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
-            self.config.download_domain(), file.id
+            self.config.download_domain(),
+            file.id
         );
         info!("Zoho WorkDrive download_to_bytes: GET {}", download_url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&download_url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(ACCEPT, HeaderValue::from_static("*/*"))
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            debug!("Zoho WorkDrive download_to_bytes error: {} — {}", status, &text[..text.len().min(500)]);
-            return Err(ProviderError::Other(format!("Download failed ({}): {}", status, sanitize_api_error(&text))));
+            debug!(
+                "Zoho WorkDrive download_to_bytes error: {} — {}",
+                status,
+                &text[..text.len().min(500)]
+            );
+            return Err(ProviderError::Other(format!(
+                "Download failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -1753,12 +2149,17 @@ impl StorageProvider for ZohoWorkdriveProvider {
         };
 
         // Streaming upload: read file as a stream instead of loading into memory
-        let file_meta = tokio::fs::metadata(local_path).await
+        let file_meta = tokio::fs::metadata(local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?;
         let total_size = file_meta.len();
-        info!("Zoho WorkDrive upload: parent_id={}, filename={}, size={}", parent_id, file_name, total_size);
+        info!(
+            "Zoho WorkDrive upload: parent_id={}, filename={}, size={}",
+            parent_id, file_name, total_size
+        );
 
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
@@ -1779,28 +2180,41 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .part("content", file_part);
 
         // Override Accept header: upload response is NOT JSON:API format
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(ACCEPT, HeaderValue::from_static("application/json"))
             .multipart(form)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Upload failed ({}): {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Upload failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         let resp_text = resp.text().await.unwrap_or_default();
-        debug!("Zoho WorkDrive upload response ({}): {}", status, &resp_text[..resp_text.len().min(300)]);
+        debug!(
+            "Zoho WorkDrive upload response ({}): {}",
+            status,
+            &resp_text[..resp_text.len().min(300)]
+        );
 
         if let Some(cb) = on_progress {
             cb(total_size, total_size);
         }
 
-        info!("Uploaded {} to {} (parent_id={})", local_path, remote_path, parent_id);
+        info!(
+            "Uploaded {} to {} (parent_id={})",
+            local_path, remote_path, parent_id
+        );
         Ok(())
     }
 
@@ -1830,17 +2244,25 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         let url = format!("{}/files", self.api_base());
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("mkdir failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "mkdir failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Created folder: {}", path);
@@ -1861,7 +2283,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // Move to trash via PATCH with status "51" (Zoho JSON:API convention)
@@ -1876,18 +2300,27 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         info!("Zoho WorkDrive move to trash: PATCH {} id={}", url, file.id);
-        let resp = self.client
+        let resp = self
+            .client
             .patch(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 404 {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Delete failed ({}): {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Delete failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Moved to trash: {}", path);
@@ -1917,7 +2350,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(from_parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &from_parent_id).await?
+        let file = self
+            .find_by_name(file_name, &from_parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         let to_path = to.trim_matches('/');
@@ -1948,19 +2383,26 @@ impl StorageProvider for ZohoWorkdriveProvider {
             });
 
             let url = format!("{}/files/{}/move", self.api_base(), file.id);
-            let resp = self.client
+            let resp = self
+                .client
                 .patch(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/vnd.api+json"),
+                )
                 .body(move_body.to_string())
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
-                    "Move failed ({}): {}", status, sanitize_api_error(&text)
+                    "Move failed ({}): {}",
+                    status,
+                    sanitize_api_error(&text)
                 )));
             }
             info!("Moved {} to folder {}", from, to_parent_path);
@@ -1978,16 +2420,24 @@ impl StorageProvider for ZohoWorkdriveProvider {
             });
 
             let url = format!("{}/files/{}", self.api_base(), file.id);
-            let resp = self.client
+            let resp = self
+                .client
                 .patch(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+                .header(
+                    CONTENT_TYPE,
+                    HeaderValue::from_static("application/vnd.api+json"),
+                )
                 .body(rename_body.to_string())
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!("Rename failed: {}", resp.status())));
+                return Err(ProviderError::Other(format!(
+                    "Rename failed: {}",
+                    resp.status()
+                )));
             }
         }
 
@@ -2009,7 +2459,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(path_str.to_string()))?;
 
         Ok(self.to_remote_entry(&file, parent_path))
@@ -2036,10 +2488,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         let team_name = if let Some(ref team_id) = self.team_id {
             let url = format!("{}/teams/{}", self.api_base(), team_id);
-            let resp = self.client
+            let resp = self
+                .client
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if let Ok(body) = resp.json::<JsonApiResponse<TeamResource>>().await {
@@ -2051,7 +2505,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             "Unknown".to_string()
         };
 
-        Ok(format!("Zoho WorkDrive — Team: {} — Region: {}", team_name, self.config.region.to_uppercase()))
+        Ok(format!(
+            "Zoho WorkDrive — Team: {} — Region: {}",
+            team_name,
+            self.config.region.to_uppercase()
+        ))
     }
 
     fn supports_server_copy(&self) -> bool {
@@ -2072,7 +2530,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         // Resolve destination folder
@@ -2099,16 +2559,24 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         let url = format!("{}/files/{}/copy", self.api_base(), file.id);
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Copy failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Copy failed: {}",
+                resp.status()
+            )));
         }
 
         info!("Copied {} to {}", from, to);
@@ -2147,7 +2615,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        let file = self.find_by_name(file_name, &parent_id).await?
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // Create a download link via Zoho WorkDrive Links API
@@ -2181,23 +2651,40 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         let url = format!("{}/links", self.api_base());
-        info!("Zoho WorkDrive create share link: POST {} for resource {}", url, file.id);
+        info!(
+            "Zoho WorkDrive create share link: POST {} for resource {}",
+            url, file.id
+        );
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
-        let resp_text = resp.text().await
+        let resp_text = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::Other(format!("Read response: {}", e)))?;
 
         if !status.is_success() {
-            info!("Zoho WorkDrive create share link failed: {} - {}", status, resp_text);
-            return Err(ProviderError::Other(format!("Create share link failed: {} - {}", status, sanitize_api_error(&resp_text))));
+            info!(
+                "Zoho WorkDrive create share link failed: {} - {}",
+                status, resp_text
+            );
+            return Err(ProviderError::Other(format!(
+                "Create share link failed: {} - {}",
+                status,
+                sanitize_api_error(&resp_text)
+            )));
         }
 
         debug!("Zoho WorkDrive create share link response: {}", resp_text);
@@ -2210,30 +2697,46 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let link = parsed["data"]["attributes"]["link"]
             .as_str()
             .or_else(|| parsed["data"]["attributes"]["permalink"].as_str())
-            .ok_or_else(|| ProviderError::Other(format!(
-                "No link URL in response: {}", sanitize_api_error(&resp_text)
-            )))?;
+            .ok_or_else(|| {
+                ProviderError::Other(format!(
+                    "No link URL in response: {}",
+                    sanitize_api_error(&resp_text)
+                ))
+            })?;
 
         info!("Zoho WorkDrive share link created: {}", link);
-        Ok(ShareLinkResult { url: link.to_string(), password: None, expires_at: None })
+        Ok(ShareLinkResult {
+            url: link.to_string(),
+            password: None,
+            expires_at: None,
+        })
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let team_id = self.team_id.as_ref()
+        let team_id = self
+            .team_id
+            .as_ref()
             .ok_or_else(|| ProviderError::Other("Not connected to a team".to_string()))?;
 
         let url = format!("{}/teams/{}", self.api_base(), team_id);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Storage info failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Storage info failed: {}",
+                resp.status()
+            )));
         }
 
-        let team: JsonApiResponse<TeamResource> = resp.json().await
+        let team: JsonApiResponse<TeamResource> = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let used = team.data.attributes.storage_used.unwrap_or(0);
@@ -2243,24 +2746,36 @@ impl StorageProvider for ZohoWorkdriveProvider {
         Ok(StorageInfo { used, total, free })
     }
 
-    fn supports_find(&self) -> bool { true }
+    fn supports_find(&self) -> bool {
+        true
+    }
 
-    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let team_id = self.team_id.as_ref()
+    async fn find(
+        &mut self,
+        _path: &str,
+        pattern: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let team_id = self
+            .team_id
+            .as_ref()
             .ok_or_else(|| ProviderError::Other("Not connected to a team".to_string()))?
             .clone();
 
         let encoded = urlencoding::encode(pattern);
         let url = format!(
             "{}/files/search?search_string={}&team_id={}",
-            self.api_base(), encoded, team_id
+            self.api_base(),
+            encoded,
+            team_id
         );
         info!("Zoho WorkDrive find: GET {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -2268,22 +2783,37 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "Search failed ({}): {}", status, sanitize_api_error(&body)
+                "Search failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
-        debug!("Zoho WorkDrive find response ({} bytes): {}", body.len(), &body[..body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive find response ({} bytes): {}",
+            body.len(),
+            &body[..body.len().min(500)]
+        );
 
-        let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::ParseError(format!(
-                "Parse search results: {} — body: {}", e, sanitize_api_error(&body)
-            )))?;
+        let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "Parse search results: {} — body: {}",
+                e,
+                sanitize_api_error(&body)
+            ))
+        })?;
 
-        let entries = list.data.iter()
+        let entries = list
+            .data
+            .iter()
             .map(|f| self.to_remote_entry(f, "/"))
             .collect();
 
-        info!("Zoho WorkDrive find '{}': {} results", pattern, list.data.len());
+        info!(
+            "Zoho WorkDrive find '{}': {} results",
+            pattern,
+            list.data.len()
+        );
         Ok(entries)
     }
 
@@ -2295,10 +2825,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let url = format!("{}/files/{}/versions", self.api_base(), file_id);
         info!("Zoho WorkDrive list versions: GET {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
@@ -2306,20 +2838,32 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
-                "List versions failed ({}): {}", status, sanitize_api_error(&body)
+                "List versions failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
-        debug!("Zoho WorkDrive versions response ({} bytes): {}", body.len(), &body[..body.len().min(500)]);
+        debug!(
+            "Zoho WorkDrive versions response ({} bytes): {}",
+            body.len(),
+            &body[..body.len().min(500)]
+        );
 
-        let parsed: JsonApiListResponse<VersionResource> = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::ParseError(format!(
-                "Parse versions: {} — body: {}", e, sanitize_api_error(&body)
-            )))?;
+        let parsed: JsonApiListResponse<VersionResource> =
+            serde_json::from_str(&body).map_err(|e| {
+                ProviderError::ParseError(format!(
+                    "Parse versions: {} — body: {}",
+                    e,
+                    sanitize_api_error(&body)
+                ))
+            })?;
 
-        let versions = parsed.data.into_iter().map(|v| {
-            let modified = v.attributes.modified_time
-                .or_else(|| {
+        let versions = parsed
+            .data
+            .into_iter()
+            .map(|v| {
+                let modified = v.attributes.modified_time.or_else(|| {
                     v.attributes.modified_time_in_millisecond.map(|ms| {
                         chrono::DateTime::from_timestamp_millis(ms)
                             .unwrap_or_default()
@@ -2327,20 +2871,25 @@ impl StorageProvider for ZohoWorkdriveProvider {
                             .to_string()
                     })
                 });
-            let size = v.attributes.storage_info
-                .and_then(|si| si.size_in_bytes)
-                .unwrap_or(0);
-            let modified_by = v.attributes.author_name
-                .or(v.attributes.modified_by)
-                .or(v.attributes.version_number.map(|n| format!("v{}", n)));
+                let size = v
+                    .attributes
+                    .storage_info
+                    .and_then(|si| si.size_in_bytes)
+                    .unwrap_or(0);
+                let modified_by = v
+                    .attributes
+                    .author_name
+                    .or(v.attributes.modified_by)
+                    .or(v.attributes.version_number.map(|n| format!("v{}", n)));
 
-            FileVersion {
-                id: v.id,
-                modified,
-                size,
-                modified_by,
-            }
-        }).collect();
+                FileVersion {
+                    id: v.id,
+                    modified,
+                    size,
+                    modified_by,
+                }
+            })
+            .collect();
 
         Ok(versions)
     }
@@ -2362,36 +2911,47 @@ impl StorageProvider for ZohoWorkdriveProvider {
         );
         info!("Zoho WorkDrive download version: GET {}", download_url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&download_url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(ACCEPT, HeaderValue::from_static("*/*"))
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
-                "Version download failed ({}): {}", status, sanitize_api_error(&text)
+                "Version download failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
             )));
         }
 
         use futures_util::StreamExt;
 
         let mut stream = resp.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await
+            atomic
+                .write_all(&chunk)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
-        info!("Downloaded version {} of {} to {}", version_id, path, local_path);
+        info!(
+            "Downloaded version {} of {} to {}",
+            version_id, path, local_path
+        );
         Ok(())
     }
 
@@ -2399,22 +2959,34 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let file_id = self.resolve_file_id(path).await?;
 
         // Promote version to current via POST
-        let url = format!("{}/files/{}/versions/{}/promote", self.api_base(), file_id, version_id);
+        let url = format!(
+            "{}/files/{}/versions/{}/promote",
+            self.api_base(),
+            file_id,
+            version_id
+        );
         info!("Zoho WorkDrive restore version: POST {}", url);
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, HeaderValue::from_static("application/vnd.api+json"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.api+json"),
+            )
             .body("{}")
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Restore version failed ({}): {}", status, sanitize_api_error(&text)
+                "Restore version failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
             )));
         }
 

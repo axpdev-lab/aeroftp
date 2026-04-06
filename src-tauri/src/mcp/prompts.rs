@@ -31,36 +31,84 @@ pub fn prompt_definitions() -> Vec<McpPromptDef> {
             name: "deploy_files",
             description: "Upload build artifacts from a local directory to a remote server",
             arguments: vec![
-                PromptArg { name: "server", description: "Target server name", required: true },
-                PromptArg { name: "local_dir", description: "Local build directory (e.g. ./dist)", required: true },
-                PromptArg { name: "remote_dir", description: "Remote deployment directory", required: true },
+                PromptArg {
+                    name: "server",
+                    description: "Target server name",
+                    required: true,
+                },
+                PromptArg {
+                    name: "local_dir",
+                    description: "Local build directory (e.g. ./dist)",
+                    required: true,
+                },
+                PromptArg {
+                    name: "remote_dir",
+                    description: "Remote deployment directory",
+                    required: true,
+                },
             ],
         },
         McpPromptDef {
             name: "backup_remote",
             description: "Download a remote directory as a local backup",
             arguments: vec![
-                PromptArg { name: "server", description: "Source server name", required: true },
-                PromptArg { name: "remote_dir", description: "Remote directory to back up", required: true },
-                PromptArg { name: "local_dir", description: "Local backup destination (default: ./backup)", required: false },
+                PromptArg {
+                    name: "server",
+                    description: "Source server name",
+                    required: true,
+                },
+                PromptArg {
+                    name: "remote_dir",
+                    description: "Remote directory to back up",
+                    required: true,
+                },
+                PromptArg {
+                    name: "local_dir",
+                    description: "Local backup destination (default: ./backup)",
+                    required: false,
+                },
             ],
         },
         McpPromptDef {
             name: "sync_directories",
             description: "Synchronize a local directory with a remote directory",
             arguments: vec![
-                PromptArg { name: "server", description: "Target server name", required: true },
-                PromptArg { name: "local_dir", description: "Local source directory", required: true },
-                PromptArg { name: "remote_dir", description: "Remote target directory", required: true },
+                PromptArg {
+                    name: "server",
+                    description: "Target server name",
+                    required: true,
+                },
+                PromptArg {
+                    name: "local_dir",
+                    description: "Local source directory",
+                    required: true,
+                },
+                PromptArg {
+                    name: "remote_dir",
+                    description: "Remote target directory",
+                    required: true,
+                },
             ],
         },
         McpPromptDef {
             name: "find_and_clean",
             description: "Find and remove old or large files on a remote server",
             arguments: vec![
-                PromptArg { name: "server", description: "Target server name", required: true },
-                PromptArg { name: "path", description: "Remote path to scan (default: /)", required: false },
-                PromptArg { name: "pattern", description: "File pattern to match (e.g. \"*.log\", \"*.tmp\")", required: false },
+                PromptArg {
+                    name: "server",
+                    description: "Target server name",
+                    required: true,
+                },
+                PromptArg {
+                    name: "path",
+                    description: "Remote path to scan (default: /)",
+                    required: false,
+                },
+                PromptArg {
+                    name: "pattern",
+                    description: "File pattern to match (e.g. \"*.log\", \"*.tmp\")",
+                    required: false,
+                },
             ],
         },
     ]
@@ -71,11 +119,17 @@ pub fn prompts_list() -> Vec<Value> {
     prompt_definitions()
         .iter()
         .map(|p| {
-            let args: Vec<Value> = p.arguments.iter().map(|a| json!({
-                "name": a.name,
-                "description": a.description,
-                "required": a.required,
-            })).collect();
+            let args: Vec<Value> = p
+                .arguments
+                .iter()
+                .map(|a| {
+                    json!({
+                        "name": a.name,
+                        "description": a.description,
+                        "required": a.required,
+                    })
+                })
+                .collect();
             json!({
                 "name": p.name,
                 "description": p.description,

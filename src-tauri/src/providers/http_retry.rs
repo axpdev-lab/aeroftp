@@ -9,7 +9,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use reqwest::{Request, Response, Client};
+use reqwest::{Client, Request, Response};
 use std::time::Duration;
 
 /// Configuration for HTTP retry behavior
@@ -85,7 +85,8 @@ pub async fn send_with_retry(
     let method = request.method().clone();
     let url = request.url().clone();
     let headers = request.headers().clone();
-    let body_bytes = request.body()
+    let body_bytes = request
+        .body()
         .and_then(|b| b.as_bytes())
         .map(|b| b.to_vec());
 
@@ -97,12 +98,17 @@ pub async fn send_with_retry(
         }
 
         // Determine delay: prefer Retry-After, fall back to exponential backoff
-        let delay = parse_retry_after(&last_response)
-            .unwrap_or_else(|| calculate_delay(attempt, config));
+        let delay =
+            parse_retry_after(&last_response).unwrap_or_else(|| calculate_delay(attempt, config));
 
         tracing::debug!(
             "HTTP {} {} returned {}. Retry {}/{} after {:?}",
-            method, url, last_response.status(), attempt + 1, config.max_retries, delay
+            method,
+            url,
+            last_response.status(),
+            attempt + 1,
+            config.max_retries,
+            delay
         );
 
         tokio::time::sleep(delay).await;

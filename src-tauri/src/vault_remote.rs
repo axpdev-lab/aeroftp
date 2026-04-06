@@ -12,9 +12,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::provider_commands::ProviderState;
 use std::path::PathBuf;
 use tauri::State;
-use crate::provider_commands::ProviderState;
 
 /// Validate a path has no null bytes (defense-in-depth for C FFI providers).
 fn validate_no_null_bytes(path: &str) -> Result<(), String> {
@@ -47,13 +47,16 @@ pub async fn vault_v2_download_remote(
 
     // Get the active provider and download
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or("No active connection. Connect to a server first.")?;
 
-    let local_str = local_path.to_str()
+    let local_str = local_path
+        .to_str()
         .ok_or("Temp path contains invalid UTF-8")?;
 
-    provider.download(&remote_path, local_str, None)
+    provider
+        .download(&remote_path, local_str, None)
         .await
         .map_err(|e| format!("Download failed: {}", e))?;
 
@@ -101,10 +104,12 @@ pub async fn vault_v2_upload_remote(
     }
 
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or("No active connection. Connect to a server first.")?;
 
-    provider.upload(&local_path, &remote_path, None)
+    provider
+        .upload(&local_path, &remote_path, None)
         .await
         .map_err(|e| format!("Upload failed: {}", e))?;
 
@@ -120,7 +125,8 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
     let path = PathBuf::from(&local_path);
 
     // Validate filename pattern — only clean up files we created
-    let file_name = path.file_name()
+    let file_name = path
+        .file_name()
         .and_then(|n| n.to_str())
         .ok_or("Invalid filename")?;
     if !file_name.starts_with("aerovault_remote_") || !file_name.ends_with(".aerovault") {
@@ -139,9 +145,11 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
 
     // Canonicalize and verify temp directory confinement
     let temp_dir = std::env::temp_dir();
-    let canonical_path = path.canonicalize()
+    let canonical_path = path
+        .canonicalize()
         .map_err(|e| format!("Path resolution failed: {}", e))?;
-    let canonical_temp = temp_dir.canonicalize()
+    let canonical_temp = temp_dir
+        .canonicalize()
         .map_err(|e| format!("Temp dir resolution failed: {}", e))?;
     if !canonical_path.starts_with(&canonical_temp) {
         return Err("Can only clean up files in temp directory".into());
@@ -153,7 +161,10 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
         if size > 0 {
             let chunk_size = std::cmp::min(size as usize, 1024 * 1024); // 1MB chunks
             let zeros = vec![0u8; chunk_size];
-            if let Ok(mut file) = std::fs::OpenOptions::new().write(true).open(&canonical_path) {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&canonical_path)
+            {
                 use std::io::Write;
                 let mut remaining = size;
                 let mut write_failed = false;
@@ -171,7 +182,9 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
                 if write_failed {
                     // Still delete even if zero-fill failed
                     let _ = std::fs::remove_file(&canonical_path);
-                    return Err("Secure zero-fill incomplete; file deleted without full overwrite".into());
+                    return Err(
+                        "Secure zero-fill incomplete; file deleted without full overwrite".into(),
+                    );
                 }
             }
         }

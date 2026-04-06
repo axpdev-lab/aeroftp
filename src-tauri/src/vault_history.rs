@@ -188,9 +188,7 @@ pub async fn vault_history_remove(
 }
 
 #[tauri::command]
-pub async fn vault_history_clear(
-    state: State<'_, VaultHistoryDb>,
-) -> Result<(), String> {
+pub async fn vault_history_clear(state: State<'_, VaultHistoryDb>) -> Result<(), String> {
     let conn = acquire_lock(&state);
     conn.execute("DELETE FROM recent_vaults", [])
         .map_err(|e| e.to_string())?;

@@ -47,22 +47,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use base64::Engine as _;
 use axum::{
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path as AxumPath, State},
     http::{
-        header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE},
+        header::{
+            ACCEPT_RANGES, AUTHORIZATION, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE,
+            WWW_AUTHENTICATE,
+        },
         HeaderMap, HeaderValue, Method, StatusCode,
     },
     response::{Html, IntoResponse, Response},
     routing::{any, get},
     Router,
 };
+use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::providers::{
-    ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
-    ShareLinkOptions, MAX_DOWNLOAD_TO_BYTES,
+    ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, ShareLinkOptions,
+    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -150,7 +153,12 @@ struct Cli {
     profile: Option<String>,
 
     /// Master password for encrypted vault (or set AEROFTP_MASTER_PASSWORD)
-    #[arg(long, global = true, env = "AEROFTP_MASTER_PASSWORD", hide_env_values = true)]
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_MASTER_PASSWORD",
+        hide_env_values = true
+    )]
     master_password: Option<String>,
 
     /// Verbose output (-v debug, -vv trace)
@@ -178,7 +186,6 @@ struct Cli {
     partial: bool,
 
     // ── Filter flags (apply to ls, get, put, sync, find, rm) ──
-
     /// Include only files matching glob pattern (repeatable)
     #[arg(long, global = true)]
     include: Vec<String>,
@@ -212,7 +219,6 @@ struct Cli {
     max_age: Option<String>,
 
     // ── Transfer control flags ──
-
     /// Abort after transferring this many bytes total (e.g., "10G", "500M")
     #[arg(long, global = true)]
     max_transfer: Option<String>,
@@ -750,6 +756,12 @@ enum DaemonCommands {
         /// HTTP API bind address
         #[arg(long, default_value = "127.0.0.1:14320")]
         addr: String,
+        /// Allow binding the daemon API to non-loopback addresses (unsafe; exposes job control remotely)
+        #[arg(long, default_value_t = false)]
+        allow_remote_bind: bool,
+        /// API auth token. If omitted, a random token is generated and saved for CLI reuse.
+        #[arg(long, env = "AEROFTP_DAEMON_TOKEN", hide_env_values = true)]
+        auth_token: Option<String>,
     },
     /// Stop the running daemon
     Stop,
@@ -875,6 +887,12 @@ enum ServeCommands {
         /// Local bind address
         #[arg(long, default_value = "127.0.0.1:8080")]
         addr: String,
+        /// Allow binding to non-loopback addresses (unsafe; exposes the served remote to other hosts)
+        #[arg(long, default_value_t = false)]
+        allow_remote_bind: bool,
+        /// Optional auth token. Accepts Bearer auth or Basic auth with any username and this password.
+        #[arg(long, env = "AEROFTP_SERVE_AUTH_TOKEN", hide_env_values = true)]
+        auth_token: Option<String>,
     },
     /// Serve a remote over local WebDAV (read-write)
     #[command(name = "webdav")]
@@ -888,6 +906,12 @@ enum ServeCommands {
         /// Local bind address
         #[arg(long, default_value = "127.0.0.1:8080")]
         addr: String,
+        /// Allow binding to non-loopback addresses (unsafe; exposes read-write WebDAV access to other hosts)
+        #[arg(long, default_value_t = false)]
+        allow_remote_bind: bool,
+        /// Optional auth token. Accepts Bearer auth or Basic auth with any username and this password.
+        #[arg(long, env = "AEROFTP_SERVE_AUTH_TOKEN", hide_env_values = true)]
+        auth_token: Option<String>,
     },
     /// Serve a remote over local FTP (read-write, anonymous)
     Ftp {
@@ -900,6 +924,15 @@ enum ServeCommands {
         /// Local bind address for control connection
         #[arg(long, default_value = "127.0.0.1:2121")]
         addr: String,
+        /// Allow binding to non-loopback addresses (unsafe; FTP serve is anonymous)
+        #[arg(long, default_value_t = false)]
+        allow_remote_bind: bool,
+        /// Username for FTP serve auth. If omitted on non-loopback, defaults to "aeroftp".
+        #[arg(long, env = "AEROFTP_SERVE_USER")]
+        auth_user: Option<String>,
+        /// Password for FTP serve auth. If omitted on non-loopback, one is generated automatically.
+        #[arg(long, env = "AEROFTP_SERVE_PASSWORD", hide_env_values = true)]
+        auth_password: Option<String>,
         /// Passive port range (e.g., "49152-65535")
         #[arg(long, default_value = "49152-49200")]
         passive_ports: String,
@@ -915,6 +948,15 @@ enum ServeCommands {
         /// Local bind address
         #[arg(long, default_value = "127.0.0.1:2222")]
         addr: String,
+        /// Allow binding to non-loopback addresses (unsafe; SFTP serve accepts any password)
+        #[arg(long, default_value_t = false)]
+        allow_remote_bind: bool,
+        /// Username for SFTP serve auth. If omitted on non-loopback, defaults to "aeroftp".
+        #[arg(long, env = "AEROFTP_SERVE_USER")]
+        auth_user: Option<String>,
+        /// Password for SFTP serve auth. If omitted on non-loopback, one is generated automatically.
+        #[arg(long, env = "AEROFTP_SERVE_PASSWORD", hide_env_values = true)]
+        auth_password: Option<String>,
     },
 }
 
@@ -1084,19 +1126,23 @@ fn load_cli_config() -> Result<CliConfigFile, String> {
 
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| format!("Cannot read config '{}': {}", path.display(), e))?;
-    toml::from_str(&raw)
-        .map_err(|e| format!("Invalid config '{}': {}", path.display(), e))
+    toml::from_str(&raw).map_err(|e| format!("Invalid config '{}': {}", path.display(), e))
 }
 
 fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
     let path = cli_config_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create config directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Cannot create config directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
 
-    let content = toml::to_string_pretty(config)
-        .map_err(|e| format!("Cannot serialize config: {}", e))?;
+    let content =
+        toml::to_string_pretty(config).map_err(|e| format!("Cannot serialize config: {}", e))?;
     std::fs::write(&path, content)
         .map_err(|e| format!("Cannot write config '{}': {}", path.display(), e))?;
     Ok(path)
@@ -1120,8 +1166,13 @@ fn load_update_cache() -> CliUpdateCache {
 fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
     let path = cli_update_cache_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create config directory '{}': {}", parent.display(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Cannot create config directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
     }
 
     let content = toml::to_string_pretty(cache)
@@ -1221,7 +1272,10 @@ fn normalize_release_version(raw: &str) -> Option<Version> {
 }
 
 fn is_newer_release(latest: &str, current: &str) -> bool {
-    match (normalize_release_version(latest), normalize_release_version(current)) {
+    match (
+        normalize_release_version(latest),
+        normalize_release_version(current),
+    ) {
         (Some(latest), Some(current)) => latest > current,
         _ => false,
     }
@@ -1308,9 +1362,7 @@ fn arg_present(args: &[String], long: &str, short: Option<&str>) -> bool {
 fn verbose_present(args: &[String]) -> bool {
     args.iter().skip(1).any(|arg| {
         arg == "--verbose"
-            || (arg.starts_with('-')
-                && arg.len() > 1
-                && arg.chars().skip(1).all(|ch| ch == 'v'))
+            || (arg.starts_with('-') && arg.len() > 1 && arg.chars().skip(1).all(|ch| ch == 'v'))
     })
 }
 
@@ -1329,7 +1381,10 @@ fn apply_config_defaults(args: &[String], config: &CliConfigFile) -> Vec<String>
             merged.push(format.clone());
         }
     }
-    if config.defaults.json.unwrap_or(false) && !arg_present(args, "--json", None) && !arg_present(args, "--format", None) {
+    if config.defaults.json.unwrap_or(false)
+        && !arg_present(args, "--json", None)
+        && !arg_present(args, "--format", None)
+    {
         merged.push("--json".to_string());
     }
     if let Some(parallel) = config.defaults.parallel {
@@ -1488,18 +1543,24 @@ fn print_error(format: OutputFormat, msg: &str, code: i32) {
         OutputFormat::Text => eprintln!("Error: {}", msg),
         OutputFormat::Json => {
             // JSON errors go to stderr so stdout remains clean for piping
-            eprintln!("{}", serde_json::to_string(&CliError {
-                status: "error",
-                error: msg.to_string(),
-                code,
-            }).unwrap());
+            eprintln!(
+                "{}",
+                serde_json::to_string(&CliError {
+                    status: "error",
+                    error: msg.to_string(),
+                    code,
+                })
+                .unwrap()
+            );
         }
     }
 }
 
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
     match err {
-        ProviderError::ConnectionFailed(_) | ProviderError::NotConnected | ProviderError::NetworkError(_) => 1,
+        ProviderError::ConnectionFailed(_)
+        | ProviderError::NotConnected
+        | ProviderError::NetworkError(_) => 1,
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) => 3,
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
@@ -1545,9 +1606,13 @@ fn format_speed(bps: u64) -> String {
 fn parse_speed_limit(s: &str) -> Result<u64, String> {
     let s = s.trim().to_uppercase();
     if let Some(n) = s.strip_suffix('M') {
-        n.parse::<u64>().map(|v| v * 1024 * 1024).map_err(|e| e.to_string())
+        n.parse::<u64>()
+            .map(|v| v * 1024 * 1024)
+            .map_err(|e| e.to_string())
     } else if let Some(n) = s.strip_suffix('K') {
-        n.parse::<u64>().map(|v| v * 1024).map_err(|e| e.to_string())
+        n.parse::<u64>()
+            .map(|v| v * 1024)
+            .map_err(|e| e.to_string())
     } else {
         s.parse::<u64>().map_err(|e| e.to_string())
     }
@@ -1612,7 +1677,8 @@ fn verify_path_within_root(path: &std::path::Path, root: &std::path::Path) -> Re
                 if !canonical_parent.starts_with(&canonical_root) {
                     return Err(format!(
                         "Path escapes destination root via symlink: {} resolves to {}",
-                        path.display(), canonical_parent.display()
+                        path.display(),
+                        canonical_parent.display()
                     ));
                 }
             }
@@ -1656,7 +1722,10 @@ fn use_color() -> bool {
         return false;
     }
     // CLICOLOR_FORCE=1 forces color even on non-TTY
-    if std::env::var("CLICOLOR_FORCE").ok().is_some_and(|v| v != "0") {
+    if std::env::var("CLICOLOR_FORCE")
+        .ok()
+        .is_some_and(|v| v != "0")
+    {
         return true;
     }
     // CLICOLOR=0 disables color
@@ -1668,12 +1737,26 @@ fn use_color() -> bool {
 }
 
 const CLI_DENIED_SYSTEM_PREFIXES: &[&str] = &[
-    "/proc", "/sys", "/dev", "/boot", "/root",
-    "/etc/shadow", "/etc/passwd", "/etc/ssh", "/etc/sudoers",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/boot",
+    "/root",
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/ssh",
+    "/etc/sudoers",
 ];
 
 const CLI_DENIED_HOME_RELATIVE_PREFIXES: &[&str] = &[
-    ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config/gcloud", ".config/aeroftp", ".vault-token",
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".kube",
+    ".docker",
+    ".config/gcloud",
+    ".config/aeroftp",
+    ".vault-token",
 ];
 
 fn path_matches_prefix(path: &str, prefix: &str) -> bool {
@@ -1715,7 +1798,7 @@ fn parse_age_filter(s: &str) -> Result<u64, String> {
         Some(b'w') => (&s[..s.len() - 1], 604800u64),
         Some(b'M') => (&s[..s.len() - 1], 2592000u64), // 30 days
         Some(b'y') => (&s[..s.len() - 1], 31536000u64), // 365 days
-        _ => (s, 86400u64), // default: days
+        _ => (s, 86400u64),                            // default: days
     };
     num_str
         .trim()
@@ -1786,16 +1869,30 @@ fn build_filter(cli: &Cli) -> FilterFn {
     };
 
     // Parse size limits
-    let min_size = cli.min_size.as_ref().and_then(|s| parse_size_filter(s).ok());
-    let max_size = cli.max_size.as_ref().and_then(|s| parse_size_filter(s).ok());
+    let min_size = cli
+        .min_size
+        .as_ref()
+        .and_then(|s| parse_size_filter(s).ok());
+    let max_size = cli
+        .max_size
+        .as_ref()
+        .and_then(|s| parse_size_filter(s).ok());
 
     // Parse age limits (convert to threshold timestamps)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let min_age_ts = cli.min_age.as_ref().and_then(|s| parse_age_filter(s).ok()).map(|secs| now - secs);
-    let max_age_ts = cli.max_age.as_ref().and_then(|s| parse_age_filter(s).ok()).map(|secs| now - secs);
+    let min_age_ts = cli
+        .min_age
+        .as_ref()
+        .and_then(|s| parse_age_filter(s).ok())
+        .map(|secs| now - secs);
+    let max_age_ts = cli
+        .max_age
+        .as_ref()
+        .and_then(|s| parse_age_filter(s).ok())
+        .map(|secs| now - secs);
 
     Box::new(move |name: &str, size: u64, modified: Option<u64>| {
         // Include filter: if set, file must match at least one include pattern
@@ -1849,7 +1946,7 @@ fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
             .as_secs();
         // Extract HH:MM from epoch seconds (local time approximation)
         let local_secs = secs % 86400; // seconds since midnight UTC
-        // For proper local time we'd need chrono, but UTC is good enough for scheduling
+                                       // For proper local time we'd need chrono, but UTC is good enough for scheduling
         (local_secs / 3600, (local_secs % 3600) / 60) // (hour, minute)
     };
 
@@ -1858,7 +1955,8 @@ fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
         if let Some((time_str, rate_str)) = part.split_once(',') {
             let time_parts: Vec<&str> = time_str.split(':').collect();
             if time_parts.len() == 2 {
-                if let (Ok(h), Ok(m)) = (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>()) {
+                if let (Ok(h), Ok(m)) = (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>())
+                {
                     let minutes = h * 60 + m;
                     let rate = if rate_str == "off" || rate_str == "0" {
                         None
@@ -1947,7 +2045,9 @@ static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 
 /// Parse --max-transfer value, returning the byte limit (or None if unset).
 fn resolve_max_transfer(cli: &Cli) -> Option<u64> {
-    cli.max_transfer.as_ref().and_then(|s| parse_size_filter(s).ok())
+    cli.max_transfer
+        .as_ref()
+        .and_then(|s| parse_size_filter(s).ok())
 }
 
 /// Check whether the session has exceeded --max-transfer. Returns true if over limit.
@@ -2011,11 +2111,20 @@ fn dump_connection_info(cli: &Cli, config: &ProviderConfig) {
         eprintln!("--- DUMP: connection ---");
         eprintln!("  provider: {:?}", config.provider_type);
         eprintln!("  host: {}", config.host);
-        eprintln!("  port: {}", config.port.map_or("default".to_string(), |p| p.to_string()));
-        eprintln!("  username: {}", config.username.as_deref().unwrap_or("(none)"));
+        eprintln!(
+            "  port: {}",
+            config.port.map_or("default".to_string(), |p| p.to_string())
+        );
+        eprintln!(
+            "  username: {}",
+            config.username.as_deref().unwrap_or("(none)")
+        );
         if has_auth {
             let pass = config.password.as_deref().unwrap_or("");
-            eprintln!("  password: {}", if pass.is_empty() { "(empty)" } else { pass });
+            eprintln!(
+                "  password: {}",
+                if pass.is_empty() { "(empty)" } else { pass }
+            );
         } else {
             eprintln!("  password: [redacted, use --dump auth to show]");
         }
@@ -2066,12 +2175,18 @@ async fn download_with_resume(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
     if cli.partial && provider.supports_resume() {
-        let offset = std::fs::metadata(local_path).map(|meta| meta.len()).unwrap_or(0);
+        let offset = std::fs::metadata(local_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
         if offset > 0 {
-            return provider.resume_download(remote_path, local_path, offset, progress_cb).await;
+            return provider
+                .resume_download(remote_path, local_path, offset, progress_cb)
+                .await;
         }
     }
-    provider.download(remote_path, local_path, progress_cb).await
+    provider
+        .download(remote_path, local_path, progress_cb)
+        .await
 }
 
 async fn upload_with_resume(
@@ -2082,10 +2197,14 @@ async fn upload_with_resume(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
     if cli.partial && provider.supports_resume() {
-        let local_size = std::fs::metadata(local_path).map(|meta| meta.len()).unwrap_or(0);
+        let local_size = std::fs::metadata(local_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
         if let Ok(remote_size) = provider.size(remote_path).await {
             if remote_size > 0 && remote_size < local_size {
-                return provider.resume_upload(local_path, remote_path, remote_size, progress_cb).await;
+                return provider
+                    .resume_upload(local_path, remote_path, remote_size, progress_cb)
+                    .await;
             }
         }
     }
@@ -2220,8 +2339,8 @@ fn resolve_password(
     if std::io::stdin().is_terminal() {
         eprint!("Password: ");
         let _ = io::stderr().flush();
-        let pass = rpassword::read_password()
-            .map_err(|e| format!("Failed to read password: {}", e))?;
+        let pass =
+            rpassword::read_password().map_err(|e| format!("Failed to read password: {}", e))?;
         return Ok(pass);
     }
 
@@ -2233,10 +2352,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let url_obj = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
 
     let scheme = url_obj.scheme().to_lowercase();
-    let host_str = url_obj
-        .host_str()
-        .ok_or("Missing host in URL")?
-        .to_string();
+    let host_str = url_obj.host_str().ok_or("Missing host in URL")?.to_string();
 
     let (provider_type, effective_host) = match scheme.as_str() {
         "ftp" => (ProviderType::Ftp, host_str.clone()),
@@ -2500,15 +2616,17 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 mp.zeroize();
                 result?;
             } else {
-                return Err("Vault is locked. Use --master-password or set AEROFTP_MASTER_PASSWORD".to_string());
+                return Err(
+                    "Vault is locked. Use --master-password or set AEROFTP_MASTER_PASSWORD"
+                        .to_string(),
+                );
             }
         }
         Ok(_) => {} // Auto mode — already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
     }
 
-    CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not available after init".to_string())
+    CredentialStore::from_cache().ok_or_else(|| "Vault not available after init".to_string())
 }
 
 fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
@@ -2551,21 +2669,30 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
 
     if matches!(format, OutputFormat::Json) {
         // JSON: output array with safe fields only (no credentials)
-        let safe: Vec<serde_json::Value> = profiles.iter().map(|p| {
-            serde_json::json!({
-                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
-                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+        let safe: Vec<serde_json::Value> = profiles
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                    "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+                    "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                    "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                    "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+                    "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+                    "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                })
             })
-        }).collect();
-        println!("{}", serde_json::to_string_pretty(&safe).unwrap_or_default());
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&safe).unwrap_or_default()
+        );
     } else {
         // Text: formatted table
-        println!("  {:<4} {:<30} {:<8} {:<35} Path", "#", "Name", "Proto", "Host");
+        println!(
+            "  {:<4} {:<30} {:<8} {:<35} Path",
+            "#", "Name", "Proto", "Host"
+        );
         println!("  {}", "\u{2500}".repeat(90));
         for (i, p) in profiles.iter().enumerate() {
             let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
@@ -2578,9 +2705,19 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
             } else {
                 host.to_string()
             };
-            println!("  {:<4} {:<30} {:<8} {:<35} {}", i + 1, name, proto.to_uppercase(), host_port, path);
+            println!(
+                "  {:<4} {:<30} {:<8} {:<35} {}",
+                i + 1,
+                name,
+                proto.to_uppercase(),
+                host_port,
+                path
+            );
         }
-        eprintln!("\n{} profile(s). Use: aeroftp-cli ls --profile \"Name\" [path]", profiles.len());
+        eprintln!(
+            "\n{} profile(s). Use: aeroftp-cli ls --profile \"Name\" [path]",
+            profiles.len()
+        );
     }
 
     0
@@ -2630,21 +2767,30 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                     let enabled = p.get("isEnabled").and_then(|v| v.as_bool()).unwrap_or(true);
                     let base_url = p.get("baseUrl").and_then(|v| v.as_str()).unwrap_or("");
 
-                    if id.is_empty() { continue; }
+                    if id.is_empty() {
+                        continue;
+                    }
 
                     // Check if API key exists for this provider
                     let vault_key = format!("ai_apikey_{}", id);
-                    let has_vault_key = store.get(&vault_key).map(|v| !v.is_empty()).unwrap_or(false);
+                    let has_vault_key = store
+                        .get(&vault_key)
+                        .map(|v| !v.is_empty())
+                        .unwrap_or(false);
                     let env_name = env_var_for(ptype);
                     let has_env_key = if env_name.is_empty() {
                         false
                     } else {
-                        std::env::var(env_name).map(|v| !v.is_empty()).unwrap_or(false)
+                        std::env::var(env_name)
+                            .map(|v| !v.is_empty())
+                            .unwrap_or(false)
                     };
                     // Ollama doesn't need a key
                     let is_ollama = ptype == "ollama";
 
-                    if !has_vault_key && !has_env_key && !is_ollama { continue; }
+                    if !has_vault_key && !has_env_key && !is_ollama {
+                        continue;
+                    }
 
                     let source = if has_vault_key && has_env_key {
                         "vault+env"
@@ -2657,12 +2803,18 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                     };
 
                     // Find the active model from settings
-                    let active_model = settings.get("models").and_then(|m| m.as_array()).and_then(|models| {
-                        models.iter().find(|m| {
-                            m.get("providerId").and_then(|v| v.as_str()) == Some(id)
-                                && m.get("isActive").and_then(|v| v.as_bool()).unwrap_or(false)
-                        })
-                    });
+                    let active_model =
+                        settings
+                            .get("models")
+                            .and_then(|m| m.as_array())
+                            .and_then(|models| {
+                                models.iter().find(|m| {
+                                    m.get("providerId").and_then(|v| v.as_str()) == Some(id)
+                                        && m.get("isActive")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false)
+                                })
+                            });
                     let model_name = active_model
                         .and_then(|m| m.get("name").and_then(|v| v.as_str()))
                         .unwrap_or_else(|| default_model(ptype));
@@ -2697,8 +2849,13 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
         ("together", "Together", "TOGETHER_API_KEY"),
     ];
     for (ptype, label, env_key) in &env_providers {
-        if seen_types.contains(*ptype) { continue; }
-        if std::env::var(env_key).map(|v| !v.is_empty()).unwrap_or(false) {
+        if seen_types.contains(*ptype) {
+            continue;
+        }
+        if std::env::var(env_key)
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
+        {
             configured.push(serde_json::json!({
                 "id": ptype,
                 "provider": ptype,
@@ -2721,12 +2878,22 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
     }
 
     if matches!(format, OutputFormat::Json) {
-        println!("{}", serde_json::to_string_pretty(&configured).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&configured).unwrap_or_default()
+        );
     } else {
-        println!("  {:<4} {:<16} {:<14} {:<40} {:<10} Source", "#", "Name", "Provider", "Active Model", "Enabled");
+        println!(
+            "  {:<4} {:<16} {:<14} {:<40} {:<10} Source",
+            "#", "Name", "Provider", "Active Model", "Enabled"
+        );
         println!("  {}", "\u{2500}".repeat(95));
         for (i, p) in configured.iter().enumerate() {
-            let enabled_str = if p["enabled"].as_bool().unwrap_or(true) { "yes" } else { "no" };
+            let enabled_str = if p["enabled"].as_bool().unwrap_or(true) {
+                "yes"
+            } else {
+                "no"
+            };
             println!(
                 "  {:<4} {:<16} {:<14} {:<40} {:<10} {}",
                 i + 1,
@@ -2737,14 +2904,21 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                 p["source"].as_str().unwrap_or(""),
             );
         }
-        eprintln!("\n{} AI provider(s). Use: aeroftp-cli agent --provider <name> --model <model>", configured.len());
+        eprintln!(
+            "\n{} AI provider(s). Use: aeroftp-cli agent --provider <name> --model <model>",
+            configured.len()
+        );
     }
 
     0
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}...", &s[..max.saturating_sub(3)]) }
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max.saturating_sub(3)])
+    }
 }
 
 fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
@@ -2782,24 +2956,33 @@ fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
     let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
         .map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
-    Ok(profiles.iter().map(|p| {
-        serde_json::json!({
-            "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-            "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-            "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
-            "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-            "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-            "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-            "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+    Ok(profiles
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
+                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+                "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+            })
         })
-    }).collect())
+        .collect())
 }
 
 /// Create a provider connection from a server profile name (for agent tool context).
 /// Uses the cached vault and existing profile resolution.
 async fn create_and_connect_for_agent(
     server_query: &str,
-) -> Result<(Box<dyn ftp_client_gui_lib::providers::StorageProvider>, String), String> {
+) -> Result<
+    (
+        Box<dyn ftp_client_gui_lib::providers::StorageProvider>,
+        String,
+    ),
+    String,
+> {
     let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
     let profiles_json = store
@@ -2808,33 +2991,77 @@ async fn create_and_connect_for_agent(
     let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
         .map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
-    // Find matching profile (case-insensitive name, ID, or substring)
+    // Find matching profile (exact name or ID first; otherwise require a unique substring match)
     let query_lower = server_query.to_lowercase();
-    let matched = profiles
-        .iter()
-        .find(|p| {
-            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
-            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            name == query_lower || id == server_query
-        })
-        .or_else(|| {
-            profiles.iter().find(|p| {
-                let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+    let exact_match = profiles.iter().find(|p| {
+        let name = p
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        name == query_lower || id == server_query
+    });
+    let matched = if let Some(profile) = exact_match {
+        profile
+    } else {
+        let partial_matches: Vec<&serde_json::Value> = profiles
+            .iter()
+            .filter(|p| {
+                let name = p
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 name.contains(&query_lower)
             })
-        })
-        .ok_or_else(|| format!("Server '{}' not found in saved profiles", server_query))?;
+            .collect();
+        match partial_matches.as_slice() {
+            [single] => *single,
+            [] => {
+                return Err(format!(
+                    "Server '{}' not found in saved profiles",
+                    server_query
+                ))
+            }
+            many => {
+                let names = many
+                    .iter()
+                    .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(format!(
+                    "Server '{}' is ambiguous. Use an exact profile name. Matches: {}",
+                    server_query, names
+                ));
+            }
+        }
+    };
 
     let profile_id = matched.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let profile_name = matched.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-    let protocol = matched.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+    let profile_name = matched
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed");
+    let protocol = matched
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let host = matched.get("host").and_then(|v| v.as_str()).unwrap_or("");
     let port = matched.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
-    let username = matched.get("username").and_then(|v| v.as_str()).unwrap_or("");
-    let initial_path = matched.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
+    let username = matched
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let initial_path = matched
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/");
 
     // Resolve password from vault
-    let password = store.get(&format!("server_{}", profile_id)).unwrap_or_default();
+    let password = store
+        .get(&format!("server_{}", profile_id))
+        .unwrap_or_default();
 
     // Build provider config
     let provider_type = match protocol.to_uppercase().as_str() {
@@ -2853,8 +3080,16 @@ async fn create_and_connect_for_agent(
         provider_type,
         host: host.to_string(),
         port: if port > 0 { Some(port) } else { None },
-        username: if username.is_empty() { None } else { Some(username.to_string()) },
-        password: if password.is_empty() { None } else { Some(password) },
+        username: if username.is_empty() {
+            None
+        } else {
+            Some(username.to_string())
+        },
+        password: if password.is_empty() {
+            None
+        } else {
+            Some(password)
+        },
         initial_path: Some(initial_path.to_string()),
         extra: std::collections::HashMap::new(),
     };
@@ -2862,7 +3097,9 @@ async fn create_and_connect_for_agent(
     let mut provider = ftp_client_gui_lib::providers::ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
 
-    provider.connect().await
+    provider
+        .connect()
+        .await
         .map_err(|e| format!("Connection to '{}' failed: {}", profile_name, e))?;
 
     Ok((provider, initial_path.to_string()))
@@ -2873,7 +3110,8 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         Ok(profiles) => (profiles, None),
         Err(error) => (vec![], Some(error)),
     };
-    let profiles = profiles.into_iter()
+    let profiles = profiles
+        .into_iter()
         .map(|p| {
             serde_json::json!({
                 "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
@@ -2924,6 +3162,42 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
                 {"name": "rm -rf", "syntax": "aeroftp-cli rm --profile NAME /dir/ -rf", "description": "Delete directory (always confirm)"},
                 {"name": "sync --delete", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (always confirm)"},
             ],
+            "advanced": [
+                {"name": "head", "syntax": "aeroftp-cli head --profile NAME /path/file [-n N]", "description": "Read first lines of a remote text file"},
+                {"name": "tail", "syntax": "aeroftp-cli tail --profile NAME /path/file [-n N]", "description": "Read last lines of a remote text file"},
+                {"name": "touch", "syntax": "aeroftp-cli touch --profile NAME /path/file [--timestamp ISO8601]", "description": "Create file or update modified time"},
+                {"name": "hashsum", "syntax": "aeroftp-cli hashsum --algorithm ALGO --profile NAME /path/file", "description": "Compute remote checksum"},
+                {"name": "check", "syntax": "aeroftp-cli check --profile NAME ./local /remote", "description": "Compare local and remote trees"},
+                {"name": "dedupe", "syntax": "aeroftp-cli dedupe --profile NAME /path [--mode MODE]", "description": "Resolve duplicate remote files"},
+                {"name": "ncdu", "syntax": "aeroftp-cli ncdu --profile NAME /path [--json|--export FILE]", "description": "Analyze remote disk usage"},
+                {"name": "mount", "syntax": "aeroftp-cli mount --profile NAME /mountpoint", "description": "Expose a remote as a local filesystem"},
+                {"name": "serve", "syntax": "aeroftp-cli serve <http|webdav|ftp|sftp> --profile NAME /path", "description": "Expose a remote over a local protocol bridge"},
+                {"name": "daemon", "syntax": "aeroftp-cli daemon <start|stop|status>", "description": "Manage the background jobs daemon"},
+                {"name": "jobs", "syntax": "aeroftp-cli jobs <add|list|status|cancel>", "description": "Manage queued background jobs"},
+                {"name": "crypt", "syntax": "aeroftp-cli crypt <init|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage"},
+                {"name": "batch", "syntax": "aeroftp-cli batch file.aeroftp", "description": "Run batch automation scripts"},
+                {"name": "agent-info", "syntax": "aeroftp-cli agent-info --json", "description": "Show machine-readable CLI capabilities"}
+            ]
+        },
+        "capabilities": {
+            "main_command_groups": 38,
+            "agent_native_tools": cli_tool_definitions().len(),
+            "hash_algorithms": ["md5", "sha1", "sha256", "sha512", "blake3"],
+            "serve_protocols": ["http", "webdav", "ftp", "sftp"],
+            "agent_safety_model": {
+                "danger_levels": ["safe", "medium", "high"],
+                "categories": [
+                    "local-readonly",
+                    "remote-metadata",
+                    "remote-preview",
+                    "remote-bulk-read",
+                    "local-modify",
+                    "remote-modify",
+                    "destructive",
+                    "execution"
+                ],
+                "data_egress_levels": ["none", "metadata", "preview", "operation-dependent"]
+            }
         },
         "output": {
             "json_flag": "--json",
@@ -2944,25 +3218,33 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "99": "unknown"
         },
         "protocols": [
-            "ftp", "ftps", "sftp", "webdav", "webdavs", "s3",
+            "ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "aerocloud",
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
-            "pcloud", "zohoworkdrive", "fourshared", "drime"
+            "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
         ],
         "safety_rules": [
             "Always use --profile instead of passwords in URLs",
             "Use --dry-run before sync operations",
             "Confirm with user before rm, rm -rf, or sync --delete",
+            "Remote metadata, remote preview and destructive tools are classified separately for agent approval",
             "Use --json for all programmatic parsing"
         ]
     });
 
-    println!("{}", serde_json::to_string_pretty(&info).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&info).unwrap_or_default()
+    );
     0
 }
 
-fn resolve_url_or_profile(url: &str, cli: &Cli, format: OutputFormat) -> Result<(ProviderConfig, String), i32> {
+fn resolve_url_or_profile(
+    url: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(ProviderConfig, String), i32> {
     // UX-002: Reject ambiguous invocations where both --profile and a URL are given
     if cli.profile.is_some() && url.contains("://") {
         print_error(
@@ -3002,7 +3284,11 @@ fn normalize_profile_option_key(key: &str) -> &str {
     }
 }
 
-fn insert_profile_option(extra: &mut HashMap<String, String>, key: &str, value: &serde_json::Value) {
+fn insert_profile_option(
+    extra: &mut HashMap<String, String>,
+    key: &str,
+    value: &serde_json::Value,
+) {
     let normalized_key = normalize_profile_option_key(key).to_string();
 
     if let Some(string_value) = value.as_str() {
@@ -3018,7 +3304,11 @@ fn insert_profile_option(extra: &mut HashMap<String, String>, key: &str, value: 
     }
 }
 
-fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputFormat) -> Result<(ProviderConfig, String), i32> {
+fn profile_to_provider_config(
+    profile_name: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(ProviderConfig, String), i32> {
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -3035,8 +3325,10 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         }
     };
 
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| { print_error(format, &format!("Failed to parse profiles: {}", e), 5); 5 })?;
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json).map_err(|e| {
+        print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+        5
+    })?;
 
     // Match by index, exact name, ID, or substring (with disambiguation)
     let profile_lower = profile_name.to_lowercase();
@@ -3045,22 +3337,33 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     } else {
         // 1. Exact name match (case-insensitive)
         let exact = profiles.iter().find(|p| {
-            p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase() == profile_lower
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase()
+                == profile_lower
         });
         if exact.is_some() {
             exact
         } else {
             // 2. Exact ID match
-            let by_id = profiles.iter().find(|p| {
-                p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name
-            });
+            let by_id = profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name);
             if by_id.is_some() {
                 by_id
             } else {
                 // 3. Substring match with disambiguation
-                let matches: Vec<_> = profiles.iter().filter(|p| {
-                    p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&profile_lower)
-                }).collect();
+                let matches: Vec<_> = profiles
+                    .iter()
+                    .filter(|p| {
+                        p.get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&profile_lower)
+                    })
+                    .collect();
                 match matches.len() {
                     0 => None,
                     1 => Some(matches[0]),
@@ -3080,18 +3383,46 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     let profile = match matched {
         Some(p) => p,
         None => {
-            print_error(format, &format!("Profile not found: '{}'. Run 'aeroftp-cli profiles' to list.", profile_name), 5);
+            print_error(
+                format,
+                &format!(
+                    "Profile not found: '{}'. Run 'aeroftp-cli profiles' to list.",
+                    profile_name
+                ),
+                5,
+            );
             return Err(5);
         }
     };
 
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-    let host = profile.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let port = profile.get("port").and_then(|v| v.as_u64()).map(|p| p as u16);
-    let username = profile.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let protocol = profile.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp");
-    let initial_path = profile.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/").to_string();
+    let name = profile
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed");
+    let host = profile
+        .get("host")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let port = profile
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .map(|p| p as u16);
+    let username = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let protocol = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    let initial_path = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("/")
+        .to_string();
 
     // Load credentials from vault
     // Password is stored as a raw string (not JSON) in server_{id}
@@ -3102,8 +3433,16 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
                 // Try to parse as JSON first (legacy format), fall back to raw string
                 if let Ok(cred) = serde_json::from_str::<serde_json::Value>(&password_str) {
                     if let Some(obj) = cred.as_object() {
-                        let u = obj.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let p = obj.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let u = obj
+                            .get("username")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let p = obj
+                            .get("password")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         (if u.is_empty() { username.clone() } else { u }, p)
                     } else {
                         // JSON but not an object — treat as raw password string
@@ -3149,7 +3488,11 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
         "fourshared" => ProviderType::FourShared,
         "drime" => ProviderType::DrimeCloud,
         _ => {
-            print_error(format, &format!("Unsupported protocol in profile: {}", protocol), 7);
+            print_error(
+                format,
+                &format!("Unsupported protocol in profile: {}", protocol),
+                7,
+            );
             return Err(7);
         }
     };
@@ -3198,7 +3541,12 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
     }
 
     if !cli.quiet {
-        eprintln!("Using profile: {} ({} → {})", name, protocol.to_uppercase(), host);
+        eprintln!(
+            "Using profile: {} ({} → {})",
+            name,
+            protocol.to_uppercase(),
+            host
+        );
     }
 
     let config = ProviderConfig {
@@ -3219,8 +3567,8 @@ fn profile_to_provider_config(profile_name: &str, cli: &Cli, format: OutputForma
 /// Opens the browser for the user to authorize, waits for the callback, saves tokens to vault.
 async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Result<(), String> {
     use ftp_client_gui_lib::providers::{
-        OAuth2Manager, OAuthConfig,
         oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
+        OAuth2Manager, OAuthConfig,
     };
 
     let oauth_settings = load_oauth_client_config(store, protocol);
@@ -3243,7 +3591,13 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
         bind_callback_listener_on_port(fixed_port).await
     } else {
         bind_callback_listener().await
-    }.map_err(|e| format!("Failed to bind callback listener on port {}: {}", fixed_port, e))?;
+    }
+    .map_err(|e| {
+        format!(
+            "Failed to bind callback listener on port {}: {}",
+            fixed_port, e
+        )
+    })?;
 
     let config = match protocol {
         "googledrive" => OAuthConfig::google_with_port(&oauth_settings.0, &oauth_settings.1, port),
@@ -3251,19 +3605,27 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
         "onedrive" => OAuthConfig::onedrive_with_port(&oauth_settings.0, &oauth_settings.1, port),
         "box" => OAuthConfig::box_cloud_with_port(&oauth_settings.0, &oauth_settings.1, port),
         "pcloud" => {
-            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
+            let region = store
+                .get("oauth_pcloud_region")
+                .unwrap_or_else(|_| "us".to_string());
             OAuthConfig::pcloud_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
         }
         "zohoworkdrive" => {
-            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
+            let region = store
+                .get("oauth_zohoworkdrive_region")
+                .unwrap_or_else(|_| "us".to_string());
             OAuthConfig::zoho_with_port(&oauth_settings.0, &oauth_settings.1, port, &region)
         }
-        "yandexdisk" => OAuthConfig::yandex_disk_with_port(&oauth_settings.0, &oauth_settings.1, port),
+        "yandexdisk" => {
+            OAuthConfig::yandex_disk_with_port(&oauth_settings.0, &oauth_settings.1, port)
+        }
         other => return Err(format!("OAuth not supported for: {}", other)),
     };
 
     let manager = OAuth2Manager::new();
-    let (auth_url, expected_state) = manager.start_auth_flow(&config).await
+    let (auth_url, expected_state) = manager
+        .start_auth_flow(&config)
+        .await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
 
     // Try to open browser automatically
@@ -3275,58 +3637,84 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
     eprintln!("Waiting for authorization... (press Ctrl+C to cancel)");
 
     // Wait for callback with 5-minute timeout
-    let callback_handle = tokio::spawn(async move {
-        wait_for_callback(listener).await
-    });
-    let (code, state) = tokio::time::timeout(
-        tokio::time::Duration::from_secs(300),
-        callback_handle
-    ).await
-        .map_err(|_| "Timeout: no response within 5 minutes".to_string())?
-        .map_err(|e| format!("Callback error: {}", e))?
-        .map_err(|e| format!("Callback error: {}", e))?;
+    let callback_handle = tokio::spawn(async move { wait_for_callback(listener).await });
+    let (code, state) =
+        tokio::time::timeout(tokio::time::Duration::from_secs(300), callback_handle)
+            .await
+            .map_err(|_| "Timeout: no response within 5 minutes".to_string())?
+            .map_err(|e| format!("Callback error: {}", e))?
+            .map_err(|e| format!("Callback error: {}", e))?;
 
     if state != expected_state {
         return Err("OAuth state mismatch — possible CSRF attack".to_string());
     }
 
     // Exchange code for tokens
-    manager.complete_auth_flow(&config, &code, &expected_state).await
+    manager
+        .complete_auth_flow(&config, &code, &expected_state)
+        .await
         .map_err(|e| format!("Token exchange failed: {}", e))?;
 
     Ok(())
 }
 
 /// Create an OAuth provider by protocol name (used for retry after re-authorization)
-fn create_oauth_provider_by_protocol(protocol: &str, store: &CredentialStore) -> Result<Box<dyn StorageProvider>, String> {
+fn create_oauth_provider_by_protocol(
+    protocol: &str,
+    store: &CredentialStore,
+) -> Result<Box<dyn StorageProvider>, String> {
     use ftp_client_gui_lib::providers::{
-        OAuth2Manager, OAuthProvider,
-        GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
-        ZohoWorkdriveProvider, YandexDiskProvider,
-        google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
-        onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
-        zoho_workdrive::ZohoWorkdriveConfig,
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
+        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
+        DropboxProvider, GoogleDriveProvider, OAuth2Manager, OAuthProvider, OneDriveProvider,
+        PCloudProvider, YandexDiskProvider, ZohoWorkdriveProvider,
     };
 
     let oauth_settings = load_oauth_client_config(store, protocol);
     match protocol {
-        "googledrive" => Ok(Box::new(GoogleDriveProvider::new(GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1)))),
-        "dropbox" => Ok(Box::new(DropboxProvider::new(DropboxConfig::new(&oauth_settings.0, &oauth_settings.1)))),
-        "onedrive" => Ok(Box::new(OneDriveProvider::new(OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1)))),
-        "box" => Ok(Box::new(BoxProvider::new(BoxConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1 }))),
+        "googledrive" => Ok(Box::new(GoogleDriveProvider::new(GoogleDriveConfig::new(
+            &oauth_settings.0,
+            &oauth_settings.1,
+        )))),
+        "dropbox" => Ok(Box::new(DropboxProvider::new(DropboxConfig::new(
+            &oauth_settings.0,
+            &oauth_settings.1,
+        )))),
+        "onedrive" => Ok(Box::new(OneDriveProvider::new(OneDriveConfig::new(
+            &oauth_settings.0,
+            &oauth_settings.1,
+        )))),
+        "box" => Ok(Box::new(BoxProvider::new(BoxConfig {
+            client_id: oauth_settings.0,
+            client_secret: oauth_settings.1,
+        }))),
         "pcloud" => {
-            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(PCloudProvider::new(PCloudConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1, region })))
+            let region = store
+                .get("oauth_pcloud_region")
+                .unwrap_or_else(|_| "us".to_string());
+            Ok(Box::new(PCloudProvider::new(PCloudConfig {
+                client_id: oauth_settings.0,
+                client_secret: oauth_settings.1,
+                region,
+            })))
         }
         "zohoworkdrive" => {
-            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region))))
+            let region = store
+                .get("oauth_zohoworkdrive_region")
+                .unwrap_or_else(|_| "us".to_string());
+            Ok(Box::new(ZohoWorkdriveProvider::new(
+                ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region),
+            )))
         }
         "yandexdisk" => {
             let manager = OAuth2Manager::new();
-            let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
+            let tokens = manager
+                .load_tokens(OAuthProvider::YandexDisk)
                 .map_err(|e| format!("No Yandex tokens: {}", e))?;
-            Ok(Box::new(YandexDiskProvider::new(tokens.access_token.clone(), None)))
+            Ok(Box::new(YandexDiskProvider::new(
+                tokens.access_token.clone(),
+                None,
+            )))
         }
         "fourshared" => {
             use ftp_client_gui_lib::providers::{
@@ -3340,17 +3728,22 @@ fn create_oauth_provider_by_protocol(protocol: &str, store: &CredentialStore) ->
             ) {
                 (k, s)
             } else {
-                let json = store.get("fourshared_oauth_settings")
+                let json = store
+                    .get("fourshared_oauth_settings")
                     .map_err(|e| format!("No 4shared OAuth settings in vault: {}", e))?;
                 #[derive(serde::Deserialize)]
-                struct Fs { consumer_key: String, consumer_secret: String }
+                struct Fs {
+                    consumer_key: String,
+                    consumer_secret: String,
+                }
                 let fs: Fs = serde_json::from_str(&json)
                     .map_err(|e| format!("Failed to parse 4shared settings: {}", e))?;
                 (fs.consumer_key, fs.consumer_secret)
             };
             let (at, ats) = {
-                let data = store.get("oauth_fourshared")
-                    .map_err(|_| "No 4shared access tokens in vault. Authorize from GUI first.".to_string())?;
+                let data = store.get("oauth_fourshared").map_err(|_| {
+                    "No 4shared access tokens in vault. Authorize from GUI first.".to_string()
+                })?;
                 data.split_once(':')
                     .map(|(t, s)| (t.to_string(), s.to_string()))
                     .ok_or_else(|| "Invalid 4shared token format".to_string())?
@@ -3378,70 +3771,106 @@ async fn try_create_oauth_provider(
     quiet: bool,
 ) -> Option<Result<(Box<dyn StorageProvider>, String), i32>> {
     use ftp_client_gui_lib::providers::{
-        OAuth2Manager, OAuthProvider,
-        GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider,
-        ZohoWorkdriveProvider,
-        google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
-        onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
-        zoho_workdrive::ZohoWorkdriveConfig,
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
+        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
+        DropboxProvider, GoogleDriveProvider, OAuth2Manager, OAuthProvider, OneDriveProvider,
+        PCloudProvider, ZohoWorkdriveProvider,
     };
 
-    type OAuthCreateFn = Box<dyn FnOnce(&CredentialStore) -> Result<Box<dyn StorageProvider>, String>>;
+    type OAuthCreateFn =
+        Box<dyn FnOnce(&CredentialStore) -> Result<Box<dyn StorageProvider>, String>>;
     let (oauth_provider, create_fn): (OAuthProvider, OAuthCreateFn) = match protocol {
         "googledrive" => {
             let oauth_settings = load_oauth_client_config(store, "googledrive");
-            (OAuthProvider::Google, Box::new(move |_| {
-                let config = GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                Ok(Box::new(GoogleDriveProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            (
+                OAuthProvider::Google,
+                Box::new(move |_| {
+                    let config = GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
+                    Ok(Box::new(GoogleDriveProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "dropbox" => {
             let oauth_settings = load_oauth_client_config(store, "dropbox");
-            (OAuthProvider::Dropbox, Box::new(move |_| {
-                let config = DropboxConfig::new(&oauth_settings.0, &oauth_settings.1);
-                Ok(Box::new(DropboxProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            (
+                OAuthProvider::Dropbox,
+                Box::new(move |_| {
+                    let config = DropboxConfig::new(&oauth_settings.0, &oauth_settings.1);
+                    Ok(Box::new(DropboxProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "onedrive" => {
             let oauth_settings = load_oauth_client_config(store, "onedrive");
-            (OAuthProvider::OneDrive, Box::new(move |_| {
-                let config = OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                Ok(Box::new(OneDriveProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            (
+                OAuthProvider::OneDrive,
+                Box::new(move |_| {
+                    let config = OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
+                    Ok(Box::new(OneDriveProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "box" => {
             let oauth_settings = load_oauth_client_config(store, "box");
-            (OAuthProvider::Box, Box::new(move |_| {
-                let config = BoxConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1 };
-                Ok(Box::new(BoxProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            (
+                OAuthProvider::Box,
+                Box::new(move |_| {
+                    let config = BoxConfig {
+                        client_id: oauth_settings.0,
+                        client_secret: oauth_settings.1,
+                    };
+                    Ok(Box::new(BoxProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "pcloud" => {
             let oauth_settings = load_oauth_client_config(store, "pcloud");
-            let region = store.get("oauth_pcloud_region").unwrap_or_else(|_| "us".to_string());
-            (OAuthProvider::PCloud, Box::new(move |_| {
-                let config = PCloudConfig { client_id: oauth_settings.0, client_secret: oauth_settings.1, region };
-                Ok(Box::new(PCloudProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            let region = store
+                .get("oauth_pcloud_region")
+                .unwrap_or_else(|_| "us".to_string());
+            (
+                OAuthProvider::PCloud,
+                Box::new(move |_| {
+                    let config = PCloudConfig {
+                        client_id: oauth_settings.0,
+                        client_secret: oauth_settings.1,
+                        region,
+                    };
+                    Ok(Box::new(PCloudProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "zohoworkdrive" => {
             let oauth_settings = load_oauth_client_config(store, "zohoworkdrive");
-            let region = store.get("oauth_zohoworkdrive_region").unwrap_or_else(|_| "us".to_string());
-            (OAuthProvider::ZohoWorkdrive, Box::new(move |_| {
-                let config = ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
-                Ok(Box::new(ZohoWorkdriveProvider::new(config)) as Box<dyn StorageProvider>)
-            }))
+            let region = store
+                .get("oauth_zohoworkdrive_region")
+                .unwrap_or_else(|_| "us".to_string());
+            (
+                OAuthProvider::ZohoWorkdrive,
+                Box::new(move |_| {
+                    let config =
+                        ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
+                    Ok(Box::new(ZohoWorkdriveProvider::new(config)) as Box<dyn StorageProvider>)
+                }),
+            )
         }
         "yandexdisk" => {
             // Yandex uses OAuth2 but creates provider with raw token
-            (OAuthProvider::YandexDisk, Box::new(move |_| {
-                let manager = OAuth2Manager::new();
-                let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
-                    .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
-                Ok(Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
-                    tokens.access_token.clone(), None
-                )) as Box<dyn StorageProvider>)
-            }))
+            (
+                OAuthProvider::YandexDisk,
+                Box::new(move |_| {
+                    let manager = OAuth2Manager::new();
+                    let tokens = manager
+                        .load_tokens(OAuthProvider::YandexDisk)
+                        .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
+                    Ok(
+                        Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
+                            tokens.access_token.clone(),
+                            None,
+                        )) as Box<dyn StorageProvider>,
+                    )
+                }),
+            )
         }
         "fourshared" => {
             // 4shared uses OAuth1 — handle separately from the OAuth2 flow
@@ -3460,7 +3889,10 @@ async fn try_create_oauth_provider(
                 (k, s)
             } else if let Ok(json) = store.get("fourshared_oauth_settings") {
                 #[derive(serde::Deserialize)]
-                struct FsSettings { consumer_key: String, consumer_secret: String }
+                struct FsSettings {
+                    consumer_key: String,
+                    consumer_secret: String,
+                }
                 match serde_json::from_str::<FsSettings>(&json) {
                     Ok(s) => (s.consumer_key, s.consumer_secret),
                     Err(_) => {
@@ -3501,7 +3933,10 @@ async fn try_create_oauth_provider(
             if !quiet {
                 eprintln!("Using profile: {} (4SHARED via OAuth1)", profile_name);
             }
-            return Some(Ok((Box::new(provider) as Box<dyn StorageProvider>, initial_path.to_string())));
+            return Some(Ok((
+                Box::new(provider) as Box<dyn StorageProvider>,
+                initial_path.to_string(),
+            )));
         }
         _ => return None,
     };
@@ -3515,7 +3950,10 @@ async fn try_create_oauth_provider(
             eprintln!("Error: No OAuth tokens for {}. Run interactively to authorize, or authorize from AeroFTP GUI.", profile_name);
             return Some(Err(6));
         }
-        eprintln!("No OAuth tokens found for {}. Starting browser authorization...", profile_name);
+        eprintln!(
+            "No OAuth tokens found for {}. Starting browser authorization...",
+            profile_name
+        );
         match cli_oauth_browser_auth(protocol, store).await {
             Ok(()) => eprintln!("Authorization successful!"),
             Err(e) => {
@@ -3535,13 +3973,20 @@ async fn try_create_oauth_provider(
     };
 
     if !quiet {
-        eprintln!("Using profile: {} ({} via OAuth)", profile_name, protocol.to_uppercase());
+        eprintln!(
+            "Using profile: {} ({} via OAuth)",
+            profile_name,
+            protocol.to_uppercase()
+        );
     }
 
     // Connect — if token expired, offer re-authorization
     if let Err(e) = provider.connect().await {
         if !std::io::stdin().is_terminal() {
-            eprintln!("Error: OAuth connection failed: {}. Run interactively to re-authorize.", e);
+            eprintln!(
+                "Error: OAuth connection failed: {}. Run interactively to re-authorize.",
+                e
+            );
             return Some(Err(6));
         }
         eprintln!("Token expired or invalid. Starting browser re-authorization...");
@@ -3590,8 +4035,16 @@ fn load_oauth_client_config(store: &CredentialStore, provider: &str) -> (String,
         if let Ok(json) = store.get(key) {
             if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&json) {
                 if let Some(p) = settings.get(provider) {
-                    let cid = p.get("clientId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let csec = p.get("clientSecret").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let cid = p
+                        .get("clientId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let csec = p
+                        .get("clientSecret")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if !cid.is_empty() {
                         return (cid, csec);
                     }
@@ -3614,27 +4067,40 @@ async fn create_and_connect(
     if let Some(ref profile_name) = cli.profile {
         if let Ok(store) = open_vault(cli) {
             if let Ok(profiles_json) = store.get("config_server_profiles") {
-                if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json) {
+                if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
+                {
                     let profile_lower = profile_name.to_lowercase();
                     let matched = if let Ok(idx) = profile_name.parse::<usize>() {
                         profiles.get(idx.saturating_sub(1)).cloned()
                     } else {
                         // Exact name → exact ID → disambiguated substring (same as profile_to_provider_config)
                         let exact = profiles.iter().find(|p| {
-                            p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase() == profile_lower
+                            p.get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_lowercase()
+                                == profile_lower
                         });
                         if exact.is_some() {
                             exact.cloned()
                         } else {
                             let by_id = profiles.iter().find(|p| {
-                                p.get("id").and_then(|v| v.as_str()).unwrap_or("") == profile_name.as_str()
+                                p.get("id").and_then(|v| v.as_str()).unwrap_or("")
+                                    == profile_name.as_str()
                             });
                             if by_id.is_some() {
                                 by_id.cloned()
                             } else {
-                                let matches: Vec<_> = profiles.iter().filter(|p| {
-                                    p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase().contains(&profile_lower)
-                                }).collect();
+                                let matches: Vec<_> = profiles
+                                    .iter()
+                                    .filter(|p| {
+                                        p.get("name")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_lowercase()
+                                            .contains(&profile_lower)
+                                    })
+                                    .collect();
                                 match matches.len() {
                                     1 => Some(matches[0].clone()),
                                     _ => None, // 0 or ambiguous — let profile_to_provider_config handle the error
@@ -3643,10 +4109,27 @@ async fn create_and_connect(
                         }
                     };
                     if let Some(profile) = matched {
-                        let protocol = profile.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
-                        let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-                        let initial_path = profile.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
-                        if let Some(result) = try_create_oauth_provider(protocol, name, initial_path, &store, cli.quiet).await {
+                        let protocol = profile
+                            .get("protocol")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let name = profile
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unnamed");
+                        let initial_path = profile
+                            .get("initialPath")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("/");
+                        if let Some(result) = try_create_oauth_provider(
+                            protocol,
+                            name,
+                            initial_path,
+                            &store,
+                            cli.quiet,
+                        )
+                        .await
+                        {
                             return result;
                         }
                     }
@@ -3662,13 +4145,21 @@ async fn create_and_connect(
     let mut provider = match ProviderFactory::create(&config) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to create provider: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Failed to create provider: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             return Err(provider_error_to_exit_code(&e));
         }
     };
 
     if let Err(e) = provider.connect().await {
-        print_error(format, &format!("Connection failed: {}", e), provider_error_to_exit_code(&e));
+        print_error(
+            format,
+            &format!("Connection failed: {}", e),
+            provider_error_to_exit_code(&e),
+        );
         return Err(provider_error_to_exit_code(&e));
     }
 
@@ -3707,7 +4198,49 @@ struct ServeHttpState {
     provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
     provider_label: String,
     base_path: String,
+    auth_token: Option<String>,
 }
+
+#[derive(Clone)]
+struct DaemonApiState {
+    conn: Arc<std::sync::Mutex<rusqlite::Connection>>,
+    auth_token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ServeAuthCredentials {
+    username: String,
+    password: String,
+    generated: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ServeAuthOptions {
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct ServeEndpointOptions {
+    addr: String,
+    allow_remote_bind: bool,
+    auth: ServeAuthOptions,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolExposureKind {
+    LocalReadonly,
+    RemoteMetadata,
+    RemotePreview,
+    RemoteBulkRead,
+    LocalModify,
+    RemoteModify,
+    Destructive,
+    Execution,
+}
+
+const AGENT_REMOTE_PREVIEW_BYTES: u64 = 5 * 1024;
+const AGENT_REMOTE_FALLBACK_MAX_BYTES: u64 = 1024 * 1024;
 
 fn serve_effective_base_path(path: &str, url_path: &str) -> String {
     if path == "/" && url_path != "/" {
@@ -3752,6 +4285,130 @@ fn sanitize_served_relative_path(path: &str) -> Result<String, StatusCode> {
     Ok(parts.join("/"))
 }
 
+fn validate_bind_addr(
+    addr: &str,
+    allow_remote_bind: bool,
+    surface: &str,
+) -> Result<SocketAddr, String> {
+    let bind_addr: SocketAddr = addr
+        .parse()
+        .map_err(|error| format!("Invalid --addr '{}': {}", addr, error))?;
+    if !allow_remote_bind && !bind_addr.ip().is_loopback() {
+        return Err(format!(
+            "Refusing to bind {} to non-loopback address {}. Re-run with --allow-remote-bind to expose it intentionally.",
+            surface, addr
+        ));
+    }
+    Ok(bind_addr)
+}
+
+fn normalize_optional_token(token: Option<String>) -> Option<String> {
+    token
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn generate_auth_token() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+fn resolve_service_auth_token(
+    requested_token: Option<String>,
+    bind_addr: SocketAddr,
+) -> (Option<String>, bool) {
+    if let Some(token) = normalize_optional_token(requested_token) {
+        return (Some(token), false);
+    }
+
+    if bind_addr.ip().is_loopback() {
+        (None, false)
+    } else {
+        (Some(generate_auth_token()), true)
+    }
+}
+
+fn resolve_service_credentials(
+    requested_username: Option<String>,
+    requested_password: Option<String>,
+    bind_addr: SocketAddr,
+) -> Option<ServeAuthCredentials> {
+    let requested_username = normalize_optional_token(requested_username);
+    let requested_password = normalize_optional_token(requested_password);
+
+    match (requested_username, requested_password) {
+        (Some(username), Some(password)) => Some(ServeAuthCredentials {
+            username,
+            password,
+            generated: false,
+        }),
+        (Some(username), None) => Some(ServeAuthCredentials {
+            username,
+            password: generate_auth_token(),
+            generated: true,
+        }),
+        (None, Some(password)) => Some(ServeAuthCredentials {
+            username: "aeroftp".to_string(),
+            password,
+            generated: false,
+        }),
+        (None, None) if bind_addr.ip().is_loopback() => None,
+        (None, None) => Some(ServeAuthCredentials {
+            username: "aeroftp".to_string(),
+            password: generate_auth_token(),
+            generated: true,
+        }),
+    }
+}
+
+fn request_is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> bool {
+    let Some(expected_token) = expected_token else {
+        return true;
+    };
+
+    let Some(raw_auth) = headers.get(AUTHORIZATION).and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+
+    if let Some(token) = raw_auth.strip_prefix("Bearer ") {
+        return token.trim() == expected_token;
+    }
+
+    if let Some(encoded) = raw_auth.strip_prefix("Basic ") {
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
+            if let Ok(decoded) = String::from_utf8(bytes) {
+                if let Some((_, password)) = decoded.split_once(':') {
+                    return password == expected_token;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn auth_required_response(realm: &str, message: &str) -> Response {
+    let mut response = serve_error_response(StatusCode::UNAUTHORIZED, message);
+    if let Ok(value) =
+        HeaderValue::from_str(&format!("Basic realm=\"{}\", charset=\"UTF-8\"", realm))
+    {
+        response.headers_mut().insert(WWW_AUTHENTICATE, value);
+    }
+    response
+}
+
+fn ensure_request_authorized(
+    headers: &HeaderMap,
+    expected_token: Option<&str>,
+    realm: &str,
+    message: &str,
+) -> Option<Response> {
+    if request_is_authorized(headers, expected_token) {
+        None
+    } else {
+        Some(auth_required_response(realm, message))
+    }
+}
+
 fn build_served_remote_path(base_path: &str, relative_path: &str) -> String {
     if relative_path.is_empty() {
         return normalize_remote_path(base_path);
@@ -3761,7 +4418,66 @@ fn build_served_remote_path(base_path: &str, relative_path: &str) -> String {
     if normalized_base == "/" {
         format!("/{}", relative_path)
     } else {
-        format!("{}/{}", normalized_base.trim_end_matches('/'), relative_path)
+        format!(
+            "{}/{}",
+            normalized_base.trim_end_matches('/'),
+            relative_path
+        )
+    }
+}
+
+fn resolve_served_backend_path(
+    base_path: &str,
+    requested_path: &str,
+) -> Result<String, &'static str> {
+    let relative =
+        sanitize_served_relative_path(requested_path).map_err(|_| "path traversal denied")?;
+    Ok(build_served_remote_path(base_path, &relative))
+}
+
+fn resolve_agent_remote_path(initial_path: &str, requested_path: &str) -> Result<String, String> {
+    if requested_path.contains('\0') {
+        return Err("Path contains null bytes".to_string());
+    }
+    let relative = sanitize_served_relative_path(requested_path)
+        .map_err(|_| "Path traversal ('..') not allowed".to_string())?;
+    Ok(build_served_remote_path(initial_path, &relative))
+}
+
+async fn read_remote_preview(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_path: &str,
+) -> Result<(Vec<u8>, u64, bool), ProviderError> {
+    let entry = provider.stat(remote_path).await?;
+    if entry.is_dir {
+        return Err(ProviderError::InvalidPath(format!(
+            "'{}' is a directory; expected a file",
+            remote_path
+        )));
+    }
+
+    let size = entry.size;
+    if size == 0 {
+        return Ok((Vec::new(), 0, false));
+    }
+
+    let preview_len = size.min(AGENT_REMOTE_PREVIEW_BYTES);
+    match provider.read_range(remote_path, 0, preview_len).await {
+        Ok(bytes) => Ok((bytes, size, size > preview_len)),
+        Err(_) if size > AGENT_REMOTE_FALLBACK_MAX_BYTES => Err(ProviderError::NotSupported(
+            format!(
+                "Provider does not support ranged reads for '{}', and full fallback is disabled above {} bytes",
+                remote_path, AGENT_REMOTE_FALLBACK_MAX_BYTES
+            ),
+        )),
+        Err(_) => {
+            let mut bytes = provider.download_to_bytes(remote_path).await?;
+            let truncated = bytes.len() as u64 > AGENT_REMOTE_PREVIEW_BYTES;
+            if truncated {
+                bytes.truncate(AGENT_REMOTE_PREVIEW_BYTES as usize);
+            }
+            Ok((bytes, size, truncated))
+        }
     }
 }
 
@@ -3832,9 +4548,9 @@ fn provider_error_to_status_code(error: &ProviderError) -> StatusCode {
         ProviderError::NotSupported(_) => StatusCode::NOT_IMPLEMENTED,
         ProviderError::Timeout => StatusCode::GATEWAY_TIMEOUT,
         ProviderError::Cancelled => StatusCode::REQUEST_TIMEOUT,
-        ProviderError::InvalidPath(_) | ProviderError::InvalidConfig(_) | ProviderError::ParseError(_) => {
-            StatusCode::BAD_REQUEST
-        }
+        ProviderError::InvalidPath(_)
+        | ProviderError::InvalidConfig(_)
+        | ProviderError::ParseError(_) => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -3990,8 +4706,14 @@ fn render_directory_listing(
     html.push_str("<style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f6f6f2;color:#171717;margin:2rem;}h1{font-size:1.4rem;margin-bottom:.25rem;}p{color:#555;}table{width:100%;border-collapse:collapse;margin-top:1.5rem;background:#fff;}th,td{text-align:left;padding:.7rem .85rem;border-bottom:1px solid #ece7df;}th{font-size:.85rem;letter-spacing:.04em;text-transform:uppercase;color:#6a6257;}a{color:#004f59;text-decoration:none;}a:hover{text-decoration:underline;}.dir a{font-weight:700;}</style>");
     html.push_str("</head><body>");
     html.push_str(&format!("<h1>{}</h1>", escape_html(&title)));
-    html.push_str(&format!("<p>{} · base remote: {}</p>", escape_html(provider_label), escape_html(remote_path)));
-    html.push_str("<table><thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead><tbody>");
+    html.push_str(&format!(
+        "<p>{} · base remote: {}</p>",
+        escape_html(provider_label),
+        escape_html(remote_path)
+    ));
+    html.push_str(
+        "<table><thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead><tbody>",
+    );
 
     if let Some(parent) = parent_request_path(current_relative_path) {
         html.push_str(&format!(
@@ -4114,21 +4836,38 @@ async fn serve_http_response(
                 );
                 build_html_response(StatusCode::OK, html, head_only)
             }
-            Err(error) => serve_error_response(provider_error_to_status_code(&error), &error.to_string()),
+            Err(error) => {
+                serve_error_response(provider_error_to_status_code(&error), &error.to_string())
+            }
         },
-        Err(error) => serve_error_response(provider_error_to_status_code(&error), &error.to_string()),
+        Err(error) => {
+            serve_error_response(provider_error_to_status_code(&error), &error.to_string())
+        }
     }
 }
 
-async fn serve_http_root(
-    State(state): State<ServeHttpState>,
-    headers: HeaderMap,
-) -> Response {
+async fn serve_http_root(State(state): State<ServeHttpState>, headers: HeaderMap) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        state.auth_token.as_deref(),
+        "AeroFTP HTTP",
+        "Authentication required. Use the configured token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
     let range = headers.get(axum::http::header::RANGE);
     serve_http_response(state, String::new(), false, range).await
 }
 
-async fn serve_http_root_head(State(state): State<ServeHttpState>) -> Response {
+async fn serve_http_root_head(State(state): State<ServeHttpState>, headers: HeaderMap) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        state.auth_token.as_deref(),
+        "AeroFTP HTTP",
+        "Authentication required. Use the configured token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
     serve_http_response(state, String::new(), true, None).await
 }
 
@@ -4137,6 +4876,14 @@ async fn serve_http_path(
     AxumPath(path): AxumPath<String>,
     headers: HeaderMap,
 ) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        state.auth_token.as_deref(),
+        "AeroFTP HTTP",
+        "Authentication required. Use the configured token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
     let range = headers.get(axum::http::header::RANGE);
     serve_http_response(state, path, false, range).await
 }
@@ -4144,23 +4891,41 @@ async fn serve_http_path(
 async fn serve_http_path_head(
     State(state): State<ServeHttpState>,
     AxumPath(path): AxumPath<String>,
+    headers: HeaderMap,
 ) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        state.auth_token.as_deref(),
+        "AeroFTP HTTP",
+        "Authentication required. Use the configured token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
     serve_http_response(state, path, true, None).await
 }
 
-async fn cmd_serve_http(url: &str, path: &str, addr: &str, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_serve_http(
+    url: &str,
+    path: &str,
+    addr: &str,
+    allow_remote_bind: bool,
+    auth_token: Option<String>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     let (provider, url_path) = match create_and_connect(url, cli, format).await {
         Ok(value) => value,
         Err(code) => return code,
     };
 
-    let bind_addr = match addr.parse::<SocketAddr>() {
+    let bind_addr = match validate_bind_addr(addr, allow_remote_bind, "HTTP serve") {
         Ok(addr) => addr,
         Err(error) => {
-            print_error(format, &format!("Invalid --addr '{}': {}", addr, error), 5);
+            print_error(format, &error, 5);
             return 5;
         }
     };
+    let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
     let base_path = serve_effective_base_path(path, &url_path);
     let provider_label = if let Some(profile) = &cli.profile {
@@ -4173,6 +4938,7 @@ async fn cmd_serve_http(url: &str, path: &str, addr: &str, cli: &Cli, format: Ou
         provider: Arc::new(AsyncMutex::new(provider)),
         provider_label,
         base_path: base_path.clone(),
+        auth_token: auth_token.clone(),
     };
 
     let app = Router::new()
@@ -4196,11 +4962,20 @@ async fn cmd_serve_http(url: &str, path: &str, addr: &str, cli: &Cli, format: Ou
                 "protocol": "http",
                 "addr": addr,
                 "base_path": base_path,
+                "auth_required": auth_token.is_some(),
+                "auth_mode": if auth_token.is_some() { "basic-or-bearer" } else { "none" },
+                "generated_auth_token": if generated_auth_token { auth_token.clone() } else { None },
             })
         );
     } else if !cli.quiet {
         eprintln!("Serving HTTP on http://{}", addr);
         eprintln!("Remote base path: {}", state.base_path);
+        if let Some(token) = auth_token.as_deref() {
+            eprintln!("Authentication: enabled (Basic auth or Bearer token)");
+            eprintln!("Use any username and this password/token: {}", token);
+        } else {
+            eprintln!("Authentication: disabled for local loopback access");
+        }
         eprintln!("Press Ctrl+C to stop.");
     }
 
@@ -4333,6 +5108,15 @@ async fn webdav_dispatch(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        state.auth_token.as_deref(),
+        "AeroFTP WebDAV",
+        "Authentication required. Use the configured token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
     let relative_path = match sanitize_served_relative_path(&path) {
         Ok(p) => p,
         Err(status) => return serve_error_response(status, "Invalid path"),
@@ -4349,10 +5133,9 @@ async fn webdav_dispatch(
                     "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND",
                 ),
             );
-            response.headers_mut().insert(
-                "DAV",
-                HeaderValue::from_static("1"),
-            );
+            response
+                .headers_mut()
+                .insert("DAV", HeaderValue::from_static("1"));
             response
         }
 
@@ -4373,11 +5156,7 @@ async fn webdav_dispatch(
                     Err(ProviderError::NotFound(_)) => {
                         // Might be a directory that doesn't support stat
                         RemoteEntry::directory(
-                            remote_path
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or("")
-                                .to_string(),
+                            remote_path.rsplit('/').next().unwrap_or("").to_string(),
                             remote_path.clone(),
                         )
                     }
@@ -4498,10 +5277,9 @@ async fn webdav_dispatch(
                             *response.status_mut() = StatusCode::NO_CONTENT;
                             response
                         }
-                        Err(e) => serve_error_response(
-                            provider_error_to_status_code(&e),
-                            &e.to_string(),
-                        ),
+                        Err(e) => {
+                            serve_error_response(provider_error_to_status_code(&e), &e.to_string())
+                        }
                     },
                 },
             }
@@ -4614,6 +5392,8 @@ async fn cmd_serve_webdav(
     url: &str,
     path: &str,
     addr: &str,
+    allow_remote_bind: bool,
+    auth_token: Option<String>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -4622,17 +5402,14 @@ async fn cmd_serve_webdav(
         Err(code) => return code,
     };
 
-    let bind_addr = match addr.parse::<SocketAddr>() {
+    let bind_addr = match validate_bind_addr(addr, allow_remote_bind, "WebDAV serve") {
         Ok(addr) => addr,
         Err(error) => {
-            print_error(
-                format,
-                &format!("Invalid --addr '{}': {}", addr, error),
-                5,
-            );
+            print_error(format, &error, 5);
             return 5;
         }
     };
+    let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
     let base_path = serve_effective_base_path(path, &url_path);
     let provider_label = if let Some(profile) = &cli.profile {
@@ -4645,6 +5422,7 @@ async fn cmd_serve_webdav(
         provider: Arc::new(AsyncMutex::new(provider)),
         provider_label,
         base_path: base_path.clone(),
+        auth_token: auth_token.clone(),
     };
 
     let app = Router::new()
@@ -4669,11 +5447,20 @@ async fn cmd_serve_webdav(
                 "protocol": "webdav",
                 "addr": addr,
                 "base_path": base_path,
+                "auth_required": auth_token.is_some(),
+                "auth_mode": if auth_token.is_some() { "basic-or-bearer" } else { "none" },
+                "generated_auth_token": if generated_auth_token { auth_token.clone() } else { None },
             })
         );
     } else if !cli.quiet {
         eprintln!("Serving WebDAV on http://{}", addr);
         eprintln!("Remote base path: {}", state.base_path);
+        if let Some(token) = auth_token.as_deref() {
+            eprintln!("Authentication: enabled (Basic auth or Bearer token)");
+            eprintln!("Use any username and this password/token: {}", token);
+        } else {
+            eprintln!("Authentication: disabled for local loopback access");
+        }
         eprintln!("Read-write mode. Press Ctrl+C to stop.");
     }
 
@@ -4689,11 +5476,7 @@ async fn cmd_serve_webdav(
     match result {
         Ok(()) => 0,
         Err(error) => {
-            print_error(
-                format,
-                &format!("WebDAV server failed: {}", error),
-                1,
-            );
+            print_error(format, &format!("WebDAV server failed: {}", error), 1);
             1
         }
     }
@@ -4703,11 +5486,47 @@ async fn cmd_serve_webdav(
 
 mod serve_ftp_backend {
     use super::*;
-    use unftp_core::auth::DefaultUser;
-    use unftp_core::storage::{Error as FtpError, ErrorKind as FtpErrorKind, Fileinfo, Metadata, Result as FtpResult, StorageBackend};
     use std::fmt::Debug;
     use std::path::{Path, PathBuf};
     use tokio::io::AsyncRead;
+    use unftp_core::auth::{
+        AuthenticationError, Authenticator, Credentials, DefaultUser, Principal,
+    };
+    use unftp_core::storage::{
+        Error as FtpError, ErrorKind as FtpErrorKind, Fileinfo, Metadata, Result as FtpResult,
+        StorageBackend,
+    };
+
+    #[derive(Debug)]
+    pub struct TokenAuthenticator {
+        username: String,
+        password: String,
+    }
+
+    impl TokenAuthenticator {
+        pub fn new(username: String, password: String) -> Self {
+            Self { username, password }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Authenticator for TokenAuthenticator {
+        async fn authenticate(
+            &self,
+            username: &str,
+            creds: &Credentials,
+        ) -> Result<Principal, AuthenticationError> {
+            if username != self.username {
+                return Err(AuthenticationError::BadUser);
+            }
+            match creds.password.as_deref() {
+                Some(password) if password == self.password => Ok(Principal {
+                    username: username.to_string(),
+                }),
+                _ => Err(AuthenticationError::BadPassword),
+            }
+        }
+    }
 
     /// Metadata adapter for libunftp.
     #[derive(Debug)]
@@ -4718,15 +5537,28 @@ mod serve_ftp_backend {
     }
 
     impl Metadata for AeroFtpMeta {
-        fn len(&self) -> u64 { self.size }
-        fn is_dir(&self) -> bool { self.is_dir }
-        fn is_file(&self) -> bool { !self.is_dir }
-        fn is_symlink(&self) -> bool { false }
-        fn modified(&self) -> FtpResult<std::time::SystemTime> {
-            self.modified.ok_or_else(|| FtpError::new(FtpErrorKind::LocalError, "no mtime"))
+        fn len(&self) -> u64 {
+            self.size
         }
-        fn gid(&self) -> u32 { 0 }
-        fn uid(&self) -> u32 { 0 }
+        fn is_dir(&self) -> bool {
+            self.is_dir
+        }
+        fn is_file(&self) -> bool {
+            !self.is_dir
+        }
+        fn is_symlink(&self) -> bool {
+            false
+        }
+        fn modified(&self) -> FtpResult<std::time::SystemTime> {
+            self.modified
+                .ok_or_else(|| FtpError::new(FtpErrorKind::LocalError, "no mtime"))
+        }
+        fn gid(&self) -> u32 {
+            0
+        }
+        fn uid(&self) -> u32 {
+            0
+        }
     }
 
     /// StorageBackend that wraps AeroFTP's StorageProvider.
@@ -4745,19 +5577,15 @@ mod serve_ftp_backend {
 
     impl AeroFtpBackend {
         pub fn new(provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>, base_path: String) -> Self {
-            Self { provider, base_path }
+            Self {
+                provider,
+                base_path,
+            }
         }
 
-        fn resolve_path(&self, path: &Path) -> String {
-            let rel = path.to_string_lossy().replace('\\', "/");
-            let rel = rel.trim_start_matches('/');
-            if rel.is_empty() {
-                self.base_path.clone()
-            } else if self.base_path == "/" {
-                format!("/{}", rel)
-            } else {
-                format!("{}/{}", self.base_path.trim_end_matches('/'), rel)
-            }
+        fn resolve_path(&self, path: &Path) -> FtpResult<String> {
+            resolve_served_backend_path(&self.base_path, &path.to_string_lossy())
+                .map_err(|error| FtpError::new(FtpErrorKind::PermissionDenied, error))
         }
 
         fn provider_err_to_ftp(e: ProviderError) -> FtpError {
@@ -4779,7 +5607,7 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<Self::Metadata> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             let entry = p.stat(&remote).await.map_err(Self::provider_err_to_ftp)?;
             Ok(AeroFtpMeta {
@@ -4788,7 +5616,12 @@ mod serve_ftp_backend {
                 modified: entry.modified.as_deref().and_then(|s| {
                     chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                         .ok()
-                        .map(|dt| std::time::UNIX_EPOCH + std::time::Duration::from_secs(dt.and_utc().timestamp().max(0) as u64))
+                        .map(|dt| {
+                            std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs(
+                                    dt.and_utc().timestamp().max(0) as u64
+                                )
+                        })
                 }),
             })
         }
@@ -4798,11 +5631,12 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<Vec<Fileinfo<PathBuf, Self::Metadata>>> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             let entries = p.list(&remote).await.map_err(Self::provider_err_to_ftp)?;
-            Ok(entries.into_iter().map(|e| {
-                Fileinfo {
+            Ok(entries
+                .into_iter()
+                .map(|e| Fileinfo {
                     path: PathBuf::from(&e.name),
                     metadata: AeroFtpMeta {
                         size: e.size,
@@ -4810,11 +5644,16 @@ mod serve_ftp_backend {
                         modified: e.modified.as_deref().and_then(|s| {
                             chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
                                 .ok()
-                                .map(|dt| std::time::UNIX_EPOCH + std::time::Duration::from_secs(dt.and_utc().timestamp().max(0) as u64))
+                                .map(|dt| {
+                                    std::time::UNIX_EPOCH
+                                        + std::time::Duration::from_secs(
+                                            dt.and_utc().timestamp().max(0) as u64,
+                                        )
+                                })
                         }),
                     },
-                }
-            }).collect())
+                })
+                .collect())
         }
 
         async fn get<P: AsRef<Path> + Send + Debug>(
@@ -4823,13 +5662,14 @@ mod serve_ftp_backend {
             path: P,
             start_pos: u64,
         ) -> FtpResult<Box<dyn AsyncRead + Send + Sync + Unpin>> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             // Download to memory and serve as cursor
             let data = if start_pos > 0 {
                 let size = p.size(&remote).await.unwrap_or(0);
                 let len = size.saturating_sub(start_pos);
-                p.read_range(&remote, start_pos, len).await
+                p.read_range(&remote, start_pos, len)
+                    .await
                     .or_else(|_| {
                         // Fallback: download full and slice
                         tokio::runtime::Handle::current().block_on(async {
@@ -4839,34 +5679,44 @@ mod serve_ftp_backend {
                     })
                     .map_err(Self::provider_err_to_ftp)?
             } else {
-                p.download_to_bytes(&remote).await.map_err(Self::provider_err_to_ftp)?
+                p.download_to_bytes(&remote)
+                    .await
+                    .map_err(Self::provider_err_to_ftp)?
             };
             Ok(Box::new(std::io::Cursor::new(data)))
         }
 
-        async fn put<P: AsRef<Path> + Send + Debug, R: AsyncRead + Send + Sync + Unpin + 'static>(
+        async fn put<
+            P: AsRef<Path> + Send + Debug,
+            R: AsyncRead + Send + Sync + Unpin + 'static,
+        >(
             &self,
             _user: &DefaultUser,
             mut input: R,
             path: P,
             _start_pos: u64,
         ) -> FtpResult<u64> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             // Write input to tempfile, then upload
             let tmp = tempfile::NamedTempFile::new()
                 .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
             let tmp_path = tmp.path().to_string_lossy().to_string();
             {
-                let mut file = tokio::fs::File::create(&tmp_path).await
+                let mut file = tokio::fs::File::create(&tmp_path)
+                    .await
                     .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
-                tokio::io::copy(&mut input, &mut file).await
+                tokio::io::copy(&mut input, &mut file)
+                    .await
                     .map_err(|e| FtpError::new(FtpErrorKind::LocalError, e))?;
             }
-            let size = tokio::fs::metadata(&tmp_path).await
+            let size = tokio::fs::metadata(&tmp_path)
+                .await
                 .map(|m| m.len())
                 .unwrap_or(0);
             let mut p = self.provider.lock().await;
-            p.upload(&tmp_path, &remote, None).await.map_err(Self::provider_err_to_ftp)?;
+            p.upload(&tmp_path, &remote, None)
+                .await
+                .map_err(Self::provider_err_to_ftp)?;
             Ok(size)
         }
 
@@ -4875,7 +5725,7 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<()> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             p.delete(&remote).await.map_err(Self::provider_err_to_ftp)
         }
@@ -4885,7 +5735,7 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<()> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             p.mkdir(&remote).await.map_err(Self::provider_err_to_ftp)
         }
@@ -4896,10 +5746,12 @@ mod serve_ftp_backend {
             from: P,
             to: P,
         ) -> FtpResult<()> {
-            let from_remote = self.resolve_path(from.as_ref());
-            let to_remote = self.resolve_path(to.as_ref());
+            let from_remote = self.resolve_path(from.as_ref())?;
+            let to_remote = self.resolve_path(to.as_ref())?;
             let mut p = self.provider.lock().await;
-            p.rename(&from_remote, &to_remote).await.map_err(Self::provider_err_to_ftp)
+            p.rename(&from_remote, &to_remote)
+                .await
+                .map_err(Self::provider_err_to_ftp)
         }
 
         async fn rmd<P: AsRef<Path> + Send + Debug>(
@@ -4907,7 +5759,7 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<()> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             p.rmdir(&remote).await.map_err(Self::provider_err_to_ftp)
         }
@@ -4917,7 +5769,7 @@ mod serve_ftp_backend {
             _user: &DefaultUser,
             path: P,
         ) -> FtpResult<()> {
-            let remote = self.resolve_path(path.as_ref());
+            let remote = self.resolve_path(path.as_ref())?;
             let mut p = self.provider.lock().await;
             // Validate directory exists
             match p.list(&remote).await {
@@ -4931,7 +5783,7 @@ mod serve_ftp_backend {
 async fn cmd_serve_ftp(
     url: &str,
     path: &str,
-    addr: &str,
+    endpoint: ServeEndpointOptions,
     passive_ports_str: &str,
     cli: &Cli,
     format: OutputFormat,
@@ -4943,6 +5795,15 @@ async fn cmd_serve_ftp(
 
     let base_path = serve_effective_base_path(path, &url_path);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let bind_addr = match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "FTP serve") {
+        Ok(addr) => addr,
+        Err(error) => {
+            print_error(format, &error, 5);
+            return 5;
+        }
+    };
+    let auth_credentials =
+        resolve_service_credentials(endpoint.auth.username, endpoint.auth.password, bind_addr);
 
     // Parse passive port range
     let passive_range = match passive_ports_str.split_once('-') {
@@ -4959,11 +5820,25 @@ async fn cmd_serve_ftp(
     let backend_provider = provider_arc.clone();
     let backend_base = base_path.clone();
 
-    let server = libunftp::ServerBuilder::new(Box::new(move || {
-        serve_ftp_backend::AeroFtpBackend::new(backend_provider.clone(), backend_base.clone())
-    }))
-    .passive_ports(passive_range)
-    .greeting("AeroFTP serve — connected");
+    let builder = if let Some(credentials) = auth_credentials.as_ref() {
+        libunftp::ServerBuilder::with_authenticator(
+            Box::new(move || {
+                serve_ftp_backend::AeroFtpBackend::new(backend_provider.clone(), backend_base.clone())
+            }),
+            Arc::new(serve_ftp_backend::TokenAuthenticator::new(
+                credentials.username.clone(),
+                credentials.password.clone(),
+            )),
+        )
+    } else {
+        libunftp::ServerBuilder::new(Box::new(move || {
+            serve_ftp_backend::AeroFtpBackend::new(backend_provider.clone(), backend_base.clone())
+        }))
+    };
+
+    let server = builder
+        .passive_ports(passive_range)
+        .greeting("AeroFTP serve — connected");
 
     let server = match server.build() {
         Ok(s) => s,
@@ -4979,18 +5854,30 @@ async fn cmd_serve_ftp(
             serde_json::json!({
                 "status": "serving",
                 "protocol": "ftp",
-                "addr": addr,
+                "addr": endpoint.addr,
                 "base_path": base_path,
+                "auth_required": auth_credentials.is_some(),
+                "auth_user": auth_credentials.as_ref().map(|c| c.username.clone()),
+                "generated_auth_password": auth_credentials
+                    .as_ref()
+                    .and_then(|c| if c.generated { Some(c.password.clone()) } else { None }),
             })
         );
     } else if !quiet {
-        eprintln!("Serving FTP on ftp://{}", addr);
+        eprintln!("Serving FTP on ftp://{}", endpoint.addr);
         eprintln!("Remote base path: {}", base_path);
         eprintln!("Passive ports: {}", passive_ports_str);
-        eprintln!("Anonymous access (no auth). Press Ctrl+C to stop.");
+        if let Some(credentials) = auth_credentials.as_ref() {
+            eprintln!("Authentication: enabled");
+            eprintln!("Username: {}", credentials.username);
+            eprintln!("Password: {}", credentials.password);
+        } else {
+            eprintln!("Authentication: disabled for local loopback access");
+        }
+        eprintln!("Press Ctrl+C to stop.");
     }
 
-    if let Err(e) = server.listen(addr).await {
+    if let Err(e) = server.listen(bind_addr.to_string()).await {
         print_error(format, &format!("FTP server failed: {}", e), 1);
         return 1;
     }
@@ -5099,6 +5986,7 @@ mod serve_sftp {
     pub struct AeroSftpServer {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
+        auth_credentials: Option<ServeAuthCredentials>,
         rt: Arc<tokio::runtime::Runtime>,
     }
 
@@ -5108,6 +5996,7 @@ mod serve_sftp {
             AeroSftpHandler {
                 provider: self.provider.clone(),
                 base_path: self.base_path.clone(),
+                auth_credentials: self.auth_credentials.clone(),
                 handles: HashMap::new(),
                 next_handle: 0,
                 dir_read: std::collections::HashSet::new(),
@@ -5120,6 +6009,7 @@ mod serve_sftp {
     pub struct AeroSftpHandler {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
+        auth_credentials: Option<ServeAuthCredentials>,
         handles: HashMap<String, String>,
         next_handle: u64,
         dir_read: std::collections::HashSet<String>,
@@ -5129,15 +6019,8 @@ mod serve_sftp {
     }
 
     impl AeroSftpHandler {
-        fn resolve_path(&self, path: &str) -> String {
-            let clean = path.trim_start_matches('/');
-            if clean.is_empty() {
-                self.base_path.clone()
-            } else if self.base_path == "/" {
-                format!("/{}", clean)
-            } else {
-                format!("{}/{}", self.base_path.trim_end_matches('/'), clean)
-            }
+        fn resolve_path(&self, path: &str) -> Result<String, &'static str> {
+            resolve_served_backend_path(&self.base_path, path)
         }
 
         fn alloc_handle(&mut self, path: &str) -> String {
@@ -5199,7 +6082,16 @@ mod serve_sftp {
                 SSH_FXP_STAT | SSH_FXP_LSTAT => {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let r = remote.clone();
                     match prov!(provider, rt, async |p| p.stat(&r).await) {
                         Ok(entry) => {
@@ -5236,7 +6128,16 @@ mod serve_sftp {
                 SSH_FXP_OPENDIR => {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let handle = self.alloc_handle(&remote);
                     make_handle(id, &handle)
                 }
@@ -5278,7 +6179,16 @@ mod serve_sftp {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
                     let _flags = read_u32(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let handle = self.alloc_handle(&remote);
                     make_handle(id, &handle)
                 }
@@ -5291,7 +6201,10 @@ mod serve_sftp {
                         return make_status(id, SSH_FX_FAILURE, "invalid handle");
                     };
                     let rp = path.clone();
-                    match prov!(provider, rt, async |p| p.read_range(&rp, offset, len as u64).await) {
+                    match prov!(provider, rt, async |p| p
+                        .read_range(&rp, offset, len as u64)
+                        .await)
+                    {
                         Ok(data) if data.is_empty() => make_status(id, SSH_FX_EOF, ""),
                         Ok(file_data) => {
                             let mut reply = Vec::new();
@@ -5341,7 +6254,16 @@ mod serve_sftp {
                 SSH_FXP_REMOVE => {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let r = remote.clone();
                     match prov!(provider, rt, async |p| p.delete(&r).await) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
@@ -5351,7 +6273,16 @@ mod serve_sftp {
                 SSH_FXP_MKDIR => {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let r = remote.clone();
                     match prov!(provider, rt, async |p| p.mkdir(&r).await) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
@@ -5361,7 +6292,16 @@ mod serve_sftp {
                 SSH_FXP_RMDIR => {
                     let id = read_u32(data, &mut pos);
                     let path = read_string(data, &mut pos);
-                    let remote = self.resolve_path(&path);
+                    let remote = match self.resolve_path(&path) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let r = remote.clone();
                     match prov!(provider, rt, async |p| p.rmdir(&r).await) {
                         Ok(()) => make_status(id, SSH_FX_OK, ""),
@@ -5372,8 +6312,26 @@ mod serve_sftp {
                     let id = read_u32(data, &mut pos);
                     let from = read_string(data, &mut pos);
                     let to = read_string(data, &mut pos);
-                    let from_remote = self.resolve_path(&from);
-                    let to_remote = self.resolve_path(&to);
+                    let from_remote = match self.resolve_path(&from) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
+                    let to_remote = match self.resolve_path(&to) {
+                        Ok(remote) => remote,
+                        Err(_) => {
+                            return make_status(
+                                id,
+                                SSH_FX_PERMISSION_DENIED,
+                                "path traversal denied",
+                            )
+                        }
+                    };
                     let fr = from_remote.clone();
                     let tr = to_remote.clone();
                     match prov!(provider, rt, async |p| p.rename(&fr, &tr).await) {
@@ -5407,17 +6365,43 @@ mod serve_sftp {
 
         fn auth_password(
             &mut self,
-            _user: &str,
-            _password: &str,
+            user: &str,
+            password: &str,
         ) -> impl std::future::Future<Output = Result<Auth, Self::Error>> + Send {
-            async { Ok(Auth::Accept) }
+            let expected = self.auth_credentials.clone();
+            let user = user.to_string();
+            let password = password.to_string();
+            async move {
+                Ok(match expected {
+                    Some(credentials)
+                        if credentials.username == user && credentials.password == password =>
+                    {
+                        Auth::Accept
+                    }
+                    Some(_) => Auth::Reject {
+                        proceed_with_methods: Some(russh::MethodSet::from(&[russh::MethodKind::Password][..])),
+                        partial_success: false,
+                    },
+                    None => Auth::Accept,
+                })
+            }
         }
 
         fn auth_none(
             &mut self,
             _user: &str,
         ) -> impl std::future::Future<Output = Result<Auth, Self::Error>> + Send {
-            async { Ok(Auth::Accept) }
+            let auth_enabled = self.auth_credentials.is_some();
+            async move {
+                Ok(if auth_enabled {
+                    Auth::Reject {
+                        proceed_with_methods: Some(russh::MethodSet::from(&[russh::MethodKind::Password][..])),
+                        partial_success: false,
+                    }
+                } else {
+                    Auth::Accept
+                })
+            }
         }
 
         fn channel_open_session(
@@ -5475,14 +6459,21 @@ mod serve_sftp {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
         addr: &str,
+        auth_credentials: Option<ServeAuthCredentials>,
         quiet: bool,
     ) -> i32 {
         let key = russh::keys::PrivateKey::random(
             &mut rand::thread_rng(),
             russh::keys::Algorithm::Ed25519,
-        ).expect("generate ed25519 key");
+        )
+        .expect("generate ed25519 key");
 
         let config = Arc::new(russh::server::Config {
+            methods: if auth_credentials.is_some() {
+                russh::MethodSet::from(&[russh::MethodKind::Password][..])
+            } else {
+                russh::MethodSet::all()
+            },
             keys: vec![key],
             ..Default::default()
         });
@@ -5533,6 +6524,7 @@ mod serve_sftp {
             let handler = AeroSftpHandler {
                 provider: provider.clone(),
                 base_path: base_path.clone(),
+                auth_credentials: auth_credentials.clone(),
                 handles: HashMap::new(),
                 next_handle: 0,
                 dir_read: std::collections::HashSet::new(),
@@ -5553,7 +6545,7 @@ mod serve_sftp {
 async fn cmd_serve_sftp(
     url: &str,
     path: &str,
-    addr: &str,
+    endpoint: ServeEndpointOptions,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -5564,6 +6556,15 @@ async fn cmd_serve_sftp(
 
     let base_path = serve_effective_base_path(path, &url_path);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let bind_addr = match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "SFTP serve") {
+        Ok(addr) => addr,
+        Err(error) => {
+            print_error(format, &error, 5);
+            return 5;
+        }
+    };
+    let auth_credentials =
+        resolve_service_credentials(endpoint.auth.username, endpoint.auth.password, bind_addr);
 
     if matches!(format, OutputFormat::Json) {
         println!(
@@ -5571,18 +6572,36 @@ async fn cmd_serve_sftp(
             serde_json::json!({
                 "status": "serving",
                 "protocol": "sftp",
-                "addr": addr,
+                "addr": endpoint.addr,
                 "base_path": base_path,
+                "auth_required": auth_credentials.is_some(),
+                "auth_user": auth_credentials.as_ref().map(|c| c.username.clone()),
+                "generated_auth_password": auth_credentials
+                    .as_ref()
+                    .and_then(|c| if c.generated { Some(c.password.clone()) } else { None }),
             })
         );
     } else if !quiet {
-        eprintln!("Serving SFTP on sftp://{}", addr);
+        eprintln!("Serving SFTP on sftp://{}", endpoint.addr);
         eprintln!("Remote base path: {}", base_path);
-        eprintln!("Anonymous access (any password accepted).");
+        if let Some(credentials) = auth_credentials.as_ref() {
+            eprintln!("Authentication: enabled");
+            eprintln!("Username: {}", credentials.username);
+            eprintln!("Password: {}", credentials.password);
+        } else {
+            eprintln!("Authentication: disabled for local loopback access");
+        }
     }
 
     let provider_arc = Arc::new(AsyncMutex::new(provider));
-    serve_sftp::run(provider_arc, base_path, addr, quiet).await
+    serve_sftp::run(
+        provider_arc,
+        base_path,
+        &bind_addr.to_string(),
+        auth_credentials,
+        quiet,
+    )
+    .await
 }
 
 async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
@@ -5596,7 +6615,9 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => {
-            if let Some(sp) = spinner { sp.finish_and_clear(); }
+            if let Some(sp) = spinner {
+                sp.finish_and_clear();
+            }
             return code;
         }
     };
@@ -5608,7 +6629,9 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let port = display_port_for_provider(&pt, server_info.as_deref());
     let user = String::new();
 
-    if let Some(sp) = spinner { sp.finish_and_clear(); }
+    if let Some(sp) = spinner {
+        sp.finish_and_clear();
+    }
 
     match format {
         OutputFormat::Text => {
@@ -5678,7 +6701,11 @@ async fn cmd_ls(
     let entries = match provider.list(effective_path).await {
         Ok(e) => e,
         Err(e) => {
-            print_error(format, &format!("ls failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("ls failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             return provider_error_to_exit_code(&e);
         }
@@ -5688,14 +6715,19 @@ async fn cmd_ls(
     let mut entries: Vec<RemoteEntry> = if all {
         entries
     } else {
-        entries.into_iter().filter(|e| !e.name.starts_with('.')).collect()
+        entries
+            .into_iter()
+            .filter(|e| !e.name.starts_with('.'))
+            .collect()
     };
 
     // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
     if has_filters(cli) {
         let filter = build_filter(cli);
         entries.retain(|e| {
-            if e.is_dir { return true; } // Don't filter directories in ls
+            if e.is_dir {
+                return true;
+            } // Don't filter directories in ls
             filter(&e.name, e.size, None)
         });
     }
@@ -5731,7 +6763,11 @@ async fn cmd_ls(
             } else if long {
                 // Long format: permissions  size  date  name
                 for e in &entries {
-                    let perms = e.permissions.as_deref().unwrap_or(if e.is_dir { "drwxr-xr-x" } else { "-rw-r--r--" });
+                    let perms = e.permissions.as_deref().unwrap_or(if e.is_dir {
+                        "drwxr-xr-x"
+                    } else {
+                        "-rw-r--r--"
+                    });
                     let size_str = if e.is_dir {
                         "       -".to_string()
                     } else {
@@ -5841,7 +6877,10 @@ async fn cmd_get(
         let quiet = cli.quiet || matches!(format, OutputFormat::Json);
         if hints.supports_range_download && total_size >= PGET_MIN_FILE_SIZE {
             let _ = provider.disconnect().await;
-            return pget_segmented_download(url, remote, local_path, segments, total_size, cli, format).await;
+            return pget_segmented_download(
+                url, remote, local_path, segments, total_size, cli, format,
+            )
+            .await;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
                 "provider does not support range downloads"
@@ -5925,7 +6964,11 @@ async fn cmd_get(
             if !cli.partial {
                 let _ = std::fs::remove_file(local_path);
             }
-            print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Download failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -5968,7 +7011,11 @@ fn plan_pget_chunks(file_size: u64, segments: usize) -> Vec<PgetChunk> {
     let mut offset = 0u64;
     for i in 0..actual_segments {
         let length = base + if (i as u64) < remainder { 1 } else { 0 };
-        chunks.push(PgetChunk { index: i, offset, length });
+        chunks.push(PgetChunk {
+            index: i,
+            offset,
+            length,
+        });
         offset += length;
     }
     chunks
@@ -6013,7 +7060,11 @@ async fn pget_segmented_download(
     // Create temp directory for chunk files
     let temp_dir = format!("{}.aeroftp-pget-{}", local_path, uuid::Uuid::new_v4());
     if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-        print_error(format, &format!("pget: failed to create temp dir: {}", e), 4);
+        print_error(
+            format,
+            &format!("pget: failed to create temp dir: {}", e),
+            4,
+        );
         return 4;
     }
     let _temp_guard = PgetTempGuard(temp_dir.clone());
@@ -6021,7 +7072,10 @@ async fn pget_segmented_download(
     // Progress bar
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
     let pb = if !quiet {
-        Some(create_progress_bar(&format!("{} (pget x{})", filename, actual_segments), file_size))
+        Some(create_progress_bar(
+            &format!("{} (pget x{})", filename, actual_segments),
+            file_size,
+        ))
     } else {
         None
     };
@@ -6040,7 +7094,10 @@ async fn pget_segmented_download(
         let length = chunk.length;
         let idx = chunk.index;
         async move {
-            pget_download_chunk(&url, &remote, &temp_dir, idx, offset, length, aggregate, pb, cli, format).await
+            pget_download_chunk(
+                &url, &remote, &temp_dir, idx, offset, length, aggregate, pb, cli, format,
+            )
+            .await
         }
     }))
     .buffer_unordered(workers)
@@ -6050,7 +7107,9 @@ async fn pget_segmented_download(
     // Check for chunk errors
     let errors: Vec<&String> = results.iter().filter_map(|r| r.as_ref().err()).collect();
     if !errors.is_empty() {
-        if let Some(ref pb) = pb { pb.finish_and_clear(); }
+        if let Some(ref pb) = pb {
+            pb.finish_and_clear();
+        }
         for err in &errors {
             print_error(format, &format!("pget: {}", err), 4);
         }
@@ -6060,12 +7119,16 @@ async fn pget_segmented_download(
 
     // Assemble chunks into final file
     if let Err(e) = pget_assemble_chunks(&temp_dir, local_path, actual_segments).await {
-        if let Some(ref pb) = pb { pb.finish_and_clear(); }
+        if let Some(ref pb) = pb {
+            pb.finish_and_clear();
+        }
         print_error(format, &format!("pget assembly failed: {}", e), 4);
         return 4;
     }
 
-    if let Some(pb) = pb { pb.finish_and_clear(); }
+    if let Some(pb) = pb {
+        pb.finish_and_clear();
+    }
 
     let elapsed = start.elapsed();
     let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -6079,9 +7142,12 @@ async fn pget_segmented_download(
             if !cli.quiet {
                 println!(
                     "{} → {} ({}, {}, {:.1}s, {} segments)",
-                    remote_path, local_path,
-                    format_size(file_size), format_speed(speed),
-                    elapsed.as_secs_f64(), actual_segments,
+                    remote_path,
+                    local_path,
+                    format_size(file_size),
+                    format_speed(speed),
+                    elapsed.as_secs_f64(),
+                    actual_segments,
                 );
             }
         }
@@ -6115,9 +7181,12 @@ async fn pget_download_chunk(
 ) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
 
-    let (mut provider, _) = create_and_connect(url, cli, format)
-        .await
-        .map_err(|code| format!("chunk {}: connection failed (exit code {})", chunk_index, code))?;
+    let (mut provider, _) = create_and_connect(url, cli, format).await.map_err(|code| {
+        format!(
+            "chunk {}: connection failed (exit code {})",
+            chunk_index, code
+        )
+    })?;
 
     let chunk_path = format!("{}/chunk_{:04}", temp_dir, chunk_index);
     let mut file = tokio::fs::File::create(&chunk_path)
@@ -6129,9 +7198,17 @@ async fn pget_download_chunk(
     while downloaded < length {
         let remaining = length - downloaded;
         let read_size = remaining.min(PGET_SUB_READ_SIZE);
-        let data = provider.read_range(remote_path, offset + downloaded, read_size)
+        let data = provider
+            .read_range(remote_path, offset + downloaded, read_size)
             .await
-            .map_err(|e| format!("chunk {}: read_range at offset {} failed: {}", chunk_index, offset + downloaded, e))?;
+            .map_err(|e| {
+                format!(
+                    "chunk {}: read_range at offset {} failed: {}",
+                    chunk_index,
+                    offset + downloaded,
+                    e
+                )
+            })?;
 
         if data.is_empty() {
             break;
@@ -6142,21 +7219,32 @@ async fn pget_download_chunk(
             .map_err(|e| format!("chunk {}: write failed: {}", chunk_index, e))?;
 
         downloaded += data.len() as u64;
-        let new_total = aggregate.fetch_add(data.len() as u64, Ordering::Relaxed) + data.len() as u64;
+        let new_total =
+            aggregate.fetch_add(data.len() as u64, Ordering::Relaxed) + data.len() as u64;
         if let Some(ref pb) = pb {
             pb.set_position(new_total);
         }
     }
 
-    file.flush().await.map_err(|e| format!("chunk {}: flush failed: {}", chunk_index, e))?;
+    file.flush()
+        .await
+        .map_err(|e| format!("chunk {}: flush failed: {}", chunk_index, e))?;
     let _ = provider.disconnect().await;
     Ok(())
 }
 
-async fn pget_assemble_chunks(temp_dir: &str, dest_path: &str, num_chunks: usize) -> Result<(), String> {
+async fn pget_assemble_chunks(
+    temp_dir: &str,
+    dest_path: &str,
+    num_chunks: usize,
+) -> Result<(), String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let temp_dest = format!("{}.aeroftp-assemble-{}.tmp", dest_path, uuid::Uuid::new_v4());
+    let temp_dest = format!(
+        "{}.aeroftp-assemble-{}.tmp",
+        dest_path,
+        uuid::Uuid::new_v4()
+    );
     let mut dest = tokio::fs::File::create(&temp_dest)
         .await
         .map_err(|e| format!("failed to create destination temp file: {}", e))?;
@@ -6165,27 +7253,23 @@ async fn pget_assemble_chunks(temp_dir: &str, dest_path: &str, num_chunks: usize
 
     for i in 0..num_chunks {
         let chunk_path = format!("{}/chunk_{:04}", temp_dir, i);
-        let mut src = tokio::fs::File::open(&chunk_path)
-            .await
-            .map_err(|e| {
-                let _ = std::fs::remove_file(&temp_dest);
-                format!("failed to open chunk {}: {}", i, e)
-            })?;
+        let mut src = tokio::fs::File::open(&chunk_path).await.map_err(|e| {
+            let _ = std::fs::remove_file(&temp_dest);
+            format!("failed to open chunk {}: {}", i, e)
+        })?;
 
         loop {
-            let n = src.read(&mut buf)
-                .await
-                .map_err(|e| {
-                    let _ = std::fs::remove_file(&temp_dest);
-                    format!("failed to read chunk {}: {}", i, e)
-                })?;
-            if n == 0 { break; }
-            dest.write_all(&buf[..n])
-                .await
-                .map_err(|e| {
-                    let _ = std::fs::remove_file(&temp_dest);
-                    format!("failed to write chunk {}: {}", i, e)
-                })?;
+            let n = src.read(&mut buf).await.map_err(|e| {
+                let _ = std::fs::remove_file(&temp_dest);
+                format!("failed to read chunk {}: {}", i, e)
+            })?;
+            if n == 0 {
+                break;
+            }
+            dest.write_all(&buf[..n]).await.map_err(|e| {
+                let _ = std::fs::remove_file(&temp_dest);
+                format!("failed to write chunk {}: {}", i, e)
+            })?;
         }
     }
 
@@ -6239,7 +7323,9 @@ async fn pget_fallback_single(
     let pb_clone = pb.clone();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = pb_clone.map(|pb| {
         Box::new(move |transferred: u64, total: u64| {
-            if total > 0 { pb.set_length(total); }
+            if total > 0 {
+                pb.set_length(total);
+            }
             pb.set_position(transferred);
         }) as Box<dyn Fn(u64, u64) + Send>
     });
@@ -6248,18 +7334,35 @@ async fn pget_fallback_single(
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
-            let speed = if elapsed.as_secs_f64() > 0.0 { (file_size as f64 / elapsed.as_secs_f64()) as u64 } else { 0 };
-            if let Some(pb) = pb { pb.finish_and_clear(); }
+            let speed = if elapsed.as_secs_f64() > 0.0 {
+                (file_size as f64 / elapsed.as_secs_f64()) as u64
+            } else {
+                0
+            };
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        println!("{} → {} ({}, {}, {:.1}s)", remote_path, local_path, format_size(file_size), format_speed(speed), elapsed.as_secs_f64());
+                        println!(
+                            "{} → {} ({}, {}, {:.1}s)",
+                            remote_path,
+                            local_path,
+                            format_size(file_size),
+                            format_speed(speed),
+                            elapsed.as_secs_f64()
+                        );
                     }
                 }
                 OutputFormat::Json => {
                     print_json(&CliTransferResult {
-                        status: "ok", operation: "download".to_string(), path: remote_path.to_string(),
-                        bytes: file_size, elapsed_secs: elapsed.as_secs_f64(), speed_bps: speed,
+                        status: "ok",
+                        operation: "download".to_string(),
+                        path: remote_path.to_string(),
+                        bytes: file_size,
+                        elapsed_secs: elapsed.as_secs_f64(),
+                        speed_bps: speed,
                     });
                 }
             }
@@ -6267,8 +7370,12 @@ async fn pget_fallback_single(
             0
         }
         Err(e) => {
-            if let Some(pb) = pb { pb.finish_and_clear(); }
-            if !cli.partial { let _ = std::fs::remove_file(local_path); }
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
+            if !cli.partial {
+                let _ = std::fs::remove_file(local_path);
+            }
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("Download failed: {}", e), code);
             let _ = provider.disconnect().await;
@@ -6316,7 +7423,10 @@ async fn cmd_get_recursive(
         }
         if files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
             if !quiet {
-                eprintln!("Warning: max entries {} reached, stopping scan", MAX_SCAN_ENTRIES);
+                eprintln!(
+                    "Warning: max entries {} reached, stopping scan",
+                    MAX_SCAN_ENTRIES
+                );
             }
             break;
         }
@@ -6327,13 +7437,21 @@ async fn cmd_get_recursive(
                         queue.push((e.path.clone(), depth + 1));
                         dirs.push(e.path);
                     } else {
-                        let relative = e.path.strip_prefix(remote_dir).unwrap_or(&e.path).trim_start_matches('/');
+                        let relative = e
+                            .path
+                            .strip_prefix(remote_dir)
+                            .unwrap_or(&e.path)
+                            .trim_start_matches('/');
                         let Some(relative) = validate_relative_path(relative) else {
                             continue;
                         };
                         let local_path_buf = Path::new(local_base).join(relative);
                         if verify_path_within_root(&local_path_buf, Path::new(local_base)).is_ok() {
-                            files.push((e.path, local_path_buf.to_string_lossy().to_string(), e.size));
+                            files.push((
+                                e.path,
+                                local_path_buf.to_string_lossy().to_string(),
+                                e.size,
+                            ));
                         }
                     }
                 }
@@ -6351,7 +7469,10 @@ async fn cmd_get_recursive(
     }
 
     for dir in &dirs {
-        let relative = dir.strip_prefix(remote_dir).unwrap_or(dir).trim_start_matches('/');
+        let relative = dir
+            .strip_prefix(remote_dir)
+            .unwrap_or(dir)
+            .trim_start_matches('/');
         let Some(relative) = validate_relative_path(relative) else {
             if !quiet {
                 eprintln!("Warning: skipping unsafe directory path: {}", dir);
@@ -6386,24 +7507,35 @@ async fn cmd_get_recursive(
         None
     };
 
-    let results = futures_util::stream::iter(files.into_iter().map(|(remote_path, local_path, _size)| {
-        let cancelled = cancelled.clone();
-        let aggregate = aggregate.clone();
-        let overall_pb = overall_pb.clone();
-        async move {
-            if cancelled.load(Ordering::Relaxed) {
-                return Err("Cancelled by user".to_string());
+    let results =
+        futures_util::stream::iter(files.into_iter().map(|(remote_path, local_path, _size)| {
+            let cancelled = cancelled.clone();
+            let aggregate = aggregate.clone();
+            let overall_pb = overall_pb.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err("Cancelled by user".to_string());
+                }
+                if let Some(parent) = Path::new(&local_path).parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let result = download_transfer_task(
+                    url,
+                    remote_path.clone(),
+                    local_path,
+                    cli,
+                    format,
+                    Some(aggregate),
+                    overall_pb,
+                    resolve_max_transfer(cli),
+                )
+                .await;
+                result.map(|_| remote_path)
             }
-            if let Some(parent) = Path::new(&local_path).parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let result = download_transfer_task(url, remote_path.clone(), local_path, cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli)).await;
-            result.map(|_| remote_path)
-        }
-    }))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
+        }))
+        .buffer_unordered(effective_parallel_workers(cli))
+        .collect::<Vec<_>>()
+        .await;
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
@@ -6440,14 +7572,20 @@ async fn cmd_get_recursive(
                 uploaded: 0,
                 downloaded,
                 deleted: 0,
-                skipped: (total_files as u32).saturating_sub(downloaded).saturating_sub(errors.len() as u32),
+                skipped: (total_files as u32)
+                    .saturating_sub(downloaded)
+                    .saturating_sub(errors.len() as u32),
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
             });
         }
     }
 
-    if downloaded == total_files as u32 { 0 } else { 4 }
+    if downloaded == total_files as u32 {
+        0
+    } else {
+        4
+    }
 }
 
 async fn cmd_get_glob(
@@ -6484,7 +7622,11 @@ async fn cmd_get_glob(
     let entries = match provider.list(dir).await {
         Ok(e) => e,
         Err(e) => {
-            print_error(format, &format!("ls failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("ls failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             return provider_error_to_exit_code(&e);
         }
@@ -6537,9 +7679,18 @@ async fn cmd_get_glob(
             if validate_relative_path(&entry.name).is_none() {
                 return Err(format!("{}: unsafe path (traversal rejected)", entry.name));
             }
-            download_transfer_task(url, entry.path.clone(), local_path.clone(), cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
-                .await
-                .map(|_| entry.name.clone())
+            download_transfer_task(
+                url,
+                entry.path.clone(),
+                local_path.clone(),
+                cli,
+                format,
+                Some(aggregate),
+                overall_pb,
+                resolve_max_transfer(cli),
+            )
+            .await
+            .map(|_| entry.name.clone())
         }
     }))
     .buffer_unordered(effective_parallel_workers(cli))
@@ -6564,7 +7715,9 @@ async fn cmd_get_glob(
             if !cli.quiet {
                 println!(
                     "\n{}/{} files downloaded in {:.1}s",
-                    downloaded, total, elapsed.as_secs_f64()
+                    downloaded,
+                    total,
+                    elapsed.as_secs_f64()
                 );
             }
         }
@@ -6581,7 +7734,11 @@ async fn cmd_get_glob(
         }
     }
 
-    if downloaded == total as u32 { 0 } else { 4 }
+    if downloaded == total as u32 {
+        0
+    } else {
+        4
+    }
 }
 
 async fn cmd_put(
@@ -6621,7 +7778,11 @@ async fn cmd_put(
     let file_size = match std::fs::metadata(local) {
         Ok(m) => m.len(),
         Err(e) => {
-            print_error(format, &format!("Cannot read local file '{}': {}", local, e), 2);
+            print_error(
+                format,
+                &format!("Cannot read local file '{}': {}", local, e),
+                2,
+            );
             return 2;
         }
     };
@@ -6698,7 +7859,11 @@ async fn cmd_put(
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
-            print_error(format, &format!("Upload failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Upload failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -6722,7 +7887,9 @@ async fn cmd_put_recursive(
     // Walk local directory (bounded: max 100 levels deep, 500K entries)
     const MAX_SCAN_DEPTH_PUT: usize = 100;
     const MAX_SCAN_ENTRIES_PUT: usize = 500_000;
-    let walker = walkdir::WalkDir::new(local_dir).follow_links(false).max_depth(MAX_SCAN_DEPTH_PUT);
+    let walker = walkdir::WalkDir::new(local_dir)
+        .follow_links(false)
+        .max_depth(MAX_SCAN_DEPTH_PUT);
     let mut files: Vec<(String, String, u64)> = Vec::new(); // (local, remote, size)
     let mut dirs: Vec<String> = Vec::new();
 
@@ -6741,10 +7908,7 @@ async fn cmd_put_recursive(
             }
         };
 
-        let relative = entry
-            .path()
-            .strip_prefix(local_dir)
-            .unwrap_or(entry.path());
+        let relative = entry.path().strip_prefix(local_dir).unwrap_or(entry.path());
         let relative_str = relative.to_string_lossy().replace('\\', "/");
         if relative_str.is_empty() {
             continue;
@@ -6760,7 +7924,11 @@ async fn cmd_put_recursive(
             dirs.push(remote_path);
         } else if entry.file_type().is_file() {
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            files.push((entry.path().to_string_lossy().to_string(), remote_path, size));
+            files.push((
+                entry.path().to_string_lossy().to_string(),
+                remote_path,
+                size,
+            ));
         }
     }
 
@@ -6805,22 +7973,32 @@ async fn cmd_put_recursive(
         None
     };
 
-    let results = futures_util::stream::iter(files.into_iter().map(|(local_path, remote_path, _size)| {
-        let cancelled = cancelled.clone();
-        let aggregate = aggregate.clone();
-        let overall_pb = overall_pb.clone();
-        async move {
-            if cancelled.load(Ordering::Relaxed) {
-                return Err("Cancelled by user".to_string());
-            }
-            upload_transfer_task(url, local_path.clone(), remote_path.clone(), cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
+    let results =
+        futures_util::stream::iter(files.into_iter().map(|(local_path, remote_path, _size)| {
+            let cancelled = cancelled.clone();
+            let aggregate = aggregate.clone();
+            let overall_pb = overall_pb.clone();
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err("Cancelled by user".to_string());
+                }
+                upload_transfer_task(
+                    url,
+                    local_path.clone(),
+                    remote_path.clone(),
+                    cli,
+                    format,
+                    Some(aggregate),
+                    overall_pb,
+                    resolve_max_transfer(cli),
+                )
                 .await
                 .map(|_| local_path)
-        }
-    }))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
+            }
+        }))
+        .buffer_unordered(effective_parallel_workers(cli))
+        .collect::<Vec<_>>()
+        .await;
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
@@ -6842,7 +8020,10 @@ async fn cmd_put_recursive(
             if !cli.quiet {
                 println!(
                     "\nUploaded {}/{} files ({}) in {:.1}s",
-                    uploaded, total_files, format_size(total_bytes), elapsed.as_secs_f64()
+                    uploaded,
+                    total_files,
+                    format_size(total_bytes),
+                    elapsed.as_secs_f64()
                 );
                 for err in &errors {
                     eprintln!("  Error: {}", err);
@@ -6861,7 +8042,11 @@ async fn cmd_put_recursive(
             });
         }
     }
-    if uploaded == total_files as u32 { 0 } else { 4 }
+    if uploaded == total_files as u32 {
+        0
+    } else {
+        4
+    }
 }
 
 async fn cmd_mkdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
@@ -6887,7 +8072,11 @@ async fn cmd_mkdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
             0
         }
         Err(e) => {
-            print_error(format, &format!("mkdir failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("mkdir failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -6949,7 +8138,11 @@ async fn cmd_rm(
             0
         }
         Err(e) => {
-            print_error(format, &format!("rm failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("rm failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -6979,7 +8172,11 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
             0
         }
         Err(e) => {
-            print_error(format, &format!("mv failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("mv failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -6993,7 +8190,11 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
     };
 
     if !provider.supports_server_copy() {
-        print_error(format, "Server-side copy is not supported by this provider", 7);
+        print_error(
+            format,
+            "Server-side copy is not supported by this provider",
+            7,
+        );
         let _ = provider.disconnect().await;
         return 7;
     }
@@ -7015,7 +8216,11 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
             0
         }
         Err(e) => {
-            print_error(format, &format!("cp failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("cp failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7035,7 +8240,15 @@ fn parse_expires(s: &str) -> Option<u64> {
     }
 }
 
-async fn cmd_link(url: &str, path: &str, expires: Option<&str>, password: Option<&str>, permissions: &str, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_link(
+    url: &str,
+    path: &str,
+    expires: Option<&str>,
+    password: Option<&str>,
+    permissions: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -7049,7 +8262,11 @@ async fn cmd_link(url: &str, path: &str, expires: Option<&str>, password: Option
 
     let expires_in_secs = expires.and_then(parse_expires);
     if expires.is_some() && expires_in_secs.is_none() {
-        print_error(format, "Invalid --expires format. Use: 1h, 24h, 7d, 30d, or seconds", 1);
+        print_error(
+            format,
+            "Invalid --expires format. Use: 1h, 24h, 7d, 30d, or seconds",
+            1,
+        );
         let _ = provider.disconnect().await;
         return 1;
     }
@@ -7057,7 +8274,11 @@ async fn cmd_link(url: &str, path: &str, expires: Option<&str>, password: Option
     let options = ShareLinkOptions {
         expires_in_secs,
         password: password.map(|s| s.to_string()),
-        permissions: if permissions == "view" { None } else { Some(permissions.to_string()) },
+        permissions: if permissions == "view" {
+            None
+        } else {
+            Some(permissions.to_string())
+        },
     };
 
     match provider.create_share_link(path, options).await {
@@ -7086,7 +8307,11 @@ async fn cmd_link(url: &str, path: &str, expires: Option<&str>, password: Option
             0
         }
         Err(e) => {
-            print_error(format, &format!("link failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("link failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7119,7 +8344,11 @@ async fn cmd_edit(
     let data = match provider.download_to_bytes(path).await {
         Ok(data) => data,
         Err(e) => {
-            print_error(format, &format!("edit failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("edit failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             return provider_error_to_exit_code(&e);
         }
@@ -7133,7 +8362,10 @@ async fn cmd_edit(
             return 5;
         }
     };
-    content = content.strip_prefix('\u{FEFF}').unwrap_or(&content).to_string();
+    content = content
+        .strip_prefix('\u{FEFF}')
+        .unwrap_or(&content)
+        .to_string();
 
     let occurrences = content.matches(find).count();
     if occurrences == 0 {
@@ -7167,14 +8399,22 @@ async fn cmd_edit(
     let mut temp_file = match NamedTempFile::new() {
         Ok(file) => file,
         Err(e) => {
-            print_error(format, &format!("edit failed: cannot create temp file: {}", e), 99);
+            print_error(
+                format,
+                &format!("edit failed: cannot create temp file: {}", e),
+                99,
+            );
             let _ = provider.disconnect().await;
             return 99;
         }
     };
 
     if let Err(e) = temp_file.write_all(new_content.as_bytes()) {
-        print_error(format, &format!("edit failed: cannot write temp file: {}", e), 99);
+        print_error(
+            format,
+            &format!("edit failed: cannot write temp file: {}", e),
+            99,
+        );
         let _ = provider.disconnect().await;
         return 99;
     }
@@ -7202,7 +8442,11 @@ async fn cmd_edit(
             0
         }
         Err(e) => {
-            print_error(format, &format!("edit failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("edit failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7222,7 +8466,10 @@ async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 
         if size > MAX_CAT_SIZE {
             print_error(
                 format,
-                &format!("File too large for cat ({}). Use 'get' instead.", format_size(size)),
+                &format!(
+                    "File too large for cat ({}). Use 'get' instead.",
+                    format_size(size)
+                ),
                 5,
             );
             let _ = provider.disconnect().await;
@@ -7276,7 +8523,11 @@ async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 
             0
         }
         Err(e) => {
-            print_error(format, &format!("cat failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("cat failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7297,7 +8548,11 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     let mut temp = match tempfile::NamedTempFile::new() {
         Ok(file) => file,
         Err(e) => {
-            print_error(format, &format!("Cannot create temporary file for stdin upload: {}", e), 5);
+            print_error(
+                format,
+                &format!("Cannot create temporary file for stdin upload: {}", e),
+                5,
+            );
             let _ = provider.disconnect().await;
             return 5;
         }
@@ -7313,13 +8568,20 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     };
 
     if let Err(e) = temp.flush() {
-        print_error(format, &format!("Cannot flush temporary stdin file: {}", e), 5);
+        print_error(
+            format,
+            &format!("Cannot flush temporary stdin file: {}", e),
+            5,
+        );
         let _ = provider.disconnect().await;
         return 5;
     }
 
     let start = Instant::now();
-    match provider.upload(temp.path().to_string_lossy().as_ref(), remote, None).await {
+    match provider
+        .upload(temp.path().to_string_lossy().as_ref(), remote, None)
+        .await
+    {
         Ok(()) => {
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -7354,7 +8616,11 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
             0
         }
         Err(e) => {
-            print_error(format, &format!("stdin upload failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("stdin upload failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7484,7 +8750,11 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         if entry.is_dir { "directory" } else { "file" }
                     );
                     if !entry.is_dir {
-                        println!("  Size:        {} ({} bytes)", format_size(entry.size), entry.size);
+                        println!(
+                            "  Size:        {} ({} bytes)",
+                            format_size(entry.size),
+                            entry.size
+                        );
                     }
                     if let Some(ref m) = entry.modified {
                         println!("  Modified:    {}", m);
@@ -7515,20 +8785,18 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             0
         }
         Err(e) => {
-            print_error(format, &format!("stat failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("stat failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
     }
 }
 
-async fn cmd_find(
-    url: &str,
-    path: &str,
-    pattern: &str,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -7580,7 +8848,11 @@ async fn cmd_find(
             found
         }
         Err(e) => {
-            print_error(format, &format!("find failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("find failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             return provider_error_to_exit_code(&e);
         }
@@ -7667,7 +8939,11 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             0
         }
         Err(e) => {
-            print_error(format, &format!("df failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("df failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
         }
@@ -7694,7 +8970,9 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             if let Some(ref info) = storage {
                 let pct = if info.total > 0 {
                     (info.used as f64 / info.total as f64) * 100.0
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
                 eprintln!("Used:      {} ({:.1}%)", format_size(info.used), pct);
                 eprintln!("Free:      {}", format_size(info.free));
                 eprintln!("Total:     {}", format_size(info.total));
@@ -7711,9 +8989,11 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 result["used"] = serde_json::json!(info.used);
                 result["total"] = serde_json::json!(info.total);
                 result["free"] = serde_json::json!(info.free);
-                result["used_percent"] = serde_json::json!(
-                    if info.total > 0 { (info.used as f64 / info.total as f64) * 100.0 } else { 0.0 }
-                );
+                result["used_percent"] = serde_json::json!(if info.total > 0 {
+                    (info.used as f64 / info.total as f64) * 100.0
+                } else {
+                    0.0
+                });
             }
             print_json(&apply_top_level_json_field_filter(result, cli, &["status"]));
         }
@@ -7798,7 +9078,11 @@ async fn cmd_speed(
         {
             print_error(
                 format,
-                &format!("speed test upload failed on iteration {}: {}", iteration + 1, e),
+                &format!(
+                    "speed test upload failed on iteration {}: {}",
+                    iteration + 1,
+                    e
+                ),
                 provider_error_to_exit_code(&e),
             );
             let _ = provider.delete(&remote_test_path).await;
@@ -7831,7 +9115,11 @@ async fn cmd_speed(
         {
             print_error(
                 format,
-                &format!("speed test download failed on iteration {}: {}", iteration + 1, e),
+                &format!(
+                    "speed test download failed on iteration {}: {}",
+                    iteration + 1,
+                    e
+                ),
                 provider_error_to_exit_code(&e),
             );
             let _ = provider.delete(&remote_test_path).await;
@@ -7854,7 +9142,11 @@ async fn cmd_speed(
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
-                println!("Speed test complete ({} iteration(s), {})", iterations, format_size(size));
+                println!(
+                    "Speed test complete ({} iteration(s), {})",
+                    iterations,
+                    format_size(size)
+                );
                 println!("  Upload:   {}", format_speed(upload_speed));
                 println!("  Download: {}", format_speed(download_speed));
                 println!("  Remote:   {}", remote_test_path);
@@ -7877,8 +9169,12 @@ async fn cmd_speed(
 }
 
 async fn cmd_dedupe(
-    url: &str, path: &str, mode: &str, dry_run: bool,
-    cli: &Cli, format: OutputFormat,
+    url: &str,
+    path: &str,
+    mode: &str,
+    dry_run: bool,
+    cli: &Cli,
+    format: OutputFormat,
 ) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -7886,7 +9182,9 @@ async fn cmd_dedupe(
     };
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
-    if !quiet { eprintln!("Scanning {} for duplicates...", path); }
+    if !quiet {
+        eprintln!("Scanning {} for duplicates...", path);
+    }
 
     // BFS scan to collect all files with sizes
     let mut files: Vec<(String, u64)> = Vec::new();
@@ -7894,7 +9192,9 @@ async fn cmd_dedupe(
     let max_entries = 100_000usize;
 
     while let Some(dir) = dirs.pop() {
-        if files.len() >= max_entries { break; }
+        if files.len() >= max_entries {
+            break;
+        }
         match provider.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
@@ -7909,12 +9209,16 @@ async fn cmd_dedupe(
         }
     }
 
-    if !quiet { eprintln!("Scanned {} files. Grouping by size...", files.len()); }
+    if !quiet {
+        eprintln!("Scanned {} files. Grouping by size...", files.len());
+    }
 
     // Group by size (fast pre-filter)
-    let mut size_groups: std::collections::HashMap<u64, Vec<String>> = std::collections::HashMap::new();
+    let mut size_groups: std::collections::HashMap<u64, Vec<String>> =
+        std::collections::HashMap::new();
     for (path, size) in &files {
-        if *size > 0 { // Skip empty files
+        if *size > 0 {
+            // Skip empty files
             size_groups.entry(*size).or_default().push(path.clone());
         }
     }
@@ -7926,7 +9230,9 @@ async fn cmd_dedupe(
         .collect();
 
     if candidate_groups.is_empty() {
-        if !quiet { eprintln!("No potential duplicates found."); }
+        if !quiet {
+            eprintln!("No potential duplicates found.");
+        }
         if matches!(format, OutputFormat::Json) {
             print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
         }
@@ -7935,7 +9241,10 @@ async fn cmd_dedupe(
     }
 
     if !quiet {
-        eprintln!("{} size groups with potential duplicates. Hashing...", candidate_groups.len());
+        eprintln!(
+            "{} size groups with potential duplicates. Hashing...",
+            candidate_groups.len()
+        );
     }
 
     // Hash files within each group to confirm duplicates
@@ -7944,7 +9253,8 @@ async fn cmd_dedupe(
     let mut wasted_bytes = 0u64;
 
     for (size, paths) in &candidate_groups {
-        let mut hash_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut hash_map: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for p in paths {
             match provider.download_to_bytes(p).await {
                 Ok(data) => {
@@ -7966,7 +9276,9 @@ async fn cmd_dedupe(
     }
 
     if duplicate_groups.is_empty() {
-        if !quiet { eprintln!("No duplicates found (same size but different content)."); }
+        if !quiet {
+            eprintln!("No duplicates found (same size but different content).");
+        }
         if matches!(format, OutputFormat::Json) {
             print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
         }
@@ -7977,13 +9289,19 @@ async fn cmd_dedupe(
     // Report duplicates
     match format {
         OutputFormat::Text => {
-            eprintln!("\nFound {} duplicate group(s), {} duplicate file(s), {} wasted",
-                duplicate_groups.len(), total_duplicates, format_size(wasted_bytes));
+            eprintln!(
+                "\nFound {} duplicate group(s), {} duplicate file(s), {} wasted",
+                duplicate_groups.len(),
+                total_duplicates,
+                format_size(wasted_bytes)
+            );
 
             for (i, group) in duplicate_groups.iter().enumerate() {
                 eprintln!("\n  Group {} ({} files):", i + 1, group.len());
                 for (j, p) in group.iter().enumerate() {
-                    let marker = if j == 0 { "KEEP" } else {
+                    let marker = if j == 0 {
+                        "KEEP"
+                    } else {
                         match mode {
                             "skip" => "DUPE",
                             _ => "DELETE",
@@ -7999,8 +9317,12 @@ async fn cmd_dedupe(
                 for group in &duplicate_groups {
                     for p in group.iter().skip(1) {
                         match provider.delete(p).await {
-                            Ok(()) => { deleted += 1; }
-                            Err(e) => { eprintln!("  Failed to delete {}: {}", p, e); }
+                            Ok(()) => {
+                                deleted += 1;
+                            }
+                            Err(e) => {
+                                eprintln!("  Failed to delete {}: {}", p, e);
+                            }
                         }
                     }
                 }
@@ -8010,13 +9332,16 @@ async fn cmd_dedupe(
             }
         }
         OutputFormat::Json => {
-            let groups_json: Vec<serde_json::Value> = duplicate_groups.iter().map(|g| {
-                serde_json::json!({
-                    "files": g,
-                    "keep": g[0],
-                    "duplicates": &g[1..],
+            let groups_json: Vec<serde_json::Value> = duplicate_groups
+                .iter()
+                .map(|g| {
+                    serde_json::json!({
+                        "files": g,
+                        "keep": g[0],
+                        "duplicates": &g[1..],
+                    })
                 })
-            }).collect();
+                .collect();
             print_json(&serde_json::json!({
                 "status": "ok",
                 "groups": duplicate_groups.len(),
@@ -8060,9 +9385,9 @@ fn save_bisync_snapshot(
     let mut files = HashMap::new();
     // Merge both sides — after a successful sync they should be equal
     for (path, size, mtime) in local_entries.iter().chain(remote_entries.iter()) {
-        files.entry(path.clone()).or_insert_with(|| {
-            (*size, mtime.as_deref().unwrap_or("").to_string())
-        });
+        files
+            .entry(path.clone())
+            .or_insert_with(|| (*size, mtime.as_deref().unwrap_or("").to_string()));
     }
     let snapshot = BisyncSnapshot {
         synced_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
@@ -8123,41 +9448,52 @@ fn resolve_conflict(
             std::cmp::Ordering::Less => "download",
             std::cmp::Ordering::Equal => {
                 // mtime equal but size differs — fallback to larger wins
-                if local_size > remote_size { "upload" }
-                else if remote_size > local_size { "download" }
-                else { "skip" }
+                if local_size > remote_size {
+                    "upload"
+                } else if remote_size > local_size {
+                    "download"
+                } else {
+                    "skip"
+                }
             }
         },
         "older" => match compare_mtime(local_mtime, remote_mtime) {
             std::cmp::Ordering::Less => "upload",
             std::cmp::Ordering::Greater => "download",
             std::cmp::Ordering::Equal => {
-                if local_size < remote_size { "upload" }
-                else if remote_size < local_size { "download" }
-                else { "skip" }
+                if local_size < remote_size {
+                    "upload"
+                } else if remote_size < local_size {
+                    "download"
+                } else {
+                    "skip"
+                }
             }
         },
         "larger" => {
-            if local_size > remote_size { "upload" }
-            else if remote_size > local_size { "download" }
-            else { "skip" }
+            if local_size > remote_size {
+                "upload"
+            } else if remote_size > local_size {
+                "download"
+            } else {
+                "skip"
+            }
         }
         "smaller" => {
-            if local_size < remote_size { "upload" }
-            else if remote_size < local_size { "download" }
-            else { "skip" }
+            if local_size < remote_size {
+                "upload"
+            } else if remote_size < local_size {
+                "download"
+            } else {
+                "skip"
+            }
         }
         _ => "skip", // "skip" or unknown
     }
 }
 
 /// Backup a file before overwriting (if --backup-dir is set).
-fn backup_file(
-    source_path: &str,
-    backup_dir: &str,
-    backup_suffix: &str,
-    relative_path: &str,
-) {
+fn backup_file(source_path: &str, backup_dir: &str, backup_suffix: &str, relative_path: &str) {
     if backup_dir.is_empty() {
         return;
     }
@@ -8210,7 +9546,9 @@ async fn cmd_sync(
 
     // Scan local files (bounded: max 100 levels, 500K entries)
     let local_entries: Vec<(String, u64, Option<String>)> = {
-        let walker = walkdir::WalkDir::new(local).follow_links(false).max_depth(100);
+        let walker = walkdir::WalkDir::new(local)
+            .follow_links(false)
+            .max_depth(100);
         let mut entries = Vec::new();
         for entry in walker {
             if entries.len() >= 500_000 {
@@ -8347,9 +9685,18 @@ async fn cmd_sync(
                     // Conflict: file exists on both sides with different content
                     let action = resolve_conflict(conflict_mode, *size, *mtime, *rsize, *rmtime);
                     match action {
-                        "upload" => { to_upload.push(path); conflicts_resolved += 1; }
-                        "download" => { to_download.push(path); conflicts_resolved += 1; }
-                        _ => { skipped += 1; conflicts_resolved += 1; }
+                        "upload" => {
+                            to_upload.push(path);
+                            conflicts_resolved += 1;
+                        }
+                        "download" => {
+                            to_download.push(path);
+                            conflicts_resolved += 1;
+                        }
+                        _ => {
+                            skipped += 1;
+                            conflicts_resolved += 1;
+                        }
                     }
                 } else {
                     // upload-only: local always wins
@@ -8433,20 +9780,28 @@ async fn cmd_sync(
     // --track-renames: detect files that were renamed (same hash, different path)
     let mut renames: Vec<(String, String)> = Vec::new(); // (old_remote, new_local)
     if track_renames && !to_upload.is_empty() && !to_delete_remote.is_empty() {
-        if !quiet { eprintln!("Checking for renamed files..."); }
+        if !quiet {
+            eprintln!("Checking for renamed files...");
+        }
         // Build hash map of files to upload (local side)
-        let mut upload_hashes: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut upload_hashes: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
         for up_path in &to_upload {
             let local_file = std::path::Path::new(local).join(up_path);
             if let Ok(data) = std::fs::read(&local_file) {
                 use sha2::Digest;
                 let hash = format!("{:x}", sha2::Sha256::digest(&data));
-                upload_hashes.entry(hash).or_default().push(up_path.to_string());
+                upload_hashes
+                    .entry(hash)
+                    .or_default()
+                    .push(up_path.to_string());
             }
         }
         // For each file to delete, check if its hash matches an upload candidate
-        let mut matched_uploads: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut matched_deletes: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut matched_uploads: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut matched_deletes: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for del_path in &to_delete_remote {
             let remote_full = if remote.ends_with('/') {
                 format!("{}{}", remote, del_path)
@@ -8472,14 +9827,20 @@ async fn cmd_sync(
             to_upload.retain(|p| !matched_uploads.contains(*p));
             to_delete_remote.retain(|p| !matched_deletes.contains(*p));
             if !quiet {
-                eprintln!("  {} rename(s) detected — will rename instead of delete+upload", renames.len());
+                eprintln!(
+                    "  {} rename(s) detected — will rename instead of delete+upload",
+                    renames.len()
+                );
             }
         }
     }
 
     if !quiet {
         let conflict_info = if conflicts_resolved > 0 {
-            format!(", {} conflict(s) resolved via --conflict-mode={}", conflicts_resolved, conflict_mode)
+            format!(
+                ", {} conflict(s) resolved via --conflict-mode={}",
+                conflicts_resolved, conflict_mode
+            )
         } else {
             String::new()
         };
@@ -8568,7 +9929,10 @@ async fn cmd_sync(
     let mut download_jobs: Vec<(String, String, String, u64)> = Vec::new();
     for path in &to_download {
         if validate_relative_path(path).is_none() {
-            errors.push(format!("download {}: unsafe path (traversal rejected)", path));
+            errors.push(format!(
+                "download {}: unsafe path (traversal rejected)",
+                path
+            ));
             continue;
         }
         let relative = (*path).to_string();
@@ -8579,11 +9943,11 @@ async fn cmd_sync(
     }
 
     let total_transfer_files = upload_jobs.len() + download_jobs.len();
-    let total_transfer_bytes: u64 = upload_jobs
-        .iter()
-        .map(|(_, _, _, size)| *size)
-        .sum::<u64>()
-        + download_jobs.iter().map(|(_, _, _, size)| *size).sum::<u64>();
+    let total_transfer_bytes: u64 = upload_jobs.iter().map(|(_, _, _, size)| *size).sum::<u64>()
+        + download_jobs
+            .iter()
+            .map(|(_, _, _, size)| *size)
+            .sum::<u64>();
 
     if !quiet && total_transfer_files > 0 {
         eprintln!(
@@ -8614,7 +9978,10 @@ async fn cmd_sync(
 
     let aggregate = Arc::new(AtomicU64::new(0));
     let overall_pb = if !quiet && total_transfer_bytes > 0 {
-        Some(create_overall_progress_bar(total_transfer_files, total_transfer_bytes))
+        Some(create_overall_progress_bar(
+            total_transfer_files,
+            total_transfer_bytes,
+        ))
     } else {
         None
     };
@@ -8714,7 +10081,9 @@ async fn cmd_sync(
             match provider.rename(&old_path, &new_path).await {
                 Ok(()) => {
                     renamed += 1;
-                    if !quiet { eprintln!("  RENAME {} → {}", old_remote, new_local); }
+                    if !quiet {
+                        eprintln!("  RENAME {} → {}", old_remote, new_local);
+                    }
                 }
                 Err(e) => errors.push(format!("rename {} → {}: {}", old_remote, new_local, e)),
             }
@@ -8728,7 +10097,10 @@ async fn cmd_sync(
             break;
         }
         if validate_relative_path(path).is_none() {
-            errors.push(format!("delete remote {}: unsafe path (traversal rejected)", path));
+            errors.push(format!(
+                "delete remote {}: unsafe path (traversal rejected)",
+                path
+            ));
             continue;
         }
         let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
@@ -8743,7 +10115,10 @@ async fn cmd_sync(
             break;
         }
         if validate_relative_path(path).is_none() {
-            errors.push(format!("delete local {}: unsafe path (traversal rejected)", path));
+            errors.push(format!(
+                "delete local {}: unsafe path (traversal rejected)",
+                path
+            ));
             continue;
         }
         let local_path = format!("{}/{}", local, path);
@@ -8761,7 +10136,10 @@ async fn cmd_sync(
     if direction == "both" && errors.is_empty() && !dry_run {
         save_bisync_snapshot(local, &local_entries, &remote_entries);
         if !quiet {
-            eprintln!("Bisync snapshot saved to {}/{}", local, BISYNC_SNAPSHOT_FILE);
+            eprintln!(
+                "Bisync snapshot saved to {}/{}",
+                local, BISYNC_SNAPSHOT_FILE
+            );
         }
     }
 
@@ -8797,16 +10175,14 @@ async fn cmd_sync(
     }
 
     let _ = provider.disconnect().await;
-    if errors.is_empty() { 0 } else { 4 }
+    if errors.is_empty() {
+        0
+    } else {
+        4
+    }
 }
 
-async fn cmd_tree(
-    url: &str,
-    path: &str,
-    max_depth: usize,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, url_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -8871,7 +10247,15 @@ async fn cmd_tree(
             }
             *entry_count += 1;
             let children = if e.is_dir {
-                Box::pin(build_tree(provider, &e.path, depth + 1, max_depth, entry_count, visited)).await
+                Box::pin(build_tree(
+                    provider,
+                    &e.path,
+                    depth + 1,
+                    max_depth,
+                    entry_count,
+                    visited,
+                ))
+                .await
             } else {
                 Vec::new()
             };
@@ -8895,7 +10279,15 @@ async fn cmd_tree(
         OutputFormat::Json => {
             let mut tree_entry_count: usize = 0;
             let mut tree_visited = std::collections::HashSet::new();
-            let root_children = build_tree(&mut *provider, effective_path, 0, max_depth, &mut tree_entry_count, &mut tree_visited).await;
+            let root_children = build_tree(
+                &mut *provider,
+                effective_path,
+                0,
+                max_depth,
+                &mut tree_entry_count,
+                &mut tree_visited,
+            )
+            .await;
             fn count_nodes(nodes: &[TreeNode]) -> (usize, usize) {
                 let mut files = 0;
                 let mut dirs = 0;
@@ -8941,13 +10333,18 @@ async fn cmd_tree(
             // Iterative DFS with prefix tracking for tree drawing
             let mut stack: Vec<QueueItem> = Vec::new();
             let mut tree_entry_count: usize = 0;
-            let mut tree_visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut tree_visited: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
 
             // Load root entries
             let root_entries = match provider.list(effective_path).await {
                 Ok(e) => e,
                 Err(e) => {
-                    print_error(format, &format!("tree failed: {}", e), provider_error_to_exit_code(&e));
+                    print_error(
+                        format,
+                        &format!("tree failed: {}", e),
+                        provider_error_to_exit_code(&e),
+                    );
                     let _ = provider.disconnect().await;
                     return provider_error_to_exit_code(&e);
                 }
@@ -8963,7 +10360,11 @@ async fn cmd_tree(
             // Push in reverse so first item is processed first
             for (i, e) in sorted.iter().enumerate().rev() {
                 let is_last = i == sorted.len() - 1;
-                let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
+                let connector = if is_last {
+                    "\u{2514}\u{2500}\u{2500} "
+                } else {
+                    "\u{251c}\u{2500}\u{2500} "
+                };
                 let child_prefix = if is_last { "    " } else { "\u{2502}   " };
                 stack.push(QueueItem {
                     path: e.path.clone(),
@@ -8976,12 +10377,19 @@ async fn cmd_tree(
                     depth: 1,
                     prefix: child_prefix.to_string(),
                 });
-                if e.is_dir { dir_count += 1; } else { file_count += 1; }
+                if e.is_dir {
+                    dir_count += 1;
+                } else {
+                    file_count += 1;
+                }
             }
 
             while let Some(item) = stack.pop() {
                 if tree_entry_count >= MAX_SCAN_ENTRIES {
-                    eprintln!("Warning: max entries {} reached, tree output truncated", MAX_SCAN_ENTRIES);
+                    eprintln!(
+                        "Warning: max entries {} reached, tree output truncated",
+                        MAX_SCAN_ENTRIES
+                    );
                     break;
                 }
                 tree_entry_count += 1;
@@ -9000,7 +10408,11 @@ async fn cmd_tree(
 
                             for (i, e) in sorted.iter().enumerate().rev() {
                                 let is_last = i == sorted.len() - 1;
-                                let connector = if is_last { "\u{2514}\u{2500}\u{2500} " } else { "\u{251c}\u{2500}\u{2500} " };
+                                let connector = if is_last {
+                                    "\u{2514}\u{2500}\u{2500} "
+                                } else {
+                                    "\u{251c}\u{2500}\u{2500} "
+                                };
                                 let child_prefix = if is_last { "    " } else { "\u{2502}   " };
                                 stack.push(QueueItem {
                                     path: e.path.clone(),
@@ -9014,7 +10426,11 @@ async fn cmd_tree(
                                     depth: item.depth + 1,
                                     prefix: format!("{}{}", item.prefix, child_prefix),
                                 });
-                                if e.is_dir { dir_count += 1; } else { file_count += 1; }
+                                if e.is_dir {
+                                    dir_count += 1;
+                                } else {
+                                    file_count += 1;
+                                }
                             }
                         }
                     }
@@ -9022,10 +10438,7 @@ async fn cmd_tree(
             }
 
             if !cli.quiet {
-                println!(
-                    "\n{} directories, {} files",
-                    dir_count, file_count
-                );
+                println!("\n{} directories, {} files", dir_count, file_count);
             }
         }
     }
@@ -9051,7 +10464,14 @@ struct NcduEntry {
 
 impl NcduEntry {
     fn empty() -> Self {
-        Self { name: String::new(), path: String::new(), is_dir: true, size: 0, agg_size: 0, children: Vec::new() }
+        Self {
+            name: String::new(),
+            path: String::new(),
+            is_dir: true,
+            size: 0,
+            agg_size: 0,
+            children: Vec::new(),
+        }
     }
 }
 
@@ -9132,7 +10552,9 @@ async fn ncdu_scan(
 
     // Sort: directories first, then by size descending
     node.children.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then_with(|| b.agg_size.cmp(&a.agg_size))
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| b.agg_size.cmp(&a.agg_size))
     });
 
     node
@@ -9161,7 +10583,9 @@ impl NcduState {
         if self.current.children.is_empty() {
             return;
         }
-        let idx = self.selected.min(self.current.children.len().saturating_sub(1));
+        let idx = self
+            .selected
+            .min(self.current.children.len().saturating_sub(1));
         if !self.current.children[idx].is_dir || self.current.children[idx].children.is_empty() {
             return;
         }
@@ -9224,7 +10648,8 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                 Constraint::Length(2),
                 Constraint::Min(1),
                 Constraint::Length(1),
-            ]).split(area);
+            ])
+            .split(area);
 
             // Header
             let header_text = format!(
@@ -9233,9 +10658,12 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                 format_size(state.current.agg_size),
                 state.current.children.len()
             );
-            let header = Paragraph::new(Line::from(vec![
-                Span::styled(header_text, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            ]));
+            let header = Paragraph::new(Line::from(vec![Span::styled(
+                header_text,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )]));
             frame.render_widget(header, chunks[0]);
 
             // File list
@@ -9258,13 +10686,17 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
             let back_selected = state.selected == 0 && !state.path_stack.is_empty();
             if scroll == 0 && !state.path_stack.is_empty() {
                 let style = if back_selected {
-                    Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .bg(Color::DarkGray)
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::Blue)
                 };
-                lines.push(Line::from(vec![
-                    Span::styled("          /..                          ", style),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    "          /..                          ",
+                    style,
+                )]));
             }
 
             let offset = if state.path_stack.is_empty() { 0 } else { 1 };
@@ -9288,7 +10720,10 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                 };
 
                 let style = if is_selected {
-                    Style::default().bg(Color::DarkGray).fg(Color::White).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .bg(Color::DarkGray)
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
                 } else if child.is_dir {
                     Style::default().fg(Color::Blue)
                 } else {
@@ -9312,17 +10747,14 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                 ]));
             }
 
-            let list_widget = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::NONE));
+            let list_widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
             frame.render_widget(list_widget, list_area);
 
             // Footer
-            let footer = Paragraph::new(Line::from(vec![
-                Span::styled(
-                    " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
+            let footer = Paragraph::new(Line::from(vec![Span::styled(
+                " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
+                Style::default().fg(Color::DarkGray),
+            )]));
             frame.render_widget(footer, chunks[2]);
         })?;
 
@@ -9332,8 +10764,8 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
-                let max_idx = state.current.children.len()
-                    + if state.path_stack.is_empty() { 0 } else { 1 };
+                let max_idx =
+                    state.current.children.len() + if state.path_stack.is_empty() { 0 } else { 1 };
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Down | KeyCode::Char('j') => {
@@ -9365,7 +10797,9 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                     }
                     KeyCode::Home => state.selected = 0,
                     KeyCode::End => {
-                        if max_idx > 0 { state.selected = max_idx - 1; }
+                        if max_idx > 0 {
+                            state.selected = max_idx - 1;
+                        }
                     }
                     KeyCode::PageDown => {
                         state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
@@ -9553,11 +10987,14 @@ mod fuse_mount {
             path_inode.insert(base_path.clone(), ROOT_INODE);
 
             let mut cache = HashMap::new();
-            cache.insert(ROOT_INODE, CachedEntry {
-                attr: dir_attr(ROOT_INODE, 0, cur_uid, cur_gid),
-                children: None,
-                fetched_at: Instant::now(),
-            });
+            cache.insert(
+                ROOT_INODE,
+                CachedEntry {
+                    attr: dir_attr(ROOT_INODE, 0, cur_uid, cur_gid),
+                    children: None,
+                    fetched_at: Instant::now(),
+                },
+            );
 
             Self {
                 rt,
@@ -9601,7 +11038,10 @@ mod fuse_mount {
             let ino = *next;
             *next += 1;
             pi.insert(path.to_string(), ino);
-            self.inode_path.lock().unwrap().insert(ino, path.to_string());
+            self.inode_path
+                .lock()
+                .unwrap()
+                .insert(ino, path.to_string());
             ino
         }
 
@@ -9640,14 +11080,23 @@ mod fuse_mount {
                 let attr = if e.is_dir {
                     dir_attr(child_ino, 0, self.uid, self.gid)
                 } else {
-                    file_attr(child_ino, e.size, parse_mtime_to_system(&e.modified), self.uid, self.gid)
+                    file_attr(
+                        child_ino,
+                        e.size,
+                        parse_mtime_to_system(&e.modified),
+                        self.uid,
+                        self.gid,
+                    )
                 };
 
-                self.set_cached(child_ino, CachedEntry {
-                    attr,
-                    children: if e.is_dir { None } else { Some(Vec::new()) },
-                    fetched_at: Instant::now(),
-                });
+                self.set_cached(
+                    child_ino,
+                    CachedEntry {
+                        attr,
+                        children: if e.is_dir { None } else { Some(Vec::new()) },
+                        fetched_at: Instant::now(),
+                    },
+                );
             }
 
             let cached = CachedEntry {
@@ -9671,7 +11120,13 @@ mod fuse_mount {
             let attr = if entry.is_dir {
                 dir_attr(ino, 0, self.uid, self.gid)
             } else {
-                file_attr(ino, entry.size, parse_mtime_to_system(&entry.modified), self.uid, self.gid)
+                file_attr(
+                    ino,
+                    entry.size,
+                    parse_mtime_to_system(&entry.modified),
+                    self.uid,
+                    self.gid,
+                )
             };
 
             let cached = CachedEntry {
@@ -9796,7 +11251,8 @@ mod fuse_mount {
             }
 
             // Ensure parent dir is listed (populates children cache)
-            let parent_cached = self.get_cached(parent)
+            let parent_cached = self
+                .get_cached(parent)
                 .or_else(|| self.fetch_dir(parent, &parent_path));
 
             if parent_cached.is_some() {
@@ -9828,7 +11284,8 @@ mod fuse_mount {
             };
 
             // Fetch or use cached directory listing
-            let cached = self.get_cached(ino)
+            let cached = self
+                .get_cached(ino)
                 .filter(|c| c.children.is_some())
                 .or_else(|| self.fetch_dir(ino, &path));
 
@@ -9962,17 +11419,22 @@ mod fuse_mount {
                 .prefix("aeroftp_fuse_")
                 .tempfile()
                 .map(|f| f.into_temp_path().to_path_buf())
-                .unwrap_or_else(|_| std::env::temp_dir().join(format!("aeroftp_fuse_{}", child_ino)));
+                .unwrap_or_else(|_| {
+                    std::env::temp_dir().join(format!("aeroftp_fuse_{}", child_ino))
+                });
             let _ = std::fs::write(&tmp, b"");
             self.write_buffers.lock().unwrap().insert(child_ino, tmp);
 
             let ttl = self.cache_ttl;
             let attr = file_attr(child_ino, 0, SystemTime::now(), self.uid, self.gid);
-            self.set_cached(child_ino, CachedEntry {
-                attr,
-                children: Some(Vec::new()),
-                fetched_at: Instant::now(),
-            });
+            self.set_cached(
+                child_ino,
+                CachedEntry {
+                    attr,
+                    children: Some(Vec::new()),
+                    fetched_at: Instant::now(),
+                },
+            );
             self.invalidate_dir(parent);
 
             reply.created(&ttl, &attr, 0, 0, 0);
@@ -10039,7 +11501,14 @@ mod fuse_mount {
             reply.written(data.len() as u32);
         }
 
-        fn flush(&mut self, _req: &Request, ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
+        fn flush(
+            &mut self,
+            _req: &Request,
+            ino: u64,
+            _fh: u64,
+            _lock_owner: u64,
+            reply: ReplyEmpty,
+        ) {
             let buffers = self.write_buffers.lock().unwrap();
             let Some(tmp_path) = buffers.get(&ino).cloned() else {
                 reply.ok();
@@ -10062,11 +11531,14 @@ mod fuse_mount {
             if result.is_ok() {
                 let size = std::fs::metadata(&tmp_path).map(|m| m.len()).unwrap_or(0);
                 let attr = file_attr(ino, size, SystemTime::now(), self.uid, self.gid);
-                self.set_cached(ino, CachedEntry {
-                    attr,
-                    children: Some(Vec::new()),
-                    fetched_at: Instant::now(),
-                });
+                self.set_cached(
+                    ino,
+                    CachedEntry {
+                        attr,
+                        children: Some(Vec::new()),
+                        fetched_at: Instant::now(),
+                    },
+                );
                 self.flush_ok.lock().unwrap().insert(ino);
                 reply.ok();
             } else {
@@ -10132,11 +11604,14 @@ mod fuse_mount {
                     let child_ino = self.alloc_inode(&child_path);
                     let ttl = self.cache_ttl;
                     let attr = dir_attr(child_ino, 0, self.uid, self.gid);
-                    self.set_cached(child_ino, CachedEntry {
-                        attr,
-                        children: Some(Vec::new()),
-                        fetched_at: Instant::now(),
-                    });
+                    self.set_cached(
+                        child_ino,
+                        CachedEntry {
+                            attr,
+                            children: Some(Vec::new()),
+                            fetched_at: Instant::now(),
+                        },
+                    );
                     self.invalidate_dir(parent);
                     reply.entry(&ttl, &attr, 0);
                 }
@@ -10254,7 +11729,8 @@ mod fuse_mount {
                     let mut cache = self.cache.lock().unwrap();
                     // Collect all paths that start with old_path (the renamed entry + descendants)
                     let old_prefix = format!("{}/", old_path);
-                    let to_update: Vec<(String, u64)> = pi.iter()
+                    let to_update: Vec<(String, u64)> = pi
+                        .iter()
                         .filter(|(p, _)| *p == &old_path || p.starts_with(&old_prefix))
                         .map(|(p, &ino)| (p.clone(), ino))
                         .collect();
@@ -10333,18 +11809,27 @@ mod fuse_mount {
                 let total_blocks = info.total / BLOCK_SIZE as u64;
                 let free_blocks = info.free / BLOCK_SIZE as u64;
                 reply.statfs(
-                    total_blocks,  // blocks
-                    free_blocks,   // bfree
-                    free_blocks,   // bavail
-                    0,             // files
-                    0,             // ffree
-                    BLOCK_SIZE,    // bsize
-                    255,           // namelen
-                    BLOCK_SIZE,    // frsize
+                    total_blocks, // blocks
+                    free_blocks,  // bfree
+                    free_blocks,  // bavail
+                    0,            // files
+                    0,            // ffree
+                    BLOCK_SIZE,   // bsize
+                    255,          // namelen
+                    BLOCK_SIZE,   // frsize
                 );
             } else {
                 // Default: report large filesystem
-                reply.statfs(u64::MAX / 512, u64::MAX / 1024, u64::MAX / 1024, 0, 0, BLOCK_SIZE, 255, BLOCK_SIZE);
+                reply.statfs(
+                    u64::MAX / 512,
+                    u64::MAX / 1024,
+                    u64::MAX / 1024,
+                    0,
+                    0,
+                    BLOCK_SIZE,
+                    255,
+                    BLOCK_SIZE,
+                );
             }
         }
     }
@@ -10376,17 +11861,29 @@ mod fuse_mount {
         // Validate mount point exists and is an empty directory
         let mp = std::path::Path::new(mountpoint);
         if !mp.exists() {
-            print_error(format, &format!("Mount point does not exist: {}", mountpoint), 5);
+            print_error(
+                format,
+                &format!("Mount point does not exist: {}", mountpoint),
+                5,
+            );
             return 5;
         }
         if !mp.is_dir() {
-            print_error(format, &format!("Mount point is not a directory: {}", mountpoint), 5);
+            print_error(
+                format,
+                &format!("Mount point is not a directory: {}", mountpoint),
+                5,
+            );
             return 5;
         }
         // Check if empty (allow "." and "..")
         if let Ok(mut rd) = std::fs::read_dir(mp) {
             if rd.next().is_some() {
-                print_error(format, &format!("Mount point is not empty: {}", mountpoint), 5);
+                print_error(
+                    format,
+                    &format!("Mount point is not empty: {}", mountpoint),
+                    5,
+                );
                 return 5;
             }
         }
@@ -10406,7 +11903,10 @@ mod fuse_mount {
         if !quiet {
             eprintln!(
                 "Mounting {} on {} ({}, cache TTL {}s)",
-                base_path, mountpoint, if read_only { "read-only" } else { "read-write" }, cache_ttl
+                base_path,
+                mountpoint,
+                if read_only { "read-only" } else { "read-write" },
+                cache_ttl
             );
             eprintln!("Press Ctrl+C to unmount");
         }
@@ -10429,9 +11929,9 @@ mod fuse_mount {
 
         // Mount in a blocking thread (FUSE event loop is blocking)
         let mountpoint_owned = mountpoint.to_string();
-        let mount_result = tokio::task::spawn_blocking(move || {
-            fuser::mount2(fs, &mountpoint_owned, &options)
-        }).await;
+        let mount_result =
+            tokio::task::spawn_blocking(move || fuser::mount2(fs, &mountpoint_owned, &options))
+                .await;
 
         // Cleanup
         let mut p = provider_arc.lock().await;
@@ -10472,11 +11972,22 @@ async fn cmd_mount_windows(
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
     // Validate drive letter (e.g., "Z:", "Z", "z:")
-    let letter = drive_letter
-        .trim_end_matches(':')
-        .to_uppercase();
-    if letter.len() != 1 || !letter.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
-        print_error(format, &format!("Invalid drive letter '{}'. Use a single letter like 'Z:' or 'Z'", drive_letter), 5);
+    let letter = drive_letter.trim_end_matches(':').to_uppercase();
+    if letter.len() != 1
+        || !letter
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_uppercase())
+            .unwrap_or(false)
+    {
+        print_error(
+            format,
+            &format!(
+                "Invalid drive letter '{}'. Use a single letter like 'Z:' or 'Z'",
+                drive_letter
+            ),
+            5,
+        );
         return 5;
     }
     let drive = format!("{}:", letter);
@@ -10568,12 +12079,19 @@ async fn cmd_mount_windows(
     match map_result {
         Ok(output) if output.status.success() => {
             if !quiet {
-                eprintln!("Drive {} mapped successfully. Press Ctrl+C to unmount.", drive);
+                eprintln!(
+                    "Drive {} mapped successfully. Press Ctrl+C to unmount.",
+                    drive
+                );
             }
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            print_error(format, &format!("Failed to map drive {}: {}", drive, stderr.trim()), 99);
+            print_error(
+                format,
+                &format!("Failed to map drive {}: {}", drive, stderr.trim()),
+                99,
+            );
             server_handle.abort();
             return 99;
         }
@@ -10615,12 +12133,22 @@ fn daemon_config_dir() -> PathBuf {
     dir
 }
 
-fn daemon_pid_path() -> PathBuf { daemon_config_dir().join("daemon.pid") }
-fn daemon_db_path() -> PathBuf { daemon_config_dir().join("jobs.db") }
-fn _daemon_log_path() -> PathBuf { daemon_config_dir().join("daemon.log") }
+fn daemon_pid_path() -> PathBuf {
+    daemon_config_dir().join("daemon.pid")
+}
+fn daemon_db_path() -> PathBuf {
+    daemon_config_dir().join("jobs.db")
+}
+fn _daemon_log_path() -> PathBuf {
+    daemon_config_dir().join("daemon.log")
+}
 
 fn daemon_read_pid() -> Option<u32> {
-    std::fs::read_to_string(daemon_pid_path()).ok()?.trim().parse().ok()
+    std::fs::read_to_string(daemon_pid_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn daemon_is_running() -> bool {
@@ -10632,7 +12160,10 @@ fn daemon_is_running() -> bool {
             result == 0
         }
         #[cfg(not(unix))]
-        { let _ = pid; false }
+        {
+            let _ = pid;
+            false
+        }
     } else {
         false
     }
@@ -10645,6 +12176,49 @@ fn daemon_addr() -> String {
         .unwrap_or_else(|_| "127.0.0.1:14320".to_string())
         .trim()
         .to_string()
+}
+
+fn daemon_token_path() -> PathBuf {
+    daemon_config_dir().join("daemon.token")
+}
+
+fn daemon_auth_token() -> Option<String> {
+    std::fs::read_to_string(daemon_token_path())
+        .ok()
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn write_daemon_auth_token(token: &str) -> Result<(), String> {
+    std::fs::write(daemon_token_path(), token)
+        .map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(daemon_token_path(), std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+fn clear_daemon_runtime_files() {
+    let _ = std::fs::remove_file(daemon_pid_path());
+    let _ = std::fs::remove_file(daemon_config_dir().join("daemon.addr"));
+    let _ = std::fs::remove_file(daemon_token_path());
+}
+
+fn daemon_request(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    if let Some(token) = daemon_auth_token() {
+        builder.bearer_auth(token)
+    } else {
+        builder
+    }
+}
+
+fn daemon_auth_failure_message() -> String {
+    format!(
+        "Daemon authentication failed. Restart the daemon or remove the stale token file at {}.",
+        daemon_token_path().display()
+    )
 }
 
 // ── Job database (SQLite) ────────────────────────────────────────
@@ -10663,8 +12237,9 @@ fn jobs_db_init(db_path: &Path) -> Result<rusqlite::Connection, String> {
             exit_code INTEGER,
             error TEXT
         );
-        PRAGMA journal_mode=WAL;"
-    ).map_err(|e| format!("Cannot init jobs table: {}", e))?;
+        PRAGMA journal_mode=WAL;",
+    )
+    .map_err(|e| format!("Cannot init jobs table: {}", e))?;
     Ok(conn)
 }
 
@@ -10698,7 +12273,10 @@ fn jobs_list_all(conn: &rusqlite::Connection) -> Vec<JobEntry> {
             exit_code: row.get(6)?,
             error: row.get(7)?,
         })
-    }).ok().map(|rows| rows.filter_map(|r| r.ok()).collect()).unwrap_or_default()
+    })
+    .ok()
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
 }
 
 fn jobs_get(conn: &rusqlite::Connection, id: &str) -> Option<JobEntry> {
@@ -10724,22 +12302,160 @@ fn jobs_add(conn: &rusqlite::Connection, command: &str) -> Result<String, String
     conn.execute(
         "INSERT INTO jobs (id, command, status, created_at) VALUES (?1, ?2, 'queued', ?3)",
         rusqlite::params![id, command, now],
-    ).map_err(|e| format!("Cannot add job: {}", e))?;
+    )
+    .map_err(|e| format!("Cannot add job: {}", e))?;
     Ok(id)
 }
 
-fn jobs_update_status(conn: &rusqlite::Connection, id: &str, status: &str, exit_code: Option<i32>, error: Option<&str>) {
+fn jobs_update_status(
+    conn: &rusqlite::Connection,
+    id: &str,
+    status: &str,
+    exit_code: Option<i32>,
+    error: Option<&str>,
+) {
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let field = if status == "running" { "started_at" } else { "finished_at" };
+    let field = if status == "running" {
+        "started_at"
+    } else {
+        "finished_at"
+    };
     let _ = conn.execute(
-        &format!("UPDATE jobs SET status = ?1, {} = ?2, exit_code = ?3, error = ?4 WHERE id = ?5", field),
+        &format!(
+            "UPDATE jobs SET status = ?1, {} = ?2, exit_code = ?3, error = ?4 WHERE id = ?5",
+            field
+        ),
         rusqlite::params![status, now, exit_code, error, id],
     );
 }
 
 // ── Daemon HTTP API ──────────────────────────────────────────────
 
-async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i32 {
+async fn daemon_health_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        Some(state.auth_token.as_str()),
+        "AeroFTP daemon",
+        "Daemon authentication required. Use the daemon token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
+    let jobs = jobs_list_all(&state.conn.lock().unwrap());
+    let running = jobs.iter().filter(|j| j.status == "running").count();
+    let queued = jobs.iter().filter(|j| j.status == "queued").count();
+    axum::Json(serde_json::json!({
+        "status": "ok",
+        "pid": std::process::id(),
+        "running_jobs": running,
+        "queued_jobs": queued,
+    }))
+    .into_response()
+}
+
+async fn daemon_jobs_list_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        Some(state.auth_token.as_str()),
+        "AeroFTP daemon",
+        "Daemon authentication required. Use the daemon token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
+    let jobs = jobs_list_all(&state.conn.lock().unwrap());
+    axum::Json(serde_json::json!({ "jobs": jobs })).into_response()
+}
+
+async fn daemon_jobs_add_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+    body: axum::Json<serde_json::Value>,
+) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        Some(state.auth_token.as_str()),
+        "AeroFTP daemon",
+        "Daemon authentication required. Use the daemon token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
+    let command = body.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    if command.is_empty() {
+        let mut response = axum::Json(serde_json::json!({"error": "missing command"})).into_response();
+        *response.status_mut() = StatusCode::BAD_REQUEST;
+        return response;
+    }
+
+    let conn = state.conn.lock().unwrap();
+    match jobs_add(&conn, command) {
+        Ok(id) => axum::Json(serde_json::json!({"status": "queued", "id": id})).into_response(),
+        Err(e) => {
+            let mut response = axum::Json(serde_json::json!({"error": e})).into_response();
+            *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            response
+        }
+    }
+}
+
+async fn daemon_job_status_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        Some(state.auth_token.as_str()),
+        "AeroFTP daemon",
+        "Daemon authentication required. Use the daemon token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
+    let conn = state.conn.lock().unwrap();
+    match jobs_get(&conn, &id) {
+        Some(job) => axum::Json(serde_json::json!(job)).into_response(),
+        None => {
+            let mut response = axum::Json(serde_json::json!({"error": "not found"})).into_response();
+            *response.status_mut() = StatusCode::NOT_FOUND;
+            response
+        }
+    }
+}
+
+async fn daemon_job_cancel_handler(
+    State(state): State<DaemonApiState>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    if let Some(response) = ensure_request_authorized(
+        &headers,
+        Some(state.auth_token.as_str()),
+        "AeroFTP daemon",
+        "Daemon authentication required. Use the daemon token as a Bearer token or as the Basic-auth password.",
+    ) {
+        return response;
+    }
+
+    let conn = state.conn.lock().unwrap();
+    jobs_update_status(&conn, &id, "cancelled", None, None);
+    axum::Json(serde_json::json!({"status": "cancelled", "id": id})).into_response()
+}
+
+async fn cmd_daemon_start(
+    addr_str: &str,
+    allow_remote_bind: bool,
+    auth_token: Option<String>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     if daemon_is_running() {
         let pid = daemon_read_pid().unwrap_or(0);
         if matches!(format, OutputFormat::Json) {
@@ -10751,18 +12467,33 @@ async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let bind_addr = match validate_bind_addr(addr_str, allow_remote_bind, "daemon API") {
+        Ok(addr) => addr,
+        Err(error) => {
+            print_error(format, &error, 5);
+            return 5;
+        }
+    };
+    let generated_auth_token = auth_token.is_none();
+    let daemon_token = normalize_optional_token(auth_token).unwrap_or_else(generate_auth_token);
 
     // In foreground mode (for now — proper daemonization would use fork)
     // Write PID file and addr
     let pid = std::process::id();
     let _ = std::fs::write(daemon_pid_path(), pid.to_string());
     let _ = std::fs::write(daemon_config_dir().join("daemon.addr"), addr_str);
+    if let Err(error) = write_daemon_auth_token(&daemon_token) {
+        clear_daemon_runtime_files();
+        print_error(format, &error, 99);
+        return 99;
+    }
 
     // Init job database
     let db_path = daemon_db_path();
     let conn = match jobs_db_init(&db_path) {
         Ok(c) => Arc::new(std::sync::Mutex::new(c)),
         Err(e) => {
+            clear_daemon_runtime_files();
             print_error(format, &e, 99);
             return 99;
         }
@@ -10771,71 +12502,53 @@ async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i3
     if !quiet {
         eprintln!("AeroFTP daemon starting on {}", addr_str);
         eprintln!("PID: {}, DB: {}", pid, db_path.display());
+        eprintln!(
+            "Daemon auth: required (token saved at {})",
+            daemon_token_path().display()
+        );
+        if generated_auth_token {
+            eprintln!("A new daemon token was generated automatically.");
+        }
         eprintln!("Press Ctrl+C to stop.");
     }
 
     if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({"status": "started", "pid": pid, "addr": addr_str}));
+        let mut payload = serde_json::json!({
+            "status": "started",
+            "pid": pid,
+            "addr": addr_str,
+            "auth_required": true,
+            "auth_mode": "basic-or-bearer",
+            "token_path": daemon_token_path().display().to_string(),
+        });
+        if generated_auth_token {
+            payload["generated_auth_token"] = serde_json::Value::String(daemon_token.clone());
+        }
+        print_json(&payload);
     }
 
     // Build HTTP API
-    let conn_health = conn.clone();
-    let conn_jobs_list = conn.clone();
-    let conn_jobs_add = conn.clone();
-    let conn_jobs_get = conn.clone();
-    let conn_jobs_cancel = conn.clone();
+    let state = DaemonApiState {
+        conn,
+        auth_token: daemon_token,
+    };
 
     let app = Router::new()
-        .route("/health", get(move || async move {
-            let jobs = jobs_list_all(&conn_health.lock().unwrap());
-            let running = jobs.iter().filter(|j| j.status == "running").count();
-            let queued = jobs.iter().filter(|j| j.status == "queued").count();
-            axum::Json(serde_json::json!({
-                "status": "ok",
-                "pid": std::process::id(),
-                "running_jobs": running,
-                "queued_jobs": queued,
-            }))
-        }))
-        .route("/api/jobs", get(move || async move {
-            let jobs = jobs_list_all(&conn_jobs_list.lock().unwrap());
-            axum::Json(serde_json::json!({"jobs": jobs}))
-        }))
-        .route("/api/jobs", axum::routing::post(move |body: axum::Json<serde_json::Value>| async move {
-            let command = body.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            if command.is_empty() {
-                return axum::Json(serde_json::json!({"error": "missing command"}));
-            }
-            let conn = conn_jobs_add.lock().unwrap();
-            match jobs_add(&conn, command) {
-                Ok(id) => axum::Json(serde_json::json!({"status": "queued", "id": id})),
-                Err(e) => axum::Json(serde_json::json!({"error": e})),
-            }
-        }))
-        .route("/api/jobs/{id}", get(move |axum::extract::Path(id): axum::extract::Path<String>| async move {
-            let conn = conn_jobs_get.lock().unwrap();
-            match jobs_get(&conn, &id) {
-                Some(job) => axum::Json(serde_json::json!(job)),
-                None => axum::Json(serde_json::json!({"error": "not found"})),
-            }
-        }))
-        .route("/api/jobs/{id}", axum::routing::delete(move |axum::extract::Path(id): axum::extract::Path<String>| async move {
-            let conn = conn_jobs_cancel.lock().unwrap();
-            jobs_update_status(&conn, &id, "cancelled", None, None);
-            axum::Json(serde_json::json!({"status": "cancelled", "id": id}))
-        }));
-
-    let bind_addr: SocketAddr = match addr_str.parse() {
-        Ok(a) => a,
-        Err(e) => {
-            print_error(format, &format!("Invalid addr '{}': {}", addr_str, e), 5);
-            return 5;
-        }
-    };
+        .route("/health", get(daemon_health_handler))
+        .route(
+            "/api/jobs",
+            get(daemon_jobs_list_handler).post(daemon_jobs_add_handler),
+        )
+        .route(
+            "/api/jobs/{id}",
+            get(daemon_job_status_handler).delete(daemon_job_cancel_handler),
+        )
+        .with_state(state);
 
     let listener = match tokio::net::TcpListener::bind(bind_addr).await {
         Ok(l) => l,
         Err(e) => {
+            clear_daemon_runtime_files();
             print_error(format, &format!("Cannot bind {}: {}", addr_str, e), 1);
             return 1;
         }
@@ -10848,8 +12561,7 @@ async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i3
         .await;
 
     // Cleanup
-    let _ = std::fs::remove_file(daemon_pid_path());
-    let _ = std::fs::remove_file(daemon_config_dir().join("daemon.addr"));
+    clear_daemon_runtime_files();
 
     if !quiet {
         eprintln!("\nDaemon stopped.");
@@ -10857,7 +12569,10 @@ async fn cmd_daemon_start(addr_str: &str, cli: &Cli, format: OutputFormat) -> i3
 
     match result {
         Ok(()) => 0,
-        Err(e) => { print_error(format, &format!("Daemon failed: {}", e), 1); 1 }
+        Err(e) => {
+            print_error(format, &format!("Daemon failed: {}", e), 1);
+            1
+        }
     }
 }
 
@@ -10874,13 +12589,14 @@ async fn cmd_daemon_stop(format: OutputFormat) -> i32 {
     let pid = daemon_read_pid().unwrap_or(0);
 
     #[cfg(unix)]
-    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+    unsafe {
+        libc::kill(pid as i32, libc::SIGTERM);
+    }
 
     // Wait briefly for process to exit
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    let _ = std::fs::remove_file(daemon_pid_path());
-    let _ = std::fs::remove_file(daemon_config_dir().join("daemon.addr"));
+    clear_daemon_runtime_files();
 
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({"status": "stopped", "pid": pid}));
@@ -10905,7 +12621,14 @@ async fn cmd_daemon_status(format: OutputFormat) -> i32 {
 
     // Try HTTP health check
     let health_url = format!("http://{}/health", addr);
-    if let Ok(resp) = reqwest::get(&health_url).await {
+    if let Ok(resp) = daemon_request(reqwest::Client::new().get(&health_url))
+        .send()
+        .await
+    {
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            print_error(format, &daemon_auth_failure_message(), 6);
+            return 6;
+        }
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if matches!(format, OutputFormat::Json) {
                 print_json(&json);
@@ -10923,7 +12646,9 @@ async fn cmd_daemon_status(format: OutputFormat) -> i32 {
     }
 
     if matches!(format, OutputFormat::Json) {
-        print_json(&serde_json::json!({"status": "running", "pid": pid, "addr": addr, "api": "unreachable"}));
+        print_json(
+            &serde_json::json!({"status": "running", "pid": pid, "addr": addr, "api": "unreachable"}),
+        );
     } else {
         println!("Daemon: running (PID {}), API unreachable at {}", pid, addr);
     }
@@ -10935,13 +12660,16 @@ async fn cmd_jobs_add(command_tokens: &[String], format: OutputFormat) -> i32 {
     let command = command_tokens.join(" ");
     let url = format!("http://{}/api/jobs", addr);
 
-    match reqwest::Client::new()
-        .post(&url)
+    match daemon_request(reqwest::Client::new().post(&url))
         .json(&serde_json::json!({"command": command}))
         .send()
         .await
     {
         Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                print_error(format, &daemon_auth_failure_message(), 6);
+                return 6;
+            }
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if matches!(format, OutputFormat::Json) {
                     print_json(&json);
@@ -10955,7 +12683,11 @@ async fn cmd_jobs_add(command_tokens: &[String], format: OutputFormat) -> i32 {
             0
         }
         Err(e) => {
-            print_error(format, &format!("Cannot reach daemon (is it running?): {}", e), 1);
+            print_error(
+                format,
+                &format!("Cannot reach daemon (is it running?): {}", e),
+                1,
+            );
             1
         }
     }
@@ -10965,8 +12697,12 @@ async fn cmd_jobs_list(format: OutputFormat) -> i32 {
     let addr = daemon_addr();
     let url = format!("http://{}/api/jobs", addr);
 
-    match reqwest::get(&url).await {
+    match daemon_request(reqwest::Client::new().get(&url)).send().await {
         Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                print_error(format, &daemon_auth_failure_message(), 6);
+                return 6;
+            }
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if matches!(format, OutputFormat::Json) {
                     print_json(&json);
@@ -10977,7 +12713,8 @@ async fn cmd_jobs_list(format: OutputFormat) -> i32 {
                         println!("{:<10} {:<10} {:<22} Command", "ID", "Status", "Created");
                         println!("{}", "-".repeat(70));
                         for j in jobs {
-                            println!("{:<10} {:<10} {:<22} {}",
+                            println!(
+                                "{:<10} {:<10} {:<22} {}",
                                 j.get("id").and_then(|v| v.as_str()).unwrap_or("-"),
                                 j.get("status").and_then(|v| v.as_str()).unwrap_or("-"),
                                 j.get("created_at").and_then(|v| v.as_str()).unwrap_or("-"),
@@ -10999,8 +12736,12 @@ async fn cmd_jobs_list(format: OutputFormat) -> i32 {
 async fn cmd_jobs_status(id: &str, format: OutputFormat) -> i32 {
     let addr = daemon_addr();
     let url = format!("http://{}/api/jobs/{}", addr, id);
-    match reqwest::get(&url).await {
+    match daemon_request(reqwest::Client::new().get(&url)).send().await {
         Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                print_error(format, &daemon_auth_failure_message(), 6);
+                return 6;
+            }
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if matches!(format, OutputFormat::Json) {
                     print_json(&json);
@@ -11023,8 +12764,15 @@ async fn cmd_jobs_status(id: &str, format: OutputFormat) -> i32 {
 async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
     let addr = daemon_addr();
     let url = format!("http://{}/api/jobs/{}", addr, id);
-    match reqwest::Client::new().delete(&url).send().await {
+    match daemon_request(reqwest::Client::new().delete(&url))
+        .send()
+        .await
+    {
         Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                print_error(format, &daemon_auth_failure_message(), 6);
+                return 6;
+            }
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if matches!(format, OutputFormat::Json) {
                     print_json(&json);
@@ -11044,8 +12792,8 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
 // ── Crypt Overlay — Transparent Encryption Layer ─────────────────
 
 mod crypt_overlay {
-    use aes_gcm::{Aes256Gcm, Nonce as AesNonce};
     use aes_gcm::aead::{Aead, KeyInit};
+    use aes_gcm::{Aes256Gcm, Nonce as AesNonce};
     #[allow(unused_imports)]
     use aes_siv::Aes256SivAead; // needed for KeyInit trait
     use argon2::Argon2;
@@ -11066,10 +12814,16 @@ mod crypt_overlay {
     /// Derive a 32-byte master key from a password and salt.
     pub fn derive_master_key(password: &str, salt: &[u8; 16]) -> [u8; 32] {
         let mut key = [0u8; 32];
-        let params = argon2::Params::new(ARGON2_MEM_COST, ARGON2_TIME_COST, ARGON2_PARALLELISM, Some(32))
-            .expect("valid argon2 params");
+        let params = argon2::Params::new(
+            ARGON2_MEM_COST,
+            ARGON2_TIME_COST,
+            ARGON2_PARALLELISM,
+            Some(32),
+        )
+        .expect("valid argon2 params");
         let argon = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-        argon.hash_password_into(password.as_bytes(), salt, &mut key)
+        argon
+            .hash_password_into(password.as_bytes(), salt, &mut key)
             .expect("argon2 hash");
         key
     }
@@ -11096,7 +12850,8 @@ mod crypt_overlay {
     pub fn encrypt_filename(master_key: &[u8; 32], plaintext_name: &str) -> String {
         let name_key = derive_name_key(master_key);
         let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
-        let ciphertext = cipher.encrypt([&[] as &[u8]], plaintext_name.as_bytes())
+        let ciphertext = cipher
+            .encrypt([&[] as &[u8]], plaintext_name.as_bytes())
             .expect("aes-siv encrypt");
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(ciphertext)
     }
@@ -11106,7 +12861,8 @@ mod crypt_overlay {
         let name_key = derive_name_key(master_key);
         let mut cipher = aes_siv::siv::Aes256Siv::new((&name_key).into());
         let ciphertext = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(encrypted_name).ok()?;
+            .decode(encrypted_name)
+            .ok()?;
         let plaintext = cipher.decrypt([&[] as &[u8]], &ciphertext).ok()?;
         String::from_utf8(plaintext).ok()
     }
@@ -11125,7 +12881,9 @@ mod crypt_overlay {
         let cipher = Aes256Gcm::new((&file_key).into());
 
         // Build output: magic + version + nonce + encrypted blocks
-        let mut output = Vec::with_capacity(4 + 1 + 12 + plaintext.len() + (plaintext.len() / BLOCK_SIZE + 1) * 16);
+        let mut output = Vec::with_capacity(
+            4 + 1 + 12 + plaintext.len() + (plaintext.len() / BLOCK_SIZE + 1) * 16,
+        );
         output.extend_from_slice(CRYPT_MAGIC);
         output.push(CRYPT_VERSION);
         output.extend_from_slice(&master_nonce);
@@ -11139,8 +12897,7 @@ mod crypt_overlay {
                 block_nonce[i] ^= idx_bytes[i];
             }
             let nonce = AesNonce::from_slice(&block_nonce);
-            let ciphertext = cipher.encrypt(nonce, chunk)
-                .expect("aes-gcm encrypt");
+            let ciphertext = cipher.encrypt(nonce, chunk).expect("aes-gcm encrypt");
             output.extend_from_slice(&ciphertext);
         }
 
@@ -11179,7 +12936,8 @@ mod crypt_overlay {
                 block_nonce[i] ^= idx_bytes[i];
             }
             let nonce = AesNonce::from_slice(&block_nonce);
-            let decrypted = cipher.decrypt(nonce, block)
+            let decrypted = cipher
+                .decrypt(nonce, block)
                 .map_err(|_| format!("decryption failed at block {}", block_idx))?;
             plaintext.extend_from_slice(&decrypted);
 
@@ -11200,14 +12958,16 @@ mod crypt_overlay {
             "kdf": "Argon2id",
             "salt": base64::engine::general_purpose::STANDARD.encode(salt),
             "block_size": BLOCK_SIZE,
-        }).to_string()
+        })
+        .to_string()
     }
 
     /// Parse the crypt config to extract the salt.
     pub fn crypt_parse_config(config_json: &str) -> Result<[u8; 16], String> {
         let val: serde_json::Value = serde_json::from_str(config_json)
             .map_err(|e| format!("invalid crypt config: {}", e))?;
-        let salt_b64 = val.get("salt")
+        let salt_b64 = val
+            .get("salt")
             .and_then(|v| v.as_str())
             .ok_or("missing salt in crypt config")?;
         let salt_bytes = base64::engine::general_purpose::STANDARD
@@ -11254,7 +13014,10 @@ async fn cmd_crypt_init(
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), &config_json).unwrap();
 
-    match provider.upload(&tmp.path().to_string_lossy(), &config_path, None).await {
+    match provider
+        .upload(&tmp.path().to_string_lossy(), &config_path, None)
+        .await
+    {
         Ok(()) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({"status": "ok", "path": config_path}));
@@ -11315,7 +13078,11 @@ async fn cmd_crypt_ls(
     let entries = match provider.list(&base_path).await {
         Ok(e) => e,
         Err(e) => {
-            print_error(format, &format!("List failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("List failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             return provider_error_to_exit_code(&e);
         }
     };
@@ -11385,7 +13152,10 @@ async fn cmd_crypt_put(
     };
     let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
         Ok(s) => s,
-        Err(e) => { print_error(format, &e, 5); return 5; }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
     };
 
     let master_key = crypt_overlay::derive_master_key(password, &salt);
@@ -11404,7 +13174,8 @@ async fn cmd_crypt_put(
     let ciphertext = crypt_overlay::encrypt_data(&master_key, &plaintext);
 
     // Encrypt filename
-    let filename = Path::new(local_file).file_name()
+    let filename = Path::new(local_file)
+        .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_else(|| local_file.to_string());
     let encrypted_name = crypt_overlay::encrypt_filename(&master_key, &filename);
@@ -11414,13 +13185,17 @@ async fn cmd_crypt_put(
     let tmp = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(tmp.path(), &ciphertext).unwrap();
 
-    match provider.upload(&tmp.path().to_string_lossy(), &remote_file, None).await {
+    match provider
+        .upload(&tmp.path().to_string_lossy(), &remote_file, None)
+        .await
+    {
         Ok(()) => {
             let elapsed = start.elapsed();
             if !cli.quiet {
                 println!(
                     "{} → {} ({} → {}, {:.1}s)",
-                    filename, encrypted_name,
+                    filename,
+                    encrypted_name,
                     format_size(plaintext.len() as u64),
                     format_size(ciphertext.len() as u64),
                     elapsed.as_secs_f64()
@@ -11466,7 +13241,10 @@ async fn cmd_crypt_get(
     };
     let salt = match crypt_overlay::crypt_parse_config(&String::from_utf8_lossy(&config_data)) {
         Ok(s) => s,
-        Err(e) => { print_error(format, &e, 5); return 5; }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
     };
 
     let master_key = crypt_overlay::derive_master_key(password, &salt);
@@ -11480,7 +13258,11 @@ async fn cmd_crypt_get(
     let ciphertext = match provider.download_to_bytes(&remote_file).await {
         Ok(d) => d,
         Err(e) => {
-            print_error(format, &format!("Download failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Download failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             return provider_error_to_exit_code(&e);
         }
     };
@@ -11539,10 +13321,17 @@ async fn cmd_put_glob(
     let pattern_path = Path::new(local_pattern);
     let (dir, glob_pattern) = if let Some(parent) = pattern_path.parent() {
         let parent_str = parent.to_string_lossy();
-        let parent_dir = if parent_str.is_empty() { "." } else { &*parent_str };
+        let parent_dir = if parent_str.is_empty() {
+            "."
+        } else {
+            &*parent_str
+        };
         (
             parent_dir.to_string(),
-            pattern_path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+            pattern_path
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_default(),
         )
     } else {
         (".".to_string(), local_pattern.to_string())
@@ -11560,7 +13349,11 @@ async fn cmd_put_glob(
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
         Err(e) => {
-            print_error(format, &format!("Cannot read directory '{}': {}", dir, e), 2);
+            print_error(
+                format,
+                &format!("Cannot read directory '{}': {}", dir, e),
+                2,
+            );
             return 2;
         }
     };
@@ -11605,23 +13398,33 @@ async fn cmd_put_glob(
         None
     };
 
-    let results = futures_util::stream::iter(matched.into_iter().map(|(local_path, filename, _size)| {
-        let cancelled = cancelled.clone();
-        let aggregate = aggregate.clone();
-        let overall_pb = overall_pb.clone();
-        let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
-        async move {
-            if cancelled.load(Ordering::Relaxed) {
-                return Err("Cancelled by user".to_string());
-            }
-            upload_transfer_task(url, local_path, remote_path, cli, format, Some(aggregate), overall_pb, resolve_max_transfer(cli))
+    let results =
+        futures_util::stream::iter(matched.into_iter().map(|(local_path, filename, _size)| {
+            let cancelled = cancelled.clone();
+            let aggregate = aggregate.clone();
+            let overall_pb = overall_pb.clone();
+            let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
+            async move {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err("Cancelled by user".to_string());
+                }
+                upload_transfer_task(
+                    url,
+                    local_path,
+                    remote_path,
+                    cli,
+                    format,
+                    Some(aggregate),
+                    overall_pb,
+                    resolve_max_transfer(cli),
+                )
                 .await
                 .map(|_| filename)
-        }
-    }))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
+            }
+        }))
+        .buffer_unordered(effective_parallel_workers(cli))
+        .collect::<Vec<_>>()
+        .await;
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
@@ -11643,7 +13446,9 @@ async fn cmd_put_glob(
             if !cli.quiet {
                 println!(
                     "\n{}/{} files uploaded in {:.1}s",
-                    uploaded, total, elapsed.as_secs_f64()
+                    uploaded,
+                    total,
+                    elapsed.as_secs_f64()
                 );
             }
         }
@@ -11659,48 +13464,44 @@ async fn cmd_put_glob(
             });
         }
     }
-    if uploaded == total as u32 { 0 } else { 4 }
+    if uploaded == total as u32 {
+        0
+    } else {
+        4
+    }
 }
 
 // ── Head / Tail / Touch / Hashsum / Check ─────────────────────────
 
-async fn cmd_head(
-    url: &str,
-    path: &str,
-    lines: usize,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_head(url: &str, path: &str, lines: usize, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
     match provider.download_to_bytes(path).await {
-        Ok(data) => {
-            match String::from_utf8(data) {
-                Ok(text) => {
-                    let result: Vec<&str> = text.lines().take(lines).collect();
-                    let output = result.join("\n");
-                    if matches!(format, OutputFormat::Json) {
-                        print_json(&serde_json::json!({
-                            "status": "ok",
-                            "path": path,
-                            "lines": result.len(),
-                            "content": output,
-                        }));
-                    } else {
-                        println!("{}", output);
-                    }
-                    let _ = provider.disconnect().await;
-                    0
+        Ok(data) => match String::from_utf8(data) {
+            Ok(text) => {
+                let result: Vec<&str> = text.lines().take(lines).collect();
+                let output = result.join("\n");
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": path,
+                        "lines": result.len(),
+                        "content": output,
+                    }));
+                } else {
+                    println!("{}", output);
                 }
-                Err(_) => {
-                    print_error(format, "File is not valid UTF-8 text", 5);
-                    let _ = provider.disconnect().await;
-                    5
-                }
+                let _ = provider.disconnect().await;
+                0
             }
-        }
+            Err(_) => {
+                print_error(format, "File is not valid UTF-8 text", 5);
+                let _ = provider.disconnect().await;
+                5
+            }
+        },
         Err(e) => {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("head failed: {}", e), code);
@@ -11710,45 +13511,37 @@ async fn cmd_head(
     }
 }
 
-async fn cmd_tail(
-    url: &str,
-    path: &str,
-    lines: usize,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_tail(url: &str, path: &str, lines: usize, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
     match provider.download_to_bytes(path).await {
-        Ok(data) => {
-            match String::from_utf8(data) {
-                Ok(text) => {
-                    let all_lines: Vec<&str> = text.lines().collect();
-                    let start = all_lines.len().saturating_sub(lines);
-                    let result = &all_lines[start..];
-                    let output = result.join("\n");
-                    if matches!(format, OutputFormat::Json) {
-                        print_json(&serde_json::json!({
-                            "status": "ok",
-                            "path": path,
-                            "lines": result.len(),
-                            "content": output,
-                        }));
-                    } else {
-                        println!("{}", output);
-                    }
-                    let _ = provider.disconnect().await;
-                    0
+        Ok(data) => match String::from_utf8(data) {
+            Ok(text) => {
+                let all_lines: Vec<&str> = text.lines().collect();
+                let start = all_lines.len().saturating_sub(lines);
+                let result = &all_lines[start..];
+                let output = result.join("\n");
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": path,
+                        "lines": result.len(),
+                        "content": output,
+                    }));
+                } else {
+                    println!("{}", output);
                 }
-                Err(_) => {
-                    print_error(format, "File is not valid UTF-8 text", 5);
-                    let _ = provider.disconnect().await;
-                    5
-                }
+                let _ = provider.disconnect().await;
+                0
             }
-        }
+            Err(_) => {
+                print_error(format, "File is not valid UTF-8 text", 5);
+                let _ = provider.disconnect().await;
+                5
+            }
+        },
         Err(e) => {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("tail failed: {}", e), code);
@@ -11789,12 +13582,16 @@ async fn cmd_touch(
                 let _ = provider.disconnect().await;
                 return 4;
             }
-            let result = provider.upload(tmp.to_str().unwrap_or(""), path, None).await;
+            let result = provider
+                .upload(tmp.to_str().unwrap_or(""), path, None)
+                .await;
             let _ = std::fs::remove_file(&tmp);
             match result {
                 Ok(()) => {
                     if matches!(format, OutputFormat::Json) {
-                        print_json(&serde_json::json!({"status": "ok", "path": path, "action": "created"}));
+                        print_json(
+                            &serde_json::json!({"status": "ok", "path": path, "action": "created"}),
+                        );
                     } else {
                         eprintln!("Created: {}", path);
                     }
@@ -11860,9 +13657,7 @@ async fn cmd_hashsum(
                     use sha2::Digest;
                     format!("{:x}", sha2::Sha512::digest(&data))
                 }
-                HashAlgorithm::Blake3 => {
-                    blake3::hash(&data).to_hex().to_string()
-                }
+                HashAlgorithm::Blake3 => blake3::hash(&data).to_hex().to_string(),
             };
             let algo_name = match algorithm {
                 HashAlgorithm::Md5 => "md5",
@@ -11912,7 +13707,11 @@ async fn cmd_check(
     // Scan local files
     let local_dir = Path::new(local_path);
     if !local_dir.is_dir() {
-        print_error(format, &format!("Local path is not a directory: {}", local_path), 5);
+        print_error(
+            format,
+            &format!("Local path is not a directory: {}", local_path),
+            5,
+        );
         let _ = provider.disconnect().await;
         return 5;
     }
@@ -12064,7 +13863,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     let content = if file == "-" {
         let mut stdin = String::new();
         if let Err(e) = io::stdin().read_to_string(&mut stdin) {
-            print_error(format, &format!("Cannot read batch script from stdin: {}", e), 2);
+            print_error(
+                format,
+                &format!("Cannot read batch script from stdin: {}", e),
+                2,
+            );
             return 2;
         }
         stdin
@@ -12072,7 +13875,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
         match std::fs::read_to_string(file) {
             Ok(c) => c,
             Err(e) => {
-                print_error(format, &format!("Cannot read batch file '{}': {}", file, e), 2);
+                print_error(
+                    format,
+                    &format!("Cannot read batch file '{}': {}", file, e),
+                    2,
+                );
                 return 2;
             }
         }
@@ -12166,7 +13973,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         continue;
                     } else if next_ch == '{' {
                         // ${VAR} syntax
-                        let start_byte = chars[ci + 2..].first().map(|(b, _)| *b).unwrap_or(line.len());
+                        let start_byte = chars[ci + 2..]
+                            .first()
+                            .map(|(b, _)| *b)
+                            .unwrap_or(line.len());
                         if let Some(close_pos) = line[start_byte..].find('}') {
                             let key = &line[start_byte..start_byte + close_pos];
                             if let Some(val) = variables.get(key) {
@@ -12177,18 +13987,27 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                             }
                             // Skip past the closing }
                             let end_byte = start_byte + close_pos + 1;
-                            ci = chars.iter().position(|(b, _)| *b >= end_byte).unwrap_or(chars.len());
+                            ci = chars
+                                .iter()
+                                .position(|(b, _)| *b >= end_byte)
+                                .unwrap_or(chars.len());
                             continue;
                         }
                     } else if next_ch.is_ascii_alphabetic() || next_ch == '_' {
                         // $VAR syntax
                         let start = ci + 1;
                         let mut end = start;
-                        while end < chars.len() && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_') {
+                        while end < chars.len()
+                            && (chars[end].1.is_ascii_alphanumeric() || chars[end].1 == '_')
+                        {
                             end += 1;
                         }
                         let key_start = chars[start].0;
-                        let key_end = if end < chars.len() { chars[end].0 } else { line.len() };
+                        let key_end = if end < chars.len() {
+                            chars[end].0
+                        } else {
+                            line.len()
+                        };
                         let key = &line[key_start..key_end];
                         if let Some(val) = variables.get(key) {
                             result.push_str(val);
@@ -12246,12 +14065,18 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         let value = rest[eq_pos + 1..].trim().to_string();
                         // Limit variable value size to 64 KB
                         if value.len() > 65_536 {
-                            eprintln!("Line {}: variable value too large (max 64 KB)", line_num + 1);
+                            eprintln!(
+                                "Line {}: variable value too large (max 64 KB)",
+                                line_num + 1
+                            );
                             return 5;
                         }
                         // Validate variable name: [A-Za-z_][A-Za-z0-9_]*
                         if !key.is_empty()
-                            && key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                            && key
+                                .chars()
+                                .next()
+                                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                             && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
                         {
                             if variables.len() >= 256 && !variables.contains_key(&key) {
@@ -12309,7 +14134,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 exit_code = cmd_connect(parts[1], cli, format).await;
                 if exit_code == 0 {
                     current_url = Some(parts[1].to_string());
-                } else if let Some(code) = check_exit(exit_code, line_num, "CONNECT", on_error_continue, &mut failed_commands) {
+                } else if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "CONNECT",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12325,9 +14156,29 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: GET requires a remote path", line_num + 1);
                     return 5;
                 }
-                let local = if parts.len() > 2 { Some(parts[2]) } else { None };
-                exit_code = cmd_get(&url, parts[1], local, false, 1, cli, format, cancelled.clone()).await;
-                if let Some(code) = check_exit(exit_code, line_num, "GET", on_error_continue, &mut failed_commands) {
+                let local = if parts.len() > 2 {
+                    Some(parts[2])
+                } else {
+                    None
+                };
+                exit_code = cmd_get(
+                    &url,
+                    parts[1],
+                    local,
+                    false,
+                    1,
+                    cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "GET",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12340,9 +14191,28 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: PUT requires a local path", line_num + 1);
                     return 5;
                 }
-                let remote = if parts.len() > 2 { Some(parts[2]) } else { None };
-                exit_code = cmd_put(&url, parts[1], remote, false, cli, format, cancelled.clone()).await;
-                if let Some(code) = check_exit(exit_code, line_num, "PUT", on_error_continue, &mut failed_commands) {
+                let remote = if parts.len() > 2 {
+                    Some(parts[2])
+                } else {
+                    None
+                };
+                exit_code = cmd_put(
+                    &url,
+                    parts[1],
+                    remote,
+                    false,
+                    cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "PUT",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12357,7 +14227,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
                 let recursive = parts.contains(&"-r") || parts.contains(&"-rf");
                 exit_code = cmd_rm(&url, parts[1], recursive, true, cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "RM", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "RM",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12371,7 +14247,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 exit_code = cmd_mv(&url, parts[1], parts[2], cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "MV", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "MV",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12383,7 +14265,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 let path = if parts.len() > 1 { parts[1] } else { "/" };
                 let long = parts.contains(&"-l");
                 exit_code = cmd_ls(&url, path, long, "name", false, true, cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "LS", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "LS",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12397,7 +14285,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 exit_code = cmd_cat(&url, parts[1], cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "CAT", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "CAT",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12411,7 +14305,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 exit_code = cmd_stat(&url, parts[1], cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "STAT", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "STAT",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12425,7 +14325,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 exit_code = cmd_find(&url, parts[1], parts[2], cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "FIND", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "FIND",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12435,7 +14341,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Err(code) => return code,
                 };
                 exit_code = cmd_df(&url, cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "DF", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "DF",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12449,7 +14361,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return 5;
                 }
                 exit_code = cmd_mkdir(&url, parts[1], cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "MKDIR", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "MKDIR",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12460,7 +14378,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 let path = if parts.len() > 1 { parts[1] } else { "/" };
                 exit_code = cmd_tree(&url, path, 3, cli, format).await;
-                if let Some(code) = check_exit(exit_code, line_num, "TREE", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "TREE",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12492,7 +14416,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     cancelled.clone(),
                 )
                 .await;
-                if let Some(code) = check_exit(exit_code, line_num, "SYNC", on_error_continue, &mut failed_commands) {
+                if let Some(code) = check_exit(
+                    exit_code,
+                    line_num,
+                    "SYNC",
+                    on_error_continue,
+                    &mut failed_commands,
+                ) {
                     return code;
                 }
             }
@@ -12529,18 +14459,42 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
 fn detect_ai_provider() -> Option<(String, String, String)> {
     // Returns (provider_name, api_key, base_url)
     let providers = [
-        ("anthropic", "ANTHROPIC_API_KEY", "https://api.anthropic.com"),
+        (
+            "anthropic",
+            "ANTHROPIC_API_KEY",
+            "https://api.anthropic.com",
+        ),
         ("openai", "OPENAI_API_KEY", "https://api.openai.com/v1"),
-        ("gemini", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com"),
+        (
+            "gemini",
+            "GEMINI_API_KEY",
+            "https://generativelanguage.googleapis.com",
+        ),
         ("xai", "XAI_API_KEY", "https://api.x.ai/v1"),
         ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1"),
         ("mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1"),
-        ("perplexity", "PERPLEXITY_API_KEY", "https://api.perplexity.ai"),
+        (
+            "perplexity",
+            "PERPLEXITY_API_KEY",
+            "https://api.perplexity.ai",
+        ),
         ("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com"),
-        ("together", "TOGETHER_API_KEY", "https://api.together.xyz/v1"),
-        ("fireworks", "FIREWORKS_API_KEY", "https://api.fireworks.ai/inference/v1"),
+        (
+            "together",
+            "TOGETHER_API_KEY",
+            "https://api.together.xyz/v1",
+        ),
+        (
+            "fireworks",
+            "FIREWORKS_API_KEY",
+            "https://api.fireworks.ai/inference/v1",
+        ),
         ("cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1"),
-        ("sambanova", "SAMBANOVA_API_KEY", "https://api.sambanova.ai/v1"),
+        (
+            "sambanova",
+            "SAMBANOVA_API_KEY",
+            "https://api.sambanova.ai/v1",
+        ),
     ];
     for (name, env_key, base_url) in &providers {
         if let Ok(key) = std::env::var(env_key) {
@@ -12550,8 +14504,14 @@ fn detect_ai_provider() -> Option<(String, String, String)> {
         }
     }
     // Check Ollama (no API key needed)
-    if std::env::var("OLLAMA_HOST").is_ok() || std::path::Path::new("/usr/local/bin/ollama").exists() {
-        return Some(("ollama".to_string(), String::new(), "http://localhost:11434".to_string()));
+    if std::env::var("OLLAMA_HOST").is_ok()
+        || std::path::Path::new("/usr/local/bin/ollama").exists()
+    {
+        return Some((
+            "ollama".to_string(),
+            String::new(),
+            "http://localhost:11434".to_string(),
+        ));
     }
     None
 }
@@ -12654,12 +14614,17 @@ fn build_agent_system_prompt(custom_system: &Option<String>) -> String {
          1. Use tools to perform actions — don't just describe what to do.\n\
          2. Be concise and direct. Explain briefly what you did after executing tools.\n\
          3. For destructive operations (delete, overwrite), confirm with the user first.\n\
-         4. Resolve relative paths against the working directory.".to_string()
+         4. Resolve relative paths against the working directory."
+            .to_string()
     };
 
-    format!("{}\n\n## Current Context\n- Working directory: {}\n- Platform: {}\n- Time: {}",
-        base, cwd, std::env::consts::OS,
-        chrono::Local::now().format("%Y-%m-%d %H:%M"))
+    format!(
+        "{}\n\n## Current Context\n- Working directory: {}\n- Platform: {}\n- Time: {}",
+        base,
+        cwd,
+        std::env::consts::OS,
+        chrono::Local::now().format("%Y-%m-%d %H:%M")
+    )
 }
 
 /// Parse auto-approve level
@@ -12674,27 +14639,102 @@ fn parse_approve_level(s: &str) -> u8 {
     }
 }
 
+fn tool_exposure_kind(tool: &str) -> ToolExposureKind {
+    match tool {
+        "local_list"
+        | "local_read"
+        | "local_search"
+        | "local_grep"
+        | "local_head"
+        | "local_tail"
+        | "local_stat_batch"
+        | "local_diff"
+        | "local_tree"
+        | "local_file_info"
+        | "local_disk_usage"
+        | "local_find_duplicates"
+        | "clipboard_read"
+        | "app_info"
+        | "rag_search"
+        | "rag_index"
+        | "preview_edit"
+        | "generate_transfer_plan"
+        | "vault_peek"
+        | "hash_file" => ToolExposureKind::LocalReadonly,
+        "server_list_saved" | "remote_list" | "remote_info" | "remote_search" => {
+            ToolExposureKind::RemoteMetadata
+        }
+        "remote_read" => ToolExposureKind::RemotePreview,
+        "server_exec" => ToolExposureKind::RemoteBulkRead,
+        "local_write"
+        | "local_mkdir"
+        | "local_edit"
+        | "local_rename"
+        | "local_copy_files"
+        | "local_move_files"
+        | "local_batch_rename"
+        | "archive_compress"
+        | "archive_decompress"
+        | "clipboard_write"
+        | "agent_memory_write"
+        | "sync_preview"
+        | "set_theme" => ToolExposureKind::LocalModify,
+        "remote_upload"
+        | "remote_mkdir"
+        | "remote_rename"
+        | "remote_edit"
+        | "upload_files"
+        | "download_files"
+        | "remote_download" => ToolExposureKind::RemoteModify,
+        "local_delete" | "local_trash" | "remote_delete" | "sync_control" => {
+            ToolExposureKind::Destructive
+        }
+        "shell_execute" => ToolExposureKind::Execution,
+        _ => ToolExposureKind::Execution,
+    }
+}
+
+fn tool_exposure_category(tool: &str) -> &'static str {
+    match tool_exposure_kind(tool) {
+        ToolExposureKind::LocalReadonly => "local-readonly",
+        ToolExposureKind::RemoteMetadata => "remote-metadata",
+        ToolExposureKind::RemotePreview => "remote-preview",
+        ToolExposureKind::RemoteBulkRead => "remote-bulk-read",
+        ToolExposureKind::LocalModify => "local-modify",
+        ToolExposureKind::RemoteModify => "remote-modify",
+        ToolExposureKind::Destructive => "destructive",
+        ToolExposureKind::Execution => "execution",
+    }
+}
+
+fn tool_data_egress(tool: &str) -> &'static str {
+    match tool {
+        "server_list_saved" | "remote_list" | "remote_info" | "remote_search" => "metadata",
+        "remote_read" => "preview",
+        "server_exec" => "operation-dependent",
+        _ => "none",
+    }
+}
+
 /// Get tool danger level (0=safe, 1=medium, 2=high)
 fn tool_danger_level(tool: &str) -> u8 {
-    match tool {
-        // Safe — read-only
-        "local_list" | "local_read" | "remote_list" | "remote_read" | "remote_info"
-        | "remote_search" | "local_search" | "local_grep" | "local_head" | "local_tail"
-        | "local_stat_batch" | "local_diff" | "local_tree" | "local_file_info"
-        | "local_disk_usage" | "local_find_duplicates" | "clipboard_read" | "app_info"
-        | "server_list_saved" | "rag_search" | "rag_index" | "preview_edit"
-        | "generate_transfer_plan"
-        | "vault_peek" | "hash_file" => 0,
-        // Medium — local writes
-        "local_write" | "local_mkdir" | "local_edit" | "local_rename" | "local_copy_files"
-        | "local_move_files" | "local_batch_rename" | "remote_upload" | "remote_mkdir"
-        | "remote_rename" | "remote_edit" | "upload_files" | "download_files"
-        | "remote_download" | "archive_compress" | "archive_decompress" | "clipboard_write"
-        | "agent_memory_write" | "sync_preview" | "set_theme" => 1,
-        // High — destructive or remote writes
-        "local_delete" | "local_trash" | "remote_delete" | "shell_execute"
-        | "server_exec" | "sync_control" => 2,
-        _ => 2, // Unknown tools default to high
+    match tool_exposure_kind(tool) {
+        ToolExposureKind::LocalReadonly => 0,
+        ToolExposureKind::RemoteMetadata
+        | ToolExposureKind::LocalModify
+        | ToolExposureKind::RemoteModify => 1,
+        ToolExposureKind::RemotePreview
+        | ToolExposureKind::RemoteBulkRead
+        | ToolExposureKind::Destructive
+        | ToolExposureKind::Execution => 2,
+    }
+}
+
+fn tool_danger_name(tool: &str) -> &'static str {
+    match tool_danger_level(tool) {
+        0 => "safe",
+        1 => "medium",
+        _ => "high",
     }
 }
 
@@ -12917,7 +14957,10 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
 
 /// Execute a CLI tool locally (no Tauri dependency).
 /// Returns JSON result or error string.
-async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<serde_json::Value, String> {
+async fn execute_cli_tool(
+    tool_name: &str,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     use serde_json::json;
 
     // Helper to extract string argument
@@ -12929,7 +14972,9 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
     };
 
     let get_str_opt = |key: &str| -> Option<String> {
-        args.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     };
 
     // Validate local path — deny sensitive paths (mirrors ai_tools.rs::validate_path)
@@ -12950,11 +14995,17 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             std::path::Path::new(path)
                 .parent()
                 .map(std::fs::canonicalize)
-                .unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no parent")))
+                .unwrap_or(Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "no parent",
+                )))
         });
         if let Ok(canonical) = resolved {
             let s = canonical.to_string_lossy();
-            if CLI_DENIED_SYSTEM_PREFIXES.iter().any(|d| path_matches_prefix(&s, d)) {
+            if CLI_DENIED_SYSTEM_PREFIXES
+                .iter()
+                .any(|d| path_matches_prefix(&s, d))
+            {
                 return Err(format!("{}: access to system path denied: {}", param, s));
             }
             if let Ok(home) = std::env::var("HOME") {
@@ -12973,7 +15024,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             for sensitive in CLI_DENIED_HOME_RELATIVE_PREFIXES {
                 let full = format!("{}/{}", home, sensitive);
                 if path_matches_prefix(path, &full) {
-                    return Err(format!("{}: access to sensitive path denied: {}", param, path));
+                    return Err(format!(
+                        "{}: access to sensitive path denied: {}",
+                        param, path
+                    ));
                 }
             }
         }
@@ -13015,16 +15069,19 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "local_read" => {
             let path = resolve_path(&get_str("path")?);
             validate_path(&path, "path")?;
-            let meta = std::fs::metadata(&path)
-                .map_err(|e| format!("Failed to stat file: {}", e))?;
+            let meta =
+                std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
             if meta.len() > 10_485_760 {
-                return Err(format!("File too large: {:.1} MB (max 10 MB)", meta.len() as f64 / 1_048_576.0));
+                return Err(format!(
+                    "File too large: {:.1} MB (max 10 MB)",
+                    meta.len() as f64 / 1_048_576.0
+                ));
             }
             let max_bytes: usize = 5120;
             let file_size = meta.len() as usize;
             let read_size = std::cmp::min(file_size, max_bytes);
-            let mut file = std::fs::File::open(&path)
-                .map_err(|e| format!("Failed to open file: {}", e))?;
+            let mut file =
+                std::fs::File::open(&path).map_err(|e| format!("Failed to open file: {}", e))?;
             let mut buf = vec![0u8; read_size];
             use std::io::Read as _;
             file.read_exact(&mut buf)
@@ -13039,16 +15096,17 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let pattern = get_str("pattern")?;
             validate_path(&path, "path")?;
             let pattern_lower = pattern.to_lowercase();
-            let matcher: Box<dyn Fn(&str) -> bool> = if let Some(suffix) = pattern_lower.strip_prefix('*') {
-                let s = suffix.to_string();
-                Box::new(move |name: &str| name.ends_with(&s))
-            } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
-                let p = prefix.to_string();
-                Box::new(move |name: &str| name.starts_with(&p))
-            } else {
-                let pat = pattern_lower.clone();
-                Box::new(move |name: &str| name.contains(&pat))
-            };
+            let matcher: Box<dyn Fn(&str) -> bool> =
+                if let Some(suffix) = pattern_lower.strip_prefix('*') {
+                    let s = suffix.to_string();
+                    Box::new(move |name: &str| name.ends_with(&s))
+                } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
+                    let p = prefix.to_string();
+                    Box::new(move |name: &str| name.starts_with(&p))
+                } else {
+                    let pat = pattern_lower.clone();
+                    Box::new(move |name: &str| name.contains(&pat))
+                };
             let results: Vec<serde_json::Value> = std::fs::read_dir(&path)
                 .map_err(|e| format!("Failed to read directory: {}", e))?
                 .filter_map(|e| e.ok())
@@ -13071,9 +15129,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let path = resolve_path(&get_str("path")?);
             let content = get_str("content")?;
             validate_path(&path, "path")?;
-            std::fs::write(&path, &content)
-                .map_err(|e| format!("Failed to write file: {}", e))?;
-            Ok(json!({ "success": true, "message": format!("Written {} bytes to {}", content.len(), path) }))
+            std::fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))?;
+            Ok(
+                json!({ "success": true, "message": format!("Written {} bytes to {}", content.len(), path) }),
+            )
         }
 
         "local_mkdir" => {
@@ -13089,17 +15148,21 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             validate_path(&path, "path")?;
             let home_dir = std::env::var("HOME").unwrap_or_default();
             let normalized = path.trim_end_matches('/').trim_end_matches('\\');
-            if normalized.is_empty() || normalized == "/" || normalized == "~" || normalized == "." || normalized == ".." || normalized == home_dir {
+            if normalized.is_empty()
+                || normalized == "/"
+                || normalized == "~"
+                || normalized == "."
+                || normalized == ".."
+                || normalized == home_dir
+            {
                 return Err(format!("Refusing to delete dangerous path: {}", path));
             }
-            let meta = std::fs::metadata(&path)
-                .map_err(|e| format!("Path not found: {}", e))?;
+            let meta = std::fs::metadata(&path).map_err(|e| format!("Path not found: {}", e))?;
             if meta.is_dir() {
                 std::fs::remove_dir_all(&path)
                     .map_err(|e| format!("Failed to delete directory: {}", e))?;
             } else {
-                std::fs::remove_file(&path)
-                    .map_err(|e| format!("Failed to delete file: {}", e))?;
+                std::fs::remove_file(&path).map_err(|e| format!("Failed to delete file: {}", e))?;
             }
             Ok(json!({ "success": true, "message": format!("Deleted {}", path) }))
         }
@@ -13109,8 +15172,7 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let to = resolve_path(&get_str("to")?);
             validate_path(&from, "from")?;
             validate_path(&to, "to")?;
-            std::fs::rename(&from, &to)
-                .map_err(|e| format!("Failed to rename: {}", e))?;
+            std::fs::rename(&from, &to).map_err(|e| format!("Failed to rename: {}", e))?;
             Ok(json!({ "success": true, "message": format!("Renamed {} to {}", from, to) }))
         }
 
@@ -13118,7 +15180,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let path = resolve_path(&get_str("path")?);
             let find = get_str("find")?;
             let replace = get_str("replace")?;
-            let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(true);
+            let replace_all = args
+                .get("replace_all")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             validate_path(&path, "path")?;
             if find.is_empty() {
                 return Err("'find' parameter cannot be empty".to_string());
@@ -13135,14 +15200,25 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             }
             std::fs::write(&path, &new_content)
                 .map_err(|e| format!("Failed to write file: {}", e))?;
-            let count = if replace_all { content.matches(&find).count() } else { 1 };
-            Ok(json!({ "success": true, "message": format!("Replaced {} occurrence(s) in {}", count, path) }))
+            let count = if replace_all {
+                content.matches(&find).count()
+            } else {
+                1
+            };
+            Ok(
+                json!({ "success": true, "message": format!("Replaced {} occurrence(s) in {}", count, path) }),
+            )
         }
 
         "local_move_files" => {
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             let destination = resolve_path(&get_str("destination")?);
             validate_path(&destination, "destination")?;
@@ -13166,7 +15242,9 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 match std::fs::rename(source, &dest_path) {
                     Ok(_) => moved += 1,
                     Err(_) => {
-                        match std::fs::copy(source, &dest_path).and_then(|_| std::fs::remove_file(source)) {
+                        match std::fs::copy(source, &dest_path)
+                            .and_then(|_| std::fs::remove_file(source))
+                        {
                             Ok(_) => moved += 1,
                             Err(e) => errors.push(format!("{}: {}", filename, e)),
                         }
@@ -13177,9 +15255,14 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         }
 
         "local_copy_files" => {
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             let destination = resolve_path(&get_str("destination")?);
             validate_path(&destination, "destination")?;
@@ -13206,9 +15289,14 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         }
 
         "local_batch_rename" => {
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             let mode = get_str("mode")?;
             let mut renamed = 0u32;
@@ -13219,9 +15307,18 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                     continue;
                 }
                 let p = std::path::Path::new(source);
-                let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-                let parent = p.parent().map(|pp| pp.to_string_lossy().to_string()).unwrap_or_else(|| ".".to_string());
+                let stem = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let ext = p
+                    .extension()
+                    .map(|e| format!(".{}", e.to_string_lossy()))
+                    .unwrap_or_default();
+                let parent = p
+                    .parent()
+                    .map(|pp| pp.to_string_lossy().to_string())
+                    .unwrap_or_else(|| ".".to_string());
                 let new_name = match mode.as_str() {
                     "find_replace" => {
                         let find = get_str("find").unwrap_or_default();
@@ -13238,10 +15335,16 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                     }
                     "sequential" => {
                         let base = get_str_opt("base_name").unwrap_or_else(|| "file".to_string());
-                        let start = args.get("start_number").and_then(|v| v.as_u64()).unwrap_or(1);
+                        let start = args
+                            .get("start_number")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(1);
                         format!("{}_{:03}{}", base, start + idx as u64, ext)
                     }
-                    _ => { errors.push(format!("Unknown mode: {}", mode)); continue; }
+                    _ => {
+                        errors.push(format!("Unknown mode: {}", mode));
+                        continue;
+                    }
                 };
                 let dest = format!("{}/{}", parent, new_name);
                 if let Err(e) = validate_path(&dest, "destination") {
@@ -13257,9 +15360,14 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         }
 
         "local_trash" => {
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             let mut trashed = 0u32;
             let mut errors = Vec::new();
@@ -13279,8 +15387,7 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "local_file_info" => {
             let path = resolve_path(&get_str("path")?);
             validate_path(&path, "path")?;
-            let meta = std::fs::metadata(&path)
-                .map_err(|e| format!("Failed to stat: {}", e))?;
+            let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat: {}", e))?;
             let mut info = json!({
                 "path": path,
                 "size": meta.len(),
@@ -13338,7 +15445,10 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
 
         "local_find_duplicates" => {
             let path = resolve_path(&get_str("path")?);
-            let min_size = args.get("min_size").and_then(|v| v.as_u64()).unwrap_or(1024);
+            let min_size = args
+                .get("min_size")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1024);
             validate_path(&path, "path")?;
             use std::collections::HashMap;
             let mut size_map: HashMap<u64, Vec<String>> = HashMap::new();
@@ -13346,7 +15456,9 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 for entry in entries.filter_map(|e| e.ok()) {
                     if let Ok(meta) = entry.metadata() {
                         if meta.is_file() && meta.len() >= min_size {
-                            size_map.entry(meta.len()).or_default()
+                            size_map
+                                .entry(meta.len())
+                                .or_default()
                                 .push(entry.path().to_string_lossy().to_string());
                         }
                     }
@@ -13355,16 +15467,18 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             // Only hash files with same size
             let mut duplicates = Vec::new();
             for paths in size_map.values() {
-                if paths.len() < 2 { continue; }
+                if paths.len() < 2 {
+                    continue;
+                }
                 let mut hash_map: HashMap<String, Vec<String>> = HashMap::new();
                 for p in paths {
                     if let Ok(data) = std::fs::read(p) {
                         let digest = {
-                                        use md5::Digest;
-                                        let mut hasher = md5::Md5::new();
-                                        hasher.update(&data);
-                                        format!("{:x}", hasher.finalize())
-                                    };
+                            use md5::Digest;
+                            let mut hasher = md5::Md5::new();
+                            hasher.update(&data);
+                            format!("{:x}", hasher.finalize())
+                        };
                         hash_map.entry(digest).or_default().push(p.clone());
                     }
                 }
@@ -13380,41 +15494,73 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "local_grep" => {
             let path = resolve_path(&get_str("path")?);
             let pattern = get_str("pattern")?;
-            let max_results = args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-            let context_lines = args.get("context_lines").and_then(|v| v.as_u64()).unwrap_or(2) as usize;
-            let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(true);
+            let max_results = args
+                .get("max_results")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50) as usize;
+            let context_lines = args
+                .get("context_lines")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2) as usize;
+            let case_sensitive = args
+                .get("case_sensitive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             let glob_filter = get_str_opt("glob");
             validate_path(&path, "path")?;
             let re = if case_sensitive {
                 regex::Regex::new(&pattern).map_err(|e| format!("Invalid regex: {}", e))?
             } else {
-                regex::RegexBuilder::new(&pattern).case_insensitive(true).build()
+                regex::RegexBuilder::new(&pattern)
+                    .case_insensitive(true)
+                    .build()
                     .map_err(|e| format!("Invalid regex: {}", e))?
             };
             let mut results = Vec::new();
-            fn walk_grep(dir: &std::path::Path, re: &regex::Regex, glob_filter: &Option<String>,
-                        ctx: usize, results: &mut Vec<serde_json::Value>, max: usize) {
-                if results.len() >= max { return; }
+            fn walk_grep(
+                dir: &std::path::Path,
+                re: &regex::Regex,
+                glob_filter: &Option<String>,
+                ctx: usize,
+                results: &mut Vec<serde_json::Value>,
+                max: usize,
+            ) {
+                if results.len() >= max {
+                    return;
+                }
                 if let Ok(entries) = std::fs::read_dir(dir) {
                     for entry in entries.filter_map(|e| e.ok()) {
-                        if results.len() >= max { return; }
+                        if results.len() >= max {
+                            return;
+                        }
                         let p = entry.path();
                         if p.is_dir() {
                             walk_grep(&p, re, glob_filter, ctx, results, max);
                         } else if p.is_file() {
                             if let Some(ref glob) = glob_filter {
-                                let name = p.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                                let name = p
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_lowercase();
                                 let pattern = glob.trim_start_matches('*').to_lowercase();
-                                if !name.ends_with(&pattern) { continue; }
+                                if !name.ends_with(&pattern) {
+                                    continue;
+                                }
                             }
                             if let Ok(content) = std::fs::read_to_string(&p) {
                                 let lines: Vec<&str> = content.lines().collect();
                                 for (i, line) in lines.iter().enumerate() {
-                                    if results.len() >= max { return; }
+                                    if results.len() >= max {
+                                        return;
+                                    }
                                     if re.is_match(line) {
                                         let start = i.saturating_sub(ctx);
                                         let end = (i + ctx + 1).min(lines.len());
-                                        let context: Vec<String> = lines[start..end].iter().map(|l| l.to_string()).collect();
+                                        let context: Vec<String> = lines[start..end]
+                                            .iter()
+                                            .map(|l| l.to_string())
+                                            .collect();
                                         results.push(serde_json::json!({
                                             "file": p.to_string_lossy(),
                                             "line": i + 1,
@@ -13428,83 +15574,128 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                     }
                 }
             }
-            walk_grep(std::path::Path::new(&path), &re, &glob_filter, context_lines, &mut results, max_results);
+            walk_grep(
+                std::path::Path::new(&path),
+                &re,
+                &glob_filter,
+                context_lines,
+                &mut results,
+                max_results,
+            );
             let total = results.len();
             Ok(json!({ "results": results, "total": total }))
         }
 
         "local_head" => {
             let path = resolve_path(&get_str("path")?);
-            let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+            let lines = args
+                .get("lines")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .min(500) as usize;
             validate_path(&path, "path")?;
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
             let result: String = content.lines().take(lines).collect::<Vec<_>>().join("\n");
             let total_lines = content.lines().count();
-            Ok(json!({ "content": result, "lines_shown": lines.min(total_lines), "total_lines": total_lines }))
+            Ok(
+                json!({ "content": result, "lines_shown": lines.min(total_lines), "total_lines": total_lines }),
+            )
         }
 
         "local_tail" => {
             let path = resolve_path(&get_str("path")?);
-            let lines = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(20).min(500) as usize;
+            let lines = args
+                .get("lines")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .min(500) as usize;
             validate_path(&path, "path")?;
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read file: {}", e))?;
             let all_lines: Vec<&str> = content.lines().collect();
             let start = all_lines.len().saturating_sub(lines);
             let result = all_lines[start..].join("\n");
-            Ok(json!({ "content": result, "lines_shown": all_lines.len() - start, "total_lines": all_lines.len() }))
+            Ok(
+                json!({ "content": result, "lines_shown": all_lines.len() - start, "total_lines": all_lines.len() }),
+            )
         }
 
         "local_stat_batch" => {
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             if paths.len() > 100 {
                 return Err("Maximum 100 paths allowed".to_string());
             }
-            let stats: Vec<serde_json::Value> = paths.iter().map(|p| {
-                if let Err(error) = validate_path(p, "paths[]") {
-                    return json!({ "path": p, "exists": false, "error": error });
-                }
-                match std::fs::metadata(p) {
-                    Ok(meta) => json!({
-                        "path": p,
-                        "exists": true,
-                        "size": meta.len(),
-                        "is_dir": meta.is_dir(),
-                        "is_file": meta.is_file(),
-                        "readonly": meta.permissions().readonly(),
-                    }),
-                    Err(e) => json!({ "path": p, "exists": false, "error": e.to_string() }),
-                }
-            }).collect();
+            let stats: Vec<serde_json::Value> = paths
+                .iter()
+                .map(|p| {
+                    if let Err(error) = validate_path(p, "paths[]") {
+                        return json!({ "path": p, "exists": false, "error": error });
+                    }
+                    match std::fs::metadata(p) {
+                        Ok(meta) => json!({
+                            "path": p,
+                            "exists": true,
+                            "size": meta.len(),
+                            "is_dir": meta.is_dir(),
+                            "is_file": meta.is_file(),
+                            "readonly": meta.permissions().readonly(),
+                        }),
+                        Err(e) => json!({ "path": p, "exists": false, "error": e.to_string() }),
+                    }
+                })
+                .collect();
             Ok(json!({ "stats": stats }))
         }
 
         "local_tree" => {
             let path = resolve_path(&get_str("path")?);
-            let max_depth = args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(3).min(10) as usize;
-            let show_hidden = args.get("show_hidden").and_then(|v| v.as_bool()).unwrap_or(false);
+            let max_depth = args
+                .get("max_depth")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3)
+                .min(10) as usize;
+            let show_hidden = args
+                .get("show_hidden")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let glob_filter = get_str_opt("glob");
             validate_path(&path, "path")?;
-            fn build_tree(dir: &std::path::Path, depth: usize, max_depth: usize,
-                         show_hidden: bool, glob_filter: &Option<String>) -> Vec<serde_json::Value> {
-                if depth >= max_depth { return vec![]; }
+            fn build_tree(
+                dir: &std::path::Path,
+                depth: usize,
+                max_depth: usize,
+                show_hidden: bool,
+                glob_filter: &Option<String>,
+            ) -> Vec<serde_json::Value> {
+                if depth >= max_depth {
+                    return vec![];
+                }
                 let mut items = Vec::new();
                 if let Ok(entries) = std::fs::read_dir(dir) {
                     let mut sorted: Vec<_> = entries.filter_map(|e| e.ok()).collect();
                     sorted.sort_by_key(|e| e.file_name());
                     for entry in sorted {
                         let name = entry.file_name().to_string_lossy().to_string();
-                        if !show_hidden && name.starts_with('.') { continue; }
+                        if !show_hidden && name.starts_with('.') {
+                            continue;
+                        }
                         let meta = entry.metadata().ok();
                         let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
                         if !is_dir {
                             if let Some(ref glob) = glob_filter {
                                 let pattern = glob.trim_start_matches('*').to_lowercase();
-                                if !name.to_lowercase().ends_with(&pattern) { continue; }
+                                if !name.to_lowercase().ends_with(&pattern) {
+                                    continue;
+                                }
                             }
                         }
                         let mut node = serde_json::json!({
@@ -13513,7 +15704,13 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                             "size": meta.as_ref().map(|m| m.len()).unwrap_or(0),
                         });
                         if is_dir {
-                            let children = build_tree(&entry.path(), depth + 1, max_depth, show_hidden, glob_filter);
+                            let children = build_tree(
+                                &entry.path(),
+                                depth + 1,
+                                max_depth,
+                                show_hidden,
+                                glob_filter,
+                            );
                             node["children"] = serde_json::json!(children);
                         }
                         items.push(node);
@@ -13521,7 +15718,13 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 }
                 items
             }
-            let tree = build_tree(std::path::Path::new(&path), 0, max_depth, show_hidden, &glob_filter);
+            let tree = build_tree(
+                std::path::Path::new(&path),
+                0,
+                max_depth,
+                show_hidden,
+                &glob_filter,
+            );
             Ok(json!({ "tree": tree }))
         }
 
@@ -13544,15 +15747,14 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let path = resolve_path(&get_str("path")?);
             let algorithm = get_str_opt("algorithm").unwrap_or_else(|| "sha256".to_string());
             validate_path(&path, "path")?;
-            let data = std::fs::read(&path)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let data = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
             let hash = match algorithm.to_lowercase().as_str() {
                 "md5" => {
-                                        use md5::Digest;
-                                        let mut hasher = md5::Md5::new();
-                                        hasher.update(&data);
-                                        format!("{:x}", hasher.finalize())
-                                    },
+                    use md5::Digest;
+                    let mut hasher = md5::Md5::new();
+                    hasher.update(&data);
+                    format!("{:x}", hasher.finalize())
+                }
                 "sha256" => {
                     use sha2::Digest;
                     format!("{:x}", sha2::Sha256::digest(&data))
@@ -13570,7 +15772,11 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "shell_execute" => {
             let command = get_str("command")?;
             let working_dir = get_str_opt("working_dir");
-            let timeout_secs = args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(30).min(120);
+            let timeout_secs = args
+                .get("timeout_secs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30)
+                .min(120);
 
             // Defense-in-depth: reject shell meta-characters that enable denylist bypass
             // (pipes, subshells, backticks, semicolons, eval chains, etc.)
@@ -13585,18 +15791,48 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
 
             // Denylist (mirrors ai_tools.rs DENIED_COMMAND_PATTERNS)
             static DENIED: &[&str] = &[
-                "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "fork bomb",
-                "chmod -R 777 /", "chmod 777 /", "chown ",
-                "wget|sh", "curl|sh", "curl|bash", "wget|bash",
-                "> /dev/sda", "shutdown", "reboot", "halt",
-                "init 0", "init 6",
-                "kill -9 1", "killall", "pkill -9",
-                "python -c", "python3 -c", "eval ",
-                "base64 -d", "base64 --decode",
-                "truncate", "shred",
-                "crontab", "nohup", "systemctl", "service ",
-                "mount ", "umount ", "fdisk", "parted",
-                "iptables", "useradd", "userdel", "passwd", "sudo ",
+                "rm -rf /",
+                "rm -rf /*",
+                "mkfs",
+                "dd if=",
+                ":(){",
+                "fork bomb",
+                "chmod -R 777 /",
+                "chmod 777 /",
+                "chown ",
+                "wget|sh",
+                "curl|sh",
+                "curl|bash",
+                "wget|bash",
+                "> /dev/sda",
+                "shutdown",
+                "reboot",
+                "halt",
+                "init 0",
+                "init 6",
+                "kill -9 1",
+                "killall",
+                "pkill -9",
+                "python -c",
+                "python3 -c",
+                "eval ",
+                "base64 -d",
+                "base64 --decode",
+                "truncate",
+                "shred",
+                "crontab",
+                "nohup",
+                "systemctl",
+                "service ",
+                "mount ",
+                "umount ",
+                "fdisk",
+                "parted",
+                "iptables",
+                "useradd",
+                "userdel",
+                "passwd",
+                "sudo ",
             ];
             let cmd_lower = command.to_lowercase();
             for pattern in DENIED {
@@ -13611,18 +15847,18 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             }
 
             let mut cmd = tokio::process::Command::new("sh");
-            cmd.arg("-c").arg(&command)
+            cmd.arg("-c")
+                .arg(&command)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped());
             if let Some(ref wd) = working_dir {
                 cmd.current_dir(wd);
             }
-            let result = tokio::time::timeout(
-                std::time::Duration::from_secs(timeout_secs),
-                cmd.output(),
-            ).await
-                .map_err(|_| format!("Command timed out after {}s", timeout_secs))?
-                .map_err(|e| format!("Failed to execute: {}", e))?;
+            let result =
+                tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
+                    .await
+                    .map_err(|_| format!("Command timed out after {}s", timeout_secs))?
+                    .map_err(|e| format!("Failed to execute: {}", e))?;
 
             let stdout = String::from_utf8_lossy(&result.stdout);
             let stderr = String::from_utf8_lossy(&result.stderr);
@@ -13637,49 +15873,68 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
 
         "archive_compress" => {
             // Safe: spawn tools directly with .arg() — no shell interpolation
-            let paths: Vec<String> = args.get("paths")
+            let paths: Vec<String> = args
+                .get("paths")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(&resolve_path)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(&resolve_path))
+                        .collect()
+                })
                 .ok_or("Missing 'paths' array parameter")?;
             let output_path = resolve_path(&get_str("output_path")?);
             let format = get_str_opt("format").unwrap_or_else(|| "zip".to_string());
             validate_path(&output_path, "output_path")?;
-            for p in &paths { validate_path(p, "paths[]")?; }
+            for p in &paths {
+                validate_path(p, "paths[]")?;
+            }
             let mut cmd = match format.as_str() {
                 "zip" => {
                     let mut c = tokio::process::Command::new("zip");
                     c.arg("-r").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 "tar.gz" => {
                     let mut c = tokio::process::Command::new("tar");
                     c.arg("czf").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 "tar.bz2" => {
                     let mut c = tokio::process::Command::new("tar");
                     c.arg("cjf").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 "tar.xz" => {
                     let mut c = tokio::process::Command::new("tar");
                     c.arg("cJf").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 "tar" => {
                     let mut c = tokio::process::Command::new("tar");
                     c.arg("cf").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 "7z" => {
                     let mut c = tokio::process::Command::new("7z");
                     c.arg("a").arg(&output_path);
-                    for p in &paths { c.arg(p); }
+                    for p in &paths {
+                        c.arg(p);
+                    }
                     c
                 }
                 _ => return Err(format!("Unsupported format: {}", format)),
@@ -13721,7 +15976,9 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 c
             } else if ext.ends_with(".7z") {
                 let mut c = tokio::process::Command::new("7z");
-                c.arg("x").arg(&archive_path).arg(format!("-o{}", output_dir));
+                c.arg("x")
+                    .arg(&archive_path)
+                    .arg(format!("-o{}", output_dir));
                 c
             } else {
                 return Err(format!("Unsupported archive format: {}", archive_path));
@@ -13744,11 +16001,18 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 .map_err(|_| "xclip not found. Install: sudo apt install xclip".to_string())?;
             if let Some(ref mut stdin) = child.stdin {
                 use tokio::io::AsyncWriteExt;
-                stdin.write_all(content.as_bytes()).await
+                stdin
+                    .write_all(content.as_bytes())
+                    .await
                     .map_err(|e| format!("Failed to write to clipboard: {}", e))?;
             }
-            child.wait().await.map_err(|e| format!("xclip failed: {}", e))?;
-            Ok(json!({ "success": true, "message": format!("Copied {} chars to clipboard", content.len()) }))
+            child
+                .wait()
+                .await
+                .map_err(|e| format!("xclip failed: {}", e))?;
+            Ok(
+                json!({ "success": true, "message": format!("Copied {} chars to clipboard", content.len()) }),
+            )
         }
 
         "agent_memory_write" => {
@@ -13790,20 +16054,30 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "remote_list" => {
             let server_query = get_str("server")?;
             let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let entries = provider.list(&path).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let entries = provider
+                .list(&effective_path)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             let entries = entries?;
-            let items: Vec<serde_json::Value> = entries.iter().take(200).map(|e| json!({
-                "name": e.name,
-                "path": e.path,
-                "is_dir": e.is_dir,
-                "size": e.size,
-                "modified": e.modified,
-            })).collect();
+            let items: Vec<serde_json::Value> = entries
+                .iter()
+                .take(200)
+                .map(|e| {
+                    json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                        "modified": e.modified,
+                    })
+                })
+                .collect();
             Ok(json!({
                 "server": server_query,
-                "path": path,
+                "path": effective_path,
                 "entries": items,
                 "total": entries.len(),
                 "truncated": entries.len() > 200,
@@ -13813,18 +16087,19 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "remote_read" => {
             let server_query = get_str("server")?;
             let path = get_str("path")?;
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let data = provider.download_to_bytes(&path).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let preview = read_remote_preview(&mut provider, &effective_path)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
-            let data = data?;
-            let truncated = data.len() > 5 * 1024;
-            let preview = if truncated { &data[..5 * 1024] } else { &data };
-            let content = String::from_utf8_lossy(preview).to_string();
+            let (preview, size, truncated) = preview?;
+            let content = String::from_utf8_lossy(&preview).to_string();
             Ok(json!({
                 "server": server_query,
-                "path": path,
+                "path": effective_path,
                 "content": content,
-                "size": data.len(),
+                "size": size,
                 "truncated": truncated,
             }))
         }
@@ -13832,13 +16107,17 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
         "remote_info" => {
             let server_query = get_str("server")?;
             let path = get_str("path")?;
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let entry = provider.stat(&path).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let entry = provider
+                .stat(&effective_path)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             let entry = entry?;
             Ok(json!({
                 "server": server_query,
-                "path": path,
+                "path": effective_path,
                 "name": entry.name,
                 "is_dir": entry.is_dir,
                 "size": entry.size,
@@ -13852,19 +16131,29 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             let server_query = get_str("server")?;
             let path = get_str_opt("path").unwrap_or_else(|| "/".to_string());
             let pattern = get_str_opt("pattern").unwrap_or_else(|| "*".to_string());
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let entries = provider.find(&path, &pattern).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let entries = provider
+                .find(&effective_path, &pattern)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             let entries = entries?;
-            let items: Vec<serde_json::Value> = entries.iter().take(100).map(|e| json!({
-                "name": e.name,
-                "path": e.path,
-                "is_dir": e.is_dir,
-                "size": e.size,
-            })).collect();
+            let items: Vec<serde_json::Value> = entries
+                .iter()
+                .take(100)
+                .map(|e| {
+                    json!({
+                        "name": e.name,
+                        "path": e.path,
+                        "is_dir": e.is_dir,
+                        "size": e.size,
+                    })
+                })
+                .collect();
             Ok(json!({
                 "server": server_query,
-                "path": path,
+                "path": effective_path,
                 "pattern": pattern,
                 "results": items,
                 "total": entries.len(),
@@ -13884,7 +16173,8 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 return Err("Provide either 'local_path' or 'content'".to_string());
             }
 
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_remote_path = resolve_agent_remote_path(&initial_path, &remote_path)?;
             let upload_source = if let Some(local_path) = local_path {
                 let resolved = resolve_path(&local_path);
                 validate_path(&resolved, "local_path")?;
@@ -13897,12 +16187,15 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 temp.flush()
                     .map_err(|e| format!("Cannot flush temp upload file: {}", e))?;
                 let temp_path = temp.path().to_string_lossy().to_string();
-                match provider.upload(&temp_path, &remote_path, None).await {
+                match provider
+                    .upload(&temp_path, &effective_remote_path, None)
+                    .await
+                {
                     Ok(()) => {
                         let _ = provider.disconnect().await;
                         return Ok(json!({
                             "server": server_query,
-                            "remote_path": remote_path,
+                            "remote_path": effective_remote_path,
                             "uploaded": true,
                             "bytes": content.as_deref().unwrap_or_default().len(),
                         }));
@@ -13914,13 +16207,17 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 }
             };
 
-            let bytes = std::fs::metadata(&upload_source).map(|m| m.len()).unwrap_or(0);
-            let result = provider.upload(&upload_source, &remote_path, None).await;
+            let bytes = std::fs::metadata(&upload_source)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let result = provider
+                .upload(&upload_source, &effective_remote_path, None)
+                .await;
             let _ = provider.disconnect().await;
             result.map_err(|e| e.to_string())?;
             Ok(json!({
                 "server": server_query,
-                "remote_path": remote_path,
+                "remote_path": effective_remote_path,
                 "uploaded": true,
                 "bytes": bytes,
             }))
@@ -13935,16 +16232,17 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 std::fs::create_dir_all(parent)
                     .map_err(|e| format!("Cannot create local parent directory: {}", e))?;
             }
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_remote_path = resolve_agent_remote_path(&initial_path, &remote_path)?;
             let result = provider
-                .download(&remote_path, &local_path, None)
+                .download(&effective_remote_path, &local_path, None)
                 .await
                 .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             result?;
             Ok(json!({
                 "server": server_query,
-                "remote_path": remote_path,
+                "remote_path": effective_remote_path,
                 "local_path": local_path,
                 "downloaded": true,
             }))
@@ -13956,11 +16254,15 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             if path.contains('\0') {
                 return Err("path contains null bytes".to_string());
             }
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let result = provider.mkdir(&path).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let result = provider
+                .mkdir(&effective_path)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             result?;
-            Ok(json!({ "server": server_query, "path": path, "created": true }))
+            Ok(json!({ "server": server_query, "path": effective_path, "created": true }))
         }
 
         "remote_delete" => {
@@ -13969,11 +16271,15 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             if path.contains('\0') {
                 return Err("path contains null bytes".to_string());
             }
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let result = provider.delete(&path).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
+            let result = provider
+                .delete(&effective_path)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             result?;
-            Ok(json!({ "server": server_query, "path": path, "deleted": true }))
+            Ok(json!({ "server": server_query, "path": effective_path, "deleted": true }))
         }
 
         "remote_rename" => {
@@ -13983,11 +16289,18 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
             if from.contains('\0') || to.contains('\0') {
                 return Err("remote path contains null bytes".to_string());
             }
-            let (mut provider, _) = create_and_connect_for_agent(&server_query).await?;
-            let result = provider.rename(&from, &to).await.map_err(|e| e.to_string());
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_from = resolve_agent_remote_path(&initial_path, &from)?;
+            let effective_to = resolve_agent_remote_path(&initial_path, &to)?;
+            let result = provider
+                .rename(&effective_from, &effective_to)
+                .await
+                .map_err(|e| e.to_string());
             let _ = provider.disconnect().await;
             result?;
-            Ok(json!({ "server": server_query, "from": from, "to": to, "renamed": true }))
+            Ok(
+                json!({ "server": server_query, "from": effective_from, "to": effective_to, "renamed": true }),
+            )
         }
 
         "server_exec" => {
@@ -14004,62 +16317,72 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 ));
             }
 
-            // Validate path
-            if path.contains('\0') {
-                return Err("Path contains null bytes".to_string());
-            }
-
-            let (mut provider, _initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let (mut provider, initial_path) = create_and_connect_for_agent(&server_query).await?;
+            let effective_path = resolve_agent_remote_path(&initial_path, &path)?;
 
             let result = match operation.as_str() {
                 "ls" => {
-                    let entries = provider.list(&path).await.map_err(|e| e.to_string())?;
-                    let items: Vec<serde_json::Value> = entries.iter().take(200).map(|e| json!({
-                        "name": e.name,
-                        "path": e.path,
-                        "is_dir": e.is_dir,
-                        "size": e.size,
-                        "modified": e.modified,
-                    })).collect();
+                    let entries = provider
+                        .list(&effective_path)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let items: Vec<serde_json::Value> = entries
+                        .iter()
+                        .take(200)
+                        .map(|e| {
+                            json!({
+                                "name": e.name,
+                                "path": e.path,
+                                "is_dir": e.is_dir,
+                                "size": e.size,
+                                "modified": e.modified,
+                            })
+                        })
+                        .collect();
                     json!({
                         "operation": "ls",
                         "server": server_query,
-                        "path": path,
+                        "path": effective_path,
                         "entries": items,
                         "total": entries.len(),
                         "truncated": entries.len() > 200,
                     })
                 }
                 "cat" => {
-                    let data = provider.download_to_bytes(&path).await.map_err(|e| e.to_string())?;
-                    if data.len() > 5 * 1024 {
-                        let preview = String::from_utf8_lossy(&data[..5 * 1024]);
+                    let (preview, size, truncated) = read_remote_preview(&mut provider, &effective_path)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    if truncated {
+                        let preview = String::from_utf8_lossy(&preview);
                         json!({
                             "operation": "cat",
                             "server": server_query,
-                            "path": path,
+                            "path": effective_path,
                             "content": preview,
-                            "size": data.len(),
+                            "size": size,
                             "truncated": true,
                         })
                     } else {
-                        let content = String::from_utf8_lossy(&data);
+                        let content = String::from_utf8_lossy(&preview);
                         json!({
                             "operation": "cat",
                             "server": server_query,
-                            "path": path,
+                            "path": effective_path,
                             "content": content,
-                            "size": data.len(),
+                            "size": size,
                             "truncated": false,
                         })
                     }
                 }
                 "stat" => {
-                    let entry = provider.stat(&path).await.map_err(|e| e.to_string())?;
+                    let entry = provider
+                        .stat(&effective_path)
+                        .await
+                        .map_err(|e| e.to_string())?;
                     json!({
                         "operation": "stat",
                         "server": server_query,
-                        "path": path,
+                        "path": effective_path,
                         "name": entry.name,
                         "is_dir": entry.is_dir,
                         "size": entry.size,
@@ -14069,17 +16392,26 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                 }
                 "find" => {
                     let pat = pattern.unwrap_or_else(|| "*".to_string());
-                    let entries = provider.find(&path, &pat).await.map_err(|e| e.to_string())?;
-                    let items: Vec<serde_json::Value> = entries.iter().take(100).map(|e| json!({
-                        "name": e.name,
-                        "path": e.path,
-                        "is_dir": e.is_dir,
-                        "size": e.size,
-                    })).collect();
+                    let entries = provider
+                        .find(&effective_path, &pat)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let items: Vec<serde_json::Value> = entries
+                        .iter()
+                        .take(100)
+                        .map(|e| {
+                            json!({
+                                "name": e.name,
+                                "path": e.path,
+                                "is_dir": e.is_dir,
+                                "size": e.size,
+                            })
+                        })
+                        .collect();
                     json!({
                         "operation": "find",
                         "server": server_query,
-                        "path": path,
+                        "path": effective_path,
                         "pattern": pat,
                         "results": items,
                         "total": entries.len(),
@@ -14091,6 +16423,7 @@ async fn execute_cli_tool(tool_name: &str, args: &serde_json::Value) -> Result<s
                     json!({
                         "operation": "df",
                         "server": server_query,
+                        "path": effective_path,
                         "used_bytes": info.used,
                         "total_bytes": info.total,
                         "free_bytes": info.free,
@@ -14116,13 +16449,25 @@ fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
         _ => "\x1b[1;31mHIGH\x1b[0m",
     };
     eprintln!();
-    eprintln!("  \x1b[1m🔧 Tool Call:\x1b[0m {} [{}]", tool_name, level_str);
+    eprintln!(
+        "  \x1b[1m🔧 Tool Call:\x1b[0m {} [{}]",
+        tool_name, level_str
+    );
+    eprintln!(
+        "    category: {} · data-egress: {}",
+        tool_exposure_category(tool_name),
+        tool_data_egress(tool_name)
+    );
     // Show key arguments
     if let Some(obj) = args.as_object() {
         for (key, val) in obj {
             let display = match val {
                 serde_json::Value::String(s) => {
-                    if s.len() > 80 { format!("{}...", s.get(..77).unwrap_or(s)) } else { s.clone() }
+                    if s.len() > 80 {
+                        format!("{}...", s.get(..77).unwrap_or(s))
+                    } else {
+                        s.clone()
+                    }
                 }
                 other => other.to_string(),
             };
@@ -14200,7 +16545,10 @@ async fn agent_tool_loop(
             .map_err(|e| e.to_string())?;
 
         {
-            let mut usage = cfg.usage.lock().map_err(|_| "Agent usage lock poisoned".to_string())?;
+            let mut usage = cfg
+                .usage
+                .lock()
+                .map_err(|_| "Agent usage lock poisoned".to_string())?;
             usage.input_tokens += response.input_tokens.unwrap_or(0) as u64;
             usage.output_tokens += response.output_tokens.unwrap_or(0) as u64;
             usage.total_tokens += response.tokens_used.unwrap_or(0) as u64;
@@ -14224,8 +16572,7 @@ async fn agent_tool_loop(
         }
 
         // Check if model wants to call tools
-        let tool_calls = response.tool_calls.as_ref()
-            .filter(|tc| !tc.is_empty());
+        let tool_calls = response.tool_calls.as_ref().filter(|tc| !tc.is_empty());
 
         match tool_calls {
             None => {
@@ -14234,13 +16581,17 @@ async fn agent_tool_loop(
             }
             Some(calls) => {
                 if cfg.plan_only {
-                    let plan_lines: Vec<String> = calls.iter().map(|tc| {
-                        format!(
-                            "- {} {}",
-                            tc.name,
-                            serde_json::to_string(&tc.arguments).unwrap_or_else(|_| "{}".to_string())
-                        )
-                    }).collect();
+                    let plan_lines: Vec<String> = calls
+                        .iter()
+                        .map(|tc| {
+                            format!(
+                                "- {} {}",
+                                tc.name,
+                                serde_json::to_string(&tc.arguments)
+                                    .unwrap_or_else(|_| "{}".to_string())
+                            )
+                        })
+                        .collect();
                     let mut output = response.content.clone();
                     if !output.is_empty() {
                         output.push_str("\n\n");
@@ -14259,7 +16610,10 @@ async fn agent_tool_loop(
                             images: None,
                         });
                     }
-                    return Ok(format!("{}\n\n[Reached max steps limit ({}).]", response.content, cfg.max_steps));
+                    return Ok(format!(
+                        "{}\n\n[Reached max steps limit ({}).]",
+                        response.content, cfg.max_steps
+                    ));
                 }
 
                 // Show assistant text if any
@@ -14269,9 +16623,10 @@ async fn agent_tool_loop(
 
                 // Add assistant message with tool call markers
                 let mut assistant_text = response.content.clone();
-                let tool_call_desc: Vec<String> = calls.iter().map(|tc| {
-                    format!("[Tool call: {} ({})]", tc.name, tc.id)
-                }).collect();
+                let tool_call_desc: Vec<String> = calls
+                    .iter()
+                    .map(|tc| format!("[Tool call: {} ({})]", tc.name, tc.id))
+                    .collect();
                 if !assistant_text.is_empty() {
                     assistant_text.push('\n');
                 }
@@ -14289,7 +16644,12 @@ async fn agent_tool_loop(
                     // Check approval
                     let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
                         if is_tty {
-                            eprintln!("  \x1b[32m✓\x1b[0m Auto-approved: {} (safe)", tc.name);
+                            eprintln!(
+                                "  \x1b[32m✓\x1b[0m Auto-approved: {} ({} · egress: {})",
+                                tc.name,
+                                tool_exposure_category(&tc.name),
+                                tool_data_egress(&tc.name)
+                            );
                         }
                         true
                     } else if is_tty && io::stdin().is_terminal() {
@@ -14311,7 +16671,11 @@ async fn agent_tool_loop(
                                 }
                                 let s = val.to_string();
                                 if s.len() > 8192 {
-                                    format!("{}... [truncated, {} bytes total]", s.get(..8192).unwrap_or(&s), s.len())
+                                    format!(
+                                        "{}... [truncated, {} bytes total]",
+                                        s.get(..8192).unwrap_or(&s),
+                                        s.len()
+                                    )
                                 } else {
                                     s
                                 }
@@ -14429,10 +16793,17 @@ async fn cmd_agent(
                     let provider_label = provider.provider_type().to_string();
                     let display = provider.display_name();
                     let _ = provider.disconnect().await;
-                    format!("Pre-validated remote target: {} ({}) path {}", display, provider_label, initial_path)
+                    format!(
+                        "Pre-validated remote target: {} ({}) path {}",
+                        display, provider_label, initial_path
+                    )
                 }
                 Err(code) => {
-                    print_error(format, &format!("agent pre-connect failed for '{}'", target), code);
+                    print_error(
+                        format,
+                        &format!("agent pre-connect failed for '{}'", target),
+                        code,
+                    );
                     return code;
                 }
             }
@@ -14442,7 +16813,10 @@ async fn cmd_agent(
                     let provider_label = provider.provider_type().to_string();
                     let display = provider.display_name();
                     let _ = provider.disconnect().await;
-                    format!("Pre-validated saved server: {} ({}) path {}", display, provider_label, initial_path)
+                    format!(
+                        "Pre-validated saved server: {} ({}) path {}",
+                        display, provider_label, initial_path
+                    )
                 }
                 Err(e) => {
                     print_error(format, &format!("agent pre-connect failed: {}", e), 6);
@@ -14486,7 +16860,11 @@ async fn cmd_agent(
         // CL-004: Limit stdin to 1 MB to prevent OOM
         let mut limited = io::Read::take(io::stdin(), 1_048_576);
         if let Ok(n) = io::Read::read_to_string(&mut limited, &mut buf) {
-            if n > 0 { Some(buf) } else { None }
+            if n > 0 {
+                Some(buf)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -14526,11 +16904,7 @@ struct AgentUsage {
 }
 
 /// One-shot agent mode
-async fn cmd_agent_oneshot(
-    message: &str,
-    cfg: &AgentConfig,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_agent_oneshot(message: &str, cfg: &AgentConfig, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::ai::ChatMessage;
 
     let mut messages = vec![ChatMessage {
@@ -14545,10 +16919,13 @@ async fn cmd_agent_oneshot(
         Ok(response) => {
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::json!({
-                        "status": "ok",
-                        "response": response,
-                    }));
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "status": "ok",
+                            "response": response,
+                        })
+                    );
                 }
                 OutputFormat::Text => {
                     println!("{}", response);
@@ -14559,10 +16936,13 @@ async fn cmd_agent_oneshot(
         Err(e) => {
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::json!({
-                        "status": "error",
-                        "error": e,
-                    }));
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "status": "error",
+                            "error": e,
+                        })
+                    );
                 }
                 OutputFormat::Text => {
                     eprintln!("Error: {}", e);
@@ -14586,10 +16966,16 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
     eprintln!("  \x1b[1m│           AeroAgent Interactive              │\x1b[0m");
     eprintln!("  \x1b[1m│       AI-Powered File Operations Shell       │\x1b[0m");
     eprintln!("  \x1b[1m│                                              │\x1b[0m");
-    eprintln!("  \x1b[1m│  {} tools · 19 AI providers · tool execution  │\x1b[0m", cli_tool_count);
+    eprintln!(
+        "  \x1b[1m│  {} tools · 19 AI providers · tool execution  │\x1b[0m",
+        cli_tool_count
+    );
     eprintln!("  \x1b[1m╰─────────────────────────────────────────────╯\x1b[0m");
     eprintln!();
-    eprintln!("  \x1b[36mProvider:\x1b[0m  {} ({})", cfg.provider_name, cfg.model);
+    eprintln!(
+        "  \x1b[36mProvider:\x1b[0m  {} ({})",
+        cfg.provider_name, cfg.model
+    );
     let mode_str = match cfg.approve_level {
         0 => "Manual (approve all tools)",
         1 => "Safe (auto-approve safe tools)",
@@ -14641,17 +17027,24 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                 "/tools" => {
                     let tools = cli_tool_definitions();
                     eprintln!("\n  \x1b[1mAvailable Tools ({}):\x1b[0m\n", tools.len());
-                    for t in &tools {
-                        let danger = tool_danger_level(&t.name);
-                        let label = match danger {
-                            0 => "\x1b[32mSAFE\x1b[0m",
-                            1 => "\x1b[33mMEDIUM\x1b[0m",
-                            _ => "\x1b[1;31mHIGH\x1b[0m",
-                        };
-                        eprintln!("  [{}] \x1b[1m{}\x1b[0m — {}", label, t.name, t.description);
-                    }
-                    eprintln!();
-                }
+                     for t in &tools {
+                         let danger = tool_danger_level(&t.name);
+                         let label = match danger {
+                             0 => "\x1b[32mSAFE\x1b[0m",
+                             1 => "\x1b[33mMEDIUM\x1b[0m",
+                             _ => "\x1b[1;31mHIGH\x1b[0m",
+                         };
+                         eprintln!(
+                             "  [{}] \x1b[1m{}\x1b[0m — {} ({}, egress: {})",
+                             label,
+                             t.name,
+                             t.description,
+                             tool_exposure_category(&t.name),
+                             tool_data_egress(&t.name)
+                         );
+                     }
+                     eprintln!();
+                 }
                 "/context" => {
                     let cwd = std::env::current_dir()
                         .map(|p| p.to_string_lossy().to_string())
@@ -14665,23 +17058,21 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                     conversation.clear();
                     eprintln!("  Conversation cleared.\n");
                 }
-                "/cost" => {
-                    match cfg.usage.lock() {
-                        Ok(usage) => {
-                            let estimated = estimate_ai_cost_usd(
-                                &cfg.provider_name,
-                                usage.input_tokens,
-                                usage.output_tokens,
-                            );
-                            eprintln!("  Messages:      {}", conversation.len());
-                            eprintln!("  Input tokens:  {}", usage.input_tokens);
-                            eprintln!("  Output tokens: {}", usage.output_tokens);
-                            eprintln!("  Total tokens:  {}", usage.total_tokens);
-                            eprintln!("  Est. cost:     ${:.4}\n", estimated);
-                        }
-                        Err(_) => eprintln!("  Token usage unavailable.\n"),
+                "/cost" => match cfg.usage.lock() {
+                    Ok(usage) => {
+                        let estimated = estimate_ai_cost_usd(
+                            &cfg.provider_name,
+                            usage.input_tokens,
+                            usage.output_tokens,
+                        );
+                        eprintln!("  Messages:      {}", conversation.len());
+                        eprintln!("  Input tokens:  {}", usage.input_tokens);
+                        eprintln!("  Output tokens: {}", usage.output_tokens);
+                        eprintln!("  Total tokens:  {}", usage.total_tokens);
+                        eprintln!("  Est. cost:     ${:.4}\n", estimated);
                     }
-                }
+                    Err(_) => eprintln!("  Token usage unavailable.\n"),
+                },
                 "/quit" | "/exit" | "/q" => break,
                 other => {
                     eprintln!("  Unknown command: {}", other);
@@ -14750,14 +17141,17 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
     // Emit ready notification with actual CLI tool count
     let cli_tools = cli_tool_definitions();
     let cli_tool_count = cli_tools.len();
-    println!("{}", serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "agent/ready",
-        "params": {
-            "version": env!("CARGO_PKG_VERSION"),
-            "tools": cli_tool_count,
-        }
-    }));
+    println!(
+        "{}",
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "agent/ready",
+            "params": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "tools": cli_tool_count,
+            }
+        })
+    );
 
     const ORCH_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
     let stdin = io::stdin();
@@ -14767,11 +17161,14 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
             Err(_) => break,
         };
         if line.len() > ORCH_MAX_LINE_BYTES {
-            println!("{}", serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": null,
-                "error": { "code": -32600, "message": "Line exceeds 1 MB limit" }
-            }));
+            println!(
+                "{}",
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": { "code": -32600, "message": "Line exceeds 1 MB limit" }
+                })
+            );
             continue;
         }
         let line = line.trim().to_string();
@@ -14783,11 +17180,14 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
         let req: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": null,
-                    "error": { "code": -32700, "message": format!("Parse error: {}", e) }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": null,
+                        "error": { "code": -32700, "message": format!("Parse error: {}", e) }
+                    })
+                );
                 continue;
             }
         };
@@ -14800,10 +17200,13 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
             "agent/chat" | "agent.chat" => {
                 let msg = params.get("message").and_then(|v| v.as_str()).unwrap_or("");
                 if msg.is_empty() {
-                    println!("{}", serde_json::json!({
-                        "jsonrpc": "2.0", "id": id,
-                        "error": { "code": -32602, "message": "Missing 'message' parameter" }
-                    }));
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "jsonrpc": "2.0", "id": id,
+                            "error": { "code": -32602, "message": "Missing 'message' parameter" }
+                        })
+                    );
                     continue;
                 }
 
@@ -14814,11 +17217,14 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
                 });
 
                 // Emit thinking notification
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "stream/thinking",
-                    "params": { "content": "Processing..." }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "stream/thinking",
+                        "params": { "content": "Processing..." }
+                    })
+                );
 
                 match agent_tool_loop(cfg, &mut conversation, false).await {
                     Ok(response) => {
@@ -14831,76 +17237,98 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
                         if conversation.len() > 40 {
                             conversation.drain(..conversation.len() - 40);
                         }
-                        println!("{}", serde_json::json!({
-                            "jsonrpc": "2.0", "id": id,
-                            "result": {
-                                "status": "ok",
-                                "response": response,
-                                "messages": conversation.len(),
-                            }
-                        }));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "jsonrpc": "2.0", "id": id,
+                                "result": {
+                                    "status": "ok",
+                                    "response": response,
+                                    "messages": conversation.len(),
+                                }
+                            })
+                        );
                     }
                     Err(e) => {
                         conversation.pop(); // Remove failed user message
-                        println!("{}", serde_json::json!({
-                            "jsonrpc": "2.0", "id": id,
-                            "error": { "code": -32000, "message": e }
-                        }));
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "jsonrpc": "2.0", "id": id,
+                                "error": { "code": -32000, "message": e }
+                            })
+                        );
                     }
                 }
             }
 
             "session/status" | "agent.status" => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": {
-                        "status": "ok",
-                        "messages": conversation.len(),
-                        "tools": cli_tool_count,
-                    }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": {
+                            "status": "ok",
+                            "messages": conversation.len(),
+                            "tools": cli_tool_count,
+                        }
+                    })
+                );
             }
 
             "session/clear" | "agent.clear" => {
                 conversation.clear();
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": { "status": "ok" }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": { "status": "ok" }
+                    })
+                );
             }
 
             "session/close" | "agent.close" => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": { "status": "ok" }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": { "status": "ok" }
+                    })
+                );
                 break;
             }
 
             "tool/list" | "agent.tools" => {
                 // Expose only tools actually implemented in CLI executor
-                let tool_entries: Vec<serde_json::Value> = cli_tools.iter().map(|t| {
-                    serde_json::json!({
-                        "name": t.name,
-                        "description": t.description,
-                        "danger": match tool_danger_level(&t.name) {
-                            0 => "safe",
-                            1 => "medium",
-                            _ => "high",
-                        }
+                let tool_entries: Vec<serde_json::Value> = cli_tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "name": t.name,
+                            "description": t.description,
+                            "danger": tool_danger_name(&t.name),
+                            "category": tool_exposure_category(&t.name),
+                            "data_egress": tool_data_egress(&t.name)
+                        })
                     })
-                }).collect();
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "result": { "tools": tool_entries }
-                }));
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": { "tools": tool_entries }
+                    })
+                );
             }
 
             _ => {
-                println!("{}", serde_json::json!({
-                    "jsonrpc": "2.0", "id": id,
-                    "error": { "code": -32601, "message": format!("Method not found: {}", method) }
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32601, "message": format!("Method not found: {}", method) }
+                    })
+                );
             }
         }
     }
@@ -14929,12 +17357,20 @@ async fn main() {
     // Show banner when help is displayed (no args, --help, or -h)
     let raw_args: Vec<String> = std::env::args().collect();
     let show_help = raw_args.len() <= 1
-        || raw_args.iter().any(|a| a == "--help" || a == "-h" || a == "help");
+        || raw_args
+            .iter()
+            .any(|a| a == "--help" || a == "-h" || a == "help");
     if show_help {
         if use_color() {
-            eprintln!("\x1b[38;2;0;255;255m  ___    __________  ____  __________ ______  ______\x1b[0m");
-            eprintln!("\x1b[38;2;0;220;255m /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/\x1b[0m");
-            eprintln!("\x1b[38;2;80;180;255m/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    \x1b[0m");
+            eprintln!(
+                "\x1b[38;2;0;255;255m  ___    __________  ____  __________ ______  ______\x1b[0m"
+            );
+            eprintln!(
+                "\x1b[38;2;0;220;255m /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/\x1b[0m"
+            );
+            eprintln!(
+                "\x1b[38;2;80;180;255m/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    \x1b[0m"
+            );
             eprintln!("\x1b[38;2;180;120;255m/ ___ |/ /___/ _, _/ /_/ / __/ / ____/ / /   / /___  \x1b[0m");
             eprintln!("\x1b[38;2;255;80;220m/_/  |_/_____/_/ |_|\\____/_/   /_/     /_/    \\____/  \x1b[0m");
             eprintln!(
@@ -15033,14 +17469,32 @@ async fn main() {
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
-                last_code = cmd_get(u, r, l, *recursive, *segments, &cli, format, cancelled.clone()).await;
-                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                last_code = cmd_get(
+                    u,
+                    r,
+                    l,
+                    *recursive,
+                    *segments,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                if !is_retryable_exit(last_code)
+                    || session_transfer_exceeded(max_transfer_limit)
+                    || attempt == max_attempts
+                {
                     break;
                 }
                 if !cli.quiet {
-                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                    eprintln!(
+                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                        attempt, max_attempts, last_code, sleep_dur
+                    );
                 }
-                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+                if !sleep_dur.is_zero() {
+                    tokio::time::sleep(sleep_dur).await;
+                }
             }
             last_code
         }
@@ -15061,13 +17515,21 @@ async fn main() {
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
                 last_code = cmd_put(u, l, r, *recursive, &cli, format, cancelled.clone()).await;
-                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                if !is_retryable_exit(last_code)
+                    || session_transfer_exceeded(max_transfer_limit)
+                    || attempt == max_attempts
+                {
                     break;
                 }
                 if !cli.quiet {
-                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                    eprintln!(
+                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                        attempt, max_attempts, last_code, sleep_dur
+                    );
                 }
-                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+                if !sleep_dur.is_zero() {
+                    tokio::time::sleep(sleep_dur).await;
+                }
             }
             last_code
         }
@@ -15108,13 +17570,28 @@ async fn main() {
             };
             cmd_cp(u, f, t, &cli, format).await
         }
-        Commands::Link { url, path, expires, password, permissions } => {
+        Commands::Link {
+            url,
+            path,
+            expires,
+            password,
+            permissions,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_link(u, p, expires.as_deref(), password.as_deref(), permissions.as_str(), &cli, format).await
+            cmd_link(
+                u,
+                p,
+                expires.as_deref(),
+                password.as_deref(),
+                permissions.as_str(),
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Edit {
             url,
@@ -15147,37 +17624,103 @@ async fn main() {
             cmd_rcat(u, p, &cli, format).await
         }
         Commands::Serve { command } => match command {
-            ServeCommands::Http { url, path, addr } => {
+            ServeCommands::Http {
+                url,
+                path,
+                addr,
+                allow_remote_bind,
+                auth_token,
+            } => {
                 let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                     ("_", url.as_str())
                 } else {
                     (url.as_str(), path.as_str())
                 };
-                cmd_serve_http(u, p, addr, &cli, format).await
+                cmd_serve_http(u, p, addr, *allow_remote_bind, auth_token.clone(), &cli, format)
+                    .await
             }
-            ServeCommands::WebDav { url, path, addr } => {
+            ServeCommands::WebDav {
+                url,
+                path,
+                addr,
+                allow_remote_bind,
+                auth_token,
+            } => {
                 let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                     ("_", url.as_str())
                 } else {
                     (url.as_str(), path.as_str())
                 };
-                cmd_serve_webdav(u, p, addr, &cli, format).await
+                cmd_serve_webdav(
+                    u,
+                    p,
+                    addr,
+                    *allow_remote_bind,
+                    auth_token.clone(),
+                    &cli,
+                    format,
+                )
+                .await
             }
-            ServeCommands::Ftp { url, path, addr, passive_ports } => {
+            ServeCommands::Ftp {
+                url,
+                path,
+                addr,
+                allow_remote_bind,
+                auth_user,
+                auth_password,
+                passive_ports,
+            } => {
                 let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                     ("_", url.as_str())
                 } else {
                     (url.as_str(), path.as_str())
                 };
-                cmd_serve_ftp(u, p, addr, passive_ports, &cli, format).await
+                cmd_serve_ftp(
+                    u,
+                    p,
+                    ServeEndpointOptions {
+                        addr: addr.clone(),
+                        allow_remote_bind: *allow_remote_bind,
+                        auth: ServeAuthOptions {
+                            username: auth_user.clone(),
+                            password: auth_password.clone(),
+                        },
+                    },
+                    passive_ports,
+                    &cli,
+                    format,
+                )
+                .await
             }
-            ServeCommands::Sftp { url, path, addr } => {
+            ServeCommands::Sftp {
+                url,
+                path,
+                addr,
+                allow_remote_bind,
+                auth_user,
+                auth_password,
+            } => {
                 let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                     ("_", url.as_str())
                 } else {
                     (url.as_str(), path.as_str())
                 };
-                cmd_serve_sftp(u, p, addr, &cli, format).await
+                cmd_serve_sftp(
+                    u,
+                    p,
+                    ServeEndpointOptions {
+                        addr: addr.clone(),
+                        allow_remote_bind: *allow_remote_bind,
+                        auth: ServeAuthOptions {
+                            username: auth_user.clone(),
+                            password: auth_password.clone(),
+                        },
+                    },
+                    &cli,
+                    format,
+                )
+                .await
             }
         },
         Commands::Head { url, path, lines } => {
@@ -15196,7 +17739,11 @@ async fn main() {
             };
             cmd_tail(u, p, *lines, &cli, format).await
         }
-        Commands::Touch { url, path, timestamp } => {
+        Commands::Touch {
+            url,
+            path,
+            timestamp,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
@@ -15239,11 +17786,7 @@ async fn main() {
             };
             cmd_stat(u, p, &cli, format).await
         }
-        Commands::Find {
-            url,
-            path,
-            pattern,
-        } => {
+        Commands::Find { url, path, pattern } => {
             let (u, p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), path.as_str())
             } else {
@@ -15291,11 +17834,28 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             #[cfg(target_os = "linux")]
-            { cmd_mount(u, mountpoint, p, *cache_ttl, *allow_other, *read_only, &cli, format).await }
+            {
+                cmd_mount(
+                    u,
+                    mountpoint,
+                    p,
+                    *cache_ttl,
+                    *allow_other,
+                    *read_only,
+                    &cli,
+                    format,
+                )
+                .await
+            }
             #[cfg(windows)]
-            { cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await }
+            {
+                cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await
+            }
             #[cfg(not(any(target_os = "linux", windows)))]
-            { print_error(format, "Mount is not supported on this platform", 7); 7 }
+            {
+                print_error(format, "Mount is not supported on this platform", 7);
+                7
+            }
         }
         Commands::Sync {
             url,
@@ -15323,23 +17883,48 @@ async fn main() {
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
                 last_code = cmd_sync(
-                    u, l, r, direction, *dry_run, *delete, exclude,
-                    *track_renames, max_delete.as_deref(), backup_dir.as_deref(), backup_suffix,
-                    conflict_mode, *resync,
-                    &cli, format, cancelled.clone(),
-                ).await;
-                if !is_retryable_exit(last_code) || session_transfer_exceeded(max_transfer_limit) || attempt == max_attempts {
+                    u,
+                    l,
+                    r,
+                    direction,
+                    *dry_run,
+                    *delete,
+                    exclude,
+                    *track_renames,
+                    max_delete.as_deref(),
+                    backup_dir.as_deref(),
+                    backup_suffix,
+                    conflict_mode,
+                    *resync,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                if !is_retryable_exit(last_code)
+                    || session_transfer_exceeded(max_transfer_limit)
+                    || attempt == max_attempts
+                {
                     break;
                 }
                 if !cli.quiet {
-                    eprintln!("Attempt {}/{} failed (exit {}), retrying in {:?}...", attempt, max_attempts, last_code, sleep_dur);
+                    eprintln!(
+                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                        attempt, max_attempts, last_code, sleep_dur
+                    );
                 }
-                if !sleep_dur.is_zero() { tokio::time::sleep(sleep_dur).await; }
+                if !sleep_dur.is_zero() {
+                    tokio::time::sleep(sleep_dur).await;
+                }
             }
             last_code
         }
         Commands::About { url } => {
-            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url };
+            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                "_"
+            } else {
+                url
+            };
             cmd_about(u, &cli, format).await
         }
         Commands::Speed {
@@ -15353,9 +17938,22 @@ async fn main() {
             } else {
                 url.as_str()
             };
-            cmd_speed(u, test_size, *iterations, remote_path.as_deref(), &cli, format).await
+            cmd_speed(
+                u,
+                test_size,
+                *iterations,
+                remote_path.as_deref(),
+                &cli,
+                format,
+            )
+            .await
         }
-        Commands::Dedupe { url, path, mode, dry_run } => {
+        Commands::Dedupe {
+            url,
+            path,
+            mode,
+            dry_run,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
@@ -15396,35 +17994,74 @@ async fn main() {
                 }
             };
             match command {
-                CryptCommands::Init { url, path, password } => {
+                CryptCommands::Init {
+                    url,
+                    path,
+                    password,
+                } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
                     if pw.is_empty() {
                         print_error(format, "Password required for crypt init", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                            "_"
+                        } else {
+                            url.as_str()
+                        };
                         cmd_crypt_init(u, path, &pw, &cli, format).await
                     }
                 }
-                CryptCommands::Ls { url, path, password } => {
+                CryptCommands::Ls {
+                    url,
+                    path,
+                    password,
+                } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                        "_"
+                    } else {
+                        url.as_str()
+                    };
                     cmd_crypt_ls(u, path, &pw, &cli, format).await
                 }
-                CryptCommands::Put { local, url, remote, password } => {
+                CryptCommands::Put {
+                    local,
+                    url,
+                    remote,
+                    password,
+                } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                        "_"
+                    } else {
+                        url.as_str()
+                    };
                     cmd_crypt_put(u, local, remote, &pw, &cli, format).await
                 }
-                CryptCommands::Get { remote, url, path, local, password } => {
+                CryptCommands::Get {
+                    remote,
+                    url,
+                    path,
+                    local,
+                    password,
+                } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" { "_" } else { url.as_str() };
+                    let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                        "_"
+                    } else {
+                        url.as_str()
+                    };
                     cmd_crypt_get(u, remote, path, local, &pw, &cli, format).await
                 }
             }
         }
         Commands::Daemon { command } => match command {
-            DaemonCommands::Start { addr } => cmd_daemon_start(addr, &cli, format).await,
+            DaemonCommands::Start {
+                addr,
+                allow_remote_bind,
+                auth_token,
+            } => cmd_daemon_start(addr, *allow_remote_bind, auth_token.clone(), &cli, format).await,
             DaemonCommands::Stop => cmd_daemon_stop(format).await,
             DaemonCommands::Status => cmd_daemon_status(format).await,
         },
@@ -15456,7 +18093,11 @@ async fn main() {
                 provider.clone(),
                 model.clone(),
                 connect.clone(),
-                if *yes { "all".to_string() } else { auto_approve.clone() },
+                if *yes {
+                    "all".to_string()
+                } else {
+                    auto_approve.clone()
+                },
                 *max_steps,
                 *orchestrate,
                 *mcp,
@@ -15608,7 +18249,8 @@ mod tests {
     #[test]
     fn test_url_parsing_ftp() {
         let cli = test_cli();
-        let (config, path) = url_to_provider_config("ftp://anonymous:test@ftp.example.com", &cli).unwrap();
+        let (config, path) =
+            url_to_provider_config("ftp://anonymous:test@ftp.example.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Ftp);
         assert_eq!(config.host, "ftp.example.com");
         assert_eq!(config.username.as_deref(), Some("anonymous"));
@@ -15618,7 +18260,8 @@ mod tests {
     #[test]
     fn test_url_parsing_sftp_with_port() {
         let cli = test_cli();
-        let (config, path) = url_to_provider_config("sftp://admin:test@server.com:2222/home", &cli).unwrap();
+        let (config, path) =
+            url_to_provider_config("sftp://admin:test@server.com:2222/home", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Sftp);
         assert_eq!(config.host, "server.com");
         assert_eq!(config.port, Some(2222));
@@ -15629,7 +18272,8 @@ mod tests {
     #[test]
     fn test_url_parsing_webdavs() {
         let cli = test_cli();
-        let (config, _path) = url_to_provider_config("webdavs://user:test@cloud.example.com/dav", &cli).unwrap();
+        let (config, _path) =
+            url_to_provider_config("webdavs://user:test@cloud.example.com/dav", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::WebDav);
         assert!(config.host.starts_with("https://"));
     }
@@ -15639,10 +18283,17 @@ mod tests {
         let mut cli = test_cli();
         cli.bucket = Some("mybucket".to_string());
         cli.region = Some("eu-west-1".to_string());
-        let (config, _path) = url_to_provider_config("s3://AKID:secret@s3.amazonaws.com", &cli).unwrap();
+        let (config, _path) =
+            url_to_provider_config("s3://AKID:secret@s3.amazonaws.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::S3);
-        assert_eq!(config.extra.get("bucket").map(|s| s.as_str()), Some("mybucket"));
-        assert_eq!(config.extra.get("region").map(|s| s.as_str()), Some("eu-west-1"));
+        assert_eq!(
+            config.extra.get("bucket").map(|s| s.as_str()),
+            Some("mybucket")
+        );
+        assert_eq!(
+            config.extra.get("region").map(|s| s.as_str()),
+            Some("eu-west-1")
+        );
     }
 
     #[test]
@@ -15650,14 +18301,27 @@ mod tests {
         let mut extra = HashMap::new();
 
         insert_profile_option(&mut extra, "pathStyle", &json!(false));
-        insert_profile_option(&mut extra, "endpoint", &json!("https://cos.ap-guangzhou.myqcloud.com"));
+        insert_profile_option(
+            &mut extra,
+            "endpoint",
+            &json!("https://cos.ap-guangzhou.myqcloud.com"),
+        );
         insert_profile_option(&mut extra, "bucket", &json!("mybucket-1250000000"));
         insert_profile_option(&mut extra, "region", &json!("ap-guangzhou"));
 
         assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("false"));
-        assert_eq!(extra.get("endpoint").map(|s| s.as_str()), Some("https://cos.ap-guangzhou.myqcloud.com"));
-        assert_eq!(extra.get("bucket").map(|s| s.as_str()), Some("mybucket-1250000000"));
-        assert_eq!(extra.get("region").map(|s| s.as_str()), Some("ap-guangzhou"));
+        assert_eq!(
+            extra.get("endpoint").map(|s| s.as_str()),
+            Some("https://cos.ap-guangzhou.myqcloud.com")
+        );
+        assert_eq!(
+            extra.get("bucket").map(|s| s.as_str()),
+            Some("mybucket-1250000000")
+        );
+        assert_eq!(
+            extra.get("region").map(|s| s.as_str()),
+            Some("ap-guangzhou")
+        );
     }
 
     #[test]
@@ -15677,7 +18341,8 @@ mod tests {
 
     #[test]
     fn test_display_port_for_provider_parses_server_info() {
-        let port = display_port_for_provider(&ProviderType::Ftp, Some("FTP Server: ftp.axpdev.it:21"));
+        let port =
+            display_port_for_provider(&ProviderType::Ftp, Some("FTP Server: ftp.axpdev.it:21"));
         assert_eq!(port, 21);
     }
 
@@ -15711,7 +18376,8 @@ mod tests {
     #[test]
     fn test_url_parsing_opendrive() {
         let cli = test_cli();
-        let (config, _) = url_to_provider_config("opendrive://user:test@dev.opendrive.com", &cli).unwrap();
+        let (config, _) =
+            url_to_provider_config("opendrive://user:test@dev.opendrive.com", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::OpenDrive);
         assert_eq!(config.host, "dev.opendrive.com");
     }
@@ -15760,7 +18426,10 @@ mod tests {
     fn test_validate_relative_path_normal() {
         assert_eq!(validate_relative_path("file.txt"), Some("file.txt"));
         assert_eq!(validate_relative_path("dir/file.txt"), Some("dir/file.txt"));
-        assert_eq!(validate_relative_path("/dir/file.txt"), Some("dir/file.txt"));
+        assert_eq!(
+            validate_relative_path("/dir/file.txt"),
+            Some("dir/file.txt")
+        );
     }
 
     #[test]
@@ -15809,13 +18478,19 @@ mod tests {
     #[test]
     fn test_sanitize_filename_normal() {
         assert_eq!(sanitize_filename("normal.txt"), "normal.txt");
-        assert_eq!(sanitize_filename("file with spaces.doc"), "file with spaces.doc");
+        assert_eq!(
+            sanitize_filename("file with spaces.doc"),
+            "file with spaces.doc"
+        );
     }
 
     #[test]
     fn test_sanitize_filename_ansi_escape() {
         assert_eq!(sanitize_filename("\x1b[31mred\x1b[0m"), "red");
-        assert_eq!(sanitize_filename("before\x1b[1;32mgreen\x1b[0mafter"), "beforegreenafter");
+        assert_eq!(
+            sanitize_filename("before\x1b[1;32mgreen\x1b[0mafter"),
+            "beforegreenafter"
+        );
     }
 
     #[test]
@@ -15897,7 +18572,10 @@ mod tests {
         assert_eq!(total, 10_000_003);
         // Offsets are contiguous
         for i in 1..chunks.len() {
-            assert_eq!(chunks[i].offset, chunks[i - 1].offset + chunks[i - 1].length);
+            assert_eq!(
+                chunks[i].offset,
+                chunks[i - 1].offset + chunks[i - 1].length
+            );
         }
     }
 
@@ -15946,9 +18624,15 @@ mod tests {
         let temp_path = temp_dir.path().to_str().unwrap();
 
         // Write 3 chunk files
-        tokio::fs::write(format!("{}/chunk_0000", temp_path), b"Hello, ").await.unwrap();
-        tokio::fs::write(format!("{}/chunk_0001", temp_path), b"segmented ").await.unwrap();
-        tokio::fs::write(format!("{}/chunk_0002", temp_path), b"world!").await.unwrap();
+        tokio::fs::write(format!("{}/chunk_0000", temp_path), b"Hello, ")
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{}/chunk_0001", temp_path), b"segmented ")
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{}/chunk_0002", temp_path), b"world!")
+            .await
+            .unwrap();
 
         let dest = temp_dir.path().join("assembled.bin");
         let dest_str = dest.to_str().unwrap();
@@ -15967,8 +18651,12 @@ mod tests {
         // Write binary chunk data
         let chunk0: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
         let chunk1: Vec<u8> = (1024..2048).map(|i| (i % 256) as u8).collect();
-        tokio::fs::write(format!("{}/chunk_0000", temp_path), &chunk0).await.unwrap();
-        tokio::fs::write(format!("{}/chunk_0001", temp_path), &chunk1).await.unwrap();
+        tokio::fs::write(format!("{}/chunk_0000", temp_path), &chunk0)
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{}/chunk_0001", temp_path), &chunk1)
+            .await
+            .unwrap();
 
         let dest = temp_dir.path().join("assembled.bin");
         let dest_str = dest.to_str().unwrap();
@@ -15995,7 +18683,10 @@ mod tests {
             // guard goes out of scope here
         }
 
-        assert!(!guard_path.exists(), "temp dir should be cleaned up by PgetTempGuard");
+        assert!(
+            !guard_path.exists(),
+            "temp dir should be cleaned up by PgetTempGuard"
+        );
     }
 
     // ── serve http helper tests ──────────────────────────────────────
@@ -16013,7 +18704,10 @@ mod tests {
     #[test]
     fn test_sanitize_served_relative_path_valid() {
         assert_eq!(sanitize_served_relative_path("foo/bar").unwrap(), "foo/bar");
-        assert_eq!(sanitize_served_relative_path("/foo/bar").unwrap(), "foo/bar");
+        assert_eq!(
+            sanitize_served_relative_path("/foo/bar").unwrap(),
+            "foo/bar"
+        );
         assert_eq!(sanitize_served_relative_path("").unwrap(), "");
         assert_eq!(sanitize_served_relative_path("/").unwrap(), "");
         assert_eq!(sanitize_served_relative_path("./foo").unwrap(), "foo");
@@ -16034,18 +18728,124 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_bind_addr_loopback_only_by_default() {
+        let loopback = validate_bind_addr("127.0.0.1:8080", false, "HTTP serve").unwrap();
+        assert!(loopback.ip().is_loopback());
+        assert!(validate_bind_addr("0.0.0.0:8080", false, "HTTP serve").is_err());
+        assert!(validate_bind_addr("192.168.1.10:8080", false, "HTTP serve").is_err());
+        assert!(validate_bind_addr("0.0.0.0:8080", true, "HTTP serve").is_ok());
+    }
+
+    #[test]
     fn test_build_served_remote_path() {
         assert_eq!(build_served_remote_path("/data", ""), "/data");
-        assert_eq!(build_served_remote_path("/data", "sub/file.txt"), "/data/sub/file.txt");
+        assert_eq!(
+            build_served_remote_path("/data", "sub/file.txt"),
+            "/data/sub/file.txt"
+        );
         assert_eq!(build_served_remote_path("/", "file.txt"), "/file.txt");
         assert_eq!(build_served_remote_path("/", ""), "/");
     }
 
     #[test]
+    fn test_resolve_served_backend_path_confines_traversal() {
+        assert_eq!(
+            resolve_served_backend_path("/base", "docs/readme.txt").unwrap(),
+            "/base/docs/readme.txt"
+        );
+        assert_eq!(
+            resolve_served_backend_path("/base", "/docs/readme.txt").unwrap(),
+            "/base/docs/readme.txt"
+        );
+        assert!(resolve_served_backend_path("/base", "../secret.txt").is_err());
+        assert!(resolve_served_backend_path("/base", "docs/../../secret.txt").is_err());
+    }
+
+    #[test]
+    fn test_resolve_agent_remote_path_confines_to_initial_path() {
+        assert_eq!(
+            resolve_agent_remote_path("/projects/demo", "/").unwrap(),
+            "/projects/demo"
+        );
+        assert_eq!(
+            resolve_agent_remote_path("/projects/demo", "notes/todo.txt").unwrap(),
+            "/projects/demo/notes/todo.txt"
+        );
+        assert!(resolve_agent_remote_path("/projects/demo", "../escape.txt").is_err());
+    }
+
+    #[test]
     fn test_serve_effective_base_path() {
         assert_eq!(serve_effective_base_path("/", "/home/user"), "/home/user");
-        assert_eq!(serve_effective_base_path("/custom", "/home/user"), "/custom");
+        assert_eq!(
+            serve_effective_base_path("/custom", "/home/user"),
+            "/custom"
+        );
         assert_eq!(serve_effective_base_path("/", "/"), "/");
+    }
+
+    #[test]
+    fn test_tool_danger_level_remote_tools_require_approval() {
+        assert_eq!(tool_danger_level("server_list_saved"), 1);
+        assert_eq!(tool_danger_level("remote_list"), 1);
+        assert_eq!(tool_danger_level("remote_read"), 2);
+        assert_eq!(tool_danger_level("server_exec"), 2);
+    }
+
+    #[test]
+    fn test_resolve_service_auth_token_loopback_defaults_to_none() {
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let (token, generated) = resolve_service_auth_token(None, addr);
+        assert_eq!(token, None);
+        assert!(!generated);
+    }
+
+    #[test]
+    fn test_resolve_service_auth_token_remote_generates_token() {
+        let addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
+        let (token, generated) = resolve_service_auth_token(None, addr);
+        assert!(generated);
+        assert!(token.is_some());
+    }
+
+    #[test]
+    fn test_request_is_authorized_accepts_bearer_and_basic() {
+        let mut bearer = HeaderMap::new();
+        bearer.insert(AUTHORIZATION, HeaderValue::from_static("Bearer test-token"));
+        assert!(request_is_authorized(&bearer, Some("test-token")));
+
+        let mut basic = HeaderMap::new();
+        basic.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Basic dXNlcjp0ZXN0LXRva2Vu"),
+        );
+        assert!(request_is_authorized(&basic, Some("test-token")));
+        assert!(!request_is_authorized(&basic, Some("wrong-token")));
+    }
+
+    #[test]
+    fn test_resolve_service_credentials_loopback_defaults_to_none() {
+        let addr: SocketAddr = "127.0.0.1:2121".parse().unwrap();
+        assert_eq!(resolve_service_credentials(None, None, addr), None);
+    }
+
+    #[test]
+    fn test_resolve_service_credentials_remote_generates_defaults() {
+        let addr: SocketAddr = "0.0.0.0:2121".parse().unwrap();
+        let creds = resolve_service_credentials(None, None, addr).unwrap();
+        assert_eq!(creds.username, "aeroftp");
+        assert!(!creds.password.is_empty());
+        assert!(creds.generated);
+    }
+
+    #[test]
+    fn test_tool_policy_distinguishes_metadata_preview_and_exec() {
+        assert_eq!(tool_exposure_category("remote_list"), "remote-metadata");
+        assert_eq!(tool_data_egress("remote_list"), "metadata");
+        assert_eq!(tool_exposure_category("remote_read"), "remote-preview");
+        assert_eq!(tool_data_egress("remote_read"), "preview");
+        assert_eq!(tool_exposure_category("server_exec"), "remote-bulk-read");
+        assert_eq!(tool_data_egress("server_exec"), "operation-dependent");
     }
 
     #[test]
@@ -16076,7 +18876,10 @@ mod tests {
 
     #[test]
     fn test_escape_html_serve() {
-        assert_eq!(escape_html("<script>alert('xss')</script>"), "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+        assert_eq!(
+            escape_html("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"
+        );
         assert_eq!(escape_html("a&b"), "a&amp;b");
         assert_eq!(escape_html("\"quoted\""), "&quot;quoted&quot;");
     }
@@ -16154,7 +18957,10 @@ mod tests {
     #[test]
     fn test_extract_destination_relative() {
         let mut headers = HeaderMap::new();
-        headers.insert("Destination", HeaderValue::from_static("http://127.0.0.1:8080/new/path"));
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://127.0.0.1:8080/new/path"),
+        );
         assert_eq!(extract_destination_relative(&headers).unwrap(), "new/path");
     }
 
@@ -16167,7 +18973,10 @@ mod tests {
     #[test]
     fn test_extract_destination_relative_traversal() {
         let mut headers = HeaderMap::new();
-        headers.insert("Destination", HeaderValue::from_static("http://host/../etc/passwd"));
+        headers.insert(
+            "Destination",
+            HeaderValue::from_static("http://host/../etc/passwd"),
+        );
         assert!(extract_destination_relative(&headers).is_err());
     }
 }

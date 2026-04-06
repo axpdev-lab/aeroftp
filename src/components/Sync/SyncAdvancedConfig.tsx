@@ -14,7 +14,7 @@ import {
     ShieldCheck, RotateCcw, Gauge, Zap, Shrink, HardDrive,
     ArrowDownToLine, ArrowUpFromLine,
     FolderTree, FileDown, Undo2, Trash2, GitCompare, Settings2, Activity,
-    ChevronDown, FlaskConical
+    ChevronDown, FlaskConical, SlidersHorizontal
 } from 'lucide-react';
 import {
     CompareOptions, RetryPolicy, VerifyPolicy, CompressionMode,
@@ -50,6 +50,13 @@ interface SyncAdvancedConfigProps {
     onOpenTemplate: () => void;
     onOpenRollback: () => void;
     onClearHistory: () => void;
+    // Transfer budget
+    transferBudget: number;
+    onTransferBudgetChange: (v: number) => void;
+    // Rename tracking
+    detectRenames: boolean;
+    onDetectRenamesChange: (v: boolean) => void;
+    detectedRenamesCount: number;
     // Canary mode
     canaryMode: boolean;
     onCanaryModeChange: (enabled: boolean) => void;
@@ -121,6 +128,11 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
     onOpenTemplate,
     onOpenRollback,
     onClearHistory,
+    transferBudget,
+    onTransferBudgetChange,
+    detectRenames,
+    onDetectRenamesChange,
+    detectedRenamesCount,
     canaryMode,
     onCanaryModeChange,
     canaryPercent,
@@ -132,7 +144,7 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
     const isProvider = !!protocol && !isFtpProtocol(protocol);
     const isSftp = protocol === 'sftp';
     const dirDesc = getDirectionDescription(options.direction, t);
-    const [openSection, setOpenSection] = useState<'direction' | 'compare' | 'transfer' | 'automation'>('direction');
+    const [openSection, setOpenSection] = useState<'direction' | 'compare' | 'filters' | 'transfer' | 'automation'>('direction');
 
     const handleDirectionChange = (direction: SyncDirection) => {
         onOptionsChange({ ...options, direction });
@@ -177,6 +189,53 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                     <dirDesc.Icon size={16} className="inline mr-1.5 flex-shrink-0" />
                     {dirDesc.text}
                 </div>
+
+                {/* Delete orphans toggle */}
+                <div className="mt-3 flex items-center gap-3">
+                    <Checkbox
+                        checked={options.delete_orphans || false}
+                        onChange={v => onOptionsChange({ ...options, delete_orphans: v })}
+                        disabled={disabled}
+                        label={t('syncPanel.deleteOrphans')}
+                    />
+                </div>
+
+                {/* Versioning strategy — visible when delete_orphans is enabled */}
+                {options.delete_orphans && (
+                    <div className="mt-2 ml-5 flex items-center gap-2">
+                        <HardDrive size={12} className="text-gray-500" />
+                        <label className="text-[11px] text-gray-500 whitespace-nowrap">{t('syncPanel.versioningStrategy')}:</label>
+                        <select
+                            className="sync-select flex-1 text-[11px]"
+                            value={options.versioning_strategy || 'trash_can'}
+                            onChange={e => onOptionsChange({ ...options, versioning_strategy: e.target.value as any })}
+                            disabled={disabled}
+                        >
+                            <option value="trash_can">{t('syncPanel.versioningTrashCan')}</option>
+                            <option value="simple">{t('syncPanel.versioningSimple')}</option>
+                            <option value="staggered">{t('syncPanel.versioningStaggered')}</option>
+                            <option value="disabled">{t('syncPanel.versioningDisabled')}</option>
+                        </select>
+                    </div>
+                )}
+
+                {/* Conflict strategy dropdown */}
+                <div className="mt-3 flex items-center gap-2">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">{t('syncPanel.conflictStrategy')}:</label>
+                    <select
+                        className="sync-select flex-1"
+                        value={options.conflict_strategy || 'ask'}
+                        onChange={e => onOptionsChange({ ...options, conflict_strategy: e.target.value as any })}
+                        disabled={disabled}
+                    >
+                        <option value="ask">{t('syncPanel.conflictAsk')}</option>
+                        <option value="newer">{t('syncPanel.conflictNewer')}</option>
+                        <option value="older">{t('syncPanel.conflictOlder')}</option>
+                        <option value="larger">{t('syncPanel.conflictLarger')}</option>
+                        <option value="smaller">{t('syncPanel.conflictSmaller')}</option>
+                        <option value="skip">{t('syncPanel.conflictSkip')}</option>
+                    </select>
+                </div>
             </Section>
 
             {/* ── Section 2: Compare & Verify (accordion) ── */}
@@ -206,6 +265,19 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                         disabled={disabled}
                         label={t('syncPanel.checksum')}
                     />
+                    <div className="flex items-center gap-2">
+                        <Checkbox
+                            checked={detectRenames}
+                            onChange={onDetectRenamesChange}
+                            disabled={disabled}
+                            label={t('syncPanel.detectRenames')}
+                        />
+                        {detectedRenamesCount > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+                                {detectedRenamesCount} {t('syncPanel.renamesDetected')}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="sync-adv-divider" />
@@ -242,7 +314,84 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                 </div>
             </Section>
 
-            {/* ── Section 3: Transfer Control (accordion) ── */}
+            {/* ── Section 3: Filters (accordion) ── */}
+            <Section
+                icon={<SlidersHorizontal size={14} className="text-orange-400" />}
+                title={t('syncPanel.filters')}
+                collapsible
+                open={openSection === 'filters'}
+                onToggle={() => setOpenSection('filters')}
+            >
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="text-[11px] text-gray-400 mb-1 block">{t('syncPanel.filterMinSize')}</label>
+                        <select
+                            className="sync-select w-full"
+                            value={options.min_size ?? ''}
+                            onChange={e => onOptionsChange({ ...options, min_size: e.target.value ? Number(e.target.value) : undefined })}
+                            disabled={disabled}
+                        >
+                            <option value="">{t('syncPanel.filterNone')}</option>
+                            <option value="1024">1 KB</option>
+                            <option value="10240">10 KB</option>
+                            <option value="102400">100 KB</option>
+                            <option value="1048576">1 MB</option>
+                            <option value="10485760">10 MB</option>
+                            <option value="104857600">100 MB</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] text-gray-400 mb-1 block">{t('syncPanel.filterMaxSize')}</label>
+                        <select
+                            className="sync-select w-full"
+                            value={options.max_size ?? ''}
+                            onChange={e => onOptionsChange({ ...options, max_size: e.target.value ? Number(e.target.value) : undefined })}
+                            disabled={disabled}
+                        >
+                            <option value="">{t('syncPanel.filterNone')}</option>
+                            <option value="1048576">1 MB</option>
+                            <option value="10485760">10 MB</option>
+                            <option value="104857600">100 MB</option>
+                            <option value="524288000">500 MB</option>
+                            <option value="1073741824">1 GB</option>
+                            <option value="5368709120">5 GB</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] text-gray-400 mb-1 block">{t('syncPanel.filterMinAge')}</label>
+                        <select
+                            className="sync-select w-full"
+                            value={options.min_age_secs ?? ''}
+                            onChange={e => onOptionsChange({ ...options, min_age_secs: e.target.value ? Number(e.target.value) : undefined })}
+                            disabled={disabled}
+                        >
+                            <option value="">{t('syncPanel.filterNone')}</option>
+                            <option value="3600">1 {t('syncPanel.filterHour')}</option>
+                            <option value="86400">1 {t('syncPanel.filterDay')}</option>
+                            <option value="604800">1 {t('syncPanel.filterWeek')}</option>
+                            <option value="2592000">30 {t('syncPanel.filterDays')}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] text-gray-400 mb-1 block">{t('syncPanel.filterMaxAge')}</label>
+                        <select
+                            className="sync-select w-full"
+                            value={options.max_age_secs ?? ''}
+                            onChange={e => onOptionsChange({ ...options, max_age_secs: e.target.value ? Number(e.target.value) : undefined })}
+                            disabled={disabled}
+                        >
+                            <option value="">{t('syncPanel.filterNone')}</option>
+                            <option value="86400">1 {t('syncPanel.filterDay')}</option>
+                            <option value="604800">1 {t('syncPanel.filterWeek')}</option>
+                            <option value="2592000">30 {t('syncPanel.filterDays')}</option>
+                            <option value="7776000">90 {t('syncPanel.filterDays')}</option>
+                            <option value="31536000">1 {t('syncPanel.filterYear')}</option>
+                        </select>
+                    </div>
+                </div>
+            </Section>
+
+            {/* ── Section 4: Transfer Control (accordion) ── */}
             <Section
                 icon={<Settings2 size={14} className="text-purple-400" />}
                 title={t('syncPanel.transferControl')}
@@ -282,6 +431,46 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                                     {opt.value === 0 ? t(opt.label) : opt.label}
                                 </option>
                             ))}
+                        </select>
+                    </label>
+                </div>
+
+                {/* Bandwidth Schedule */}
+                <div className="sync-adv-row mt-2">
+                    <label className="flex items-center gap-1">
+                        <Activity size={12} className="text-green-400" />
+                        <span className="text-xs text-gray-400">{t('syncPanel.bwSchedule')}:</span>
+                        <select
+                            className="sync-adv-select"
+                            value={options.bw_schedule || 'off'}
+                            onChange={e => onOptionsChange({ ...options, bw_schedule: e.target.value as any })}
+                            disabled={disabled}
+                        >
+                            <option value="off">{t('syncPanel.bwScheduleOff')}</option>
+                            <option value="office">{t('syncPanel.bwScheduleOffice')}</option>
+                            <option value="night">{t('syncPanel.bwScheduleNight')}</option>
+                        </select>
+                    </label>
+                </div>
+
+                {/* Transfer Budget */}
+                <div className="sync-adv-row mt-2">
+                    <label className="flex items-center gap-1">
+                        <HardDrive size={12} className="text-orange-400" />
+                        <span className="text-xs text-gray-400">{t('syncPanel.transferBudget')}:</span>
+                        <select
+                            className="sync-adv-select"
+                            value={transferBudget}
+                            onChange={e => onTransferBudgetChange(Number(e.target.value))}
+                            disabled={disabled}
+                        >
+                            <option value="0">{t('syncPanel.filterNone')}</option>
+                            <option value="104857600">100 MB</option>
+                            <option value="524288000">500 MB</option>
+                            <option value="1073741824">1 GB</option>
+                            <option value="5368709120">5 GB</option>
+                            <option value="10737418240">10 GB</option>
+                            <option value="53687091200">50 GB</option>
                         </select>
                     </label>
                 </div>

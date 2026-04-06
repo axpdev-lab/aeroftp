@@ -52,7 +52,9 @@ impl GitHubHttpClient {
             .timeout(std::time::Duration::from_secs(30))
             .user_agent(USER_AGENT)
             .build()
-            .map_err(|e| GitHubError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| {
+                GitHubError::NetworkError(format!("Failed to build HTTP client: {}", e))
+            })?;
 
         Ok(Self {
             client,
@@ -93,9 +95,7 @@ impl GitHubHttpClient {
                     if response.status() == StatusCode::FORBIDDEN
                         || response.status() == StatusCode::TOO_MANY_REQUESTS
                     {
-                        return Err(GitHubError::SecondaryRateLimit {
-                            retry_after: secs,
-                        });
+                        return Err(GitHubError::SecondaryRateLimit { retry_after: secs });
                     }
                 }
             }
@@ -107,14 +107,9 @@ impl GitHubHttpClient {
         }
 
         // Read the error body and classify.
-        let body_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| String::from("{}"));
-        let body_json: serde_json::Value =
-            serde_json::from_str(&body_text).unwrap_or_else(|_| {
-                serde_json::json!({ "message": sanitize_api_error(&body_text) })
-            });
+        let body_text = response.text().await.unwrap_or_else(|_| String::from("{}"));
+        let body_json: serde_json::Value = serde_json::from_str(&body_text)
+            .unwrap_or_else(|_| serde_json::json!({ "message": sanitize_api_error(&body_text) }));
 
         let mut err = classify_api_error(status.as_u16(), &body_json, path_hint);
 
@@ -141,7 +136,10 @@ impl GitHubHttpClient {
             Ok(resp) => Ok(resp),
             Err(GitHubError::SecondaryRateLimit { retry_after }) => {
                 let wait = retry_after.min(120); // cap at 2 minutes
-                log::info!("GitHub: secondary rate limit — waiting {}s before retry", wait);
+                log::info!(
+                    "GitHub: secondary rate limit — waiting {}s before retry",
+                    wait
+                );
                 tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
                 if let Some(rb) = retry_builder {
                     self.execute(rb, path_hint).await
@@ -189,16 +187,13 @@ impl GitHubHttpClient {
     ///
     /// `url` can be either a full URL or a path (e.g. `/repos/o/r/releases`).
     /// If it starts with `/`, the API base is prepended automatically.
-    pub async fn get_json<T: DeserializeOwned>(
-        &mut self,
-        url: &str,
-    ) -> Result<T, GitHubError> {
+    pub async fn get_json<T: DeserializeOwned>(&mut self, url: &str) -> Result<T, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::GET, &full_url);
         let resp = self.execute_with_retry(builder, None).await?;
-        resp.json::<T>().await.map_err(|e| GitHubError::ParseError(
-            format!("JSON parse error: {}", e),
-        ))
+        resp.json::<T>()
+            .await
+            .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))
     }
 
     /// `GET` a paginated JSON array endpoint by following `Link: ... rel="next"`.
@@ -228,9 +223,10 @@ impl GitHubHttpClient {
                     .get(reqwest::header::LINK)
                     .and_then(|value| value.to_str().ok()),
             );
-            let mut page_items = resp.json::<Vec<T>>().await.map_err(|e| {
-                GitHubError::ParseError(format!("JSON parse error: {}", e))
-            })?;
+            let mut page_items = resp
+                .json::<Vec<T>>()
+                .await
+                .map_err(|e| GitHubError::ParseError(format!("JSON parse error: {}", e)))?;
 
             all_items.append(&mut page_items);
             next_url = next_link;
@@ -270,10 +266,7 @@ impl GitHubHttpClient {
 
     /// `POST` with empty body. Returns `()` on 2xx.
     /// Used for Actions re-run / cancel endpoints that return 201/202.
-    pub async fn post_empty(
-        &mut self,
-        url: &str,
-    ) -> Result<(), GitHubError> {
+    pub async fn post_empty(&mut self, url: &str) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url);
         self.execute_with_retry(builder, None).await?;
@@ -307,10 +300,7 @@ impl GitHubHttpClient {
     }
 
     /// `DELETE` without body. Returns `()` on success.
-    pub async fn delete(
-        &mut self,
-        url: &str,
-    ) -> Result<(), GitHubError> {
+    pub async fn delete(&mut self, url: &str) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url);
         self.execute_with_retry(builder, None).await?;
@@ -329,10 +319,10 @@ impl GitHubHttpClient {
         });
         let builder = self.request(Method::POST, GRAPHQL_URL).json(&body);
         let resp = self.execute_with_retry(builder, None).await?;
-        let json: serde_json::Value =
-            resp.json().await.map_err(|e| GitHubError::ParseError(
-                format!("GraphQL parse error: {}", e),
-            ))?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| GitHubError::ParseError(format!("GraphQL parse error: {}", e)))?;
 
         // Check for GraphQL-level errors.
         if let Some(errors) = json.get("errors") {
@@ -368,10 +358,7 @@ impl GitHubHttpClient {
 
     /// Download raw file content (sets `Accept: application/octet-stream`).
     /// Returns the raw `Response` for streaming.
-    pub async fn get_raw(
-        &mut self,
-        url: &str,
-    ) -> Result<Response, GitHubError> {
+    pub async fn get_raw(&mut self, url: &str) -> Result<Response, GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self
             .client
@@ -425,9 +412,7 @@ impl GitHubHttpClient {
                     if response.status() == StatusCode::FORBIDDEN
                         || response.status() == StatusCode::TOO_MANY_REQUESTS
                     {
-                        return Err(GitHubError::SecondaryRateLimit {
-                            retry_after: secs,
-                        });
+                        return Err(GitHubError::SecondaryRateLimit { retry_after: secs });
                     }
                 }
             }
@@ -463,9 +448,10 @@ impl GitHubHttpClient {
             Ok(format!("{}{}", API_BASE, url))
         } else {
             log::warn!("resolve_url: rejected non-GitHub URL: {}", url);
-            Err(GitHubError::InvalidInput(
-                format!("URL not on GitHub domain allowlist: {}", url),
-            ))
+            Err(GitHubError::InvalidInput(format!(
+                "URL not on GitHub domain allowlist: {}",
+                url
+            )))
         }
     }
 
@@ -516,7 +502,10 @@ fn parse_next_link(link_header: Option<&str>) -> Option<String> {
             if is_allowed_github_url(url) {
                 return Some(url.to_string());
             }
-            log::warn!("parse_next_link: rejected non-GitHub pagination URL: {}", url);
+            log::warn!(
+                "parse_next_link: rejected non-GitHub pagination URL: {}",
+                url
+            );
             return None;
         }
     }
@@ -543,7 +532,8 @@ mod tests {
 
     #[test]
     fn test_parse_next_link_returns_none_without_next() {
-        let header = "<https://api.github.com/repositories/1/branches?per_page=100&page=4>; rel=\"last\"";
+        let header =
+            "<https://api.github.com/repositories/1/branches?per_page=100&page=4>; rel=\"last\"";
         assert_eq!(parse_next_link(Some(header)), None);
         assert_eq!(parse_next_link(None), None);
     }
@@ -565,10 +555,18 @@ mod tests {
     #[test]
     fn test_is_allowed_github_url_accepts_valid() {
         assert!(is_allowed_github_url("https://api.github.com/repos/o/r"));
-        assert!(is_allowed_github_url("https://uploads.github.com/repos/o/r/releases/1/assets"));
-        assert!(is_allowed_github_url("https://raw.githubusercontent.com/o/r/main/file"));
-        assert!(is_allowed_github_url("https://codeload.github.com/o/r/tar.gz/v1"));
-        assert!(is_allowed_github_url("https://github.com/login/device/code"));
+        assert!(is_allowed_github_url(
+            "https://uploads.github.com/repos/o/r/releases/1/assets"
+        ));
+        assert!(is_allowed_github_url(
+            "https://raw.githubusercontent.com/o/r/main/file"
+        ));
+        assert!(is_allowed_github_url(
+            "https://codeload.github.com/o/r/tar.gz/v1"
+        ));
+        assert!(is_allowed_github_url(
+            "https://github.com/login/device/code"
+        ));
     }
 
     #[test]

@@ -6,16 +6,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use async_trait::async_trait;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
-use async_trait::async_trait;
 
+use super::credential_provider::{
+    CredentialProvider, ProviderExtraOptions, ServerCredentials, ServerProfile,
+};
 use super::event_sink::{EventSink, ToolProgress};
-use super::credential_provider::{CredentialProvider, ServerProfile, ServerCredentials, ProviderExtraOptions};
 use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
-use crate::providers::RemoteEntry;
 use crate::provider_commands::ProviderState;
+use crate::providers::RemoteEntry;
 use crate::AppState;
 
 // ─── TauriEventSink ────────────────────────────────────────────────────
@@ -38,18 +40,19 @@ impl EventSink for TauriEventSink {
     }
 
     fn emit_tool_progress(&self, progress: &ToolProgress) {
-        let _ = self.app.emit("ai-tool-progress", json!({
-            "tool": progress.tool,
-            "current": progress.current,
-            "total": progress.total,
-            "item": progress.item,
-        }));
+        let _ = self.app.emit(
+            "ai-tool-progress",
+            json!({
+                "tool": progress.tool,
+                "current": progress.current,
+                "total": progress.total,
+                "item": progress.item,
+            }),
+        );
     }
 
     fn emit_app_control(&self, event_name: &str, payload: &Value) {
-        const ALLOWED_EVENTS: &[&str] = &[
-            "ai-set-theme", "ai-sync-control", "ai-tool-progress",
-        ];
+        const ALLOWED_EVENTS: &[&str] = &["ai-set-theme", "ai-sync-control", "ai-tool-progress"];
         if ALLOWED_EVENTS.contains(&event_name) {
             let _ = self.app.emit(event_name, payload.clone());
         }
@@ -65,29 +68,56 @@ impl CredentialProvider for VaultCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
-        let json_str = store.get("config_server_profiles")
+        let json_str = store
+            .get("config_server_profiles")
             .map_err(|_| "No saved servers found in vault.".to_string())?;
         let profiles: Vec<Value> = serde_json::from_str(&json_str)
             .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
 
-        Ok(profiles.iter().filter_map(|p| {
-            Some(ServerProfile {
-                id: p.get("id")?.as_str()?.to_string(),
-                name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                host: p.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
-                username: p.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                protocol: p.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp").to_string(),
-                initial_path: p.get("initialPath").and_then(|v| v.as_str()).map(String::from),
-                provider_id: p.get("providerId").and_then(|v| v.as_str()).map(String::from),
+        Ok(profiles
+            .iter()
+            .filter_map(|p| {
+                Some(ServerProfile {
+                    id: p.get("id")?.as_str()?.to_string(),
+                    name: p
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    host: p
+                        .get("host")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
+                    username: p
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    protocol: p
+                        .get("protocol")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("ftp")
+                        .to_string(),
+                    initial_path: p
+                        .get("initialPath")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    provider_id: p
+                        .get("providerId")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                })
             })
-        }).collect())
+            .collect())
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open".to_string())?;
-        let json_str = store.get(&format!("server_{}", server_id))
+        let json_str = store
+            .get(&format!("server_{}", server_id))
             .map_err(|_| format!("No credentials stored for server '{}'", server_id))?;
 
         #[derive(serde::Deserialize)]
@@ -109,14 +139,22 @@ impl CredentialProvider for VaultCredentialProvider {
 
     fn get_extra_options(&self, server_id: &str) -> Result<ProviderExtraOptions, String> {
         const SENSITIVE_KEYS: &[&str] = &[
-            "password", "access_token", "refresh_token", "api_key",
-            "secret", "token", "oauth_token", "oauth_token_secret",
-            "server", "username",
+            "password",
+            "access_token",
+            "refresh_token",
+            "api_key",
+            "secret",
+            "token",
+            "oauth_token",
+            "oauth_token_secret",
+            "server",
+            "username",
         ];
 
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open".to_string())?;
-        let json_str = store.get(&format!("server_{}", server_id))
+        let json_str = store
+            .get(&format!("server_{}", server_id))
             .unwrap_or_else(|_| "{}".to_string());
         let val: Value = serde_json::from_str(&json_str).unwrap_or(json!({}));
         let mut opts = ProviderExtraOptions::new();
@@ -159,20 +197,23 @@ impl<'a> RemoteBackend for TauriRemoteBackend<'a> {
         let mut mgr = self.app_state.ftp_manager.lock().await;
         mgr.change_dir(path).await.map_err(|e| e.to_string())?;
         let files = mgr.list_files().await.map_err(|e| e.to_string())?;
-        Ok(files.into_iter().map(|f| RemoteEntry {
-            name: f.name.clone(),
-            path: format!("{}/{}", path.trim_end_matches('/'), f.name),
-            is_dir: f.is_dir,
-            size: f.size.unwrap_or(0),
-            modified: f.modified.clone(),
-            permissions: f.permissions.clone(),
-            owner: None,
-            group: None,
-            is_symlink: false,
-            link_target: None,
-            mime_type: None,
-            metadata: std::collections::HashMap::new(),
-        }).collect())
+        Ok(files
+            .into_iter()
+            .map(|f| RemoteEntry {
+                name: f.name.clone(),
+                path: format!("{}/{}", path.trim_end_matches('/'), f.name),
+                is_dir: f.is_dir,
+                size: f.size.unwrap_or(0),
+                modified: f.modified.clone(),
+                permissions: f.permissions.clone(),
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: std::collections::HashMap::new(),
+            })
+            .collect())
     }
 
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
@@ -203,37 +244,62 @@ impl<'a> RemoteBackend for TauriRemoteBackend<'a> {
         if let Some(ref mut p) = *self.provider_state.provider.lock().await {
             // Write data to a secure temp file (exclusive create), upload, then clean up
             let nonce = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-            let tmp = std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce));
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let tmp = std::env::temp_dir().join(format!(
+                "aeroftp_upload_{}_{}",
+                std::process::id(),
+                nonce
+            ));
             std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-            let result = p.upload(tmp.to_str().unwrap_or(""), path, None).await.map_err(|e| e.to_string());
+            let result = p
+                .upload(tmp.to_str().unwrap_or(""), path, None)
+                .await
+                .map_err(|e| e.to_string());
             let _ = std::fs::remove_file(&tmp);
             return result;
         }
         let mut mgr = self.app_state.ftp_manager.lock().await;
         let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce));
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp =
+            std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce));
         std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-        let result = mgr.upload_file(tmp.to_str().unwrap_or(""), path).await.map_err(|e| e.to_string());
+        let result = mgr
+            .upload_file(tmp.to_str().unwrap_or(""), path)
+            .await
+            .map_err(|e| e.to_string());
         let _ = std::fs::remove_file(&tmp);
         result
     }
 
     async fn download(&self, remote: &str, local: &str) -> Result<(), String> {
         if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.download(remote, local, None).await.map_err(|e| e.to_string());
+            return p
+                .download(remote, local, None)
+                .await
+                .map_err(|e| e.to_string());
         }
         let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.download_file(remote, local).await.map_err(|e| e.to_string())
+        mgr.download_file(remote, local)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn upload(&self, local: &str, remote: &str) -> Result<(), String> {
         if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.upload(local, remote, None).await.map_err(|e| e.to_string());
+            return p
+                .upload(local, remote, None)
+                .await
+                .map_err(|e| e.to_string());
         }
         let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.upload_file(local, remote).await.map_err(|e| e.to_string())
+        mgr.upload_file(local, remote)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn delete(&self, path: &str) -> Result<(), String> {
@@ -270,7 +336,9 @@ impl<'a> RemoteBackend for TauriRemoteBackend<'a> {
     async fn storage_info(&self) -> Result<StorageQuota, String> {
         if let Some(ref mut p) = *self.provider_state.provider.lock().await {
             let _info = p.server_info().await.map_err(|e| e.to_string())?;
-            return Err("Storage quota extraction not yet implemented for this provider".to_string());
+            return Err(
+                "Storage quota extraction not yet implemented for this provider".to_string(),
+            );
         }
         Err("storage quota not supported on FTP fallback".to_string())
     }

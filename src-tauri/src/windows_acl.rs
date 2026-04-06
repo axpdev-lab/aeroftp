@@ -20,7 +20,14 @@ pub fn restrict_to_owner(path: &std::path::Path) {
     }
     // Reset ACLs: remove inheritance, remove all explicit, then grant current user full control
     let _ = std::process::Command::new("icacls")
-        .args([&*path_str, "/inheritance:r", "/grant:r", &format!("{}:F", username), "/T", "/Q"])
+        .args([
+            &*path_str,
+            "/inheritance:r",
+            "/grant:r",
+            &format!("{}:F", username),
+            "/T",
+            "/Q",
+        ])
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 }
@@ -39,12 +46,24 @@ pub fn check_windows_reserved(filename: &str) -> Option<&'static str> {
         "PRN" => Some("PRN"),
         "AUX" => Some("AUX"),
         "NUL" => Some("NUL"),
-        "COM1" => Some("COM1"), "COM2" => Some("COM2"), "COM3" => Some("COM3"),
-        "COM4" => Some("COM4"), "COM5" => Some("COM5"), "COM6" => Some("COM6"),
-        "COM7" => Some("COM7"), "COM8" => Some("COM8"), "COM9" => Some("COM9"),
-        "LPT1" => Some("LPT1"), "LPT2" => Some("LPT2"), "LPT3" => Some("LPT3"),
-        "LPT4" => Some("LPT4"), "LPT5" => Some("LPT5"), "LPT6" => Some("LPT6"),
-        "LPT7" => Some("LPT7"), "LPT8" => Some("LPT8"), "LPT9" => Some("LPT9"),
+        "COM1" => Some("COM1"),
+        "COM2" => Some("COM2"),
+        "COM3" => Some("COM3"),
+        "COM4" => Some("COM4"),
+        "COM5" => Some("COM5"),
+        "COM6" => Some("COM6"),
+        "COM7" => Some("COM7"),
+        "COM8" => Some("COM8"),
+        "COM9" => Some("COM9"),
+        "LPT1" => Some("LPT1"),
+        "LPT2" => Some("LPT2"),
+        "LPT3" => Some("LPT3"),
+        "LPT4" => Some("LPT4"),
+        "LPT5" => Some("LPT5"),
+        "LPT6" => Some("LPT6"),
+        "LPT7" => Some("LPT7"),
+        "LPT8" => Some("LPT8"),
+        "LPT9" => Some("LPT9"),
         _ => None,
     }
 }

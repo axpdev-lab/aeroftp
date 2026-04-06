@@ -141,7 +141,8 @@ impl ProviderType {
     /// Check if this provider uses encryption by default
     #[allow(dead_code)]
     pub fn uses_encryption(&self) -> bool {
-        matches!(self,
+        matches!(
+            self,
             ProviderType::Ftps |
             ProviderType::Sftp |
             ProviderType::WebDav |
@@ -174,13 +175,14 @@ impl ProviderType {
     /// Check if this provider requires OAuth2 authentication
     #[allow(dead_code)]
     pub fn requires_oauth2(&self) -> bool {
-        matches!(self,
-            ProviderType::GoogleDrive |
-            ProviderType::Dropbox |
-            ProviderType::OneDrive |
-            ProviderType::Box |
-            ProviderType::PCloud |
-            ProviderType::ZohoWorkdrive
+        matches!(
+            self,
+            ProviderType::GoogleDrive
+                | ProviderType::Dropbox
+                | ProviderType::OneDrive
+                | ProviderType::Box
+                | ProviderType::PCloud
+                | ProviderType::ZohoWorkdrive
         )
     }
 
@@ -192,7 +194,7 @@ impl ProviderType {
 }
 
 /// Generic provider configuration
-/// 
+///
 /// This struct can be used to configure any provider type.
 /// Provider-specific fields are stored in the `extra` HashMap.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,7 +221,8 @@ pub struct ProviderConfig {
 impl ProviderConfig {
     /// Get the effective port (default or specified)
     pub fn effective_port(&self) -> u16 {
-        self.port.unwrap_or_else(|| self.provider_type.default_port())
+        self.port
+            .unwrap_or_else(|| self.provider_type.default_port())
     }
 }
 
@@ -266,7 +269,9 @@ pub struct FtpConfig {
 
 impl FtpConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let tls_mode = config.extra.get("tls_mode")
+        let tls_mode = config
+            .extra
+            .get("tls_mode")
             .map(|v| match v.as_str() {
                 "explicit" => FtpTlsMode::Explicit,
                 "implicit" => FtpTlsMode::Implicit,
@@ -281,14 +286,19 @@ impl FtpConfig {
                 }
             });
 
-        let verify_cert = config.extra.get("verify_cert")
+        let verify_cert = config
+            .extra
+            .get("verify_cert")
             .map(|v| v != "false")
             .unwrap_or(true);
 
         Ok(Self {
             host: config.host.clone(),
             port: config.effective_port(),
-            username: config.username.clone().unwrap_or_else(|| "anonymous".to_string()),
+            username: config
+                .username
+                .clone()
+                .unwrap_or_else(|| "anonymous".to_string()),
             password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             tls_mode,
             verify_cert,
@@ -312,13 +322,17 @@ pub struct WebDavConfig {
 impl WebDavConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         // Build WebDAV URL from host
-        let scheme = if config.effective_port() == 80 { "http" } else { "https" };
+        let scheme = if config.effective_port() == 80 {
+            "http"
+        } else {
+            "https"
+        };
         let port_suffix = if config.effective_port() == 443 || config.effective_port() == 80 {
             String::new()
         } else {
             format!(":{}", config.effective_port())
         };
-        
+
         let raw_url = if config.host.starts_with("http://") || config.host.starts_with("https://") {
             config.host.clone()
         } else {
@@ -329,7 +343,9 @@ impl WebDavConfig {
         let username = config.username.clone().unwrap_or_default();
         let url = raw_url.replace("{username}", &username);
 
-        let verify_cert = config.extra.get("verify_cert")
+        let verify_cert = config
+            .extra
+            .get("verify_cert")
             .map(|v| v != "false")
             .unwrap_or(true);
 
@@ -370,24 +386,36 @@ pub struct S3Config {
 
 impl S3Config {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let bucket = config.extra.get("bucket")
+        let bucket = config
+            .extra
+            .get("bucket")
             .ok_or_else(|| ProviderError::InvalidConfig("S3 bucket name is required".to_string()))?
-            .trim().to_string();
+            .trim()
+            .to_string();
 
-        let region = config.extra.get("region")
+        let region = config
+            .extra
+            .get("region")
             .cloned()
             .unwrap_or_else(|| "us-east-1".to_string())
-            .trim().to_string();
+            .trim()
+            .to_string();
 
         let endpoint_raw = if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
             Some(config.host.trim().to_string())
         } else {
             // Fallback: endpoint resolved by frontend (e.g. from endpointTemplate for Wasabi)
-            config.extra.get("endpoint")
+            config
+                .extra
+                .get("endpoint")
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
         };
-        tracing::debug!("S3Config: host={:?}, extra_endpoint={:?}", config.host, config.extra.get("endpoint"));
+        tracing::debug!(
+            "S3Config: host={:?}, extra_endpoint={:?}",
+            config.host,
+            config.extra.get("endpoint")
+        );
         let endpoint = endpoint_raw.map(|host| {
             if host.starts_with("http://") || host.starts_with("https://") {
                 host
@@ -395,18 +423,26 @@ impl S3Config {
                 format!("https://{}", host)
             }
         });
-        
-        let path_style = config.extra.get("path_style")
+
+        let path_style = config
+            .extra
+            .get("path_style")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(endpoint.is_some()); // Default to path style for custom endpoints
 
-        let storage_class = config.extra.get("storage_class")
+        let storage_class = config
+            .extra
+            .get("storage_class")
             .cloned()
             .filter(|s| !s.is_empty());
-        let sse_mode = config.extra.get("sse_mode")
+        let sse_mode = config
+            .extra
+            .get("sse_mode")
             .cloned()
             .filter(|s| !s.is_empty());
-        let sse_kms_key_id = config.extra.get("sse_kms_key_id")
+        let sse_kms_key_id = config
+            .extra
+            .get("sse_kms_key_id")
             .cloned()
             .filter(|s| !s.is_empty());
 
@@ -414,7 +450,9 @@ impl S3Config {
             endpoint,
             region,
             access_key_id: config.username.clone().unwrap_or_default(),
-            secret_access_key: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
+            secret_access_key: secrecy::SecretString::from(
+                config.password.clone().unwrap_or_default(),
+            ),
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
@@ -447,18 +485,25 @@ pub struct SftpConfig {
 
 impl SftpConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let username = config.username.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Username required for SFTP".to_string()))?;
+        let username = config.username.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Username required for SFTP".to_string())
+        })?;
 
         let private_key_path = config.extra.get("private_key_path").cloned();
-        let key_passphrase = config.extra.get("key_passphrase")
+        let key_passphrase = config
+            .extra
+            .get("key_passphrase")
             .map(|v| secrecy::SecretString::from(v.clone()));
 
-        let timeout_secs = config.extra.get("timeout")
+        let timeout_secs = config
+            .extra
+            .get("timeout")
             .and_then(|v| v.parse().ok())
             .unwrap_or(30);
 
-        let trust_unknown_hosts = config.extra.get("trust_unknown_hosts")
+        let trust_unknown_hosts = config
+            .extra
+            .get("trust_unknown_hosts")
             .map(|v| v == "true")
             .unwrap_or(false);
 
@@ -498,17 +543,24 @@ pub struct MegaConfig {
 
 impl MegaConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let email = config.username.clone()
+        let email = config
+            .username
+            .clone()
             .ok_or_else(|| ProviderError::InvalidConfig("Email required for MEGA".to_string()))?;
-            
-        let password = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Password required for MEGA".to_string()))?;
-            
-        let save_session = config.extra.get("save_session")
+
+        let password = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Password required for MEGA".to_string())
+        })?;
+
+        let save_session = config
+            .extra
+            .get("save_session")
             .map(|v| v == "true")
             .unwrap_or(true);
-            
-        let logout_on_disconnect = config.extra.get("logout_on_disconnect")
+
+        let logout_on_disconnect = config
+            .extra
+            .get("logout_on_disconnect")
             .map(|v| v == "true");
 
         // Compatibility fallback: profiles created before the MEGA backend selector
@@ -557,10 +609,13 @@ impl BoxConfig {
 
     #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let client_id = config.extra.get("client_id")
+        let client_id = config
+            .extra
+            .get("client_id")
             .ok_or_else(|| ProviderError::InvalidConfig("Missing client_id for Box".to_string()))?;
-        let client_secret = config.extra.get("client_secret")
-            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for Box".to_string()))?;
+        let client_secret = config.extra.get("client_secret").ok_or_else(|| {
+            ProviderError::InvalidConfig("Missing client_secret for Box".to_string())
+        })?;
         Ok(Self::new(client_id, client_secret))
     }
 }
@@ -585,11 +640,15 @@ impl PCloudConfig {
 
     #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let client_id = config.extra.get("client_id")
-            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_id for pCloud".to_string()))?;
-        let client_secret = config.extra.get("client_secret")
-            .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string()))?;
-        let region = config.extra.get("region")
+        let client_id = config.extra.get("client_id").ok_or_else(|| {
+            ProviderError::InvalidConfig("Missing client_id for pCloud".to_string())
+        })?;
+        let client_secret = config.extra.get("client_secret").ok_or_else(|| {
+            ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string())
+        })?;
+        let region = config
+            .extra
+            .get("region")
             .cloned()
             .unwrap_or_else(|| "us".to_string());
         Ok(Self::new(client_id, client_secret, &region))
@@ -622,19 +681,32 @@ pub struct AzureConfig {
 
 impl AzureConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let account_name = config.extra.get("account_name")
+        let account_name = config
+            .extra
+            .get("account_name")
             .or(config.username.as_ref())
-            .ok_or_else(|| ProviderError::InvalidConfig("Account name required for Azure".to_string()))?
+            .ok_or_else(|| {
+                ProviderError::InvalidConfig("Account name required for Azure".to_string())
+            })?
             .clone();
-        let access_key: secrecy::SecretString = config.extra.get("access_key")
+        let access_key: secrecy::SecretString = config
+            .extra
+            .get("access_key")
             .or(config.password.as_ref())
-            .ok_or_else(|| ProviderError::InvalidConfig("Access key required for Azure".to_string()))?
+            .ok_or_else(|| {
+                ProviderError::InvalidConfig("Access key required for Azure".to_string())
+            })?
             .clone()
             .into();
-        let container = config.extra.get("container")
-            .ok_or_else(|| ProviderError::InvalidConfig("Container name required for Azure".to_string()))?
+        let container = config
+            .extra
+            .get("container")
+            .ok_or_else(|| {
+                ProviderError::InvalidConfig("Container name required for Azure".to_string())
+            })?
             .clone();
-        let sas_token: Option<secrecy::SecretString> = config.extra.get("sas_token").map(|s| s.clone().into());
+        let sas_token: Option<secrecy::SecretString> =
+            config.extra.get("sas_token").map(|s| s.clone().into());
         // Host may arrive as ":443" when the endpoint field is empty but port is set
         let clean_host = config.host.split(':').next().unwrap_or("").trim();
         let endpoint = if clean_host.is_empty() || clean_host == "blob.core.windows.net" {
@@ -642,7 +714,13 @@ impl AzureConfig {
         } else {
             Some(config.host.clone())
         };
-        Ok(Self { account_name, access_key, container, sas_token, endpoint })
+        Ok(Self {
+            account_name,
+            access_key,
+            container,
+            sas_token,
+            endpoint,
+        })
     }
 
     /// Get the blob service endpoint URL
@@ -671,12 +749,19 @@ pub struct FilenConfig {
 
 impl FilenConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let email = config.username.clone()
+        let email = config
+            .username
+            .clone()
             .ok_or_else(|| ProviderError::InvalidConfig("Email required for Filen".to_string()))?;
-        let password = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Password required for Filen".to_string()))?;
+        let password = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Password required for Filen".to_string())
+        })?;
         let two_factor_code = config.extra.get("two_factor_code").cloned();
-        Ok(Self { email, password: password.into(), two_factor_code })
+        Ok(Self {
+            email,
+            password: password.into(),
+            two_factor_code,
+        })
     }
 }
 
@@ -693,10 +778,12 @@ pub struct InternxtConfig {
 
 impl InternxtConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let email = config.username.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Email required for Internxt".to_string()))?;
-        let password = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Password required for Internxt".to_string()))?;
+        let email = config.username.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Email required for Internxt".to_string())
+        })?;
+        let password = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Password required for Internxt".to_string())
+        })?;
         let two_factor_code = config.extra.get("two_factor_code").cloned();
         Ok(Self {
             email,
@@ -720,13 +807,17 @@ pub struct KDriveConfig {
 
 impl KDriveConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let token = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("API token required for kDrive".to_string()))?;
-        let drive_id = config.extra.get("drive_id").cloned()
-            .ok_or_else(|| ProviderError::InvalidConfig("Drive ID required for kDrive".to_string()))?;
+        let token = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("API token required for kDrive".to_string())
+        })?;
+        let drive_id = config.extra.get("drive_id").cloned().ok_or_else(|| {
+            ProviderError::InvalidConfig("Drive ID required for kDrive".to_string())
+        })?;
         // F6: Validate drive_id is numeric to prevent URL path traversal
         if !drive_id.chars().all(|c| c.is_ascii_digit()) {
-            return Err(ProviderError::InvalidConfig("Drive ID must be numeric".to_string()));
+            return Err(ProviderError::InvalidConfig(
+                "Drive ID must be numeric".to_string(),
+            ));
         }
         Ok(Self {
             api_token: token.into(),
@@ -751,18 +842,29 @@ pub struct JottacloudConfig {
 
 impl JottacloudConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let token = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("Login token required for Jottacloud".to_string()))?;
-        let device = config.extra.get("device").cloned()
+        let token = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("Login token required for Jottacloud".to_string())
+        })?;
+        let device = config
+            .extra
+            .get("device")
+            .cloned()
             .unwrap_or_else(|| "Jotta".to_string());
-        let mountpoint = config.extra.get("mountpoint").cloned()
+        let mountpoint = config
+            .extra
+            .get("mountpoint")
+            .cloned()
             .unwrap_or_else(|| "Archive".to_string());
         // Validate device/mountpoint don't contain path traversal
         if device.contains("..") || device.contains('/') {
-            return Err(ProviderError::InvalidConfig("Invalid device name".to_string()));
+            return Err(ProviderError::InvalidConfig(
+                "Invalid device name".to_string(),
+            ));
         }
         if mountpoint.contains("..") || mountpoint.contains('/') {
-            return Err(ProviderError::InvalidConfig("Invalid mountpoint name".to_string()));
+            return Err(ProviderError::InvalidConfig(
+                "Invalid mountpoint name".to_string(),
+            ));
         }
         Ok(Self {
             login_token: token.into(),
@@ -784,8 +886,9 @@ pub struct DrimeCloudConfig {
 
 impl DrimeCloudConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let token = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("API token required for Drime Cloud".to_string()))?;
+        let token = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("API token required for Drime Cloud".to_string())
+        })?;
         Ok(Self {
             api_token: token.into(),
             initial_path: config.initial_path.clone(),
@@ -804,8 +907,9 @@ pub struct FileLuConfig {
 
 impl FileLuConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let api_key = config.password.clone()
-            .ok_or_else(|| ProviderError::InvalidConfig("API key required for FileLu".to_string()))?;
+        let api_key = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("API key required for FileLu".to_string())
+        })?;
         Ok(Self {
             api_key: api_key.into(),
             initial_path: config.initial_path.clone(),
@@ -823,7 +927,7 @@ pub struct FourSharedConfig {
 }
 
 /// Remote file/directory entry
-/// 
+///
 /// Unified representation of a file or directory across all providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteEntry {
@@ -898,7 +1002,10 @@ impl RemoteEntry {
         if self.is_dir {
             return None;
         }
-        self.name.rsplit('.').next().filter(|ext| ext.len() < self.name.len())
+        self.name
+            .rsplit('.')
+            .next()
+            .filter(|ext| ext.len() < self.name.len())
     }
 }
 
@@ -970,9 +1077,7 @@ impl ProviderError {
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,
-            ProviderError::Timeout
-                | ProviderError::NetworkError(_)
-                | ProviderError::NotConnected
+            ProviderError::Timeout | ProviderError::NetworkError(_) | ProviderError::NotConnected
         )
     }
 }
@@ -1081,7 +1186,7 @@ impl TransferProgressInfo {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    
+
     #[test]
     fn test_provider_type_default_port() {
         assert_eq!(ProviderType::Ftp.default_port(), 21);
@@ -1090,15 +1195,19 @@ mod tests {
         assert_eq!(ProviderType::WebDav.default_port(), 443);
         assert_eq!(ProviderType::S3.default_port(), 443);
     }
-    
+
     #[test]
     fn test_remote_entry_extension() {
-        let file = RemoteEntry::file("document.pdf".to_string(), "/path/document.pdf".to_string(), 1000);
+        let file = RemoteEntry::file(
+            "document.pdf".to_string(),
+            "/path/document.pdf".to_string(),
+            1000,
+        );
         assert_eq!(file.extension(), Some("pdf"));
-        
+
         let dir = RemoteEntry::directory("folder".to_string(), "/path/folder".to_string());
         assert_eq!(dir.extension(), None);
-        
+
         let no_ext = RemoteEntry::file("Makefile".to_string(), "/path/Makefile".to_string(), 500);
         assert_eq!(no_ext.extension(), None);
     }

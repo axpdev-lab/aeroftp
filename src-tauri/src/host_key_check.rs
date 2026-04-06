@@ -77,7 +77,9 @@ impl Handler for ProbeHandler {
                 // Unknown key — TOFU needed
                 tracing::info!(
                     "Host key probe: unknown key for {}:{} ({})",
-                    self.host, self.port, algorithm
+                    self.host,
+                    self.port,
+                    algorithm
                 );
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(HostKeyInfo {
                     status: "unknown".to_string(),
@@ -97,7 +99,10 @@ impl Handler for ProbeHandler {
                 // Key changed — possible MITM
                 tracing::warn!(
                     "Host key probe: key CHANGED for {}:{} at line {} ({})",
-                    self.host, self.port, line, algorithm
+                    self.host,
+                    self.port,
+                    line,
+                    algorithm
                 );
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(HostKeyInfo {
                     status: "changed".to_string(),
@@ -115,7 +120,9 @@ impl Handler for ProbeHandler {
             Err(e) => {
                 tracing::error!(
                     "Host key probe: verification error for {}:{}: {}",
-                    self.host, self.port, e
+                    self.host,
+                    self.port,
+                    e
                 );
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(HostKeyInfo {
                     status: "error".to_string(),
@@ -249,8 +256,7 @@ pub async fn sftp_remove_host_key(host: String, port: u16, line: usize) -> Resul
     let temp_path = known_hosts_path.with_extension("tmp");
     std::fs::write(&temp_path, new_lines.join("\n") + "\n")
         .map_err(|e| format!("Write error: {}", e))?;
-    std::fs::rename(&temp_path, &known_hosts_path)
-        .map_err(|e| format!("Rename error: {}", e))?;
+    std::fs::rename(&temp_path, &known_hosts_path).map_err(|e| format!("Rename error: {}", e))?;
 
     tracing::info!(
         "Removed old host key for {}:{} from known_hosts line {}",

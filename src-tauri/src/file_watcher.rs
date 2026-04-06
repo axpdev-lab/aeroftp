@@ -5,9 +5,9 @@
 // Dropbox-style real-time change detection using notify v6 + notify-debouncer-full 0.6
 // Replaces dead watcher.rs (226 lines) with production-grade implementation
 
-use notify::event::{ModifyKind, RenameMode};
 #[cfg(test)]
 use notify::event::{CreateKind, RemoveKind};
+use notify::event::{ModifyKind, RenameMode};
 use notify::{Config, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_full::{
     new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
@@ -130,7 +130,15 @@ impl WatcherEventKind {
 
 /// Suffix patterns to exclude from watcher events (temp files, editor saves)
 const EXCLUDE_SUFFIXES: &[&str] = &[
-    "~", ".swp", ".swo", ".swn", ".tmp", ".bak", ".crdownload", ".part", ".partial",
+    "~",
+    ".swp",
+    ".swo",
+    ".swn",
+    ".tmp",
+    ".bak",
+    ".crdownload",
+    ".part",
+    ".partial",
 ];
 
 /// Exact filename matches to exclude (OS metadata files)
@@ -142,21 +150,21 @@ const EXCLUDED_HIDDEN: &[&str] = &[
     ".git",
     ".svn",
     ".hg",
-    ".bzr",                // VCS
+    ".bzr", // VCS
     ".DS_Store",
-    ".Spotlight-V100",     // macOS
+    ".Spotlight-V100", // macOS
     ".Trashes",
-    ".fseventsd",          // macOS
-    ".Trash-1000",         // Linux trash
+    ".fseventsd",  // macOS
+    ".Trash-1000", // Linux trash
     ".cache",
-    ".local",              // XDG caches
+    ".local", // XDG caches
     ".npm",
     ".yarn",
-    ".pnpm-store",         // package managers
+    ".pnpm-store", // package managers
     "__pycache__",
-    ".pytest_cache",       // Python
-    ".aerosync-tmp",       // AeroSync temp
-    ".aeroversions",       // AeroCloud file versioning
+    ".pytest_cache", // Python
+    ".aerosync-tmp", // AeroSync temp
+    ".aeroversions", // AeroCloud file versioning
 ];
 
 /// Check if a path should be excluded from sync based on common patterns.
@@ -364,10 +372,7 @@ impl FileWatcher {
                             .map(|e| WatcherEventKind::from_notify(&e.event.kind))
                             .unwrap_or(WatcherEventKind::Other);
 
-                        let event = WatcherEvent {
-                            paths,
-                            kind,
-                        };
+                        let event = WatcherEvent { paths, kind };
 
                         events_received.fetch_add(1, Ordering::Relaxed);
                         if let Ok(mut guard) = last_event_at.lock() {
@@ -419,10 +424,7 @@ impl FileWatcher {
                     }
 
                     let kind = WatcherEventKind::from_notify(&event.kind);
-                    let watcher_event = WatcherEvent {
-                        paths,
-                        kind,
-                    };
+                    let watcher_event = WatcherEvent { paths, kind };
 
                     events_received.fetch_add(1, Ordering::Relaxed);
                     if let Ok(mut guard) = last_event_at.lock() {
@@ -470,16 +472,12 @@ impl FileWatcher {
     /// Get current watcher status for UI display
     #[allow(dead_code)] // Used in unit tests and Tauri command
     pub fn status(&self) -> WatcherStatus {
-        let last_event_str = self
-            .last_event_at
-            .lock()
-            .ok()
-            .and_then(|guard| {
-                guard.map(|instant| {
-                    let elapsed = instant.elapsed();
-                    format!("{}s ago", elapsed.as_secs())
-                })
-            });
+        let last_event_str = self.last_event_at.lock().ok().and_then(|guard| {
+            guard.map(|instant| {
+                let elapsed = instant.elapsed();
+                format!("{}s ago", elapsed.as_secs())
+            })
+        });
 
         let healthy = if self.running.load(Ordering::SeqCst) {
             // Healthy if we've received events recently or just started
@@ -599,9 +597,7 @@ mod tests {
             WatcherEventKind::Removed
         );
         assert_eq!(
-            WatcherEventKind::from_notify(&EventKind::Modify(ModifyKind::Name(
-                RenameMode::Both
-            ))),
+            WatcherEventKind::from_notify(&EventKind::Modify(ModifyKind::Name(RenameMode::Both))),
             WatcherEventKind::Renamed
         );
     }

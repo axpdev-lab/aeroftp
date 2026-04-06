@@ -19,7 +19,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::Serialize;
-use std::path::{Path, PathBuf, Component};
+use std::path::{Component, Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::sync::{LazyLock, Mutex};
 #[cfg(target_os = "linux")]
@@ -94,8 +94,7 @@ pub struct SubDirectory {
 
 /// Hidden directories that should still be shown in listings.
 const WELL_KNOWN_HIDDEN: &[&str] = &[
-    ".config", ".local", ".ssh", ".gnupg", ".cargo", ".rustup",
-    ".npm", ".nvm", ".vscode", ".git",
+    ".config", ".local", ".ssh", ".gnupg", ".cargo", ".rustup", ".npm", ".nvm", ".vscode", ".git",
 ];
 
 // ─── Command 1: get_user_directories ────────────────────────────────────────
@@ -105,13 +104,13 @@ const WELL_KNOWN_HIDDEN: &[&str] = &[
 #[tauri::command]
 pub fn get_user_directories() -> Vec<UserDirectory> {
     let mappings: Vec<(Option<PathBuf>, &str, &str)> = vec![
-        (dirs::home_dir(),     "home",      "Home"),
-        (dirs::desktop_dir(),  "desktop",   "Monitor"),
+        (dirs::home_dir(), "home", "Home"),
+        (dirs::desktop_dir(), "desktop", "Monitor"),
         (dirs::document_dir(), "documents", "FileText"),
-        (dirs::picture_dir(),  "pictures",  "Image"),
-        (dirs::audio_dir(),    "music",     "Music"),
+        (dirs::picture_dir(), "pictures", "Image"),
+        (dirs::audio_dir(), "music", "Music"),
         (dirs::download_dir(), "downloads", "Download"),
-        (dirs::video_dir(),    "videos",    "Video"),
+        (dirs::video_dir(), "videos", "Video"),
     ];
 
     let mut dirs = Vec::new();
@@ -161,11 +160,31 @@ pub async fn list_mounted_volumes() -> Result<Vec<VolumeInfo>, String> {
 /// Do NOT remove `fuse.gvfsd-fuse` without also removing the GVFS block (audit fix FS-004).
 #[cfg(target_os = "linux")]
 const PSEUDO_FS_TYPES: &[&str] = &[
-    "proc", "sysfs", "devtmpfs", "tmpfs", "cgroup", "cgroup2",
-    "overlay", "squashfs", "devpts", "securityfs", "pstore",
-    "efivarfs", "bpf", "autofs", "mqueue", "hugetlbfs", "debugfs",
-    "tracefs", "fusectl", "configfs", "ramfs", "rpc_pipefs", "nfsd",
-    "fuse.portal", "fuse.gvfsd-fuse",
+    "proc",
+    "sysfs",
+    "devtmpfs",
+    "tmpfs",
+    "cgroup",
+    "cgroup2",
+    "overlay",
+    "squashfs",
+    "devpts",
+    "securityfs",
+    "pstore",
+    "efivarfs",
+    "bpf",
+    "autofs",
+    "mqueue",
+    "hugetlbfs",
+    "debugfs",
+    "tracefs",
+    "fusectl",
+    "configfs",
+    "ramfs",
+    "rpc_pipefs",
+    "nfsd",
+    "fuse.portal",
+    "fuse.gvfsd-fuse",
 ];
 
 /// Network filesystem types.
@@ -282,7 +301,11 @@ fn parse_gvfs_share_name(dir_name: &str) -> String {
         }
     }
 
-    let server = params.get("server").or(params.get("host")).copied().unwrap_or("");
+    let server = params
+        .get("server")
+        .or(params.get("host"))
+        .copied()
+        .unwrap_or("");
     let share = params.get("share").copied();
     let user = params.get("user").copied();
 
@@ -310,22 +333,28 @@ fn parse_gvfs_share_name(dir_name: &str) -> String {
 /// Determine filesystem type from GVFS directory name prefix.
 #[cfg(target_os = "linux")]
 fn gvfs_fs_type(dir_name: &str) -> String {
-    if dir_name.starts_with("smb-share:") { "cifs".to_string() }
-    else if dir_name.starts_with("sftp:") { "sftp".to_string() }
-    else if dir_name.starts_with("ftp:") { "ftp".to_string() }
-    else if dir_name.starts_with("dav:") || dir_name.starts_with("davs:") { "webdav".to_string() }
-    else if dir_name.starts_with("nfs:") { "nfs".to_string() }
-    else if dir_name.starts_with("afp:") { "afp".to_string() }
-    else { "network".to_string() }
+    if dir_name.starts_with("smb-share:") {
+        "cifs".to_string()
+    } else if dir_name.starts_with("sftp:") {
+        "sftp".to_string()
+    } else if dir_name.starts_with("ftp:") {
+        "ftp".to_string()
+    } else if dir_name.starts_with("dav:") || dir_name.starts_with("davs:") {
+        "webdav".to_string()
+    } else if dir_name.starts_with("nfs:") {
+        "nfs".to_string()
+    } else if dir_name.starts_with("afp:") {
+        "afp".to_string()
+    } else {
+        "network".to_string()
+    }
 }
 
 /// Check if a mount point should be skipped (system pseudo-paths).
 #[cfg(target_os = "linux")]
 fn should_skip_mount_point(mount_point: &str) -> bool {
     // Always skip /proc, /sys, /dev (except /dev/shm)
-    if mount_point.starts_with("/proc")
-        || mount_point.starts_with("/sys")
-    {
+    if mount_point.starts_with("/proc") || mount_point.starts_with("/sys") {
         return true;
     }
 
@@ -466,10 +495,14 @@ fn unescape_octal(input: &str) -> String {
     let mut byte_buf: Vec<u8> = Vec::new();
 
     while i < len {
-        if bytes[i] == b'\\' && i + 3 < len
-            && bytes[i + 1].is_ascii_digit() && bytes[i + 1] < b'8'
-            && bytes[i + 2].is_ascii_digit() && bytes[i + 2] < b'8'
-            && bytes[i + 3].is_ascii_digit() && bytes[i + 3] < b'8'
+        if bytes[i] == b'\\'
+            && i + 3 < len
+            && bytes[i + 1].is_ascii_digit()
+            && bytes[i + 1] < b'8'
+            && bytes[i + 2].is_ascii_digit()
+            && bytes[i + 2] < b'8'
+            && bytes[i + 3].is_ascii_digit()
+            && bytes[i + 3] < b'8'
         {
             // Parse 3 octal digits
             let o1 = bytes[i + 1] - b'0';
@@ -543,15 +576,18 @@ async fn list_mounted_volumes_macos() -> Result<Vec<VolumeInfo>, String> {
     let has_root = volumes.iter().any(|v| v.mount_point == "/");
     if !has_root {
         let (total, free) = get_disk_space("/");
-        volumes.insert(0, VolumeInfo {
-            name: "Macintosh HD".to_string(),
-            mount_point: "/".to_string(),
-            volume_type: "internal".to_string(),
-            total_bytes: total,
-            free_bytes: free,
-            fs_type: "apfs".to_string(),
-            is_ejectable: false,
-        });
+        volumes.insert(
+            0,
+            VolumeInfo {
+                name: "Macintosh HD".to_string(),
+                mount_point: "/".to_string(),
+                volume_type: "internal".to_string(),
+                total_bytes: total,
+                free_bytes: free,
+                fs_type: "apfs".to_string(),
+                is_ejectable: false,
+            },
+        );
     }
 
     info!("Detected {} mounted volumes (macOS)", volumes.len());
@@ -564,10 +600,10 @@ async fn list_mounted_volumes_macos() -> Result<Vec<VolumeInfo>, String> {
 async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use windows::Win32::Storage::FileSystem::{
-        GetLogicalDrives, GetVolumeInformationW, GetDiskFreeSpaceExW, GetDriveTypeW,
-    };
     use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
+    };
 
     // Win32 drive type constants (windows-rs 0.58 returns u32, not enum)
     const DRIVE_REMOVABLE: u32 = 2;
@@ -588,7 +624,10 @@ async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
         }
 
         let letter = (b'A' + i as u8) as char;
-        let root: Vec<u16> = format!("{}:\\", letter).encode_utf16().chain(std::iter::once(0)).collect();
+        let root: Vec<u16> = format!("{}:\\", letter)
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
         let root_pcwstr = PCWSTR(root.as_ptr());
 
         // Drive type classification
@@ -608,21 +647,33 @@ async fn list_mounted_volumes_windows() -> Result<Vec<VolumeInfo>, String> {
             GetVolumeInformationW(
                 root_pcwstr,
                 Some(&mut vol_name_buf),
-                None, None, None,
+                None,
+                None,
+                None,
                 Some(&mut fs_name_buf),
             )
         };
 
         let vol_name = if vol_ok.is_ok() {
-            let len = vol_name_buf.iter().position(|&c| c == 0).unwrap_or(vol_name_buf.len());
-            OsString::from_wide(&vol_name_buf[..len]).to_string_lossy().to_string()
+            let len = vol_name_buf
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(vol_name_buf.len());
+            OsString::from_wide(&vol_name_buf[..len])
+                .to_string_lossy()
+                .to_string()
         } else {
             String::new()
         };
 
         let fs_type = if vol_ok.is_ok() {
-            let len = fs_name_buf.iter().position(|&c| c == 0).unwrap_or(fs_name_buf.len());
-            OsString::from_wide(&fs_name_buf[..len]).to_string_lossy().to_lowercase()
+            let len = fs_name_buf
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(fs_name_buf.len());
+            OsString::from_wide(&fs_name_buf[..len])
+                .to_string_lossy()
+                .to_lowercase()
         } else {
             "unknown".to_string()
         };
@@ -684,8 +735,8 @@ pub fn list_subdirectories(path: String) -> Result<Vec<SubDirectory>, String> {
         return Err("Path is not a directory".to_string());
     }
 
-    let entries = std::fs::read_dir(dir_path)
-        .map_err(|_| "Failed to read directory".to_string())?;
+    let entries =
+        std::fs::read_dir(dir_path).map_err(|_| "Failed to read directory".to_string())?;
 
     let mut subdirs: Vec<SubDirectory> = Vec::new();
 
@@ -784,7 +835,9 @@ fn validate_device_path(path: &str) -> Result<(), String> {
     // Must match /dev/[a-zA-Z0-9/_-]+
     let suffix = &path[5..]; // after "/dev/"
     if suffix.is_empty()
-        || !suffix.chars().all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
+        || !suffix
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
     {
         return Err("Device path contains invalid characters".to_string());
     }
@@ -806,7 +859,11 @@ async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
             return Ok(msg);
         }
         let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(format!("Failed to unmount GVFS share {}: {}", mount_point, stderr.trim()));
+        return Err(format!(
+            "Failed to unmount GVFS share {}: {}",
+            mount_point,
+            stderr.trim()
+        ));
     }
 
     // First, try to find the device for this mount point from /proc/mounts
@@ -823,7 +880,10 @@ async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
 
         if let Ok(output) = result {
             if output.status.success() {
-                let msg = format!("Volume unmounted successfully via udisksctl: {}", mount_point);
+                let msg = format!(
+                    "Volume unmounted successfully via udisksctl: {}",
+                    mount_point
+                );
                 info!("{}", msg);
                 return Ok(msg);
             }
@@ -859,7 +919,11 @@ async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
     }
 
     let stderr = String::from_utf8_lossy(&result.stderr);
-    Err(format!("Failed to unmount {}: {}", mount_point, stderr.trim()))
+    Err(format!(
+        "Failed to unmount {}: {}",
+        mount_point,
+        stderr.trim()
+    ))
 }
 
 /// Find the device path associated with a mount point by reading /proc/mounts.
@@ -888,7 +952,11 @@ async fn eject_volume_macos(mount_point: &str) -> Result<String, String> {
         Ok(msg)
     } else {
         let stderr = String::from_utf8_lossy(&result.stderr);
-        Err(format!("Failed to eject {}: {}", mount_point, stderr.trim()))
+        Err(format!(
+            "Failed to eject {}: {}",
+            mount_point,
+            stderr.trim()
+        ))
     }
 }
 
@@ -910,8 +978,8 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse lsblk JSON: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse lsblk JSON: {}", e))?;
 
     let mut partitions = Vec::new();
 
@@ -947,7 +1015,8 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
         };
 
         // Some lsblk versions return size as string, not number (audit fix FS-002)
-        let size = part["size"].as_u64()
+        let size = part["size"]
+            .as_u64()
             .or_else(|| part["size"].as_str().and_then(|s| s.parse::<u64>().ok()))
             .unwrap_or(0);
         let label = part["label"].as_str().unwrap_or("");
@@ -1027,7 +1096,10 @@ pub async fn mount_partition(device: String) -> Result<String, String> {
 #[cfg(not(target_os = "linux"))]
 #[tauri::command]
 pub async fn mount_partition(device: String) -> Result<String, String> {
-    Err(format!("Mounting partitions is not supported on this platform (device: {})", device))
+    Err(format!(
+        "Mounting partitions is not supported on this platform (device: {})",
+        device
+    ))
 }
 
 // ─── Structs (AeroFile Phase B+C) ───────────────────────────────────────────
@@ -1079,7 +1151,8 @@ pub struct TrashItem {
 pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties, String> {
     validate_path(&path)?;
 
-    let metadata = tokio::fs::symlink_metadata(&path).await
+    let metadata = tokio::fs::symlink_metadata(&path)
+        .await
         .map_err(|_| "Failed to read file metadata".to_string())?;
 
     let name = Path::new(&path)
@@ -1099,7 +1172,10 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
 
     let is_symlink = metadata.file_type().is_symlink();
     let link_target = if is_symlink {
-        tokio::fs::read_link(&path).await.ok().map(|p| p.to_string_lossy().to_string())
+        tokio::fs::read_link(&path)
+            .await
+            .ok()
+            .map(|p| p.to_string_lossy().to_string())
     } else {
         None
     };
@@ -1118,17 +1194,28 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
         let file_mode = mode & 0o7777;
 
         let to_rwx = |n: u32| -> String {
-            format!("{}{}{}",
+            format!(
+                "{}{}{}",
                 if n & 4 != 0 { "r" } else { "-" },
                 if n & 2 != 0 { "w" } else { "-" },
-                if n & 1 != 0 { "x" } else { "-" })
+                if n & 1 != 0 { "x" } else { "-" }
+            )
         };
 
-        let prefix = if metadata.is_dir() { "d" } else if is_symlink { "l" } else { "-" };
-        let text = format!("{}{}{}{}", prefix,
+        let prefix = if metadata.is_dir() {
+            "d"
+        } else if is_symlink {
+            "l"
+        } else {
+            "-"
+        };
+        let text = format!(
+            "{}{}{}{}",
+            prefix,
             to_rwx((file_mode >> 6) & 7),
             to_rwx((file_mode >> 3) & 7),
-            to_rwx(file_mode & 7));
+            to_rwx(file_mode & 7)
+        );
 
         let uid = metadata.uid();
         let gid = metadata.gid();
@@ -1146,9 +1233,8 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
     };
 
     #[cfg(not(unix))]
-    let (permissions_mode, permissions_text, owner, group, inode, hard_links) = {
-        (None, None, None, None, None, None)
-    };
+    let (permissions_mode, permissions_text, owner, group, inode, hard_links) =
+        { (None, None, None, None, None, None) };
 
     Ok(DetailedFileProperties {
         name,
@@ -1196,7 +1282,10 @@ pub async fn calculate_folder_size(path: String) -> Result<FolderSizeResult, Str
     {
         entry_count += 1;
         if entry_count > MAX_ENTRIES {
-            warn!("calculate_folder_size: entry limit ({}) reached, returning partial result", MAX_ENTRIES);
+            warn!(
+                "calculate_folder_size: entry limit ({}) reached, returning partial result",
+                MAX_ENTRIES
+            );
             break;
         }
         if entry.file_type().is_file() {
@@ -1226,7 +1315,6 @@ pub async fn delete_to_trash(path: String) -> Result<(), String> {
 
 // ─── Command 8: list_trash_items ────────────────────────────────────────────
 
-
 /// Lists items currently in the system trash (up to 200, sorted by deletion time).
 /// GAP-C01: Uses `trash` crate for cross-platform support (Linux + Windows).
 /// macOS uses manual ~/.Trash scanning (crate doesn't support list on macOS).
@@ -1235,32 +1323,35 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
     // Linux and Windows: use trash crate's os_limited API
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
-        let crate_items = trash::os_limited::list()
-            .map_err(|e| format!("Failed to list trash: {}", e))?;
+        let crate_items =
+            trash::os_limited::list().map_err(|e| format!("Failed to list trash: {}", e))?;
 
-        let mut items: Vec<TrashItem> = crate_items.iter().map(|item| {
-            let name = item.name.to_string_lossy().to_string();
-            let original_path = item.original_path().to_string_lossy().to_string();
-            let deleted_at = chrono::DateTime::from_timestamp(item.time_deleted, 0)
-                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
+        let mut items: Vec<TrashItem> = crate_items
+            .iter()
+            .map(|item| {
+                let name = item.name.to_string_lossy().to_string();
+                let original_path = item.original_path().to_string_lossy().to_string();
+                let deleted_at = chrono::DateTime::from_timestamp(item.time_deleted, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string());
 
-            // Get size and is_dir via metadata (best-effort)
-            let (size, is_dir) = trash::os_limited::metadata(item)
-                .map(|m| match m.size {
-                    trash::TrashItemSize::Bytes(b) => (b, false),
-                    trash::TrashItemSize::Entries(_) => (0, true),
-                })
-                .unwrap_or((0, false));
+                // Get size and is_dir via metadata (best-effort)
+                let (size, is_dir) = trash::os_limited::metadata(item)
+                    .map(|m| match m.size {
+                        trash::TrashItemSize::Bytes(b) => (b, false),
+                        trash::TrashItemSize::Entries(_) => (0, true),
+                    })
+                    .unwrap_or((0, false));
 
-            TrashItem {
-                id: item.id.to_string_lossy().to_string(),
-                name,
-                original_path,
-                deleted_at,
-                size,
-                is_dir,
-            }
-        }).collect();
+                TrashItem {
+                    id: item.id.to_string_lossy().to_string(),
+                    name,
+                    original_path,
+                    deleted_at,
+                    size,
+                    is_dir,
+                }
+            })
+            .collect();
 
         items.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
         items.truncate(200);
@@ -1282,7 +1373,9 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
         if let Ok(entries) = std::fs::read_dir(&trash_dir) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') { continue; }
+                if name.starts_with('.') {
+                    continue;
+                }
 
                 let (size, is_dir, deleted_at) = match entry.metadata() {
                     Ok(m) => {
@@ -1293,7 +1386,7 @@ pub async fn list_trash_items() -> Result<Vec<TrashItem>, String> {
                             })
                         });
                         (m.len(), m.is_dir(), deleted)
-                    },
+                    }
                     Err(_) => (0, false, None),
                 };
 
@@ -1331,17 +1424,19 @@ pub async fn restore_trash_item(id: String, original_path: String) -> Result<(),
         }
 
         // Find the matching item in trash by id
-        let all_items = trash::os_limited::list()
-            .map_err(|e| format!("Failed to list trash: {}", e))?;
+        let all_items =
+            trash::os_limited::list().map_err(|e| format!("Failed to list trash: {}", e))?;
 
-        let target = all_items.into_iter()
+        let target = all_items
+            .into_iter()
             .find(|item| item.id.to_string_lossy() == id)
             .ok_or_else(|| "Item not found in trash".to_string())?;
 
         // Ensure parent directory exists before restore
         let restore_path = target.original_path();
         if let Some(parent) = restore_path.parent() {
-            tokio::fs::create_dir_all(parent).await
+            tokio::fs::create_dir_all(parent)
+                .await
                 .map_err(|e| format!("Failed to create parent directory: {}", e))?;
         }
 
@@ -1367,8 +1462,8 @@ pub async fn empty_trash() -> Result<u64, String> {
     // Linux and Windows: use trash crate's os_limited API
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
-        let items = trash::os_limited::list()
-            .map_err(|e| format!("Failed to list trash: {}", e))?;
+        let items =
+            trash::os_limited::list().map_err(|e| format!("Failed to list trash: {}", e))?;
 
         let count = items.len() as u64;
 
@@ -1391,7 +1486,9 @@ pub async fn empty_trash() -> Result<u64, String> {
             if let Ok(entries) = std::fs::read_dir(&trash_dir) {
                 for entry in entries.filter_map(|e| e.ok()) {
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with('.') { continue; }
+                    if name.starts_with('.') {
+                        continue;
+                    }
                     let path = entry.path();
                     if path.is_dir() {
                         let _ = std::fs::remove_dir_all(&path);
@@ -1441,7 +1538,8 @@ pub async fn find_duplicate_files(
     const MAX_TOTAL_HASH_BYTES: u64 = 2_000_000_000; // 2 GB max total hash I/O
 
     // Phase 1: group files by size
-    let mut size_groups: std::collections::HashMap<u64, Vec<PathBuf>> = std::collections::HashMap::new();
+    let mut size_groups: std::collections::HashMap<u64, Vec<PathBuf>> =
+        std::collections::HashMap::new();
     let mut scan_count: u64 = 0;
 
     for entry in walkdir::WalkDir::new(&path)
@@ -1450,37 +1548,54 @@ pub async fn find_duplicate_files(
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        if !entry.file_type().is_file() { continue; }
+        if !entry.file_type().is_file() {
+            continue;
+        }
         scan_count += 1;
         if scan_count > MAX_FILE_COUNT {
-            warn!("find_duplicate_files: file limit ({}) reached, scanning partial results", MAX_FILE_COUNT);
+            warn!(
+                "find_duplicate_files: file limit ({}) reached, scanning partial results",
+                MAX_FILE_COUNT
+            );
             break;
         }
         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-        if size < min { continue; }
+        if size < min {
+            continue;
+        }
         size_groups.entry(size).or_default().push(entry.into_path());
     }
 
     // Phase 2: hash only files with matching sizes (2+ files)
-    let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> = std::collections::HashMap::new();
+    let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
+        std::collections::HashMap::new();
     let mut total_hash_bytes: u64 = 0;
     let mut budget_exceeded = false;
 
     for (size, files) in size_groups {
-        if budget_exceeded { break; }
-        if files.len() < 2 { continue; }
+        if budget_exceeded {
+            break;
+        }
+        if files.len() < 2 {
+            continue;
+        }
 
         for file_path in &files {
             // Check total hash I/O budget
             total_hash_bytes += size;
             if total_hash_bytes > MAX_TOTAL_HASH_BYTES {
-                warn!("find_duplicate_files: total hash I/O limit ({} bytes) reached", MAX_TOTAL_HASH_BYTES);
+                warn!(
+                    "find_duplicate_files: total hash I/O limit ({} bytes) reached",
+                    MAX_TOTAL_HASH_BYTES
+                );
                 budget_exceeded = true;
                 break;
             }
             match compute_file_hash(file_path) {
                 Ok(hash) => {
-                    let entry = hash_groups.entry(hash).or_insert_with(|| (size, Vec::new()));
+                    let entry = hash_groups
+                        .entry(hash)
+                        .or_insert_with(|| (size, Vec::new()));
                     entry.1.push(file_path.to_string_lossy().to_string());
                 }
                 Err(_) => continue,
@@ -1512,7 +1627,9 @@ fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
     let mut buffer = [0u8; 65536];
     loop {
         let n = file.read(&mut buffer)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buffer[..n]);
     }
     Ok(hasher.finalize().to_hex().to_string())
@@ -1567,12 +1684,13 @@ fn build_usage_tree(
     max_ent: usize,
     entry_count: &std::sync::atomic::AtomicUsize,
 ) -> Result<DiskUsageNode, String> {
-    let name = path.file_name()
+    let name = path
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string_lossy().to_string());
 
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| "Failed to read file metadata".to_string())?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| "Failed to read file metadata".to_string())?;
 
     if !metadata.is_dir() {
         return Ok(DiskUsageNode {
@@ -1614,8 +1732,7 @@ fn build_usage_tree(
         });
     }
 
-    let entries = std::fs::read_dir(path)
-        .map_err(|_| "Failed to read directory".to_string())?;
+    let entries = std::fs::read_dir(path).map_err(|_| "Failed to read directory".to_string())?;
 
     let mut children: Vec<DiskUsageNode> = Vec::new();
 
@@ -1627,9 +1744,18 @@ fn build_usage_tree(
         let child_path = entry.path();
         // Skip symlinks to avoid cycles
         if let Ok(m) = std::fs::symlink_metadata(&child_path) {
-            if m.file_type().is_symlink() { continue; }
+            if m.file_type().is_symlink() {
+                continue;
+            }
         }
-        match build_usage_tree(&child_path, remaining_depth - 1, start, max_dur, max_ent, entry_count) {
+        match build_usage_tree(
+            &child_path,
+            remaining_depth - 1,
+            start,
+            max_dur,
+            max_ent,
+            entry_count,
+        ) {
             Ok(node) => children.push(node),
             Err(_) => continue, // Skip permission errors etc.
         }
@@ -1761,7 +1887,10 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
                         libc::inotify_add_watch(
                             inotify_fd,
                             c_path.as_ptr(),
-                            libc::IN_CREATE | libc::IN_DELETE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO,
+                            libc::IN_CREATE
+                                | libc::IN_DELETE
+                                | libc::IN_MOVED_FROM
+                                | libc::IN_MOVED_TO,
                         );
                     }
                 }
@@ -1772,8 +1901,16 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
             loop {
                 // Build pollfd array: /proc/mounts + optional inotify
                 let mut fds = [
-                    libc::pollfd { fd: mounts_fd, events: libc::POLLPRI | libc::POLLERR, revents: 0 },
-                    libc::pollfd { fd: inotify_fd, events: libc::POLLIN, revents: 0 },
+                    libc::pollfd {
+                        fd: mounts_fd,
+                        events: libc::POLLPRI | libc::POLLERR,
+                        revents: 0,
+                    },
+                    libc::pollfd {
+                        fd: inotify_fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    },
                 ];
                 let nfds: libc::nfds_t = if inotify_fd >= 0 { 2 } else { 1 };
 
@@ -1802,8 +1939,13 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
                 if inotify_fd >= 0 && fds[1].revents != 0 {
                     let mut event_buf = [0u8; 4096];
                     while unsafe {
-                        libc::read(inotify_fd, event_buf.as_mut_ptr() as *mut libc::c_void, event_buf.len())
-                    } > 0 {}
+                        libc::read(
+                            inotify_fd,
+                            event_buf.as_mut_ptr() as *mut libc::c_void,
+                            event_buf.len(),
+                        )
+                    } > 0
+                    {}
                 }
 
                 // Debounce: wait 300ms for rapid mount events to settle
@@ -1815,7 +1957,9 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
 
             // Cleanup
             if inotify_fd >= 0 {
-                unsafe { libc::close(inotify_fd); }
+                unsafe {
+                    libc::close(inotify_fd);
+                }
             }
 
             info!("mount-watcher thread exited");

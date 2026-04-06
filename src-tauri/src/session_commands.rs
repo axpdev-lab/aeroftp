@@ -12,11 +12,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tracing::info;
 
-use crate::session_manager::MultiProviderState;
 use crate::providers::{
-    StorageProvider, ProviderFactory, ProviderType,
-    ProviderConfig, RemoteEntry,
+    ProviderConfig, ProviderFactory, ProviderType, RemoteEntry, StorageProvider,
 };
+use crate::session_manager::MultiProviderState;
 
 // ============ Request/Response Types ============
 
@@ -76,8 +75,11 @@ pub async fn session_connect(
     state: State<'_, MultiProviderState>,
     params: SessionConnectionParams,
 ) -> Result<SessionInfoResponse, String> {
-    info!("Creating session {} for {} provider", params.session_id, params.protocol);
-    
+    info!(
+        "Creating session {} for {} provider",
+        params.session_id, params.protocol
+    );
+
     let protocol_lower = params.protocol.to_lowercase();
     let is_oauth = matches!(
         protocol_lower.as_str(),
@@ -104,7 +106,7 @@ pub async fn session_connect(
     };
 
     let mut extra = std::collections::HashMap::new();
-    
+
     // Add S3-specific options
     if provider_type == ProviderType::S3 {
         if let Some(ref bucket) = params.bucket {
@@ -126,7 +128,9 @@ pub async fn session_connect(
     }
 
     let mut config = ProviderConfig {
-        name: params.display_name.clone()
+        name: params
+            .display_name
+            .clone()
             .unwrap_or_else(|| format!("{}@{}", params.username, params.server)),
         provider_type,
         host: params.server.clone(),
@@ -144,20 +148,21 @@ pub async fn session_connect(
     // A3-05: Zeroize password from config after provider creation (password is now in provider internals)
     config.zeroize_password();
 
-    provider.connect().await
+    provider
+        .connect()
+        .await
         .map_err(|e| format!("Connection failed: {}", e))?;
 
     // Create session (config no longer contains plaintext password)
-    let session_info = state.create_session(
-        params.session_id.clone(),
-        provider,
-        Some(config),
-    ).await.map_err(|e| format!("Failed to create session: {}", e))?;
+    let session_info = state
+        .create_session(params.session_id.clone(), provider, Some(config))
+        .await
+        .map_err(|e| format!("Failed to create session: {}", e))?;
 
     let active_id = state.get_active_session_id().await;
 
     info!("Session {} created successfully", params.session_id);
-    
+
     Ok(SessionInfoResponse {
         session_id: session_info.session_id,
         display_name: session_info.display_name,
@@ -172,36 +177,44 @@ async fn session_connect_oauth(
     state: State<'_, MultiProviderState>,
     params: SessionConnectionParams,
 ) -> Result<SessionInfoResponse, String> {
-    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider,
-                          google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
-                          onedrive::OneDriveConfig};
+    use crate::providers::{
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
+        DropboxProvider, GoogleDriveProvider, OneDriveProvider,
+    };
 
-    let client_id = params.client_id.as_ref()
+    let client_id = params
+        .client_id
+        .as_ref()
         .ok_or("OAuth requires client_id")?;
-    let client_secret = params.client_secret.as_ref()
+    let client_secret = params
+        .client_secret
+        .as_ref()
         .ok_or("OAuth requires client_secret")?;
 
     let protocol_lower = params.protocol.to_lowercase();
-    
+
     let provider: Box<dyn StorageProvider> = match protocol_lower.as_str() {
         "googledrive" | "google_drive" => {
             let config = GoogleDriveConfig::new(client_id, client_secret);
             let mut p = GoogleDriveProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Google Drive connection failed: {}", e))?;
             Box::new(p)
         }
         "dropbox" => {
             let config = DropboxConfig::new(client_id, client_secret);
             let mut p = DropboxProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Dropbox connection failed: {}", e))?;
             Box::new(p)
         }
         "onedrive" => {
             let config = OneDriveConfig::new(client_id, client_secret);
             let mut p = OneDriveProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("OneDrive connection failed: {}", e))?;
             Box::new(p)
         }
@@ -209,16 +222,15 @@ async fn session_connect_oauth(
     };
 
     // Create session
-    let session_info = state.create_session(
-        params.session_id.clone(),
-        provider,
-        None,
-    ).await.map_err(|e| format!("Failed to create session: {}", e))?;
+    let session_info = state
+        .create_session(params.session_id.clone(), provider, None)
+        .await
+        .map_err(|e| format!("Failed to create session: {}", e))?;
 
     let active_id = state.get_active_session_id().await;
 
     info!("OAuth session {} created successfully", params.session_id);
-    
+
     Ok(SessionInfoResponse {
         session_id: session_info.session_id,
         display_name: session_info.display_name,
@@ -235,10 +247,12 @@ pub async fn session_disconnect(
     session_id: String,
 ) -> Result<(), String> {
     info!("Closing session {}", session_id);
-    
-    state.close_session(&session_id).await
+
+    state
+        .close_session(&session_id)
+        .await
         .map_err(|e| format!("Failed to close session: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -249,13 +263,17 @@ pub async fn session_switch(
     session_id: String,
 ) -> Result<SessionInfoResponse, String> {
     info!("Switching to session {}", session_id);
-    
-    state.set_active_session(&session_id).await
+
+    state
+        .set_active_session(&session_id)
+        .await
         .map_err(|e| format!("Failed to switch session: {}", e))?;
-    
-    let info = state.get_session_info(&session_id).await
+
+    let info = state
+        .get_session_info(&session_id)
+        .await
         .ok_or("Session not found after switch")?;
-    
+
     Ok(SessionInfoResponse {
         session_id: info.session_id,
         display_name: info.display_name,
@@ -272,16 +290,17 @@ pub async fn session_list(
 ) -> Result<Vec<SessionInfoResponse>, String> {
     let sessions = state.list_sessions().await;
     let active_id = state.get_active_session_id().await;
-    
-    Ok(sessions.into_iter().map(|info| {
-        SessionInfoResponse {
+
+    Ok(sessions
+        .into_iter()
+        .map(|info| SessionInfoResponse {
             session_id: info.session_id.clone(),
             display_name: info.display_name,
             protocol: info.protocol,
             current_path: info.current_path,
             is_active: active_id.as_ref() == Some(&info.session_id),
-        }
-    }).collect())
+        })
+        .collect())
 }
 
 /// Get info about a specific session
@@ -292,15 +311,19 @@ pub async fn session_info(
 ) -> Result<SessionInfoResponse, String> {
     let sid = match session_id {
         Some(id) => id,
-        None => state.get_active_session_id().await
+        None => state
+            .get_active_session_id()
+            .await
             .ok_or("No active session")?,
     };
-    
-    let info = state.get_session_info(&sid).await
+
+    let info = state
+        .get_session_info(&sid)
+        .await
         .ok_or("Session not found")?;
-    
+
     let active_id = state.get_active_session_id().await;
-    
+
     Ok(SessionInfoResponse {
         session_id: info.session_id.clone(),
         display_name: info.display_name,
@@ -319,17 +342,23 @@ pub async fn session_list_files(
     session_id: Option<String>,
     path: Option<String>,
 ) -> Result<SessionListResponse, String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
+
     let list_path = path.as_deref().unwrap_or(".");
-    
-    let files = state.list_files_async(Some(&sid), list_path).await
+
+    let files = state
+        .list_files_async(Some(&sid), list_path)
+        .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-    
-    let current_path = state.pwd(Some(&sid)).await
+
+    let current_path = state
+        .pwd(Some(&sid))
+        .await
         .unwrap_or_else(|_| "/".to_string());
-    
+
     Ok(SessionListResponse {
         files,
         current_path,
@@ -344,15 +373,21 @@ pub async fn session_change_dir(
     session_id: Option<String>,
     path: String,
 ) -> Result<SessionListResponse, String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    let new_path = state.change_dir(Some(&sid), &path).await
+
+    let new_path = state
+        .change_dir(Some(&sid), &path)
+        .await
         .map_err(|e| format!("Failed to change directory: {}", e))?;
-    
-    let files = state.list_files_async(Some(&sid), ".").await
+
+    let files = state
+        .list_files_async(Some(&sid), ".")
+        .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-    
+
     Ok(SessionListResponse {
         files,
         current_path: new_path,
@@ -367,12 +402,16 @@ pub async fn session_mkdir(
     session_id: Option<String>,
     path: String,
 ) -> Result<(), String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    state.mkdir(Some(&sid), &path).await
+
+    state
+        .mkdir(Some(&sid), &path)
+        .await
         .map_err(|e| format!("Failed to create directory: {}", e))?;
-    
+
     info!("Created directory {} in session {}", path, sid);
     Ok(())
 }
@@ -384,12 +423,16 @@ pub async fn session_delete(
     session_id: Option<String>,
     path: String,
 ) -> Result<(), String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    state.delete(Some(&sid), &path).await
+
+    state
+        .delete(Some(&sid), &path)
+        .await
         .map_err(|e| format!("Failed to delete: {}", e))?;
-    
+
     info!("Deleted {} in session {}", path, sid);
     Ok(())
 }
@@ -402,12 +445,16 @@ pub async fn session_rename(
     from: String,
     to: String,
 ) -> Result<(), String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    state.rename(Some(&sid), &from, &to).await
+
+    state
+        .rename(Some(&sid), &from, &to)
+        .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
-    
+
     info!("Renamed {} to {} in session {}", from, to, sid);
     Ok(())
 }
@@ -420,13 +467,20 @@ pub async fn session_download(
     remote_path: String,
     local_path: String,
 ) -> Result<(), String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    state.download(Some(&sid), &remote_path, &local_path).await
+
+    state
+        .download(Some(&sid), &remote_path, &local_path)
+        .await
         .map_err(|e| format!("Failed to download: {}", e))?;
-    
-    info!("Downloaded {} to {} in session {}", remote_path, local_path, sid);
+
+    info!(
+        "Downloaded {} to {} in session {}",
+        remote_path, local_path, sid
+    );
     Ok(())
 }
 
@@ -438,13 +492,20 @@ pub async fn session_upload(
     local_path: String,
     remote_path: String,
 ) -> Result<(), String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
-    
-    state.upload(Some(&sid), &local_path, &remote_path).await
+
+    state
+        .upload(Some(&sid), &local_path, &remote_path)
+        .await
         .map_err(|e| format!("Failed to upload: {}", e))?;
-    
-    info!("Uploaded {} to {} in session {}", local_path, remote_path, sid);
+
+    info!(
+        "Uploaded {} to {} in session {}",
+        local_path, remote_path, sid
+    );
     Ok(())
 }
 
@@ -458,7 +519,9 @@ pub async fn session_create_share_link(
     password: Option<String>,
     permissions: Option<String>,
 ) -> Result<crate::providers::ShareLinkResult, String> {
-    let sid = state.resolve_session_id(session_id.as_deref()).await
+    let sid = state
+        .resolve_session_id(session_id.as_deref())
+        .await
         .map_err(|e| format!("Session error: {}", e))?;
 
     let options = crate::providers::ShareLinkOptions {
@@ -467,9 +530,14 @@ pub async fn session_create_share_link(
         permissions,
     };
 
-    let result = state.create_share_link(Some(&sid), &path, options).await
+    let result = state
+        .create_share_link(Some(&sid), &path, options)
+        .await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
 
-    info!("Created share link for {} in session {}: {}", path, sid, result.url);
+    info!(
+        "Created share link for {} in session {}: {}",
+        path, sid, result.url
+    );
     Ok(result)
 }

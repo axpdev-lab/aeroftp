@@ -10,12 +10,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::credential_store::CredentialStore;
+use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use crate::credential_store::CredentialStore;
-use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
 
 /// A pooled connection with last-used timestamp.
 struct PooledConnection {
@@ -61,14 +61,11 @@ impl ConnectionPool {
         // Create new connection
         let (provider, name) = create_provider_from_vault(server_query)?;
         let mut connected = provider;
-        connected
-            .connect()
-            .await
-            .map_err(|e| {
-                // Sanitize connection errors to prevent credential leakage to AI clients
-                let safe_msg = crate::providers::sanitize_api_error(&e.to_string());
-                format!("Connection to '{}' failed: {}", server_query, safe_msg)
-            })?;
+        connected.connect().await.map_err(|e| {
+            // Sanitize connection errors to prevent credential leakage to AI clients
+            let safe_msg = crate::providers::sanitize_api_error(&e.to_string());
+            format!("Connection to '{}' failed: {}", server_query, safe_msg)
+        })?;
 
         let arc = Arc::new(Mutex::new(connected));
 

@@ -231,11 +231,7 @@ impl GitHubProvider {
                     .join("/");
                 format!(
                     "{}/repos/{}/{}/contents/{}?ref={}",
-                    API_BASE,
-                    self.owner,
-                    self.repo,
-                    encoded_path,
-                    self.branch
+                    API_BASE, self.owner, self.repo, encoded_path, self.branch
                 )
             }
         }
@@ -356,10 +352,7 @@ impl GitHubProvider {
     ///
     /// Uses the Contents API for directories with <=1000 entries.
     /// Falls back to the Git Trees API for larger directories.
-    pub async fn list_contents(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    pub async fn list_contents(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let url = self.contents_url(path);
         gh_log(&format!("list_contents: {}", url));
 
@@ -377,10 +370,8 @@ impl GitHubProvider {
                     return self.list_contents_via_tree(path).await;
                 }
 
-                let mut entries: Vec<RemoteEntry> = items
-                    .iter()
-                    .filter_map(Self::content_to_entry)
-                    .collect();
+                let mut entries: Vec<RemoteEntry> =
+                    items.iter().filter_map(Self::content_to_entry).collect();
 
                 // Enrich with last-commit dates (parallel, best-effort)
                 self.enrich_entries_with_dates(&mut entries).await;
@@ -476,10 +467,12 @@ impl GitHubProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result
-                .map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
+            let chunk = chunk_result.map_err(|e| {
+                ProviderError::TransferFailed(format!("Download stream error: {}", e))
+            })?;
 
-            atomic.write_all(&chunk)
+            atomic
+                .write_all(&chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
 
@@ -562,10 +555,7 @@ impl GitHubProvider {
             .join("/");
         let url = format!(
             "{}/repos/{}/{}/contents/{}",
-            API_BASE,
-            self.owner,
-            self.repo,
-            encoded_path
+            API_BASE, self.owner, self.repo, encoded_path
         );
 
         gh_log(&format!("upload_file: {} ({} bytes)", url, file_size));
@@ -624,10 +614,7 @@ impl GitHubProvider {
             .join("/");
         let url = format!(
             "{}/repos/{}/{}/contents/{}",
-            API_BASE,
-            self.owner,
-            self.repo,
-            encoded_path
+            API_BASE, self.owner, self.repo, encoded_path
         );
 
         gh_log(&format!("delete_file: {}", url));
@@ -641,7 +628,8 @@ impl GitHubProvider {
             .map_err(ProviderError::from)?;
 
         // Remove from cache
-        self.sha_cache.remove(&(self.content_branch().to_string(), norm.clone()));
+        self.sha_cache
+            .remove(&(self.content_branch().to_string(), norm.clone()));
 
         gh_log(&format!("delete_file complete: {}", norm));
         Ok(())
@@ -686,10 +674,7 @@ impl GitHubProvider {
             .join("/");
         let url = format!(
             "{}/repos/{}/{}/contents/{}",
-            API_BASE,
-            self.owner,
-            self.repo,
-            encoded_path
+            API_BASE, self.owner, self.repo, encoded_path
         );
 
         let body_json = serde_json::to_value(&body)
@@ -719,7 +704,9 @@ impl GitHubProvider {
                 GitHubVirtualPath::ReleaseTag(tag) => {
                     delete_release(&mut self.client, &self.owner, &self.repo, &tag).await
                 }
-                GitHubVirtualPath::ReleaseAsset { .. } => self.delete_file(path, commit_message).await,
+                GitHubVirtualPath::ReleaseAsset { .. } => {
+                    self.delete_file(path, commit_message).await
+                }
             };
         }
 
@@ -831,8 +818,7 @@ impl GitHubProvider {
                 } else {
                     &e.path
                 };
-                matcher.is_match(match_target)
-                    || matcher.is_match(filename_from_path(&e.path))
+                matcher.is_match(match_target) || matcher.is_match(filename_from_path(&e.path))
             })
             .filter_map(Self::tree_entry_to_remote)
             .collect();

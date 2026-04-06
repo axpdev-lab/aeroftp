@@ -6,12 +6,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde_json::Value;
 use async_trait::async_trait;
+use serde_json::Value;
 use tokio::sync::Mutex;
 
+use super::credential_provider::{
+    CredentialProvider, ProviderExtraOptions, ServerCredentials, ServerProfile,
+};
 use super::event_sink::{EventSink, ToolProgress};
-use super::credential_provider::{CredentialProvider, ServerProfile, ServerCredentials, ProviderExtraOptions};
 use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
 use crate::providers::{RemoteEntry, StorageProvider};
@@ -50,7 +52,10 @@ impl EventSink for CliEventSink {
                 eprintln!("{}", json);
             }
         } else {
-            eprint!("\r  [{}/{}] {}", progress.current, progress.total, progress.item);
+            eprint!(
+                "\r  [{}/{}] {}",
+                progress.current, progress.total, progress.item
+            );
             if progress.current == progress.total {
                 eprintln!();
             }
@@ -118,18 +123,43 @@ impl CredentialProvider for CliCredentialProvider {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if let Ok(json_str) = store.get("config_server_profiles") {
                 if let Ok(profiles) = serde_json::from_str::<Vec<Value>>(&json_str) {
-                    return Ok(profiles.iter().filter_map(|p| {
-                        Some(ServerProfile {
-                            id: p.get("id")?.as_str()?.to_string(),
-                            name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            host: p.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
-                            username: p.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            protocol: p.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp").to_string(),
-                            initial_path: p.get("initialPath").and_then(|v| v.as_str()).map(String::from),
-                            provider_id: p.get("providerId").and_then(|v| v.as_str()).map(String::from),
+                    return Ok(profiles
+                        .iter()
+                        .filter_map(|p| {
+                            Some(ServerProfile {
+                                id: p.get("id")?.as_str()?.to_string(),
+                                name: p
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                host: p
+                                    .get("host")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
+                                username: p
+                                    .get("username")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                protocol: p
+                                    .get("protocol")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("ftp")
+                                    .to_string(),
+                                initial_path: p
+                                    .get("initialPath")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from),
+                                provider_id: p
+                                    .get("providerId")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from),
+                            })
                         })
-                    }).collect());
+                        .collect());
                 }
             }
         }
@@ -143,9 +173,12 @@ impl CredentialProvider for CliCredentialProvider {
             if let Ok(json_str) = store.get(&format!("server_{}", server_id)) {
                 #[derive(serde::Deserialize)]
                 struct Creds {
-                    #[serde(default)] server: String,
-                    #[serde(default)] username: String,
-                    #[serde(default)] password: String,
+                    #[serde(default)]
+                    server: String,
+                    #[serde(default)]
+                    username: String,
+                    #[serde(default)]
+                    password: String,
                 }
                 if let Ok(c) = serde_json::from_str::<Creds>(&json_str) {
                     return Ok(ServerCredentials {
@@ -157,18 +190,30 @@ impl CredentialProvider for CliCredentialProvider {
             }
         }
         // 2. Try env vars
-        if let (Ok(host), Ok(user)) = (std::env::var("AEROFTP_HOST"), std::env::var("AEROFTP_USER")) {
+        if let (Ok(host), Ok(user)) = (std::env::var("AEROFTP_HOST"), std::env::var("AEROFTP_USER"))
+        {
             let pass = std::env::var("AEROFTP_PASS").unwrap_or_default();
-            return Ok(ServerCredentials { server: host, username: user, password: pass });
+            return Ok(ServerCredentials {
+                server: host,
+                username: user,
+                password: pass,
+            });
         }
         Err(format!("No credentials found for server '{}'. Open vault or set AEROFTP_HOST/AEROFTP_USER/AEROFTP_PASS env vars.", server_id))
     }
 
     fn get_extra_options(&self, server_id: &str) -> Result<ProviderExtraOptions, String> {
         const SENSITIVE_KEYS: &[&str] = &[
-            "password", "access_token", "refresh_token", "api_key",
-            "secret", "token", "oauth_token", "oauth_token_secret",
-            "server", "username",
+            "password",
+            "access_token",
+            "refresh_token",
+            "api_key",
+            "secret",
+            "token",
+            "oauth_token",
+            "oauth_token_secret",
+            "server",
+            "username",
         ];
 
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -200,18 +245,42 @@ pub struct NullRemoteBackend;
 
 #[async_trait]
 impl RemoteBackend for NullRemoteBackend {
-    async fn is_connected(&self) -> bool { false }
-    async fn list(&self, _path: &str) -> Result<Vec<RemoteEntry>, String> { Err("Not connected to any server".into()) }
-    async fn stat(&self, _path: &str) -> Result<RemoteEntry, String> { Err("Not connected".into()) }
-    async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> { Err("Not connected".into()) }
-    async fn upload_from_bytes(&self, _data: &[u8], _path: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn delete(&self, _path: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn mkdir(&self, _path: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn rename(&self, _from: &str, _to: &str) -> Result<(), String> { Err("Not connected".into()) }
-    async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> { Err("Not connected".into()) }
-    async fn storage_info(&self) -> Result<StorageQuota, String> { Err("Not connected".into()) }
+    async fn is_connected(&self) -> bool {
+        false
+    }
+    async fn list(&self, _path: &str) -> Result<Vec<RemoteEntry>, String> {
+        Err("Not connected to any server".into())
+    }
+    async fn stat(&self, _path: &str) -> Result<RemoteEntry, String> {
+        Err("Not connected".into())
+    }
+    async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
+        Err("Not connected".into())
+    }
+    async fn upload_from_bytes(&self, _data: &[u8], _path: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn delete(&self, _path: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn mkdir(&self, _path: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn rename(&self, _from: &str, _to: &str) -> Result<(), String> {
+        Err("Not connected".into())
+    }
+    async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> {
+        Err("Not connected".into())
+    }
+    async fn storage_info(&self) -> Result<StorageQuota, String> {
+        Err("Not connected".into())
+    }
 }
 
 // ─── CliRemoteBackend ─────────────────────────────────────────────────
@@ -223,7 +292,9 @@ pub struct CliRemoteBackend {
 
 impl Default for CliRemoteBackend {
     fn default() -> Self {
-        Self { provider: Mutex::new(None) }
+        Self {
+            provider: Mutex::new(None),
+        }
     }
 }
 
@@ -280,10 +351,19 @@ impl RemoteBackend for CliRemoteBackend {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
         let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!("aeroftp_cli_upload_{}_{}", std::process::id(), nonce));
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_cli_upload_{}_{}",
+            std::process::id(),
+            nonce
+        ));
         std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-        let result = p.upload(tmp.to_str().unwrap_or(""), path, None).await.map_err(|e| e.to_string());
+        let result = p
+            .upload(tmp.to_str().unwrap_or(""), path, None)
+            .await
+            .map_err(|e| e.to_string());
         let _ = std::fs::remove_file(&tmp);
         result
     }
@@ -291,13 +371,17 @@ impl RemoteBackend for CliRemoteBackend {
     async fn download(&self, remote: &str, local: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        p.download(remote, local, None).await.map_err(|e| e.to_string())
+        p.download(remote, local, None)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn upload(&self, local: &str, remote: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        p.upload(local, remote, None).await.map_err(|e| e.to_string())
+        p.upload(local, remote, None)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn delete(&self, path: &str) -> Result<(), String> {

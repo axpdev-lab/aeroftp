@@ -13,13 +13,12 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::info;
 
-use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo, FileVersion,
-    sanitize_api_error,
-    oauth2::{OAuth2Manager, OAuthConfig},
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
-};
 use super::types::BoxConfig;
+use super::{
+    oauth2::{OAuth2Manager, OAuthConfig},
+    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+};
 
 /// Box API endpoints
 const API_BASE: &str = "https://api.box.com/2.0";
@@ -238,7 +237,9 @@ impl BoxProvider {
     /// Get access token from OAuth manager (returns SecretString for memory zeroization)
     async fn get_token(&self) -> Result<secrecy::SecretString, ProviderError> {
         let config = OAuthConfig::box_cloud(&self.config.client_id, &self.config.client_secret);
-        self.oauth_manager.get_valid_token(&config).await
+        self.oauth_manager
+            .get_valid_token(&config)
+            .await
             .map_err(|e| ProviderError::AuthenticationFailed(format!("Box token error: {}", e)))
     }
 
@@ -272,20 +273,30 @@ impl BoxProvider {
 
             // List folder to find child
             let token = self.get_token().await?;
-            let url = format!("{}/folders/{}/items?fields=name,type,id&limit=1000", API_BASE, current_id);
-            let resp = self.client.get(&url)
+            let url = format!(
+                "{}/folders/{}/items?fields=name,type,id&limit=1000",
+                API_BASE, current_id
+            );
+            let resp = self
+                .client
+                .get(&url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(ProviderError::NotFound(format!("Path not found: {}", path)));
             }
 
-            let items: BoxItemCollection = resp.json().await
+            let items: BoxItemCollection = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-            let found = items.entries.iter()
+            let found = items
+                .entries
+                .iter()
                 .find(|item| item.name == part && item.item_type == "folder");
 
             match found {
@@ -293,7 +304,12 @@ impl BoxProvider {
                     current_id = folder.id.clone();
                     self.id_cache.insert(built_path.clone(), current_id.clone());
                 }
-                None => return Err(ProviderError::NotFound(format!("Folder not found: {}", part))),
+                None => {
+                    return Err(ProviderError::NotFound(format!(
+                        "Folder not found: {}",
+                        part
+                    )))
+                }
             }
         }
 
@@ -311,28 +327,49 @@ impl BoxProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/folders/{}/items?fields=name,type,id&limit=1000", API_BASE, parent_id);
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/folders/{}/items?fields=name,type,id&limit=1000",
+            API_BASE, parent_id
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let items: BoxItemCollection = resp.json().await
+        let items: BoxItemCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        items.entries.iter()
+        items
+            .entries
+            .iter()
             .find(|item| item.name == file_name)
             .map(|item| item.id.clone())
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))
     }
 
     fn normalize_path(path: &str) -> String {
-        let p = if path.starts_with('/') { path.to_string() } else { format!("/{}", path) };
-        if p.len() > 1 { p.trim_end_matches('/').to_string() } else { p }
+        let p = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+        if p.len() > 1 {
+            p.trim_end_matches('/').to_string()
+        } else {
+            p
+        }
     }
 
     /// Resolve a path to (id, type) where type is "file" or "folder"
-    async fn resolve_item_id_and_type(&mut self, path: &str) -> Result<(String, String), ProviderError> {
+    async fn resolve_item_id_and_type(
+        &mut self,
+        path: &str,
+    ) -> Result<(String, String), ProviderError> {
         let normalized = Self::normalize_path(path);
         let (parent_path, item_name) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
@@ -342,16 +379,26 @@ impl BoxProvider {
         let parent_id = self.resolve_folder_id(parent_path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/folders/{}/items?fields=name,type,id&limit=1000", API_BASE, parent_id);
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/folders/{}/items?fields=name,type,id&limit=1000",
+            API_BASE, parent_id
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let items: BoxItemCollection = resp.json().await
+        let items: BoxItemCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        items.entries.iter()
+        items
+            .entries
+            .iter()
             .find(|item| item.name == item_name)
             .map(|item| (item.id.clone(), item.item_type.clone()))
             .ok_or_else(|| ProviderError::NotFound(format!("Item not found: {}", item_name)))
@@ -361,7 +408,9 @@ impl BoxProvider {
 
     /// List items in trash (paginated)
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let mut all_entries = Vec::new();
         let mut offset: u64 = 0;
@@ -373,17 +422,25 @@ impl BoxProvider {
                 "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at&limit={}&offset={}",
                 API_BASE, PAGE_LIMIT, offset
             );
-            let resp = self.client.get(&url)
+            let resp = self
+                .client
+                .get(&url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("List trash failed: {}", sanitize_api_error(&body))));
+                return Err(ProviderError::Other(format!(
+                    "List trash failed: {}",
+                    sanitize_api_error(&body)
+                )));
             }
 
-            let page: BoxTrashCollection = resp.json().await
+            let page: BoxTrashCollection = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             for item in &page.entries {
@@ -400,8 +457,12 @@ impl BoxProvider {
                     is_dir: item.item_type == "folder",
                     size: item.size.unwrap_or(0),
                     modified: item.modified_at.clone(),
-                    permissions: None, owner: None, group: None,
-                    is_symlink: false, link_target: None, mime_type: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
                     metadata,
                 });
             }
@@ -418,23 +479,35 @@ impl BoxProvider {
 
     /// Move files to trash (Box delete = soft delete to trash)
     pub async fn trash_files(&mut self, paths: &[String]) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         for path in paths {
             let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
             let token = self.get_token().await?;
 
-            let endpoint = if item_type == "folder" { "folders" } else { "files" };
+            let endpoint = if item_type == "folder" {
+                "folders"
+            } else {
+                "files"
+            };
             let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
 
-            let resp = self.client.delete(&url)
+            let resp = self
+                .client
+                .delete(&url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Trash failed: {}", sanitize_api_error(&body))));
+                return Err(ProviderError::Other(format!(
+                    "Trash failed: {}",
+                    sanitize_api_error(&body)
+                )));
             }
             info!("Box: trashed {} {}", item_type, path);
         }
@@ -442,70 +515,121 @@ impl BoxProvider {
     }
 
     /// Restore an item from trash
-    pub async fn restore_from_trash(&mut self, item_id: &str, item_type: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn restore_from_trash(
+        &mut self,
+        item_id: &str,
+        item_type: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let token = self.get_token().await?;
-        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body("{}")
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Restore failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Restore failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: restored {} {} from trash", item_type, item_id);
         Ok(())
     }
 
     /// Permanently delete an item from trash
-    pub async fn permanent_delete_from_trash(&mut self, item_id: &str, item_type: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn permanent_delete_from_trash(
+        &mut self,
+        item_id: &str,
+        item_type: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let token = self.get_token().await?;
-        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let url = format!("{}/{}/{}/trash", API_BASE, endpoint, item_id);
 
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Permanent delete failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Permanent delete failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
-        info!("Box: permanently deleted {} {} from trash", item_type, item_id);
+        info!(
+            "Box: permanently deleted {} {} from trash",
+            item_type, item_id
+        );
         Ok(())
     }
 
     /// Move a file or folder to a different parent folder
-    pub async fn move_item(&mut self, from_path: &str, to_folder: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn move_item(
+        &mut self,
+        from_path: &str,
+        to_folder: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let (item_id, item_type) = self.resolve_item_id_and_type(from_path).await?;
         let target_id = self.resolve_folder_id(to_folder).await?;
         let token = self.get_token().await?;
 
-        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
 
-        let resp = self.client.put(&url)
+        let resp = self
+            .client
+            .put(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(format!(r#"{{"parent":{{"id":"{}"}}}}"#, target_id))
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Move failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Move failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: moved {} {} -> {}", item_type, from_path, to_folder);
         Ok(())
@@ -513,23 +637,36 @@ impl BoxProvider {
 
     /// List comments on a file
     pub async fn list_comments(&mut self, path: &str) -> Result<Vec<BoxComment>, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/comments?fields=message,created_at,created_by&limit=100", API_BASE, file_id);
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/files/{}/comments?fields=message,created_at,created_by&limit=100",
+            API_BASE, file_id
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List comments failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "List comments failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
 
-        let result: BoxCommentCollection = resp.json().await
+        let result: BoxCommentCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
@@ -537,7 +674,9 @@ impl BoxProvider {
 
     /// Add a comment to a file
     pub async fn add_comment(&mut self, path: &str, message: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
@@ -548,16 +687,22 @@ impl BoxProvider {
             "message": message,
         });
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Add comment failed: {}", sanitize_api_error(&body_text))));
+            return Err(ProviderError::Other(format!(
+                "Add comment failed: {}",
+                sanitize_api_error(&body_text)
+            )));
         }
         info!("Box: added comment to {}", path);
         Ok(())
@@ -565,53 +710,85 @@ impl BoxProvider {
 
     /// Delete a comment by ID
     pub async fn delete_comment(&mut self, comment_id: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let token = self.get_token().await?;
         let url = format!("{}/comments/{}", API_BASE, comment_id);
 
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Delete comment failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Delete comment failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: deleted comment {}", comment_id);
         Ok(())
     }
 
     /// List collaborations on a file or folder
-    pub async fn list_collaborations(&mut self, path: &str) -> Result<Vec<BoxCollaboration>, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn list_collaborations(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<BoxCollaboration>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
         let token = self.get_token().await?;
 
-        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let url = format!("{}/{}/{}/collaborations", API_BASE, endpoint, item_id);
 
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List collaborations failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "List collaborations failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
 
-        let result: BoxCollabCollection = resp.json().await
+        let result: BoxCollabCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
     }
 
     /// Add a collaboration (invite user by email)
-    pub async fn add_collaboration(&mut self, path: &str, email: &str, role: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn add_collaboration(
+        &mut self,
+        path: &str,
+        email: &str,
+        role: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
         let token = self.get_token().await?;
@@ -623,16 +800,22 @@ impl BoxProvider {
             "role": role,
         });
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Add collaboration failed: {}", sanitize_api_error(&body_text))));
+            return Err(ProviderError::Other(format!(
+                "Add collaboration failed: {}",
+                sanitize_api_error(&body_text)
+            )));
         }
         info!("Box: added collaboration for {} on {}", email, path);
         Ok(())
@@ -640,19 +823,27 @@ impl BoxProvider {
 
     /// Remove a collaboration by ID
     pub async fn remove_collaboration(&mut self, collab_id: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let token = self.get_token().await?;
         let url = format!("{}/collaborations/{}", API_BASE, collab_id);
 
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Remove collaboration failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Remove collaboration failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: removed collaboration {}", collab_id);
         Ok(())
@@ -660,7 +851,9 @@ impl BoxProvider {
 
     /// Apply watermark to a file
     pub async fn set_watermark(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
@@ -668,16 +861,22 @@ impl BoxProvider {
         let url = format!("{}/files/{}/watermark", API_BASE, file_id);
         let body = r#"{"watermark":{"imprint":"default"}}"#;
 
-        let resp = self.client.put(&url)
+        let resp = self
+            .client
+            .put(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Set watermark failed: {}", sanitize_api_error(&body_text))));
+            return Err(ProviderError::Other(format!(
+                "Set watermark failed: {}",
+                sanitize_api_error(&body_text)
+            )));
         }
         info!("Box: watermark applied to {}", path);
         Ok(())
@@ -685,21 +884,29 @@ impl BoxProvider {
 
     /// Remove watermark from a file
     pub async fn remove_watermark(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
         let url = format!("{}/files/{}/watermark", API_BASE, file_id);
 
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Remove watermark failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Remove watermark failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: watermark removed from {}", path);
         Ok(())
@@ -707,25 +914,37 @@ impl BoxProvider {
 
     /// Set tags on a file or folder
     pub async fn set_tags(&mut self, path: &str, tags: &[String]) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let (item_id, item_type) = self.resolve_item_id_and_type(path).await?;
         let token = self.get_token().await?;
 
-        let endpoint = if item_type == "folder" { "folders" } else { "files" };
+        let endpoint = if item_type == "folder" {
+            "folders"
+        } else {
+            "files"
+        };
         let url = format!("{}/{}/{}", API_BASE, endpoint, item_id);
         let body = serde_json::json!({ "tags": tags });
 
-        let resp = self.client.put(&url)
+        let resp = self
+            .client
+            .put(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Set tags failed: {}", sanitize_api_error(&body_text))));
+            return Err(ProviderError::Other(format!(
+                "Set tags failed: {}",
+                sanitize_api_error(&body_text)
+            )));
         }
         info!("Box: tags set on {} -> {:?}", path, tags);
         Ok(())
@@ -733,7 +952,9 @@ impl BoxProvider {
 
     /// Lock a folder (prevent move/delete)
     pub async fn lock_folder(&mut self, path: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
@@ -744,16 +965,22 @@ impl BoxProvider {
             "locked_operations": { "move": true, "delete": true },
         });
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .body(body.to_string())
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Lock folder failed: {}", sanitize_api_error(&body_text))));
+            return Err(ProviderError::Other(format!(
+                "Lock folder failed: {}",
+                sanitize_api_error(&body_text)
+            )));
         }
         info!("Box: folder locked {}", path);
         Ok(())
@@ -761,44 +988,65 @@ impl BoxProvider {
 
     /// Unlock a folder by lock ID
     pub async fn unlock_folder(&mut self, lock_id: &str) -> Result<(), ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let token = self.get_token().await?;
         let url = format!("{}/folder_locks/{}", API_BASE, lock_id);
 
-        let resp = self.client.delete(&url)
+        let resp = self
+            .client
+            .delete(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Unlock folder failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "Unlock folder failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         info!("Box: folder unlocked (lock {})", lock_id);
         Ok(())
     }
 
     /// List folder locks
-    pub async fn list_folder_locks(&mut self, path: &str) -> Result<Vec<BoxFolderLock>, ProviderError> {
-        if !self.connected { return Err(ProviderError::NotConnected); }
+    pub async fn list_folder_locks(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<BoxFolderLock>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
 
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
         let url = format!("{}/folder_locks?folder_id={}", API_BASE, folder_id);
 
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List folder locks failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "List folder locks failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
 
-        let result: BoxFolderLockCollection = resp.json().await
+        let result: BoxFolderLockCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
@@ -813,8 +1061,8 @@ impl BoxProvider {
         total_size: u64,
         on_progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>>,
     ) -> Result<(), ProviderError> {
-        use sha1::{Sha1, Digest};
-        use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        use sha1::{Digest, Sha1};
         use tokio::io::AsyncReadExt;
 
         #[derive(Deserialize)]
@@ -829,19 +1077,31 @@ impl BoxProvider {
             commit: Option<String>,
         }
 
-        let session: UploadSession = session_resp.json().await
+        let session: UploadSession = session_resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let chunk_size = session.part_size as usize;
-        let upload_part_url = session.session_endpoints.as_ref()
+        let upload_part_url = session
+            .session_endpoints
+            .as_ref()
             .and_then(|e| e.upload_part.clone())
             .unwrap_or_else(|| format!("{}/files/upload_sessions/{}", UPLOAD_BASE, session.id));
-        let commit_url = session.session_endpoints.as_ref()
+        let commit_url = session
+            .session_endpoints
+            .as_ref()
             .and_then(|e| e.commit.clone())
-            .unwrap_or_else(|| format!("{}/files/upload_sessions/{}/commit", UPLOAD_BASE, session.id));
+            .unwrap_or_else(|| {
+                format!(
+                    "{}/files/upload_sessions/{}/commit",
+                    UPLOAD_BASE, session.id
+                )
+            });
 
         // Stream from file handle instead of buffered &[u8]
-        let mut file = tokio::fs::File::open(local_path).await
+        let mut file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let mut parts: Vec<serde_json::Value> = Vec::new();
         let mut offset: u64 = 0;
@@ -851,7 +1111,8 @@ impl BoxProvider {
             let remaining = (total_size - offset) as usize;
             let this_chunk = std::cmp::min(chunk_size, remaining);
             let mut chunk = vec![0u8; this_chunk];
-            file.read_exact(&mut chunk).await
+            file.read_exact(&mut chunk)
+                .await
                 .map_err(ProviderError::IoError)?;
 
             let chunk_sha1 = {
@@ -865,21 +1126,29 @@ impl BoxProvider {
             let end = offset + this_chunk as u64;
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
-            let resp = self.client.put(&upload_part_url)
+            let resp = self
+                .client
+                .put(&upload_part_url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .header(CONTENT_TYPE, "application/octet-stream")
                 .header("Content-Range", &content_range)
                 .header("Digest", format!("sha={}", chunk_sha1))
                 .body(chunk)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let t = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::TransferFailed(format!("Chunk upload failed: {}", sanitize_api_error(&t))));
+                return Err(ProviderError::TransferFailed(format!(
+                    "Chunk upload failed: {}",
+                    sanitize_api_error(&t)
+                )));
             }
 
-            let part_resp: serde_json::Value = resp.json().await
+            let part_resp: serde_json::Value = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if let Some(part) = part_resp.get("part") {
@@ -899,17 +1168,23 @@ impl BoxProvider {
         let token = self.get_token().await?;
         let commit_body = serde_json::json!({"parts": parts});
 
-        let resp = self.client.post(&commit_url)
+        let resp = self
+            .client
+            .post(&commit_url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, "application/json")
             .header("Digest", format!("sha={}", file_sha1))
             .json(&commit_body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 201 {
             let t = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Commit failed: {}", sanitize_api_error(&t))));
+            return Err(ProviderError::TransferFailed(format!(
+                "Commit failed: {}",
+                sanitize_api_error(&t)
+            )));
         }
 
         Ok(())
@@ -918,27 +1193,42 @@ impl BoxProvider {
 
 #[async_trait]
 impl StorageProvider for BoxProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
-    fn provider_type(&self) -> ProviderType { ProviderType::Box }
+    fn provider_type(&self) -> ProviderType {
+        ProviderType::Box
+    }
 
-    fn display_name(&self) -> String { "Box".to_string() }
+    fn display_name(&self) -> String {
+        "Box".to_string()
+    }
 
-    fn account_email(&self) -> Option<String> { self.account_email.clone() }
+    fn account_email(&self) -> Option<String> {
+        self.account_email.clone()
+    }
 
-    fn is_connected(&self) -> bool { self.connected }
+    fn is_connected(&self) -> bool {
+        self.connected
+    }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // Verify token works
         let token = self.get_token().await?;
 
-        let resp = self.client.get(format!("{}/users/me", API_BASE))
+        let resp = self
+            .client
+            .get(format!("{}/users/me", API_BASE))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::AuthenticationFailed("Box authentication failed".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Box authentication failed".to_string(),
+            ));
         }
 
         // Parse email from user info
@@ -987,18 +1277,27 @@ impl StorageProvider for BoxProvider {
                 API_BASE, folder_id, PAGE_LIMIT, offset
             );
 
-            let resp = self.client.get(&url)
+            let resp = self
+                .client
+                .get(&url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Box API error {}: {}", status, sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "Box API error {}: {}",
+                    status,
+                    sanitize_api_error(&body)
+                )));
             }
 
-            let page: BoxItemCollection = resp.json().await
+            let page: BoxItemCollection = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let page_count = page.entries.len() as u64;
@@ -1011,43 +1310,47 @@ impl StorageProvider for BoxProvider {
             offset += page_count;
         }
 
-        let entries = all_items.into_iter().map(|item| {
-            let is_dir = item.item_type == "folder";
-            let entry_path = if base_path == "/" {
-                format!("/{}", item.name)
-            } else {
-                format!("{}/{}", base_path, item.name)
-            };
-            let is_watermarked = item.watermark_info
-                .as_ref()
-                .and_then(|wi| wi.is_watermarked)
-                .unwrap_or(false);
+        let entries = all_items
+            .into_iter()
+            .map(|item| {
+                let is_dir = item.item_type == "folder";
+                let entry_path = if base_path == "/" {
+                    format!("/{}", item.name)
+                } else {
+                    format!("{}/{}", base_path, item.name)
+                };
+                let is_watermarked = item
+                    .watermark_info
+                    .as_ref()
+                    .and_then(|wi| wi.is_watermarked)
+                    .unwrap_or(false);
 
-            RemoteEntry {
-                name: item.name,
-                path: entry_path,
-                is_dir,
-                size: item.size.unwrap_or(0),
-                modified: item.modified_at,
-                permissions: None,
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata: {
-                    let mut m = HashMap::new();
-                    m.insert("id".to_string(), item.id);
-                    if is_watermarked {
-                        m.insert("watermarked".to_string(), "true".to_string());
-                    }
-                    if !item.tags.is_empty() {
-                        m.insert("box_tags".to_string(), item.tags.join(","));
-                    }
-                    m
-                },
-            }
-        }).collect::<Vec<_>>();
+                RemoteEntry {
+                    name: item.name,
+                    path: entry_path,
+                    is_dir,
+                    size: item.size.unwrap_or(0),
+                    modified: item.modified_at,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: {
+                        let mut m = HashMap::new();
+                        m.insert("id".to_string(), item.id);
+                        if is_watermarked {
+                            m.insert("watermarked".to_string(), "true".to_string());
+                        }
+                        if !item.tags.is_empty() {
+                            m.insert("box_tags".to_string(), item.tags.join(","));
+                        }
+                        m
+                    },
+                }
+            })
+            .collect::<Vec<_>>();
 
         // Update folder ID cache from results
         for entry in &entries {
@@ -1065,7 +1368,11 @@ impl StorageProvider for BoxProvider {
         let new_path = if path.starts_with('/') {
             Self::normalize_path(path)
         } else {
-            let base = if self.current_path == "/" { String::new() } else { self.current_path.clone() };
+            let base = if self.current_path == "/" {
+                String::new()
+            } else {
+                self.current_path.clone()
+            };
             Self::normalize_path(&format!("{}/{}", base, path))
         };
 
@@ -1091,32 +1398,47 @@ impl StorageProvider for BoxProvider {
         Ok(self.current_path.clone())
     }
 
-    async fn download(&mut self, remote_path: &str, local_path: &str, _progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+    async fn download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         use futures_util::StreamExt;
 
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
 
         let url = format!("{}/files/{}/content", API_BASE, file_id);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::TransferFailed(format!("Download failed: {}", resp.status())));
+            return Err(ProviderError::TransferFailed(format!(
+                "Download failed: {}",
+                resp.status()
+            )));
         }
 
         let mut stream = resp.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await
+            atomic
+                .write_all(&chunk)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         Ok(())
     }
@@ -1126,20 +1448,31 @@ impl StorageProvider for BoxProvider {
         let token = self.get_token().await?;
 
         let url = format!("{}/files/{}/content", API_BASE, file_id);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::TransferFailed(format!("Download failed: {}", resp.status())));
+            return Err(ProviderError::TransferFailed(format!(
+                "Download failed: {}",
+                resp.status()
+            )));
         }
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
-    async fn upload(&mut self, local_path: &str, remote_path: &str, on_progress: Option<Box<dyn Fn(u64, u64) + Send>>) -> Result<(), ProviderError> {
+    async fn upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         let normalized = Self::normalize_path(remote_path);
         let (parent_path, file_name) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
@@ -1147,8 +1480,10 @@ impl StorageProvider for BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let total_size = tokio::fs::metadata(local_path).await
-            .map_err(ProviderError::IoError)?.len();
+        let total_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?
+            .len();
 
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
@@ -1166,11 +1501,14 @@ impl StorageProvider for BoxProvider {
             });
 
             let session_url = format!("{}/files/upload_sessions", UPLOAD_BASE);
-            let session_resp = self.client.post(&session_url)
+            let session_resp = self
+                .client
+                .post(&session_url)
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .header(CONTENT_TYPE, "application/json")
                 .body(session_body.to_string())
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !session_resp.status().is_success() {
@@ -1181,28 +1519,42 @@ impl StorageProvider for BoxProvider {
                     let token2 = self.get_token().await?;
                     let ver_body = serde_json::json!({"file_size": total_size});
                     let ver_url = format!("{}/files/{}/upload_sessions", UPLOAD_BASE, file_id);
-                    let ver_resp = self.client.post(&ver_url)
+                    let ver_resp = self
+                        .client
+                        .post(&ver_url)
                         .header(AUTHORIZATION, Self::bearer_header(&token2)?)
                         .header(CONTENT_TYPE, "application/json")
                         .body(ver_body.to_string())
-                        .send().await
+                        .send()
+                        .await
                         .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
                     if !ver_resp.status().is_success() {
                         let t = ver_resp.text().await.unwrap_or_default();
-                        return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", sanitize_api_error(&t))));
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Upload session failed: {}",
+                            sanitize_api_error(&t)
+                        )));
                     }
 
-                    return self.chunked_upload_session(ver_resp, local_path, total_size, progress.clone()).await;
+                    return self
+                        .chunked_upload_session(ver_resp, local_path, total_size, progress.clone())
+                        .await;
                 }
-                return Err(ProviderError::TransferFailed(format!("Upload session failed: {}", sanitize_api_error(&text))));
+                return Err(ProviderError::TransferFailed(format!(
+                    "Upload session failed: {}",
+                    sanitize_api_error(&text)
+                )));
             }
 
-            return self.chunked_upload_session(session_resp, local_path, total_size, progress).await;
+            return self
+                .chunked_upload_session(session_resp, local_path, total_size, progress)
+                .await;
         }
 
         // Simple multipart upload for small files (<=50MB, OK to buffer)
-        let data = tokio::fs::read(local_path).await
+        let data = tokio::fs::read(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let token = self.get_token().await?;
         let attributes = serde_json::json!({
@@ -1212,38 +1564,56 @@ impl StorageProvider for BoxProvider {
 
         let form = reqwest::multipart::Form::new()
             .text("attributes", attributes.to_string())
-            .part("file", reqwest::multipart::Part::bytes(data).file_name(file_name.to_string()));
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(data).file_name(file_name.to_string()),
+            );
 
         let url = format!("{}/files/content", UPLOAD_BASE);
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .multipart(form)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             if body.contains("item_name_in_use") {
                 let file_id = self.resolve_file_id(remote_path).await?;
-                let data2 = tokio::fs::read(local_path).await
+                let data2 = tokio::fs::read(local_path)
+                    .await
                     .map_err(ProviderError::IoError)?;
                 let token2 = self.get_token().await?;
 
-                let form2 = reqwest::multipart::Form::new()
-                    .part("file", reqwest::multipart::Part::bytes(data2).file_name(file_name.to_string()));
+                let form2 = reqwest::multipart::Form::new().part(
+                    "file",
+                    reqwest::multipart::Part::bytes(data2).file_name(file_name.to_string()),
+                );
 
                 let url2 = format!("{}/files/{}/content", UPLOAD_BASE, file_id);
-                let resp2 = self.client.post(&url2)
+                let resp2 = self
+                    .client
+                    .post(&url2)
                     .header(AUTHORIZATION, Self::bearer_header(&token2)?)
                     .multipart(form2)
-                    .send().await
+                    .send()
+                    .await
                     .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
                 if !resp2.status().is_success() {
-                    return Err(ProviderError::TransferFailed(format!("Upload version failed: {}", resp2.status())));
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Upload version failed: {}",
+                        resp2.status()
+                    )));
                 }
             } else {
-                return Err(ProviderError::TransferFailed(format!("Upload failed: {}", sanitize_api_error(&body))));
+                return Err(ProviderError::TransferFailed(format!(
+                    "Upload failed: {}",
+                    sanitize_api_error(&body)
+                )));
             }
         }
 
@@ -1268,16 +1638,22 @@ impl StorageProvider for BoxProvider {
             "parent": {"id": parent_id}
         });
 
-        let resp = self.client.post(format!("{}/folders", API_BASE))
+        let resp = self
+            .client
+            .post(format!("{}/folders", API_BASE))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("mkdir failed: {}", sanitize_api_error(&body))));
+            return Err(ProviderError::Other(format!(
+                "mkdir failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
 
         Ok(())
@@ -1287,13 +1663,19 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let resp = self.client.delete(format!("{}/files/{}", API_BASE, file_id))
+        let resp = self
+            .client
+            .delete(format!("{}/files/{}", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
-            return Err(ProviderError::Other(format!("Delete failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Delete failed: {}",
+                resp.status()
+            )));
         }
 
         Ok(())
@@ -1303,13 +1685,19 @@ impl StorageProvider for BoxProvider {
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
 
-        let resp = self.client.delete(format!("{}/folders/{}?recursive=true", API_BASE, folder_id))
+        let resp = self
+            .client
+            .delete(format!("{}/folders/{}?recursive=true", API_BASE, folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
-            return Err(ProviderError::Other(format!("rmdir failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "rmdir failed: {}",
+                resp.status()
+            )));
         }
 
         // Remove from cache
@@ -1326,15 +1714,18 @@ impl StorageProvider for BoxProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         // Supports both simple rename and cross-folder move+rename
         let token = self.get_token().await?;
-        let new_name = std::path::Path::new(to).file_name()
+        let new_name = std::path::Path::new(to)
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| to.to_string());
 
         // Resolve destination parent folder ID for cross-folder moves
-        let from_parent = std::path::Path::new(from).parent()
+        let from_parent = std::path::Path::new(from)
+            .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        let to_parent = std::path::Path::new(to).parent()
+        let to_parent = std::path::Path::new(to)
+            .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
@@ -1350,10 +1741,13 @@ impl StorageProvider for BoxProvider {
                 };
                 body["parent"] = serde_json::json!({"id": dest_folder_id});
             }
-            let resp = self.client.put(format!("{}/files/{}", API_BASE, file_id))
+            let resp = self
+                .client
+                .put(format!("{}/files/{}", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
@@ -1371,10 +1765,13 @@ impl StorageProvider for BoxProvider {
                 };
                 body["parent"] = serde_json::json!({"id": dest_folder_id});
             }
-            let resp = self.client.put(format!("{}/folders/{}", API_BASE, folder_id))
+            let resp = self
+                .client
+                .put(format!("{}/folders/{}", API_BASE, folder_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
@@ -1390,12 +1787,20 @@ impl StorageProvider for BoxProvider {
         // Try file first
         if let Ok(file_id) = self.resolve_file_id(path).await {
             let token = self.get_token().await?;
-            let resp = self.client.get(format!("{}/files/{}?fields=name,type,size,modified_at", API_BASE, file_id))
+            let resp = self
+                .client
+                .get(format!(
+                    "{}/files/{}?fields=name,type,size,modified_at",
+                    API_BASE, file_id
+                ))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-            let item: BoxItem = resp.json().await
+            let item: BoxItem = resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             return Ok(RemoteEntry {
@@ -1404,8 +1809,12 @@ impl StorageProvider for BoxProvider {
                 is_dir: false,
                 size: item.size.unwrap_or(0),
                 modified: item.modified_at,
-                permissions: None, owner: None, group: None,
-                is_symlink: false, link_target: None, mime_type: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
                 metadata: Default::default(),
             });
         }
@@ -1413,12 +1822,20 @@ impl StorageProvider for BoxProvider {
         // Try folder
         let folder_id = self.resolve_folder_id(path).await?;
         let token = self.get_token().await?;
-        let resp = self.client.get(format!("{}/folders/{}?fields=name,type,size,modified_at", API_BASE, folder_id))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/folders/{}?fields=name,type,size,modified_at",
+                API_BASE, folder_id
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let item: BoxItem = resp.json().await
+        let item: BoxItem = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(RemoteEntry {
@@ -1427,8 +1844,12 @@ impl StorageProvider for BoxProvider {
             is_dir: true,
             size: 0,
             modified: item.modified_at,
-            permissions: None, owner: None, group: None,
-            is_symlink: false, link_target: None, mime_type: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
             metadata: Default::default(),
         })
     }
@@ -1446,7 +1867,9 @@ impl StorageProvider for BoxProvider {
         Ok(entry.size)
     }
 
-    async fn keep_alive(&mut self) -> Result<(), ProviderError> { Ok(()) }
+    async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        Ok(())
+    }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok("Box Cloud Storage (api.box.com)".to_string())
@@ -1455,12 +1878,20 @@ impl StorageProvider for BoxProvider {
     // Storage info
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let token = self.get_token().await?;
-        let resp = self.client.get(format!("{}/users/me?fields=space_amount,space_used", API_BASE))
+        let resp = self
+            .client
+            .get(format!(
+                "{}/users/me?fields=space_amount,space_used",
+                API_BASE
+            ))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let user: BoxUser = resp.json().await
+        let user: BoxUser = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(StorageInfo {
@@ -1471,7 +1902,9 @@ impl StorageProvider for BoxProvider {
     }
 
     // Share links
-    fn supports_share_links(&self) -> bool { true }
+    fn supports_share_links(&self) -> bool {
+        true
+    }
 
     fn share_link_capabilities(&self) -> ShareLinkCapabilities {
         ShareLinkCapabilities {
@@ -1482,7 +1915,11 @@ impl StorageProvider for BoxProvider {
         }
     }
 
-    async fn create_share_link(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
+    async fn create_share_link(
+        &mut self,
+        path: &str,
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
@@ -1494,9 +1931,8 @@ impl StorageProvider for BoxProvider {
         }
         if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
-            shared_link["unshared_at"] = serde_json::json!(
-                expires_at.format("%Y-%m-%dT%H:%M:%S-00:00").to_string()
-            );
+            shared_link["unshared_at"] =
+                serde_json::json!(expires_at.format("%Y-%m-%dT%H:%M:%S-00:00").to_string());
         }
         if let Some(ref perms) = options.permissions {
             let can_edit = perms == "edit";
@@ -1507,16 +1943,22 @@ impl StorageProvider for BoxProvider {
         }
         let body = serde_json::json!({"shared_link": shared_link});
 
-        let resp = self.client.put(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
+        let resp = self
+            .client
+            .put(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        let item: BoxItemWithLink = resp.json().await
+        let item: BoxItemWithLink = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        let url = item.shared_link
+        let url = item
+            .shared_link
             .map(|l| l.url)
             .ok_or_else(|| ProviderError::Other("Failed to create share link".to_string()))?;
 
@@ -1532,16 +1974,21 @@ impl StorageProvider for BoxProvider {
         let token = self.get_token().await?;
 
         let body = serde_json::json!({"shared_link": null});
-        let _resp = self.client.put(format!("{}/files/{}", API_BASE, file_id))
+        let _resp = self
+            .client
+            .put(format!("{}/files/{}", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         Ok(())
     }
 
-    fn supports_server_copy(&self) -> bool { true }
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let token = self.get_token().await?;
@@ -1558,14 +2005,20 @@ impl StorageProvider for BoxProvider {
                 "parent": {"id": to_parent_id},
                 "name": to_name
             });
-            let resp = self.client.post(format!("{}/files/{}/copy", API_BASE, file_id))
+            let resp = self
+                .client
+                .post(format!("{}/files/{}/copy", API_BASE, file_id))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .json(&body)
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                return Err(ProviderError::Other(format!("Copy failed: {}", resp.status())));
+                return Err(ProviderError::Other(format!(
+                    "Copy failed: {}",
+                    resp.status()
+                )));
             }
             return Ok(());
         }
@@ -1576,66 +2029,98 @@ impl StorageProvider for BoxProvider {
             "parent": {"id": to_parent_id},
             "name": to_name
         });
-        let resp = self.client.post(format!("{}/folders/{}/copy", API_BASE, folder_id))
+        let resp = self
+            .client
+            .post(format!("{}/folders/{}/copy", API_BASE, folder_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Copy failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Copy failed: {}",
+                resp.status()
+            )));
         }
         Ok(())
     }
 
-    fn supports_thumbnails(&self) -> bool { true }
+    fn supports_thumbnails(&self) -> bool {
+        true
+    }
 
     async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/thumbnail.png?min_height=256&min_width=256", API_BASE, file_id);
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/files/{}/thumbnail.png?min_height=256&min_width=256",
+            API_BASE, file_id
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound("No thumbnail available".to_string()));
+            return Err(ProviderError::NotFound(
+                "No thumbnail available".to_string(),
+            ));
         }
 
-        let bytes = resp.bytes().await
+        let bytes = resp
+            .bytes()
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         Ok(format!("data:image/png;base64,{}", BASE64.encode(&bytes)))
     }
 
-    fn supports_versions(&self) -> bool { true }
+    fn supports_versions(&self) -> bool {
+        true
+    }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
         let url = format!("{}/files/{}/versions", API_BASE, file_id);
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Failed to list versions: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Failed to list versions: {}",
+                resp.status()
+            )));
         }
 
-        let versions: BoxVersionCollection = resp.json().await
+        let versions: BoxVersionCollection = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Ok(versions.entries.into_iter().map(|v| FileVersion {
-            id: v.id,
-            modified: v.modified_at,
-            size: v.size.unwrap_or(0),
-            modified_by: v.modified_by.and_then(|u| u.name),
-        }).collect())
+        Ok(versions
+            .entries
+            .into_iter()
+            .map(|v| FileVersion {
+                id: v.id,
+                modified: v.modified_at,
+                size: v.size.unwrap_or(0),
+                modified_by: v.modified_by.and_then(|u| u.name),
+            })
+            .collect())
     }
 
     async fn download_version(
@@ -1647,20 +2132,32 @@ impl StorageProvider for BoxProvider {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/content?version={}", API_BASE, file_id, version_id);
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/files/{}/content?version={}",
+            API_BASE, file_id, version_id
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::TransferFailed(format!("Version download failed: {}", resp.status())));
+            return Err(ProviderError::TransferFailed(format!(
+                "Version download failed: {}",
+                resp.status()
+            )));
         }
 
-        let bytes = resp.bytes().await
+        let bytes = resp
+            .bytes()
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        tokio::fs::write(local_path, &bytes).await
+        tokio::fs::write(local_path, &bytes)
+            .await
             .map_err(ProviderError::IoError)?;
 
         Ok(())
@@ -1671,51 +2168,83 @@ impl StorageProvider for BoxProvider {
         let token = self.get_token().await?;
 
         let body = serde_json::json!({"id": version_id});
-        let resp = self.client.post(format!("{}/files/{}/versions/current", API_BASE, file_id))
+        let resp = self
+            .client
+            .post(format!("{}/files/{}/versions/current", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Restore version failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Restore version failed: {}",
+                resp.status()
+            )));
         }
         Ok(())
     }
 
-    fn supports_find(&self) -> bool { true }
+    fn supports_find(&self) -> bool {
+        true
+    }
 
-    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(
+        &mut self,
+        _path: &str,
+        pattern: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let token = self.get_token().await?;
 
-        let url = format!("{}/search?query={}&limit=200", API_BASE, urlencoding::encode(pattern));
-        let resp = self.client.get(&url)
+        let url = format!(
+            "{}/search?query={}&limit=200",
+            API_BASE,
+            urlencoding::encode(pattern)
+        );
+        let resp = self
+            .client
+            .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!("Search failed: {}", resp.status())));
+            return Err(ProviderError::Other(format!(
+                "Search failed: {}",
+                resp.status()
+            )));
         }
 
-        let results: BoxSearchResult = resp.json().await
+        let results: BoxSearchResult = resp
+            .json()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Ok(results.entries.into_iter().map(|item| {
-            RemoteEntry {
-                name: item.name,
-                path: String::new(), // Box search doesn't return full path
-                is_dir: item.item_type == "folder",
-                size: item.size.unwrap_or(0),
-                modified: item.modified_at,
-                permissions: None, owner: None, group: None,
-                is_symlink: false, link_target: None, mime_type: None,
-                metadata: {
-                    let mut m = HashMap::new();
-                    m.insert("id".to_string(), item.id);
-                    m
-                },
-            }
-        }).collect())
+        Ok(results
+            .entries
+            .into_iter()
+            .map(|item| {
+                RemoteEntry {
+                    name: item.name,
+                    path: String::new(), // Box search doesn't return full path
+                    is_dir: item.item_type == "folder",
+                    size: item.size.unwrap_or(0),
+                    modified: item.modified_at,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: {
+                        let mut m = HashMap::new();
+                        m.insert("id".to_string(), item.id);
+                        m
+                    },
+                }
+            })
+            .collect())
     }
 }

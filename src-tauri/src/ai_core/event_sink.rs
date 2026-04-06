@@ -6,9 +6,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::ai_stream::StreamChunk;
 use serde::Serialize;
 use serde_json::Value;
-use crate::ai_stream::StreamChunk;
 
 /// Progress info for iterative tool operations (batch move, rename, copy, etc.)
 #[derive(Debug, Clone, Serialize)]

@@ -10,10 +10,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde::{Serialize, Deserialize};
-use std::path::{Path, PathBuf, Component};
-use std::sync::LazyLock;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
 
 // ─── Shared path validation ────────────────────────────────────────────────
 
@@ -38,68 +38,55 @@ fn validate_context_path(path: &str) -> Result<(), String> {
 // ─── LazyLock regex patterns ────────────────────────────────────────────────
 
 // Rust Cargo.toml [[bin]] name
-static CARGO_BIN_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"name\s*=\s*"([^"]+)""#).expect("CARGO_BIN_NAME_RE")
-});
+static CARGO_BIN_NAME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"name\s*=\s*"([^"]+)""#).expect("CARGO_BIN_NAME_RE"));
 
 // Java Maven pom.xml
-static MAVEN_ARTIFACT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<artifactId>([^<]+)</artifactId>").expect("MAVEN_ARTIFACT_RE")
-});
-static MAVEN_VERSION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<version>([^<]+)</version>").expect("MAVEN_VERSION_RE")
-});
+static MAVEN_ARTIFACT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<artifactId>([^<]+)</artifactId>").expect("MAVEN_ARTIFACT_RE"));
+static MAVEN_VERSION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<version>([^<]+)</version>").expect("MAVEN_VERSION_RE"));
 
 // JS/TS import patterns
 static JS_IMPORT_FROM_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"import\s+.*?\s+from\s+['"]([^'"]+)['"]"#).expect("JS_IMPORT_FROM_RE")
 });
-static JS_IMPORT_SIDE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"import\s+['"]([^'"]+)['"]"#).expect("JS_IMPORT_SIDE_RE")
-});
-static JS_REQUIRE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"require\(\s*['"]([^'"]+)['"]\s*\)"#).expect("JS_REQUIRE_RE")
-});
-static JS_DYNAMIC_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"import\(\s*['"]([^'"]+)['"]\s*\)"#).expect("JS_DYNAMIC_RE")
-});
+static JS_IMPORT_SIDE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"import\s+['"]([^'"]+)['"]"#).expect("JS_IMPORT_SIDE_RE"));
+static JS_REQUIRE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"require\(\s*['"]([^'"]+)['"]\s*\)"#).expect("JS_REQUIRE_RE"));
+static JS_DYNAMIC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"import\(\s*['"]([^'"]+)['"]\s*\)"#).expect("JS_DYNAMIC_RE"));
 
 // Rust import patterns
-static RUST_USE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*use\s+([^;]+);").expect("RUST_USE_RE")
-});
-static RUST_MOD_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*mod\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*;").expect("RUST_MOD_RE")
-});
+static RUST_USE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*use\s+([^;]+);").expect("RUST_USE_RE"));
+static RUST_MOD_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*mod\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*;").expect("RUST_MOD_RE"));
 
 // Python import patterns
-static PY_FROM_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*from\s+([^\s]+)\s+import").expect("PY_FROM_RE")
-});
-static PY_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*import\s+([^\s,]+)").expect("PY_IMPORT_RE")
-});
+static PY_FROM_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*from\s+([^\s]+)\s+import").expect("PY_FROM_RE"));
+static PY_IMPORT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*import\s+([^\s,]+)").expect("PY_IMPORT_RE"));
 
 // PHP import patterns
-static PHP_USE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*use\s+([^;]+);").expect("PHP_USE_RE")
-});
+static PHP_USE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*use\s+([^;]+);").expect("PHP_USE_RE"));
 static PHP_REQUIRE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?:require_once|require|include_once|include)\s+['"]([^'"]+)['"]"#).expect("PHP_REQUIRE_RE")
+    Regex::new(r#"(?:require_once|require|include_once|include)\s+['"]([^'"]+)['"]"#)
+        .expect("PHP_REQUIRE_RE")
 });
 
 // Go import patterns
-static GO_SINGLE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^\s*import\s+"([^"]+)""#).expect("GO_SINGLE_RE")
-});
-static GO_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"^\s*"([^"]+)""#).expect("GO_BLOCK_RE")
-});
+static GO_SINGLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"^\s*import\s+"([^"]+)""#).expect("GO_SINGLE_RE"));
+static GO_BLOCK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"^\s*"([^"]+)""#).expect("GO_BLOCK_RE"));
 
 // Java import pattern
-static JAVA_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*import\s+(static\s+)?([^;]+);").expect("JAVA_IMPORT_RE")
-});
+static JAVA_IMPORT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*import\s+(static\s+)?([^;]+);").expect("JAVA_IMPORT_RE"));
 
 /// Read a config file only if it's under 5MB. Returns None if file is too large or unreadable.
 fn read_config_file(path: &Path) -> Option<String> {
@@ -168,15 +155,31 @@ pub async fn detect_project_context(path: String) -> Result<ProjectContext, Stri
 
     // Scan for config files
     let config_patterns: &[&str] = &[
-        ".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml",
-        "tsconfig.json", ".prettierrc", ".prettierrc.js", ".prettierrc.json",
-        "jest.config.js", "jest.config.ts", "jest.config.mjs",
-        "vite.config.js", "vite.config.ts", "vite.config.mjs",
-        "webpack.config.js", "webpack.config.ts",
-        "Dockerfile", ".env.example", ".gitignore",
-        "tailwind.config.js", "tailwind.config.ts",
-        "next.config.js", "next.config.mjs",
-        "nuxt.config.ts", "svelte.config.js",
+        ".eslintrc",
+        ".eslintrc.js",
+        ".eslintrc.json",
+        ".eslintrc.yml",
+        "tsconfig.json",
+        ".prettierrc",
+        ".prettierrc.js",
+        ".prettierrc.json",
+        "jest.config.js",
+        "jest.config.ts",
+        "jest.config.mjs",
+        "vite.config.js",
+        "vite.config.ts",
+        "vite.config.mjs",
+        "webpack.config.js",
+        "webpack.config.ts",
+        "Dockerfile",
+        ".env.example",
+        ".gitignore",
+        "tailwind.config.js",
+        "tailwind.config.ts",
+        "next.config.js",
+        "next.config.mjs",
+        "nuxt.config.ts",
+        "svelte.config.js",
     ];
 
     for pattern in config_patterns {
@@ -239,8 +242,14 @@ fn try_detect_nodejs(base: &Path, ctx: &mut ProjectContext) -> bool {
 
     if let Some(content) = read_config_file(&pkg_path) {
         if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
-            ctx.name = pkg.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-            ctx.version = pkg.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+            ctx.name = pkg
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            ctx.version = pkg
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             // Scripts
             if let Some(scripts) = pkg.get("scripts").and_then(|v| v.as_object()) {
@@ -277,7 +286,12 @@ fn try_detect_nodejs(base: &Path, ctx: &mut ProjectContext) -> bool {
     }
 
     // Detect lock files
-    for lock in &["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"] {
+    for lock in &[
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "bun.lockb",
+    ] {
         if base.join(lock).exists() {
             ctx.config_files.push(lock.to_string());
         }
@@ -439,7 +453,8 @@ fn try_detect_python(base: &Path, ctx: &mut ProjectContext) -> bool {
         ctx.config_files.push("requirements.txt".to_string());
         if ctx.deps_count == 0 {
             if let Some(content) = read_config_file(&requirements) {
-                ctx.deps_count = content.lines()
+                ctx.deps_count = content
+                    .lines()
                     .filter(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
                     .count() as u32;
             }
@@ -483,8 +498,14 @@ fn try_detect_php(base: &Path, ctx: &mut ProjectContext) -> bool {
 
     if let Some(content) = read_config_file(&composer) {
         if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
-            ctx.name = pkg.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-            ctx.version = pkg.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+            ctx.name = pkg
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            ctx.version = pkg
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             if let Some(req) = pkg.get("require").and_then(|v| v.as_object()) {
                 ctx.deps_count = req.len() as u32;
@@ -562,10 +583,8 @@ fn try_detect_go(base: &Path, ctx: &mut ProjectContext) -> bool {
         ctx.config_files.push("go.sum".to_string());
     }
 
-    ctx.scripts.extend_from_slice(&[
-        "go build".to_string(),
-        "go test ./...".to_string(),
-    ]);
+    ctx.scripts
+        .extend_from_slice(&["go build".to_string(), "go test ./...".to_string()]);
 
     true
 }
@@ -610,10 +629,8 @@ fn try_detect_java(base: &Path, ctx: &mut ProjectContext) -> bool {
             ctx.config_files.push("build.gradle.kts".to_string());
         }
 
-        ctx.scripts.extend_from_slice(&[
-            "gradle build".to_string(),
-            "gradle test".to_string(),
-        ]);
+        ctx.scripts
+            .extend_from_slice(&["gradle build".to_string(), "gradle test".to_string()]);
     }
 
     true
@@ -623,14 +640,16 @@ fn try_detect_dotnet(base: &Path, ctx: &mut ProjectContext) -> bool {
     // Check for .sln files
     let has_sln = std::fs::read_dir(base)
         .map(|entries| {
-            entries.filter_map(|e| e.ok())
+            entries
+                .filter_map(|e| e.ok())
                 .any(|e| e.path().extension().is_some_and(|ext| ext == "sln"))
         })
         .unwrap_or(false);
 
     let has_csproj = std::fs::read_dir(base)
         .map(|entries| {
-            entries.filter_map(|e| e.ok())
+            entries
+                .filter_map(|e| e.ok())
                 .any(|e| e.path().extension().is_some_and(|ext| ext == "csproj"))
         })
         .unwrap_or(false);
@@ -684,7 +703,8 @@ pub async fn scan_file_imports(path: String) -> Result<Vec<ImportEntry>, String>
     }
 
     // FIX 3: Check extension BEFORE reading the file
-    let ext = file_path.extension()
+    let ext = file_path
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -697,14 +717,13 @@ pub async fn scan_file_imports(path: String) -> Result<Vec<ImportEntry>, String>
     }
 
     // FIX 2: Check file size via metadata BEFORE reading into memory
-    let metadata = std::fs::metadata(&path)
-        .map_err(|e| format!("Failed to stat file: {}", e))?;
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
     if metadata.len() > 1_048_576 {
         return Err("File too large for import scanning (max 1MB)".to_string());
     }
 
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let parent = file_path.parent().unwrap_or(Path::new("."));
 
@@ -730,7 +749,11 @@ fn scan_js_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
         let source = caps[1].to_string();
         if seen.insert(source.clone()) {
             let resolved = resolve_js_import(&source, parent);
-            imports.push(ImportEntry { source, resolved_path: resolved, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: resolved,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -739,7 +762,11 @@ fn scan_js_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
         // Skip if already captured by JS_IMPORT_FROM_RE (HashSet dedup)
         if seen.insert(source.clone()) {
             let resolved = resolve_js_import(&source, parent);
-            imports.push(ImportEntry { source, resolved_path: resolved, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: resolved,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -747,7 +774,11 @@ fn scan_js_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
         let source = caps[1].to_string();
         if seen.insert(source.clone()) {
             let resolved = resolve_js_import(&source, parent);
-            imports.push(ImportEntry { source, resolved_path: resolved, kind: "require".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: resolved,
+                kind: "require".to_string(),
+            });
         }
     }
 
@@ -755,7 +786,11 @@ fn scan_js_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
         let source = caps[1].to_string();
         if seen.insert(source.clone()) {
             let resolved = resolve_js_import(&source, parent);
-            imports.push(ImportEntry { source, resolved_path: resolved, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: resolved,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -801,12 +836,20 @@ fn scan_rust_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
     for line in content.lines() {
         if let Some(caps) = RUST_USE_RE.captures(line) {
             let source = caps[1].trim().to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "use".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "use".to_string(),
+            });
         }
         if let Some(caps) = RUST_MOD_RE.captures(line) {
             let mod_name = caps[1].to_string();
             let resolved = resolve_rust_mod(&mod_name, parent);
-            imports.push(ImportEntry { source: mod_name, resolved_path: resolved, kind: "mod".to_string() });
+            imports.push(ImportEntry {
+                source: mod_name,
+                resolved_path: resolved,
+                kind: "mod".to_string(),
+            });
         }
     }
 
@@ -832,10 +875,18 @@ fn scan_python_imports(content: &str) -> Vec<ImportEntry> {
     for line in content.lines() {
         if let Some(caps) = PY_FROM_RE.captures(line) {
             let source = caps[1].to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "from".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "from".to_string(),
+            });
         } else if let Some(caps) = PY_IMPORT_RE.captures(line) {
             let source = caps[1].to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -848,7 +899,11 @@ fn scan_php_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
     for line in content.lines() {
         if let Some(caps) = PHP_USE_RE.captures(line) {
             let source = caps[1].trim().to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "use".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "use".to_string(),
+            });
         }
     }
 
@@ -856,11 +911,19 @@ fn scan_php_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
         let source = caps[1].to_string();
         let resolved = if source.starts_with('.') || source.starts_with('/') {
             let p = parent.join(&source);
-            if p.exists() { Some(p.to_string_lossy().to_string()) } else { None }
+            if p.exists() {
+                Some(p.to_string_lossy().to_string())
+            } else {
+                None
+            }
         } else {
             None
         };
-        imports.push(ImportEntry { source, resolved_path: resolved, kind: "include".to_string() });
+        imports.push(ImportEntry {
+            source,
+            resolved_path: resolved,
+            kind: "include".to_string(),
+        });
     }
 
     imports
@@ -886,11 +949,19 @@ fn scan_go_imports(content: &str) -> Vec<ImportEntry> {
         if in_import_block {
             if let Some(caps) = GO_BLOCK_RE.captures(trimmed) {
                 let source = caps[1].to_string();
-                imports.push(ImportEntry { source, resolved_path: None, kind: "import".to_string() });
+                imports.push(ImportEntry {
+                    source,
+                    resolved_path: None,
+                    kind: "import".to_string(),
+                });
             }
         } else if let Some(caps) = GO_SINGLE_RE.captures(line) {
             let source = caps[1].to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -903,7 +974,11 @@ fn scan_java_imports(content: &str) -> Vec<ImportEntry> {
     for line in content.lines() {
         if let Some(caps) = JAVA_IMPORT_RE.captures(line) {
             let source = caps[2].trim().to_string();
-            imports.push(ImportEntry { source, resolved_path: None, kind: "import".to_string() });
+            imports.push(ImportEntry {
+                source,
+                resolved_path: None,
+                kind: "import".to_string(),
+            });
         }
     }
 
@@ -944,7 +1019,9 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
         .output()
         .map_err(|e| format!("Failed to get branch: {}", e))?;
 
-    let branch = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+    let branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
 
     // Get recent commits
     let log_output = std::process::Command::new("git")
@@ -954,7 +1031,8 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
         .map_err(|e| format!("Failed to get git log: {}", e))?;
 
     let log_text = String::from_utf8_lossy(&log_output.stdout);
-    let recent_commits: Vec<GitCommit> = log_text.lines()
+    let recent_commits: Vec<GitCommit> = log_text
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|line| {
             let parts: Vec<&str> = line.splitn(2, ' ').collect();
@@ -973,7 +1051,8 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
         .map_err(|e| format!("Failed to get git status: {}", e))?;
 
     let status_text = String::from_utf8_lossy(&status_output.stdout);
-    let all_changes: Vec<String> = status_text.lines()
+    let all_changes: Vec<String> = status_text
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
         .collect();
@@ -996,17 +1075,22 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
 // ─── Command 4: read_agent_memory ───────────────────────────────────────────
 
 #[tauri::command]
-pub async fn read_agent_memory(app: tauri::AppHandle, project_path: String) -> Result<String, String> {
+pub async fn read_agent_memory(
+    app: tauri::AppHandle,
+    project_path: String,
+) -> Result<String, String> {
     validate_context_path(&project_path)?;
-    let entries = crate::agent_memory_db::agent_memory_search(
-        app,
-        project_path,
-        None,
-        Some(10),
-    ).await?;
+    let entries =
+        crate::agent_memory_db::agent_memory_search(app, project_path, None, Some(10)).await?;
 
-    Ok(entries.into_iter()
-        .map(|entry| format!("[{}] [{}] {}", entry.created_at, entry.category, entry.content))
+    Ok(entries
+        .into_iter()
+        .map(|entry| {
+            format!(
+                "[{}] [{}] {}",
+                entry.created_at, entry.category, entry.content
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n"))
 }
@@ -1026,6 +1110,7 @@ pub async fn write_agent_memory(
         "general".to_string(),
         content,
         None,
-    ).await?;
+    )
+    .await?;
     Ok(())
 }

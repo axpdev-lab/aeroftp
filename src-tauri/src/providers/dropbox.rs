@@ -13,10 +13,9 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, ProviderConfig, StorageInfo, LockInfo,
-    sanitize_api_error,
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    sanitize_api_error, LockInfo, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 /// Dropbox API endpoints
@@ -65,10 +64,14 @@ impl DropboxConfig {
 
     #[allow(dead_code)]
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let app_key = config.extra.get("app_key")
+        let app_key = config
+            .extra
+            .get("app_key")
             .or_else(|| config.extra.get("client_id"))
             .ok_or_else(|| ProviderError::Other("Missing app_key".to_string()))?;
-        let app_secret = config.extra.get("app_secret")
+        let app_secret = config
+            .extra
+            .get("app_secret")
             .or_else(|| config.extra.get("client_secret"))
             .ok_or_else(|| ProviderError::Other("Missing app_secret".to_string()))?;
 
@@ -111,7 +114,10 @@ impl DropboxProvider {
     /// Get authorization header
     async fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
         use secrecy::ExposeSecret;
-        let token = self.oauth_manager.get_valid_token(&self.oauth_config()).await?;
+        let token = self
+            .oauth_manager
+            .get_valid_token(&self.oauth_config())
+            .await?;
         HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
             .map_err(|e| ProviderError::Other(format!("Invalid token: {}", e)))
     }
@@ -124,13 +130,17 @@ impl DropboxProvider {
     /// Start OAuth flow (called via oauth2_start_auth command)
     #[allow(dead_code)]
     pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
-        self.oauth_manager.start_auth_flow(&self.oauth_config()).await
+        self.oauth_manager
+            .start_auth_flow(&self.oauth_config())
+            .await
     }
 
     /// Complete OAuth flow (called via oauth2_connect command)
     #[allow(dead_code)]
     pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
-        self.oauth_manager.complete_auth_flow(&self.oauth_config(), code, state).await?;
+        self.oauth_manager
+            .complete_auth_flow(&self.oauth_config(), code, state)
+            .await?;
         Ok(())
     }
 
@@ -147,7 +157,9 @@ impl DropboxProvider {
     /// Convert Dropbox metadata to RemoteEntry
     fn to_remote_entry(&self, meta: &DropboxMetadata) -> RemoteEntry {
         let is_dir = meta.tag == "folder";
-        let path = meta.path_display.clone()
+        let path = meta
+            .path_display
+            .clone()
             .unwrap_or_else(|| meta.path_lower.clone().unwrap_or_default());
 
         let mut metadata = HashMap::new();
@@ -178,8 +190,9 @@ impl DropboxProvider {
         body: &serde_json::Value,
     ) -> Result<T, ProviderError> {
         let url = format!("{}/{}", API_BASE, endpoint);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -191,16 +204,22 @@ impl DropboxProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            
+
             // Check for path not found error
             if text.contains("path/not_found") {
                 return Err(ProviderError::NotFound(sanitize_api_error(&text)));
             }
 
-            return Err(ProviderError::Other(format!("API error {}: {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "API error {}: {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
-        response.json().await
+        response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
@@ -224,12 +243,15 @@ impl DropboxProvider {
             let continue_body = serde_json::json!({
                 "cursor": result.cursor
             });
-            result = self.rpc_call("files/list_folder/continue", &continue_body).await?;
+            result = self
+                .rpc_call("files/list_folder/continue", &continue_body)
+                .await?;
             all_entries.extend(result.entries);
         }
 
         // Filter to only deleted entries
-        let deleted: Vec<RemoteEntry> = all_entries.iter()
+        let deleted: Vec<RemoteEntry> = all_entries
+            .iter()
             .filter(|e| e.tag == "deleted")
             .map(|e| self.to_remote_entry(e))
             .collect();
@@ -254,14 +276,18 @@ impl DropboxProvider {
                 "mode": "path",
                 "limit": 1
             });
-            let rev_result: serde_json::Value = self.rpc_call("files/list_revisions", &rev_body).await?;
-            rev_result.get("entries")
+            let rev_result: serde_json::Value =
+                self.rpc_call("files/list_revisions", &rev_body).await?;
+            rev_result
+                .get("entries")
                 .and_then(|e| e.as_array())
                 .and_then(|a| a.first())
                 .and_then(|e| e.get("rev"))
                 .and_then(|r| r.as_str())
                 .map(|s| s.to_string())
-                .ok_or_else(|| ProviderError::NotFound("No revision found for deleted file".into()))?
+                .ok_or_else(|| {
+                    ProviderError::NotFound("No revision found for deleted file".into())
+                })?
         } else {
             rev.to_string()
         };
@@ -292,7 +318,8 @@ impl DropboxProvider {
 
         let url = format!("{}/files/permanently_delete", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -304,7 +331,11 @@ impl DropboxProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Permanent delete failed {}: {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Permanent delete failed {}: {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Permanently deleted: {}", path);
@@ -312,19 +343,26 @@ impl DropboxProvider {
     }
 
     /// Get tags for a file
-    pub async fn get_tags(&mut self, paths: &[String]) -> Result<Vec<(String, Vec<String>)>, ProviderError> {
-        let entries: Vec<String> = paths.iter().map(|p| {
-            if p.starts_with('/') {
-                self.normalize_path(p)
-            } else {
-                self.normalize_path(&format!("{}/{}", self.current_path, p))
-            }
-        }).collect();
+    pub async fn get_tags(
+        &mut self,
+        paths: &[String],
+    ) -> Result<Vec<(String, Vec<String>)>, ProviderError> {
+        let entries: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                if p.starts_with('/') {
+                    self.normalize_path(p)
+                } else {
+                    self.normalize_path(&format!("{}/{}", self.current_path, p))
+                }
+            })
+            .collect();
 
         let body = serde_json::json!({ "paths": entries });
         let url = format!("{}/files/tags/get", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -335,7 +373,10 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Get tags failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Get tags failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -354,15 +395,19 @@ impl DropboxProvider {
             paths_to_tags: Vec<PathTag>,
         }
 
-        let result: PathsToTags = response.json().await
+        let result: PathsToTags = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        Ok(result.paths_to_tags.iter().map(|pt| {
-            let tags: Vec<String> = pt.tags.iter()
-                .filter_map(|t| t.tag_text.clone())
-                .collect();
-            (pt.path.clone(), tags)
-        }).collect())
+        Ok(result
+            .paths_to_tags
+            .iter()
+            .map(|pt| {
+                let tags: Vec<String> = pt.tags.iter().filter_map(|t| t.tag_text.clone()).collect();
+                (pt.path.clone(), tags)
+            })
+            .collect())
     }
 
     /// Add a tag to a file
@@ -380,7 +425,8 @@ impl DropboxProvider {
 
         let url = format!("{}/files/tags/add", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -391,7 +437,10 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Add tag failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Add tag failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Added tag '{}' to: {}", tag, path);
@@ -413,7 +462,8 @@ impl DropboxProvider {
 
         let url = format!("{}/files/tags/remove", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -424,7 +474,10 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Remove tag failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Remove tag failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Removed tag '{}' from: {}", tag, path);
@@ -441,20 +494,27 @@ impl DropboxProvider {
 
         // Get current tags
         let current = self.get_tags(std::slice::from_ref(&full_path)).await?;
-        let current_tags: Vec<String> = current.first()
+        let current_tags: Vec<String> = current
+            .first()
             .map(|(_, tags)| tags.clone())
             .unwrap_or_default();
 
         // Remove tags not in new set
         for old_tag in &current_tags {
-            if !tags.iter().any(|t| t.to_lowercase() == old_tag.to_lowercase()) {
+            if !tags
+                .iter()
+                .any(|t| t.to_lowercase() == old_tag.to_lowercase())
+            {
                 self.remove_tag(&full_path, old_tag).await?;
             }
         }
 
         // Add new tags not in current set
         for new_tag in tags {
-            if !current_tags.iter().any(|t| t.to_lowercase() == new_tag.to_lowercase()) {
+            if !current_tags
+                .iter()
+                .any(|t| t.to_lowercase() == new_tag.to_lowercase())
+            {
                 self.add_tag(&full_path, new_tag).await?;
             }
         }
@@ -465,7 +525,7 @@ impl DropboxProvider {
     /// List folder with pagination
     async fn list_folder_all(&self, path: &str) -> Result<Vec<DropboxMetadata>, ProviderError> {
         let path = self.normalize_path(path);
-        
+
         let body = serde_json::json!({
             "path": path,
             "recursive": false,
@@ -481,7 +541,9 @@ impl DropboxProvider {
             let continue_body = serde_json::json!({
                 "cursor": result.cursor
             });
-            result = self.rpc_call("files/list_folder/continue", &continue_body).await?;
+            result = self
+                .rpc_call("files/list_folder/continue", &continue_body)
+                .await?;
             all_entries.extend(result.entries);
         }
 
@@ -491,7 +553,9 @@ impl DropboxProvider {
 
 #[async_trait]
 impl StorageProvider for DropboxProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::Dropbox
@@ -508,14 +572,15 @@ impl StorageProvider for DropboxProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if !self.is_authenticated() {
             return Err(ProviderError::AuthenticationFailed(
-                "Not authenticated. Call start_auth() first.".to_string()
+                "Not authenticated. Call start_auth() first.".to_string(),
             ));
         }
 
         // Validate by getting account info
         let url = format!("{}/users/get_current_account", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
@@ -526,9 +591,10 @@ impl StorageProvider for DropboxProvider {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             info!("Dropbox auth failed: HTTP {} - {}", status, body);
-            return Err(ProviderError::AuthenticationFailed(
-                format!("Invalid token (HTTP {})", status)
-            ));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "Invalid token (HTTP {})",
+                status
+            )));
         }
 
         // Parse email from response
@@ -580,7 +646,11 @@ impl StorageProvider for DropboxProvider {
         let new_path = if path.starts_with('/') {
             path.trim_matches('/').to_string()
         } else if path == ".." {
-            let mut parts: Vec<&str> = self.current_path.split('/').filter(|s| !s.is_empty()).collect();
+            let mut parts: Vec<&str> = self
+                .current_path
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
             parts.pop();
             parts.join("/")
         } else if self.current_path.is_empty() {
@@ -595,10 +665,13 @@ impl StorageProvider for DropboxProvider {
             let body = serde_json::json!({
                 "path": db_path
             });
-            
+
             let meta: DropboxMetadata = self.rpc_call("files/get_metadata", &body).await?;
             if meta.tag != "folder" {
-                return Err(ProviderError::InvalidPath(format!("{} is not a folder", path)));
+                return Err(ProviderError::InvalidPath(format!(
+                    "{} is not a folder",
+                    path
+                )));
             }
         }
 
@@ -626,7 +699,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/download", CONTENT_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header("Dropbox-API-Arg", arg.to_string())
@@ -636,19 +710,26 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Download failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Download failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         let mut stream = response.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await
+            atomic
+                .write_all(&chunk)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         }
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         info!("Downloaded {} to {}", remote_path, local_path);
         Ok(())
@@ -663,7 +744,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/download", CONTENT_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header("Dropbox-API-Arg", arg.to_string())
@@ -673,7 +755,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Download failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Download failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -689,21 +774,25 @@ impl StorageProvider for DropboxProvider {
         use tokio::io::AsyncReadExt;
 
         let path = self.normalize_path(remote_path);
-        let file_size = tokio::fs::metadata(local_path).await
-            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?.len();
+        let file_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?
+            .len();
 
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
         if file_size > UPLOAD_SESSION_THRESHOLD {
             // Upload session for large files — read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
-            let mut file = tokio::fs::File::open(local_path).await
+            let mut file = tokio::fs::File::open(local_path)
+                .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
 
             // Step 1: Start upload session with first chunk
             let first_chunk_size = std::cmp::min(CHUNK_SIZE, file_size) as usize;
             let mut first_chunk = vec![0u8; first_chunk_size];
-            file.read_exact(&mut first_chunk).await
+            file.read_exact(&mut first_chunk)
+                .await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
             let start_url = format!("{}/files/upload_session/start", CONTENT_BASE);
@@ -711,7 +800,8 @@ impl StorageProvider for DropboxProvider {
                 "close": first_chunk_size as u64 >= file_size
             });
 
-            let start_resp = self.client
+            let start_resp = self
+                .client
                 .post(&start_url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, "application/octet-stream")
@@ -723,14 +813,19 @@ impl StorageProvider for DropboxProvider {
 
             if !start_resp.status().is_success() {
                 let text = start_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Upload session start failed: {}", sanitize_api_error(&text))));
+                return Err(ProviderError::Other(format!(
+                    "Upload session start failed: {}",
+                    sanitize_api_error(&text)
+                )));
             }
 
             #[derive(Deserialize)]
             struct SessionStart {
                 session_id: String,
             }
-            let session: SessionStart = start_resp.json().await
+            let session: SessionStart = start_resp
+                .json()
+                .await
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             if let Some(ref progress) = on_progress {
@@ -742,7 +837,8 @@ impl StorageProvider for DropboxProvider {
             while offset < file_size {
                 let chunk_size = std::cmp::min(CHUNK_SIZE, file_size - offset) as usize;
                 let mut chunk = vec![0u8; chunk_size];
-                file.read_exact(&mut chunk).await
+                file.read_exact(&mut chunk)
+                    .await
                     .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
                 let is_last = offset + chunk_size as u64 >= file_size;
 
@@ -755,7 +851,8 @@ impl StorageProvider for DropboxProvider {
                     "close": is_last
                 });
 
-                let append_resp = self.client
+                let append_resp = self
+                    .client
                     .post(&append_url)
                     .header(AUTHORIZATION, self.auth_header().await?)
                     .header(CONTENT_TYPE, "application/octet-stream")
@@ -767,7 +864,10 @@ impl StorageProvider for DropboxProvider {
 
                 if !append_resp.status().is_success() {
                     let text = append_resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!("Upload session append failed: {}", sanitize_api_error(&text))));
+                    return Err(ProviderError::Other(format!(
+                        "Upload session append failed: {}",
+                        sanitize_api_error(&text)
+                    )));
                 }
 
                 offset += chunk_size as u64;
@@ -792,7 +892,8 @@ impl StorageProvider for DropboxProvider {
                 }
             });
 
-            let finish_resp = self.client
+            let finish_resp = self
+                .client
                 .post(&finish_url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, "application/octet-stream")
@@ -803,11 +904,15 @@ impl StorageProvider for DropboxProvider {
 
             if !finish_resp.status().is_success() {
                 let text = finish_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Upload session finish failed: {}", sanitize_api_error(&text))));
+                return Err(ProviderError::Other(format!(
+                    "Upload session finish failed: {}",
+                    sanitize_api_error(&text)
+                )));
             }
         } else {
             // Simple upload — stream file content without loading into memory
-            let file = tokio::fs::File::open(local_path).await
+            let file = tokio::fs::File::open(local_path)
+                .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
             let stream = tokio_util::io::ReaderStream::new(file);
             let body = reqwest::Body::wrap_stream(stream);
@@ -821,7 +926,8 @@ impl StorageProvider for DropboxProvider {
 
             let url = format!("{}/files/upload", CONTENT_BASE);
 
-            let response = self.client
+            let response = self
+                .client
                 .post(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, "application/octet-stream")
@@ -834,7 +940,10 @@ impl StorageProvider for DropboxProvider {
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!("Upload failed: {}", sanitize_api_error(&text))));
+                return Err(ProviderError::Other(format!(
+                    "Upload failed: {}",
+                    sanitize_api_error(&text)
+                )));
             }
         }
 
@@ -855,7 +964,7 @@ impl StorageProvider for DropboxProvider {
         });
 
         let _: serde_json::Value = self.rpc_call("files/create_folder_v2", &body).await?;
-        
+
         info!("Created folder: {}", path);
         Ok(())
     }
@@ -872,7 +981,7 @@ impl StorageProvider for DropboxProvider {
         });
 
         let _: serde_json::Value = self.rpc_call("files/delete_v2", &body).await?;
-        
+
         info!("Deleted: {}", path);
         Ok(())
     }
@@ -905,7 +1014,7 @@ impl StorageProvider for DropboxProvider {
         });
 
         let _: serde_json::Value = self.rpc_call("files/move_v2", &body).await?;
-        
+
         info!("Renamed {} to {}", from, to);
         Ok(())
     }
@@ -992,7 +1101,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/search_v2", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1003,7 +1113,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Search failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Search failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -1019,10 +1132,14 @@ impl StorageProvider for DropboxProvider {
             matches: Vec<SearchMatch>,
         }
 
-        let result: SearchResult = response.json().await
+        let result: SearchResult = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        Ok(result.matches.iter()
+        Ok(result
+            .matches
+            .iter()
             .map(|m| self.to_remote_entry(&m.metadata.metadata))
             .collect())
     }
@@ -1030,7 +1147,8 @@ impl StorageProvider for DropboxProvider {
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let url = format!("{}/users/get_space_usage", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
@@ -1039,7 +1157,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Space usage failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Space usage failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -1052,7 +1173,9 @@ impl StorageProvider for DropboxProvider {
             allocation: Allocation,
         }
 
-        let usage: SpaceUsage = response.json().await
+        let usage: SpaceUsage = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(StorageInfo {
@@ -1100,9 +1223,8 @@ impl StorageProvider for DropboxProvider {
         });
         if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
-            settings["expires"] = serde_json::Value::String(
-                expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string()
-            );
+            settings["expires"] =
+                serde_json::Value::String(expires_at.format("%Y-%m-%dT%H:%M:%SZ").to_string());
         }
         if let Some(ref pw) = options.password {
             settings["link_password"] = serde_json::json!(pw);
@@ -1115,8 +1237,9 @@ impl StorageProvider for DropboxProvider {
 
         // Dropbox API: sharing/create_shared_link_with_settings
         let url = format!("{}/sharing/create_shared_link_with_settings", API_BASE);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1137,8 +1260,9 @@ impl StorageProvider for DropboxProvider {
             });
 
             let url = format!("{}/sharing/list_shared_links", API_BASE);
-            
-            let response = self.client
+
+            let response = self
+                .client
                 .post(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .header(CONTENT_TYPE, "application/json")
@@ -1148,7 +1272,9 @@ impl StorageProvider for DropboxProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                return Err(ProviderError::Other("Failed to get existing share link".to_string()));
+                return Err(ProviderError::Other(
+                    "Failed to get existing share link".to_string(),
+                ));
             }
 
             #[derive(Deserialize)]
@@ -1160,7 +1286,9 @@ impl StorageProvider for DropboxProvider {
                 links: Vec<SharedLink>,
             }
 
-            let result: SharedLinksResult = response.json().await
+            let result: SharedLinksResult = response
+                .json()
+                .await
                 .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
             if let Some(link) = result.links.first() {
@@ -1172,7 +1300,9 @@ impl StorageProvider for DropboxProvider {
                 });
             }
 
-            return Err(ProviderError::Other("No existing share link found".to_string()));
+            return Err(ProviderError::Other(
+                "No existing share link found".to_string(),
+            ));
         }
 
         if !status.is_success() {
@@ -1181,7 +1311,11 @@ impl StorageProvider for DropboxProvider {
                     "Dropbox token missing 'sharing.write' scope. Please disconnect and reconnect Dropbox to refresh permissions.".to_string()
                 ));
             }
-            return Err(ProviderError::Other(format!("Failed to create share link: {} - {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Failed to create share link: {} - {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -1200,10 +1334,7 @@ impl StorageProvider for DropboxProvider {
         })
     }
 
-    async fn remove_share_link(
-        &mut self,
-        path: &str,
-    ) -> Result<(), ProviderError> {
+    async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
@@ -1217,7 +1348,8 @@ impl StorageProvider for DropboxProvider {
         });
 
         let url = format!("{}/sharing/list_shared_links", API_BASE);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1227,7 +1359,9 @@ impl StorageProvider for DropboxProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(ProviderError::Other("Failed to list share links".to_string()));
+            return Err(ProviderError::Other(
+                "Failed to list share links".to_string(),
+            ));
         }
 
         #[derive(Deserialize)]
@@ -1239,10 +1373,14 @@ impl StorageProvider for DropboxProvider {
             links: Vec<SharedLink>,
         }
 
-        let result: SharedLinksResult = response.json().await
+        let result: SharedLinksResult = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
-        let link_url = result.links.first()
+        let link_url = result
+            .links
+            .first()
             .ok_or_else(|| ProviderError::Other("No share link found to remove".to_string()))?;
 
         // Revoke the shared link
@@ -1251,7 +1389,8 @@ impl StorageProvider for DropboxProvider {
         });
 
         let url = format!("{}/sharing/revoke_shared_link", API_BASE);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1262,7 +1401,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Failed to revoke share link: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Failed to revoke share link: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Revoked share link for {}", path);
@@ -1273,7 +1415,10 @@ impl StorageProvider for DropboxProvider {
         true
     }
 
-    async fn list_versions(&mut self, path: &str) -> Result<Vec<super::FileVersion>, ProviderError> {
+    async fn list_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
@@ -1287,7 +1432,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/list_revisions", API_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1298,7 +1444,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("List revisions failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "List revisions failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -1312,15 +1461,21 @@ impl StorageProvider for DropboxProvider {
             entries: Vec<RevisionEntry>,
         }
 
-        let list: RevisionList = response.json().await
+        let list: RevisionList = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        Ok(list.entries.iter().map(|r| super::FileVersion {
-            id: r.rev.clone(),
-            modified: Some(r.server_modified.clone()),
-            size: r.size,
-            modified_by: None,
-        }).collect())
+        Ok(list
+            .entries
+            .iter()
+            .map(|r| super::FileVersion {
+                id: r.rev.clone(),
+                modified: Some(r.server_modified.clone()),
+                size: r.size,
+                modified_by: None,
+            })
+            .collect())
     }
 
     async fn download_version(
@@ -1341,7 +1496,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/download", CONTENT_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header("Dropbox-API-Arg", arg.to_string())
@@ -1351,14 +1507,20 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!("Download revision failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::TransferFailed(format!(
+                "Download revision failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let _ = full_path; // Used for path resolution
-        tokio::fs::write(local_path, &bytes).await
+        tokio::fs::write(local_path, &bytes)
+            .await
             .map_err(ProviderError::IoError)?;
 
         Ok(())
@@ -1400,7 +1562,8 @@ impl StorageProvider for DropboxProvider {
 
         let url = format!("{}/files/get_thumbnail_v2", CONTENT_BASE);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header("Dropbox-API-Arg", arg.to_string())
@@ -1409,14 +1572,21 @@ impl StorageProvider for DropboxProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(ProviderError::NotFound("No thumbnail available".to_string()));
+            return Err(ProviderError::NotFound(
+                "No thumbnail available".to_string(),
+            ));
         }
 
-        let bytes = response.bytes().await
+        let bytes = response
+            .bytes()
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         // Return as base64 data URI
-        Ok(format!("data:image/jpeg;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)))
+        Ok(format!(
+            "data:image/jpeg;base64,{}",
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
+        ))
     }
 
     fn supports_locking(&self) -> bool {
@@ -1438,7 +1608,8 @@ impl StorageProvider for DropboxProvider {
         });
 
         let url = format!("{}/files/lock_file_batch", API_BASE);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1449,7 +1620,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Lock failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Lock failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         #[derive(Deserialize)]
@@ -1474,12 +1648,16 @@ impl StorageProvider for DropboxProvider {
             entries: Vec<LockResult>,
         }
 
-        let result: LockBatchResponse = response.json().await
+        let result: LockBatchResponse = response
+            .json()
+            .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         if let Some(entry) = result.entries.first() {
             if entry.tag == "success" {
-                let owner = entry.entry.as_ref()
+                let owner = entry
+                    .entry
+                    .as_ref()
                     .and_then(|e| e.lock.as_ref())
                     .and_then(|l| l.lock_holder_account_id.clone());
                 return Ok(LockInfo {
@@ -1491,7 +1669,9 @@ impl StorageProvider for DropboxProvider {
             }
         }
 
-        Err(ProviderError::Other("Lock failed: no success entry".to_string()))
+        Err(ProviderError::Other(
+            "Lock failed: no success entry".to_string(),
+        ))
     }
 
     async fn unlock_file(&mut self, path: &str, _lock_token: &str) -> Result<(), ProviderError> {
@@ -1509,7 +1689,8 @@ impl StorageProvider for DropboxProvider {
         });
 
         let url = format!("{}/files/unlock_file_batch", API_BASE);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
@@ -1520,7 +1701,10 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!("Unlock failed: {}", sanitize_api_error(&text))));
+            return Err(ProviderError::Other(format!(
+                "Unlock failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
 
         info!("Unlocked file: {}", path);

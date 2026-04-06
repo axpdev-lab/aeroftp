@@ -11,7 +11,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// Mutex to prevent concurrent journal writes from corrupting the file (M38)
-static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
+static JOURNAL_WRITE_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
 
 /// Tolerance for timestamp comparison (seconds)
 /// Accounts for filesystem and timezone differences
@@ -58,6 +59,11 @@ pub struct FileComparison {
     pub is_dir: bool,
     /// Human-readable explanation of why this file needs syncing
     pub sync_reason: String,
+    /// True if this file existed in the sync index from a previous sync.
+    /// For bidirectional sync: a local_only/remote_only file that was previously synced
+    /// means the OTHER side deleted it (vs being a genuinely new file).
+    #[serde(default)]
+    pub previously_synced: bool,
 }
 
 /// Options for comparison
@@ -73,6 +79,18 @@ pub struct CompareOptions {
     pub exclude_patterns: Vec<String>,
     /// Direction of comparison
     pub direction: SyncDirection,
+    /// Minimum file size in bytes (skip smaller files)
+    #[serde(default)]
+    pub min_size: Option<u64>,
+    /// Maximum file size in bytes (skip larger files)
+    #[serde(default)]
+    pub max_size: Option<u64>,
+    /// Minimum file age in seconds (skip newer files)
+    #[serde(default)]
+    pub min_age_secs: Option<u64>,
+    /// Maximum file age in seconds (skip older files)
+    #[serde(default)]
+    pub max_age_secs: Option<u64>,
 }
 
 impl Default for CompareOptions {
@@ -92,6 +110,10 @@ impl Default for CompareOptions {
                 "target".to_string(),
             ],
             direction: SyncDirection::Bidirectional,
+            min_size: None,
+            max_size: None,
+            min_age_secs: None,
+            max_age_secs: None,
         }
     }
 }
@@ -185,10 +207,10 @@ pub fn validate_relative_path(relative_path: &str) -> Result<(), String> {
 pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
     let path_lower = path.to_lowercase();
     let path_segments: Vec<&str> = path_lower.split(&['/', '\\'][..]).collect();
-    
+
     for pattern in patterns {
         let pattern_lower = pattern.to_lowercase();
-        
+
         // Simple glob matching
         if let Some(ext) = pattern_lower.strip_prefix('*') {
             // *.ext pattern
@@ -205,7 +227,40 @@ pub fn should_exclude(path: &str, patterns: &[String]) -> bool {
             }
         }
     }
-    
+
+    false
+}
+
+/// Check if a file should be filtered out by size/age constraints.
+/// Returns true if the file should be SKIPPED.
+fn should_filter(info: Option<&FileInfo>, options: &CompareOptions) -> bool {
+    if let Some(f) = info {
+        // Size filters
+        if let Some(min) = options.min_size {
+            if !f.is_dir && f.size < min {
+                return true;
+            }
+        }
+        if let Some(max) = options.max_size {
+            if !f.is_dir && f.size > max {
+                return true;
+            }
+        }
+        // Age filters (seconds since now)
+        if let Some(modified) = f.modified {
+            let age = (Utc::now() - modified).num_seconds().max(0) as u64;
+            if let Some(min_age) = options.min_age_secs {
+                if age < min_age {
+                    return true;
+                } // Too new
+            }
+            if let Some(max_age) = options.max_age_secs {
+                if age > max_age {
+                    return true;
+                } // Too old
+            }
+        }
+    }
     false
 }
 
@@ -222,7 +277,10 @@ pub fn timestamps_equal(local: Option<DateTime<Utc>>, remote: Option<DateTime<Ut
 }
 
 /// Determine which timestamp is newer
-pub fn compare_timestamps(local: Option<DateTime<Utc>>, remote: Option<DateTime<Utc>>) -> Option<SyncStatus> {
+pub fn compare_timestamps(
+    local: Option<DateTime<Utc>>,
+    remote: Option<DateTime<Utc>>,
+) -> Option<SyncStatus> {
     match (local, remote) {
         (Some(l), Some(r)) => {
             let diff = l.signed_duration_since(r).num_seconds();
@@ -455,7 +513,7 @@ pub fn build_comparison_results(
     let mut results = Vec::new();
     let mut all_paths: std::collections::HashSet<String> = local_files.keys().cloned().collect();
     all_paths.extend(remote_files.keys().cloned());
-    
+
     for path in all_paths {
         // Reject paths with traversal components
         if validate_relative_path(&path).is_err() {
@@ -471,11 +529,16 @@ pub fn build_comparison_results(
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
 
+        // Apply size/age filters
+        if should_filter(local, options) || should_filter(remote, options) {
+            continue;
+        }
+
         let status = compare_file_pair(local, remote, options);
 
         // Skip identical files unless they're directories we need to show
-        let is_dir = local.map(|f| f.is_dir).unwrap_or(false)
-                  || remote.map(|f| f.is_dir).unwrap_or(false);
+        let is_dir =
+            local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
 
         if status != SyncStatus::Identical || is_dir {
             let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
@@ -486,13 +549,14 @@ pub fn build_comparison_results(
                 remote_info: remote.cloned(),
                 is_dir,
                 sync_reason,
+                previously_synced: false,
             });
         }
     }
 
     // Sort by path for consistent display
     results.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    
+
     results
 }
 
@@ -507,19 +571,19 @@ pub fn get_recommended_action(status: &SyncStatus, direction: &SyncDirection) ->
         (SyncStatus::RemoteOnly, SyncDirection::Bidirectional) => SyncAction::Download,
         (SyncStatus::Conflict, _) => SyncAction::AskUser,
         (SyncStatus::SizeMismatch, _) => SyncAction::AskUser,
-        
+
         // Local to Remote
         (SyncStatus::LocalNewer, SyncDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::LocalOnly, SyncDirection::LocalToRemote) => SyncAction::Upload,
         (SyncStatus::RemoteNewer, SyncDirection::LocalToRemote) => SyncAction::Skip,
         (SyncStatus::RemoteOnly, SyncDirection::LocalToRemote) => SyncAction::DeleteRemote,
-        
+
         // Remote to Local
         (SyncStatus::RemoteNewer, SyncDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::RemoteOnly, SyncDirection::RemoteToLocal) => SyncAction::Download,
         (SyncStatus::LocalNewer, SyncDirection::RemoteToLocal) => SyncAction::Skip,
         (SyncStatus::LocalOnly, SyncDirection::RemoteToLocal) => SyncAction::DeleteLocal,
-        
+
         // Identical - no action needed
         (SyncStatus::Identical, _) => SyncAction::Skip,
     }
@@ -571,15 +635,20 @@ fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let tmp_path = path.with_extension("tmp");
     std::fs::write(&tmp_path, data)
         .map_err(|e| format!("Failed to write temp file {}: {}", tmp_path.display(), e))?;
-    std::fs::rename(&tmp_path, path)
-        .map_err(|e| format!("Failed to rename {} to {}: {}", tmp_path.display(), path.display(), e))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| {
+        format!(
+            "Failed to rename {} to {}: {}",
+            tmp_path.display(),
+            path.display(),
+            e
+        )
+    })?;
     Ok(())
 }
 
 /// Get the directory where sync indices are stored
 fn sync_index_dir() -> Result<std::path::PathBuf, String> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
     let dir = base.join("aeroftp").join("sync-index");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync index directory: {}", e))?;
@@ -589,7 +658,7 @@ fn sync_index_dir() -> Result<std::path::PathBuf, String> {
 /// Stable SHA-256 hash — collision-resistant filename generation (replaces DJB2)
 /// Returns first 16 hex characters (64 bits) of SHA-256 digest.
 fn stable_path_hash(s: &str) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
     let result = hasher.finalize();
@@ -609,10 +678,10 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     if !path.exists() {
         return Ok(None);
     }
-    let data = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read sync index: {}", e))?;
-    let index: SyncIndex = serde_json::from_str(&data)
-        .map_err(|e| format!("Failed to parse sync index: {}", e))?;
+    let data =
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read sync index: {}", e))?;
+    let index: SyncIndex =
+        serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
     Ok(Some(index))
 }
 
@@ -651,8 +720,14 @@ pub fn build_comparison_results_with_index(
 
         let local = local_files.get(&path);
         let remote = remote_files.get(&path);
-        let is_dir = local.map(|f| f.is_dir).unwrap_or(false)
-            || remote.map(|f| f.is_dir).unwrap_or(false);
+
+        // Apply size/age filters
+        if should_filter(local, options) || should_filter(remote, options) {
+            continue;
+        }
+
+        let is_dir =
+            local.map(|f| f.is_dir).unwrap_or(false) || remote.map(|f| f.is_dir).unwrap_or(false);
 
         // Check if we can use the index for conflict detection
         let status = if let (Some(idx), Some(l), Some(r)) = (index, local, remote) {
@@ -660,10 +735,12 @@ pub fn build_comparison_results_with_index(
                 // When cached timestamp is None (provider didn't return mtime),
                 // fall back to size-only comparison to avoid false conflicts.
                 let local_changed = l.size != cached.size
-                    || (l.modified.is_some() && cached.modified.is_some()
+                    || (l.modified.is_some()
+                        && cached.modified.is_some()
                         && !timestamps_equal(l.modified, cached.modified));
                 let remote_changed = r.size != cached.size
-                    || (r.modified.is_some() && cached.modified.is_some()
+                    || (r.modified.is_some()
+                        && cached.modified.is_some()
                         && !timestamps_equal(r.modified, cached.modified));
 
                 if local_changed && remote_changed {
@@ -684,6 +761,13 @@ pub fn build_comparison_results_with_index(
             compare_file_pair(local, remote, options)
         };
 
+        // Check if this file was in the sync index (previously synced).
+        // For bidirectional sync: a local_only/remote_only file that was previously synced
+        // means the OTHER side intentionally deleted it.
+        let previously_synced = index
+            .map(|idx| idx.files.contains_key(&path))
+            .unwrap_or(false);
+
         if status != SyncStatus::Identical || is_dir {
             let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
             results.push(FileComparison {
@@ -693,6 +777,7 @@ pub fn build_comparison_results_with_index(
                 remote_info: remote.cloned(),
                 is_dir,
                 sync_reason,
+                previously_synced,
             });
         }
     }
@@ -744,34 +829,51 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
 
     let (kind, retryable) = if lower.contains("timeout") || lower.contains("timed out") {
         (SyncErrorKind::Timeout, true)
-    } else if lower.contains("rate limit") || lower.contains("too many requests") || lower.contains("429") {
+    } else if lower.contains("rate limit")
+        || lower.contains("too many requests")
+        || lower.contains("429")
+    {
         (SyncErrorKind::RateLimit, true)
-    } else if lower.contains("quota") || lower.contains("storage full") || lower.contains("insufficient storage")
+    } else if lower.contains("quota")
+        || lower.contains("storage full")
+        || lower.contains("insufficient storage")
         || lower.contains("552 ")
     {
         (SyncErrorKind::QuotaExceeded, false)
-    } else if lower.contains("permission denied") || lower.contains("access denied")
-        || lower.contains("403 ") || lower.contains("550 ")
+    } else if lower.contains("permission denied")
+        || lower.contains("access denied")
+        || lower.contains("403 ")
+        || lower.contains("550 ")
     {
         (SyncErrorKind::PermissionDenied, false)
-    } else if lower.contains("not found") || lower.contains("no such file")
-        || lower.contains("404 ") || lower.contains("550 ")
+    } else if lower.contains("not found")
+        || lower.contains("no such file")
+        || lower.contains("404 ")
+        || lower.contains("550 ")
     {
         // 550 can be either permission or not-found; prefer permission if already matched
         (SyncErrorKind::PathNotFound, false)
-    } else if lower.contains("auth") || lower.contains("login") || lower.contains("credential")
-        || lower.contains("401 ") || lower.contains("530 ")
+    } else if lower.contains("auth")
+        || lower.contains("login")
+        || lower.contains("credential")
+        || lower.contains("401 ")
+        || lower.contains("530 ")
     {
         (SyncErrorKind::Auth, false)
     } else if lower.contains("locked") || lower.contains("in use") {
         (SyncErrorKind::FileLocked, true)
-    } else if lower.contains("disk full") || lower.contains("no space")
-        || lower.contains("i/o error") || lower.contains("broken pipe")
+    } else if lower.contains("disk full")
+        || lower.contains("no space")
+        || lower.contains("i/o error")
+        || lower.contains("broken pipe")
     {
         (SyncErrorKind::DiskError, false)
-    } else if lower.contains("connection") || lower.contains("network")
-        || lower.contains("dns") || lower.contains("refused")
-        || lower.contains("reset") || lower.contains("eof")
+    } else if lower.contains("connection")
+        || lower.contains("network")
+        || lower.contains("dns")
+        || lower.contains("refused")
+        || lower.contains("reset")
+        || lower.contains("eof")
         || lower.contains("data connection")
     {
         (SyncErrorKind::Network, true)
@@ -820,7 +922,10 @@ impl RetryPolicy {
     /// Calculate delay for a given attempt (1-indexed)
     #[allow(dead_code)] // Used in unit tests
     pub fn delay_for_attempt(&self, attempt: u32) -> u64 {
-        let delay = (self.base_delay_ms as f64) * self.backoff_multiplier.powi(attempt.saturating_sub(1) as i32);
+        let delay = (self.base_delay_ms as f64)
+            * self
+                .backoff_multiplier
+                .powi(attempt.saturating_sub(1) as i32);
         if !delay.is_finite() || delay < 0.0 {
             return self.max_delay_ms;
         }
@@ -862,7 +967,7 @@ pub struct VerifyResult {
 /// Compute SHA-256 hash of a local file synchronously (64KB streaming chunks).
 /// Returns lowercase hex-encoded hash string, or None on I/O error.
 fn compute_sha256_sync(path: &std::path::Path) -> Option<String> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     use std::io::Read;
 
     let mut file = std::fs::File::open(path).ok()?;
@@ -870,7 +975,9 @@ fn compute_sha256_sync(path: &std::path::Path) -> Option<String> {
     let mut buf = vec![0u8; 65_536];
     loop {
         let n = file.read(&mut buf).ok()?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         hasher.update(&buf[..n]);
     }
     Some(format!("{:x}", hasher.finalize()))
@@ -914,9 +1021,8 @@ pub fn verify_local_file(
         match expected_hash {
             Some(expected_hex) if !expected_hex.is_empty() => {
                 // Compute actual hash and compare
-                compute_sha256_sync(path).map(|actual_hex| {
-                    actual_hex.eq_ignore_ascii_case(expected_hex)
-                })
+                compute_sha256_sync(path)
+                    .map(|actual_hex| actual_hex.eq_ignore_ascii_case(expected_hex))
             }
             _ => {
                 // No expected hash available — cannot verify, treat as None (unknown)
@@ -932,9 +1038,8 @@ pub fn verify_local_file(
         VerifyPolicy::SizeOnly => size_match,
         VerifyPolicy::SizeAndMtime => size_match && mtime_match.unwrap_or(true),
         VerifyPolicy::Full => {
-            size_match
-                && mtime_match.unwrap_or(true)
-                && hash_match.unwrap_or(true) // If no hash available, pass on size+mtime
+            size_match && mtime_match.unwrap_or(true) && hash_match.unwrap_or(true)
+            // If no hash available, pass on size+mtime
         }
     };
 
@@ -943,7 +1048,9 @@ pub fn verify_local_file(
             Some(format!(
                 "Size mismatch: expected {} bytes, got {} bytes",
                 expected_size,
-                actual_size.map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string())
+                actual_size
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
             ))
         } else if hash_match == Some(false) {
             Some("SHA-256 hash mismatch after transfer".to_string())
@@ -1064,7 +1171,10 @@ impl SyncJournal {
             e.status == JournalEntryStatus::Pending
                 || e.status == JournalEntryStatus::InProgress
                 || (e.status == JournalEntryStatus::Failed
-                    && e.last_error.as_ref().map(|err| err.retryable).unwrap_or(true)
+                    && e.last_error
+                        .as_ref()
+                        .map(|err| err.retryable)
+                        .unwrap_or(true)
                     && e.attempts < self.retry_policy.max_retries)
         })
     }
@@ -1072,8 +1182,7 @@ impl SyncJournal {
 
 /// Get the directory where sync journals are stored
 fn sync_journal_dir() -> Result<PathBuf, String> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
     let dir = base.join("aeroftp").join("sync-journal");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync journal directory: {}", e))?;
@@ -1087,7 +1196,10 @@ fn journal_filename(local_path: &str, remote_path: &str) -> String {
 }
 
 /// Load an existing journal for a path pair
-pub fn load_sync_journal(local_path: &str, remote_path: &str) -> Result<Option<SyncJournal>, String> {
+pub fn load_sync_journal(
+    local_path: &str,
+    remote_path: &str,
+) -> Result<Option<SyncJournal>, String> {
     let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(local_path, remote_path));
     if !path.exists() {
@@ -1095,14 +1207,15 @@ pub fn load_sync_journal(local_path: &str, remote_path: &str) -> Result<Option<S
     }
     let data = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read sync journal: {}", e))?;
-    let journal: SyncJournal = serde_json::from_str(&data)
-        .map_err(|e| format!("Failed to parse sync journal: {}", e))?;
+    let journal: SyncJournal =
+        serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync journal: {}", e))?;
     Ok(Some(journal))
 }
 
 /// Save a journal (creates or overwrites). Uses a mutex to prevent concurrent write corruption (M38).
 pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
-    let _lock = JOURNAL_WRITE_LOCK.lock()
+    let _lock = JOURNAL_WRITE_LOCK
+        .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(&journal.local_path, &journal.remote_path));
@@ -1119,8 +1232,7 @@ pub fn delete_sync_journal(local_path: &str, remote_path: &str) -> Result<(), St
     let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(local_path, remote_path));
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete sync journal: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete sync journal: {}", e))?;
     }
     Ok(())
 }
@@ -1141,14 +1253,16 @@ pub struct JournalSummary {
 pub fn list_sync_journals() -> Result<Vec<JournalSummary>, String> {
     let dir = sync_journal_dir()?;
     let mut summaries = Vec::new();
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read journal directory: {}", e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().map(|e| e == "json").unwrap_or(false) {
             if let Ok(data) = std::fs::read_to_string(&path) {
                 if let Ok(journal) = serde_json::from_str::<SyncJournal>(&data) {
-                    let completed_entries = journal.entries.iter()
+                    let completed_entries = journal
+                        .entries
+                        .iter()
                         .filter(|e| e.status == JournalEntryStatus::Completed)
                         .count();
                     summaries.push(JournalSummary {
@@ -1174,8 +1288,8 @@ pub fn cleanup_old_journals(max_age_days: u32) -> Result<u32, String> {
     let dir = sync_journal_dir()?;
     let cutoff = Utc::now() - chrono::Duration::days(max_age_days as i64);
     let mut deleted = 0u32;
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read journal directory: {}", e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().map(|e| e == "json").unwrap_or(false) {
@@ -1197,8 +1311,8 @@ pub fn cleanup_old_journals(max_age_days: u32) -> Result<u32, String> {
 pub fn clear_all_journals() -> Result<u32, String> {
     let dir = sync_journal_dir()?;
     let mut deleted = 0u32;
-    let entries = std::fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read journal directory: {}", e))?;
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read journal directory: {}", e))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().map(|e| e == "json").unwrap_or(false) {
@@ -1251,8 +1365,12 @@ impl SyncProfile {
             compare_size: true,
             compare_checksum: false,
             exclude_patterns: vec![
-                "node_modules".into(), ".git".into(), ".DS_Store".into(),
-                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+                "node_modules".into(),
+                ".git".into(),
+                ".DS_Store".into(),
+                "Thumbs.db".into(),
+                "__pycache__".into(),
+                "target".into(),
             ],
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
@@ -1273,8 +1391,12 @@ impl SyncProfile {
             compare_size: true,
             compare_checksum: false,
             exclude_patterns: vec![
-                "node_modules".into(), ".git".into(), ".DS_Store".into(),
-                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+                "node_modules".into(),
+                ".git".into(),
+                ".DS_Store".into(),
+                "Thumbs.db".into(),
+                "__pycache__".into(),
+                "target".into(),
             ],
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
@@ -1295,8 +1417,12 @@ impl SyncProfile {
             compare_size: true,
             compare_checksum: true,
             exclude_patterns: vec![
-                "node_modules".into(), ".git".into(), ".DS_Store".into(),
-                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+                "node_modules".into(),
+                ".git".into(),
+                ".DS_Store".into(),
+                "Thumbs.db".into(),
+                "__pycache__".into(),
+                "target".into(),
             ],
             retry_policy: RetryPolicy {
                 max_retries: 5,
@@ -1320,8 +1446,12 @@ impl SyncProfile {
             compare_size: true,
             compare_checksum: false,
             exclude_patterns: vec![
-                "node_modules".into(), ".git".into(), ".DS_Store".into(),
-                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+                "node_modules".into(),
+                ".git".into(),
+                ".DS_Store".into(),
+                "Thumbs.db".into(),
+                "__pycache__".into(),
+                "target".into(),
             ],
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
@@ -1342,8 +1472,12 @@ impl SyncProfile {
             compare_size: true,
             compare_checksum: true,
             exclude_patterns: vec![
-                "node_modules".into(), ".git".into(), ".DS_Store".into(),
-                "Thumbs.db".into(), "__pycache__".into(), "target".into(),
+                "node_modules".into(),
+                ".git".into(),
+                ".DS_Store".into(),
+                "Thumbs.db".into(),
+                "__pycache__".into(),
+                "target".into(),
             ],
             retry_policy: RetryPolicy {
                 max_retries: 5,
@@ -1358,14 +1492,19 @@ impl SyncProfile {
 
     /// All built-in profiles
     pub fn builtins() -> Vec<Self> {
-        vec![Self::mirror(), Self::two_way(), Self::backup(), Self::pull(), Self::remote_backup()]
+        vec![
+            Self::mirror(),
+            Self::two_way(),
+            Self::backup(),
+            Self::pull(),
+            Self::remote_backup(),
+        ]
     }
 }
 
 /// Directory for custom sync profiles
 fn sync_profiles_dir() -> Result<PathBuf, String> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
     let dir = base.join("aeroftp").join("sync-profiles");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync profiles directory: {}", e))?;
@@ -1402,7 +1541,10 @@ fn validate_filesystem_id(id: &str) -> Result<(), String> {
         return Err("ID contains forbidden characters".to_string());
     }
     // Only allow UUID-like chars: alphanumeric, hyphens, underscores
-    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("ID contains invalid characters".to_string());
     }
     Ok(())
@@ -1428,8 +1570,7 @@ pub fn delete_sync_profile(id: &str) -> Result<(), String> {
     let dir = sync_profiles_dir()?;
     let path = dir.join(format!("{}.json", id));
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete sync profile: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete sync profile: {}", e))?;
     }
     Ok(())
 }
@@ -1613,14 +1754,22 @@ pub fn create_sync_snapshot(
     remote_path: &str,
     index: &SyncIndex,
 ) -> SyncSnapshot {
-    let files: HashMap<String, FileSnapshotEntry> = index.files.iter().map(|(path, entry)| {
-        (path.clone(), FileSnapshotEntry {
-            size: entry.size,
-            modified: entry.modified,
-            checksum: None,
-            action_taken: String::new(),
+    let files: HashMap<String, FileSnapshotEntry> = index
+        .files
+        .iter()
+        .filter(|(_, entry)| !entry.is_dir)
+        .map(|(path, entry)| {
+            (
+                path.clone(),
+                FileSnapshotEntry {
+                    size: entry.size,
+                    modified: entry.modified,
+                    checksum: None,
+                    action_taken: String::new(),
+                },
+            )
         })
-    }).collect();
+        .collect();
 
     SyncSnapshot {
         id: uuid::Uuid::new_v4().to_string(),
@@ -1645,8 +1794,7 @@ fn snapshots_dir() -> Result<PathBuf, String> {
 pub fn save_sync_snapshot(snapshot: &SyncSnapshot) -> Result<(), String> {
     let dir = snapshots_dir()?;
     let data = serde_json::to_string(snapshot).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(format!("{}.json", snapshot.id)), data)
-        .map_err(|e| e.to_string())
+    std::fs::write(dir.join(format!("{}.json", snapshot.id)), data).map_err(|e| e.to_string())
 }
 
 /// List all snapshots, sorted by date (newest first), max 10
@@ -1672,8 +1820,16 @@ pub fn list_sync_snapshots() -> Result<Vec<SyncSnapshot>, String> {
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
         .collect();
     if all_files.len() > 5 {
-        let mut by_time: Vec<_> = all_files.into_iter()
-            .filter_map(|e| e.metadata().ok().map(|m| (e.path(), m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH))))
+        let mut by_time: Vec<_> = all_files
+            .into_iter()
+            .filter_map(|e| {
+                e.metadata().ok().map(|m| {
+                    (
+                        e.path(),
+                        m.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                    )
+                })
+            })
             .collect();
         by_time.sort_by(|a, b| b.1.cmp(&a.1));
         for (path, _) in by_time.into_iter().skip(5) {
@@ -1693,6 +1849,16 @@ pub fn delete_sync_snapshot(id: &str) -> Result<(), String> {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Load a specific snapshot by ID
+pub fn load_sync_snapshot(id: &str) -> Result<SyncSnapshot, String> {
+    validate_filesystem_id(id)?;
+    let dir = snapshots_dir()?;
+    let path = dir.join(format!("{}.json", id));
+    let data =
+        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read snapshot: {}", e))?;
+    serde_json::from_str(&data).map_err(|e| format!("Failed to parse snapshot: {}", e))
 }
 
 // ============================================================================
@@ -1787,8 +1953,8 @@ pub fn sign_journal(journal: &SyncJournal, key: &[u8]) -> Result<String, String>
 
     let canonical = serde_json::to_string(journal)
         .map_err(|e| format!("Failed to serialize journal: {}", e))?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(key)
-        .map_err(|e| format!("HMAC key error: {}", e))?;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key).map_err(|e| format!("HMAC key error: {}", e))?;
     mac.update(canonical.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
@@ -1887,7 +2053,13 @@ mod tests {
 
     #[test]
     fn test_verify_local_file_missing() {
-        let result = verify_local_file("/nonexistent/path/file.txt", 100, None, &VerifyPolicy::SizeOnly, None);
+        let result = verify_local_file(
+            "/nonexistent/path/file.txt",
+            100,
+            None,
+            &VerifyPolicy::SizeOnly,
+            None,
+        );
         assert!(!result.passed);
         assert!(!result.size_match);
     }
@@ -1978,7 +2150,11 @@ mod tests {
         if let Some(home) = dirs::home_dir() {
             let abs = format!("{}/projects/test", home.to_string_lossy());
             let portable = portable_path(&abs);
-            assert!(portable.starts_with("$HOME") || portable.starts_with("$DOCUMENTS") || portable.starts_with("$DESKTOP"));
+            assert!(
+                portable.starts_with("$HOME")
+                    || portable.starts_with("$DOCUMENTS")
+                    || portable.starts_with("$DESKTOP")
+            );
         }
     }
 
@@ -1998,11 +2174,14 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
         };
-        index.files.insert("file.txt".to_string(), SyncIndexEntry {
-            size: 1024,
-            modified: Some(Utc::now()),
-            is_dir: false,
-        });
+        index.files.insert(
+            "file.txt".to_string(),
+            SyncIndexEntry {
+                size: 1024,
+                modified: Some(Utc::now()),
+                is_dir: false,
+            },
+        );
 
         let snapshot = create_sync_snapshot("/local", "/remote", &index);
         assert_eq!(snapshot.files.len(), 1);
@@ -2015,9 +2194,15 @@ mod tests {
     fn test_sync_template_export() {
         let profile = SyncProfile::mirror();
         let template = export_sync_template(
-            "Test Template", "A test", &profile, "/home/user/docs", "/remote/docs",
-            &["*.tmp".to_string()], None,
-        ).unwrap();
+            "Test Template",
+            "A test",
+            &profile,
+            "/home/user/docs",
+            "/remote/docs",
+            &["*.tmp".to_string()],
+            None,
+        )
+        .unwrap();
         assert_eq!(template.schema_version, 1);
         assert_eq!(template.name, "Test Template");
         assert_eq!(template.path_patterns.len(), 1);

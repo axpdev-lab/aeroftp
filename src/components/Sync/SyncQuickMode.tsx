@@ -8,7 +8,7 @@
 
 import React from 'react';
 import {
-    ArrowDown, ArrowUp, ArrowLeftRight, Zap, Skull, ArrowDownToLine, ArrowUpFromLine
+    ArrowDown, ArrowUp, ArrowLeftRight, Zap, Skull, ArrowDownToLine, ArrowUpFromLine, Settings2
 } from 'lucide-react';
 import { SyncProfile } from '../../types';
 import { useTranslation } from '../../i18n';
@@ -107,6 +107,18 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                             </button>
                         );
                     })}
+                    {/* Custom card — shown when settings don't match any preset */}
+                    {activeProfileId === 'custom' && (
+                        <button
+                            className="sync-preset-card selected"
+                            disabled={disabled}
+                            style={{ borderColor: '#6b7280', background: 'rgba(107, 114, 128, 0.1)' }}
+                        >
+                            <Settings2 size={20} style={{ color: '#6b7280' }} className="mb-1" />
+                            <div className="text-xs font-semibold">{t('syncPanel.profileCustom')}</div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">{t('syncPanel.profileCustomDesc')}</div>
+                        </button>
+                    )}
                 </div>
             </div>
 

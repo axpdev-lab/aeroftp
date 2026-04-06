@@ -8,18 +8,18 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
-use tokio::process::Command;
-use tokio::io::AsyncWriteExt;
 use secrecy::ExposeSecret;
 use std::path::Path;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 /// Windows: hide the console window that flashes when spawning .bat/.exe MEGAcmd commands.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, MegaConfig, StorageInfo,
-    ShareLinkOptions, ShareLinkResult,
+    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider,
 };
 
 /// Timeout for all MEGAcmd commands (seconds).
@@ -55,8 +55,8 @@ impl MegaCmdProvider {
     fn resolve_mega_cmd(cmd: &str) -> String {
         #[cfg(windows)]
         {
-            let program_files = std::env::var("ProgramFiles")
-                .unwrap_or_else(|_| r"C:\Program Files".to_string());
+            let program_files =
+                std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".to_string());
             let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
             let candidates = [
                 format!(r"{}\MEGAcmd\{}.bat", program_files, cmd),
@@ -89,11 +89,20 @@ impl MegaCmdProvider {
     /// Classify MEGAcmd stderr into typed ProviderError (ERR-01).
     fn classify_mega_error(stderr: &str) -> ProviderError {
         let lower = stderr.to_lowercase();
-        if lower.contains("not logged in") || lower.contains("not logged-in") || lower.contains("login required") {
+        if lower.contains("not logged in")
+            || lower.contains("not logged-in")
+            || lower.contains("login required")
+        {
             ProviderError::AuthenticationFailed(format!("MEGAcmd: {}", stderr))
-        } else if lower.contains("not found") || lower.contains("no such file") || lower.contains("couldn't find") {
+        } else if lower.contains("not found")
+            || lower.contains("no such file")
+            || lower.contains("couldn't find")
+        {
             ProviderError::NotFound(stderr.to_string())
-        } else if lower.contains("over quota") || lower.contains("storage quota") || lower.contains("over storage") {
+        } else if lower.contains("over quota")
+            || lower.contains("storage quota")
+            || lower.contains("over storage")
+        {
             ProviderError::ServerError("Storage quota exceeded".to_string())
         } else if lower.contains("permission denied") || lower.contains("access denied") {
             ProviderError::PermissionDenied(stderr.to_string())
@@ -101,7 +110,10 @@ impl MegaCmdProvider {
             ProviderError::AlreadyExists(stderr.to_string())
         } else if lower.contains("not empty") {
             ProviderError::DirectoryNotEmpty(stderr.to_string())
-        } else if lower.contains("temporarily unavailable") || lower.contains("try again") || lower.contains("server busy") {
+        } else if lower.contains("temporarily unavailable")
+            || lower.contains("try again")
+            || lower.contains("server busy")
+        {
             ProviderError::ServerError(format!("Transient error: {}", stderr))
         } else {
             ProviderError::ServerError(stderr.to_string())
@@ -143,15 +155,23 @@ impl MegaCmdProvider {
             let output = match tokio::time::timeout(
                 std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
                 output_future,
-            ).await {
+            )
+            .await
+            {
                 Ok(Ok(output)) => output,
                 Ok(Err(e)) => {
-                    let err = format!("Failed to execute {} (resolved: {}): {}", cmd, resolved_cmd, e);
+                    let err = format!(
+                        "Failed to execute {} (resolved: {}): {}",
+                        cmd, resolved_cmd, e
+                    );
                     self.log_debug(&format!("[CMD ERROR] {}", err));
                     return Err(ProviderError::ServerError(err));
                 }
                 Err(_) => {
-                    self.log_debug(&format!("[CMD TIMEOUT] {} exceeded {}s", cmd, MEGA_CMD_TIMEOUT_SECS));
+                    self.log_debug(&format!(
+                        "[CMD TIMEOUT] {} exceeded {}s",
+                        cmd, MEGA_CMD_TIMEOUT_SECS
+                    ));
                     return Err(ProviderError::Timeout);
                 }
             };
@@ -193,7 +213,11 @@ impl MegaCmdProvider {
     /// Run a mega command with automatic re-auth on session expiry (ERR-04).
     /// Use this for operational commands (not for login/logout themselves).
     /// Re-auth is attempted exactly once; if the retry also fails, the error propagates.
-    async fn run_mega_cmd_with_reauth(&mut self, cmd: &str, args: &[&str]) -> Result<String, ProviderError> {
+    async fn run_mega_cmd_with_reauth(
+        &mut self,
+        cmd: &str,
+        args: &[&str],
+    ) -> Result<String, ProviderError> {
         match self.run_mega_cmd(cmd, args).await {
             Ok(out) => Ok(out),
             Err(ProviderError::AuthenticationFailed(ref msg)) => {
@@ -227,9 +251,12 @@ impl MegaCmdProvider {
                     .stderr(std::process::Stdio::piped())
                     .output()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(
-                        format!("Failed to execute mega-login: {}", e)
-                    ))?
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!(
+                            "Failed to execute mega-login: {}",
+                            e
+                        ))
+                    })?
             };
 
             #[cfg(not(windows))]
@@ -241,13 +268,19 @@ impl MegaCmdProvider {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
-                    .map_err(|e| ProviderError::ConnectionFailed(
-                        format!("Failed to spawn mega-login: {}", e)
-                    ))?;
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!(
+                            "Failed to spawn mega-login: {}",
+                            e
+                        ))
+                    })?;
 
                 if let Some(mut stdin) = child.stdin.take() {
                     stdin.write_all(password.as_bytes()).await.map_err(|e| {
-                        ProviderError::ConnectionFailed(format!("Failed to write password to stdin: {}", e))
+                        ProviderError::ConnectionFailed(format!(
+                            "Failed to write password to stdin: {}",
+                            e
+                        ))
                     })?;
                     stdin.write_all(b"\n").await.ok();
                     drop(stdin);
@@ -261,9 +294,14 @@ impl MegaCmdProvider {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let err_msg = stderr.trim();
-                return Err(ProviderError::AuthenticationFailed(
-                    format!("MEGAcmd Login Failed: {}", if err_msg.is_empty() { "Unknown error" } else { err_msg })
-                ));
+                return Err(ProviderError::AuthenticationFailed(format!(
+                    "MEGAcmd Login Failed: {}",
+                    if err_msg.is_empty() {
+                        "Unknown error"
+                    } else {
+                        err_msg
+                    }
+                )));
             }
 
             Ok(())
@@ -272,7 +310,9 @@ impl MegaCmdProvider {
         match tokio::time::timeout(
             std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
             login_future,
-        ).await {
+        )
+        .await
+        {
             Ok(result) => result,
             Err(_) => Err(ProviderError::Timeout),
         }
@@ -286,7 +326,7 @@ impl MegaCmdProvider {
             Err(ProviderError::ServerError(ref e)) if e.contains("Failed to execute") => {
                 // Binary not found — daemon can't be started
                 Err(ProviderError::ConnectionFailed(
-                    "MEGAcmd is not installed. Install it from https://mega.nz/cmd".to_string()
+                    "MEGAcmd is not installed. Install it from https://mega.nz/cmd".to_string(),
                 ))
             }
             Err(_) => {
@@ -334,8 +374,12 @@ impl MegaCmdProvider {
     /// Parse a single mega-ls -l output line into a RemoteEntry (CQ-01: defensive parsing).
     fn parse_ls_line(line: &str, parent_path: &str) -> Option<RemoteEntry> {
         // Skip header and section lines
-        if line.contains("FLAGS") && line.contains("VERS") { return None; }
-        if line.starts_with('/') && line.ends_with(':') { return None; }
+        if line.contains("FLAGS") && line.contains("VERS") {
+            return None;
+        }
+        if line.starts_with('/') && line.ends_with(':') {
+            return None;
+        }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
         // CQ-01: Require minimum 6 columns (flags, vers, size, date, time, name)
@@ -386,7 +430,9 @@ impl MegaCmdProvider {
 
 #[async_trait]
 impl StorageProvider for MegaCmdProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::Mega
@@ -407,7 +453,9 @@ impl StorageProvider for MegaCmdProvider {
         // AUTH-03/AUTH-05: Check if already logged in as this user (exact match)
         if let Ok(whoami) = self.run_mega_cmd("mega-whoami", &[]).await {
             let whoami_trimmed = whoami.trim();
-            if whoami_trimmed == self.config.email || whoami_trimmed.ends_with(&format!(" {}", self.config.email)) {
+            if whoami_trimmed == self.config.email
+                || whoami_trimmed.ends_with(&format!(" {}", self.config.email))
+            {
                 tracing::info!("[MEGAcmd] Already logged in (Existing Session).");
                 self.connected = true;
                 return Ok(());
@@ -434,12 +482,16 @@ impl StorageProvider for MegaCmdProvider {
         let should_logout = self.config.logout_on_disconnect.unwrap_or(false);
 
         if should_logout {
-            tracing::info!("[MEGAcmd] Disconnecting and killing session (logout_on_disconnect=true)");
+            tracing::info!(
+                "[MEGAcmd] Disconnecting and killing session (logout_on_disconnect=true)"
+            );
             if let Err(e) = self.run_mega_cmd("mega-logout", &[]).await {
                 tracing::warn!("[MEGAcmd] Logout on disconnect failed: {}", e);
             }
         } else {
-            tracing::info!("[MEGAcmd] Disconnecting but KEEPING session active (logout_on_disconnect=false)");
+            tracing::info!(
+                "[MEGAcmd] Disconnecting but KEEPING session active (logout_on_disconnect=false)"
+            );
             // AUTH-05/AUTH-22: MEGAcmd daemon handles session persistence internally.
         }
 
@@ -456,9 +508,13 @@ impl StorageProvider for MegaCmdProvider {
 
         tracing::debug!("[MEGAcmd] Listing path: {}", target_path);
 
-        let output = self.run_mega_cmd_with_reauth("mega-ls", &["-l", &target_path]).await
+        let output = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", &target_path])
+            .await
             .map_err(|e| match e {
-                ProviderError::NotFound(_) => ProviderError::NotFound(format!("Path not found: {}", target_path)),
+                ProviderError::NotFound(_) => {
+                    ProviderError::NotFound(format!("Path not found: {}", target_path))
+                }
                 other => other,
             })?;
 
@@ -486,7 +542,11 @@ impl StorageProvider for MegaCmdProvider {
                     .parent()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or("/".to_string());
-                if parent.is_empty() { "/".to_string() } else { parent }
+                if parent.is_empty() {
+                    "/".to_string()
+                } else {
+                    parent
+                }
             }
         } else {
             self.resolve_path(path)
@@ -494,9 +554,12 @@ impl StorageProvider for MegaCmdProvider {
 
         tracing::debug!("[MEGAcmd] CD verifying path: {}", new_path);
 
-        self.run_mega_cmd_with_reauth("mega-ls", &[&new_path]).await
+        self.run_mega_cmd_with_reauth("mega-ls", &[&new_path])
+            .await
             .map_err(|e| match e {
-                ProviderError::NotFound(_) => ProviderError::NotFound(format!("Invalid directory: {}", new_path)),
+                ProviderError::NotFound(_) => {
+                    ProviderError::NotFound(format!("Invalid directory: {}", new_path))
+                }
                 other => other,
             })?;
 
@@ -508,9 +571,17 @@ impl StorageProvider for MegaCmdProvider {
         self.cd("..").await
     }
 
-    async fn download(&mut self, r: &str, l: &str, progress: Option<Box<dyn Fn(u64,u64)+Send>>) -> Result<(), ProviderError> {
+    async fn download(
+        &mut self,
+        r: &str,
+        l: &str,
+        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         let abs_remote = self.resolve_path(r);
-        self.log_debug(&format!("[MEGAcmd] Downloading '{}' to '{}'", abs_remote, l));
+        self.log_debug(&format!(
+            "[MEGAcmd] Downloading '{}' to '{}'",
+            abs_remote, l
+        ));
 
         // XFER-08: Signal start
         if let Some(ref cb) = progress {
@@ -518,7 +589,10 @@ impl StorageProvider for MegaCmdProvider {
         }
 
         // Download file (--resume removed: not supported by all MEGAcmd versions)
-        match self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, l]).await {
+        match self
+            .run_mega_cmd_with_reauth("mega-get", &[&abs_remote, l])
+            .await
+        {
             Ok(out) => {
                 self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
                 // XFER-02: Signal completion with file size
@@ -529,7 +603,7 @@ impl StorageProvider for MegaCmdProvider {
                     }
                 }
                 Ok(())
-            },
+            }
             Err(e) => {
                 self.log_debug(&format!("[MEGAcmd] Download ERROR: {}", e));
                 Err(e)
@@ -549,12 +623,17 @@ impl StorageProvider for MegaCmdProvider {
         let temp_path = temp_dir.join(format!("aeroftp_mega_{}", file_name));
         let temp_str = temp_path.to_string_lossy().to_string();
 
-        self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str]).await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download to bytes failed: {}", e)))?;
+        self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str])
+            .await
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Download to bytes failed: {}", e))
+            })?;
 
         // H2: Check file size before reading to prevent OOM
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
-        let metadata = tokio::fs::metadata(&temp_path).await.map_err(ProviderError::IoError)?;
+        let metadata = tokio::fs::metadata(&temp_path)
+            .await
+            .map_err(ProviderError::IoError)?;
         if metadata.len() > limit {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(ProviderError::TransferFailed(format!(
@@ -564,9 +643,9 @@ impl StorageProvider for MegaCmdProvider {
             )));
         }
 
-        let bytes = tokio::fs::read(&temp_path).await.map_err(|e| {
-            ProviderError::IoError(e)
-        })?;
+        let bytes = tokio::fs::read(&temp_path)
+            .await
+            .map_err(ProviderError::IoError)?;
 
         // Clean up temp file
         if let Err(e) = tokio::fs::remove_file(&temp_path).await {
@@ -576,7 +655,12 @@ impl StorageProvider for MegaCmdProvider {
         Ok(bytes)
     }
 
-    async fn upload(&mut self, l: &str, r: &str, progress: Option<Box<dyn Fn(u64,u64)+Send>>) -> Result<(), ProviderError> {
+    async fn upload(
+        &mut self,
+        l: &str,
+        r: &str,
+        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
         // XFER-04/CQ-09: Resolve remote path
         let abs_remote = self.resolve_path(r);
 
@@ -585,7 +669,8 @@ impl StorageProvider for MegaCmdProvider {
             cb(0, 0);
         }
 
-        self.run_mega_cmd_with_reauth("mega-put", &[l, &abs_remote]).await
+        self.run_mega_cmd_with_reauth("mega-put", &[l, &abs_remote])
+            .await
             .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
 
         // XFER-02: Signal completion with local file size
@@ -615,13 +700,15 @@ impl StorageProvider for MegaCmdProvider {
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(p);
         // Soft delete: -r for recursive, moves to rubbish bin
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p]).await?;
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p])
+            .await?;
         Ok(())
     }
 
     async fn rmdir_recursive(&mut self, p: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(p);
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p]).await?;
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p])
+            .await?;
         Ok(())
     }
 
@@ -662,10 +749,18 @@ impl StorageProvider for MegaCmdProvider {
             .parent()
             .map(|pp| pp.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string());
-        let parent = if parent.is_empty() { "/".to_string() } else { parent };
+        let parent = if parent.is_empty() {
+            "/".to_string()
+        } else {
+            parent
+        };
 
-        let output = self.run_mega_cmd_with_reauth("mega-ls", &["-l", &parent]).await
-            .map_err(|e| ProviderError::ServerError(format!("stat failed for '{}': {}", abs_path, e)))?;
+        let output = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", &parent])
+            .await
+            .map_err(|e| {
+                ProviderError::ServerError(format!("stat failed for '{}': {}", abs_path, e))
+            })?;
 
         for line in output.lines() {
             if let Some(entry) = Self::parse_ls_line(line, &parent) {
@@ -678,7 +773,10 @@ impl StorageProvider for MegaCmdProvider {
             }
         }
 
-        Err(ProviderError::NotFound(format!("Path not found: {}", abs_path)))
+        Err(ProviderError::NotFound(format!(
+            "Path not found: {}",
+            abs_path
+        )))
     }
 
     async fn size(&mut self, p: &str) -> Result<u64, ProviderError> {
@@ -695,13 +793,17 @@ impl StorageProvider for MegaCmdProvider {
         }
     }
 
-    async fn keep_alive(&mut self) -> Result<(), ProviderError> { Ok(()) }
+    async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        Ok(())
+    }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         self.run_mega_cmd_with_reauth("mega-whoami", &[]).await
     }
 
-    fn supports_server_copy(&self) -> bool { true }
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
 
     async fn server_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
@@ -710,7 +812,9 @@ impl StorageProvider for MegaCmdProvider {
         Ok(())
     }
 
-    fn supports_share_links(&self) -> bool { true }
+    fn supports_share_links(&self) -> bool {
+        true
+    }
 
     async fn create_share_link(
         &mut self,
@@ -724,15 +828,21 @@ impl StorageProvider for MegaCmdProvider {
             tracing::warn!(target: "mega", "Link expiry requested ({}s) but MEGAcmd mega-export does not support expiry. Creating permanent link.", secs);
         }
 
-        let output = match self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path]).await {
+        let output = match self
+            .run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path])
+            .await
+        {
             Ok(out) => out,
             Err(e) => {
                 let err_msg = e.to_string();
                 // If already exported, remove old link and re-export
                 if err_msg.contains("already exported") {
                     tracing::info!(target: "mega", "Link already exported, re-exporting: {}", abs_path);
-                    let _ = self.run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path]).await;
-                    self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path]).await?
+                    let _ = self
+                        .run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
+                        .await;
+                    self.run_mega_cmd_with_reauth("mega-export", &["-a", &abs_path])
+                        .await?
                 } else {
                     return Err(e);
                 }
@@ -742,26 +852,35 @@ impl StorageProvider for MegaCmdProvider {
         // mega-export output format: "Exported /path: https://mega.nz/..."
         for line in output.lines() {
             if let Some(url_start) = line.find("https://mega.nz/") {
-                return Ok(ShareLinkResult { url: line[url_start..].trim().to_string(), password: None, expires_at: None });
+                return Ok(ShareLinkResult {
+                    url: line[url_start..].trim().to_string(),
+                    password: None,
+                    expires_at: None,
+                });
             }
         }
 
-        Err(ProviderError::ParseError(
-            format!("Could not parse export link from MEGAcmd output: {}", output.trim())
-        ))
+        Err(ProviderError::ParseError(format!(
+            "Could not parse export link from MEGAcmd output: {}",
+            output.trim()
+        )))
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs_path = self.resolve_path(path);
-        self.run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path]).await?;
+        self.run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
+            .await?;
         Ok(())
     }
 
-    fn supports_import_link(&self) -> bool { true }
+    fn supports_import_link(&self) -> bool {
+        true
+    }
 
     async fn import_link(&mut self, link: &str, dest: &str) -> Result<(), ProviderError> {
         let abs_dest = self.resolve_path(dest);
-        self.run_mega_cmd_with_reauth("mega-import", &[link, &abs_dest]).await?;
+        self.run_mega_cmd_with_reauth("mega-import", &[link, &abs_dest])
+            .await?;
         Ok(())
     }
 
@@ -806,14 +925,18 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
         let abs_path = self.resolve_path(path);
-        let output = self.run_mega_cmd_with_reauth("mega-du", &[&abs_path]).await?;
+        let output = self
+            .run_mega_cmd_with_reauth("mega-du", &[&abs_path])
+            .await?;
 
         // CQ-04: More specific line matching for disk usage output.
         // mega-du output: "Total storage used: 123456789 bytes" or "/path: 123456789"
         // Parse from last line that contains a numeric value.
         for line in output.lines().rev() {
             let line = line.trim();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             // Try to find last numeric token
             let parts: Vec<&str> = line.split_whitespace().collect();
             if let Some(last) = parts.last() {
@@ -829,21 +952,28 @@ impl StorageProvider for MegaCmdProvider {
             }
         }
 
-        Err(ProviderError::ParseError(
-            format!("Could not parse disk usage from: {}", output.trim())
-        ))
+        Err(ProviderError::ParseError(format!(
+            "Could not parse disk usage from: {}",
+            output.trim()
+        )))
     }
 
-    fn supports_find(&self) -> bool { true }
+    fn supports_find(&self) -> bool {
+        true
+    }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let abs_path = self.resolve_path(path);
-        let output = self.run_mega_cmd_with_reauth("mega-find", &[&abs_path, "--pattern", pattern]).await?;
+        let output = self
+            .run_mega_cmd_with_reauth("mega-find", &[&abs_path, "--pattern", pattern])
+            .await?;
 
         let mut entries = Vec::new();
         for line in output.lines() {
             let line = line.trim();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             // mega-find outputs full paths, one per line
             // CQ-03: Metadata not available from mega-find — size/modified left as defaults
@@ -874,15 +1004,22 @@ impl StorageProvider for MegaCmdProvider {
         Ok(entries)
     }
 
-    async fn set_speed_limit(&mut self, upload_kb: u64, download_kb: u64) -> Result<(), ProviderError> {
+    async fn set_speed_limit(
+        &mut self,
+        upload_kb: u64,
+        download_kb: u64,
+    ) -> Result<(), ProviderError> {
         let ul = upload_kb.to_string();
         let dl = download_kb.to_string();
-        self.run_mega_cmd_with_reauth("mega-speedlimit", &["-u", &ul, "-d", &dl]).await?;
+        self.run_mega_cmd_with_reauth("mega-speedlimit", &["-u", &ul, "-d", &dl])
+            .await?;
         Ok(())
     }
 
     async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
-        let output = self.run_mega_cmd_with_reauth("mega-speedlimit", &[]).await?;
+        let output = self
+            .run_mega_cmd_with_reauth("mega-speedlimit", &[])
+            .await?;
 
         let mut upload: u64 = 0;
         let mut download: u64 = 0;
@@ -911,13 +1048,16 @@ impl MegaCmdProvider {
     /// Uses `mega-mv` to //bin instead of `mega-rm` which permanently deletes.
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(path);
-        self.run_mega_cmd_with_reauth("mega-mv", &[&p, "//bin/"]).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&p, "//bin/"])
+            .await?;
         Ok(())
     }
 
     /// TRASH-02: List items in the MEGA rubbish bin via `mega-ls //bin`.
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let output = self.run_mega_cmd_with_reauth("mega-ls", &["-l", "//bin"]).await
+        let output = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "//bin"])
+            .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => {
                     // Empty rubbish or path doesn't exist — return empty list
@@ -942,7 +1082,11 @@ impl MegaCmdProvider {
     }
 
     /// TRASH-03: Restore an item from rubbish bin to a destination path.
-    pub async fn restore_from_trash(&mut self, filename: &str, dest: &str) -> Result<(), ProviderError> {
+    pub async fn restore_from_trash(
+        &mut self,
+        filename: &str,
+        dest: &str,
+    ) -> Result<(), ProviderError> {
         // Sanitize: extract basename only to prevent path traversal (e.g. "../../secret")
         let clean_name = std::path::Path::new(filename)
             .file_name()
@@ -950,12 +1094,16 @@ impl MegaCmdProvider {
             .to_string_lossy();
         let rubbish_path = format!("//bin/{}", clean_name);
         let abs_dest = self.resolve_path(dest);
-        self.run_mega_cmd_with_reauth("mega-mv", &[&rubbish_path, &abs_dest]).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&rubbish_path, &abs_dest])
+            .await?;
         Ok(())
     }
 
     /// TRASH-04: Permanently delete an item from the rubbish bin.
-    pub async fn permanent_delete_from_trash(&mut self, filename: &str) -> Result<(), ProviderError> {
+    pub async fn permanent_delete_from_trash(
+        &mut self,
+        filename: &str,
+    ) -> Result<(), ProviderError> {
         // Sanitize: extract basename only to prevent path traversal
         let clean_name = std::path::Path::new(filename)
             .file_name()
@@ -963,7 +1111,8 @@ impl MegaCmdProvider {
             .to_string_lossy();
         let rubbish_path = format!("//bin/{}", clean_name);
         // Use -f flag for permanent deletion
-        self.run_mega_cmd_with_reauth("mega-rm", &["-f", &rubbish_path]).await?;
+        self.run_mega_cmd_with_reauth("mega-rm", &["-f", &rubbish_path])
+            .await?;
         Ok(())
     }
 

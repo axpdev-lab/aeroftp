@@ -8,6 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
@@ -1663,10 +1664,11 @@ interface UpdateVerificationInfo {
         const markerJson = await invoke<string | null>('read_update_marker');
         if (markerJson) {
            const data = JSON.parse(markerJson);
-           // Show green success toast (5s instead of default 2s)
+           // Show green success toast (5s) — current version IS the updated version after restart
+           const currentVersion = await getVersion().catch(() => '');
            toast.addToast('success',
              t('ui.updateSuccess'),
-             `AeroFTP is now updated.${data.verification_mode === 'SigstoreVerified' ? ' Sigstore Verified' : data.verified ? ' SHA-256 Verified' : ''}`,
+             `AeroFTP v${currentVersion}`,
              5000
            );
 
@@ -6931,18 +6933,20 @@ interface UpdateVerificationInfo {
                 {!updateDownload.installPhase && t('update.installing')}
               </p>
               <p className="text-white/60 text-sm mt-1">{t('update.installingDesc')}</p>
+              {updateAvailable?.latest_version && (
+                <p className="text-white/40 text-xs mt-2">AeroFTP v{updateAvailable.latest_version}</p>
+              )}
             </div>
-            {/* Phase 3 indicator */}
-            <div className={`flex items-center gap-2 text-xs mt-2 ${
-              updateDownload.verification?.mode === 'VerificationFailed' ? 'text-red-400' : 'text-green-400'
-            }`}>
-              {updateDownload.verification?.mode === 'VerificationFailed' ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
-              <span>
-                {updateDownload.verification?.mode === 'SigstoreVerified' ? 'Sigstore verified release' :
-                 updateDownload.verification?.mode === 'VerificationUnavailable' ? 'SHA-256 verified release' :
-                 'Verification Error'}
-              </span>
-            </div>
+            {/* Verification hash — shown plainly in overlay, badge is in download toast */}
+            {updateDownload.verification && (
+              <p className={`text-xs mt-2 ${updateDownload.verification.mode === 'VerificationFailed' ? 'text-red-400' : 'text-white/40'}`}>
+                {updateDownload.verification.mode === 'VerificationFailed'
+                  ? 'Verification Error'
+                  : updateDownload.verification.artifact_sha256
+                    ? `SHA-256: ${updateDownload.verification.artifact_sha256.slice(0, 16)}...`
+                    : ''}
+              </p>
+            )}
           </div>
         )}
 

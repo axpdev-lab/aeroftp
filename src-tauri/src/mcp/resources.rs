@@ -10,15 +10,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde_json::{json, Value};
 use crate::mcp::pool::ConnectionPool;
 use crate::providers::ProviderType;
+use serde_json::{json, Value};
 
 /// Build the resource list for `resources/list`.
-pub fn resource_list(
-    profiles: &[Value],
-    vault_error: &Option<String>,
-) -> Vec<Value> {
+pub fn resource_list(profiles: &[Value], vault_error: &Option<String>) -> Vec<Value> {
     let mut resources = vec![
         json!({
             "uri": "aeroftp://profiles",
@@ -48,7 +45,10 @@ pub fn resource_list(
 
     // Individual profile resources
     for profile in profiles {
-        let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        let name = profile
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unnamed");
         let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or(name);
         resources.push(json!({
             "uri": format!("aeroftp://profiles/{}", id),
@@ -117,12 +117,10 @@ pub async fn read_resource(
     }
 
     if let Some(profile_id) = uri.strip_prefix("aeroftp://profiles/") {
-        let profile = profiles.iter().find(|p| {
-            p.get("id").and_then(|v| v.as_str()) == Some(profile_id)
-        });
-        return profile.map(|p| {
-            (mime, serde_json::to_string_pretty(p).unwrap_or_default())
-        });
+        let profile = profiles
+            .iter()
+            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id));
+        return profile.map(|p| (mime, serde_json::to_string_pretty(p).unwrap_or_default()));
     }
 
     None

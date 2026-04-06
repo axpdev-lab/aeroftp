@@ -13,10 +13,9 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::providers::{
-    StorageProvider, ProviderFactory, ProviderType,
-    ProviderConfig, RemoteEntry, StorageInfo,
-    FileVersion, LockInfo, SharePermission,
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    FileVersion, LockInfo, ProviderConfig, ProviderFactory, ProviderType, RemoteEntry,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission, StorageInfo,
+    StorageProvider,
 };
 
 /// Global flag: when true, filesystem watcher should suppress sync triggers.
@@ -146,7 +145,7 @@ impl ProviderConnectionParams {
         };
 
         let mut extra = std::collections::HashMap::new();
-        
+
         // Add S3-specific options
         if provider_type == ProviderType::S3 {
             if let Some(ref bucket) = self.bucket {
@@ -163,7 +162,10 @@ impl ProviderConnectionParams {
                 extra.insert("endpoint".to_string(), endpoint.clone());
             }
             // Always insert path_style so S3Config doesn't default to true for custom endpoints
-            extra.insert("path_style".to_string(), self.path_style.unwrap_or(false).to_string());
+            extra.insert(
+                "path_style".to_string(),
+                self.path_style.unwrap_or(false).to_string(),
+            );
             // S3 enterprise: storage class, SSE mode, KMS key
             if let Some(ref sc) = self.storage_class {
                 if !sc.is_empty() {
@@ -259,7 +261,10 @@ impl ProviderConnectionParams {
             }
             if let Some(ref installation_id) = self.github_installation_id {
                 if !installation_id.is_empty() {
-                    extra.insert("github_installation_id".to_string(), installation_id.clone());
+                    extra.insert(
+                        "github_installation_id".to_string(),
+                        installation_id.clone(),
+                    );
                 }
             }
             if let Some(ref pem_path) = self.github_pem_path {
@@ -394,7 +399,10 @@ pub async fn provider_connect(
     state: State<'_, ProviderState>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
-    info!("Connecting to {} provider: {}", params.protocol, params.server);
+    info!(
+        "Connecting to {} provider: {}",
+        params.protocol, params.server
+    );
 
     let mut config = params.to_provider_config()?;
 
@@ -418,14 +426,16 @@ pub async fn provider_connect(
         .map_err(|e| format!("Failed to create provider: {}", e))?;
     // A3-05: Zeroize password after it has been consumed by the provider
     config.zeroize_password();
-    
+
     // Connect
-    provider.connect().await
+    provider
+        .connect()
+        .await
         .map_err(|e| format!("Connection failed: {}", e))?;
-    
+
     let display_name = provider.display_name();
     let protocol = format!("{:?}", provider.provider_type());
-    
+
     // Store provider and config
     {
         let mut prov_lock = state.provider.lock().await;
@@ -435,29 +445,29 @@ pub async fn provider_connect(
         let mut config_lock = state.config.lock().await;
         *config_lock = Some(config);
     }
-    
+
     info!("Connected successfully: {}", display_name);
     Ok(format!("Connected to {} via {}", display_name, protocol))
 }
 
 /// Disconnect from the current provider
 #[tauri::command]
-pub async fn provider_disconnect(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn provider_disconnect(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
+
     if let Some(ref mut provider) = *provider_lock {
         info!("Disconnecting from provider: {}", provider.display_name());
-        provider.disconnect().await
+        provider
+            .disconnect()
+            .await
             .map_err(|e| format!("Disconnect failed: {}", e))?;
     }
-    
+
     *provider_lock = None;
-    
+
     let mut config_lock = state.config.lock().await;
     *config_lock = None;
-    
+
     Ok(())
 }
 
@@ -467,7 +477,7 @@ pub async fn provider_check_connection(
     state: State<'_, ProviderState>,
 ) -> Result<ProviderConnectionInfo, String> {
     let provider_lock = state.provider.lock().await;
-    
+
     match &*provider_lock {
         Some(provider) => Ok(ProviderConnectionInfo {
             connected: provider.is_connected(),
@@ -492,17 +502,19 @@ pub async fn provider_list_files(
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
 
-    let provider = provider_lock.as_mut()
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
 
     let list_path = path.as_deref().unwrap_or(".");
 
-    let files = provider.list(list_path).await
+    let files = provider
+        .list(list_path)
+        .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-    
-    let current_path = provider.pwd().await
-        .unwrap_or_else(|_| "/".to_string());
-    
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+
     Ok(ProviderListResponse {
         files,
         current_path,
@@ -516,25 +528,31 @@ pub async fn provider_change_dir(
     path: String,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     // Handle ".." specifically to go to parent directory
     if path == ".." {
-        provider.cd_up().await
+        provider
+            .cd_up()
+            .await
             .map_err(|e| format!("Failed to go up: {}", e))?;
     } else {
-        provider.cd(&path).await
+        provider
+            .cd(&path)
+            .await
             .map_err(|e| format!("Failed to change directory: {}", e))?;
     }
-    
-    let files = provider.list(".").await
+
+    let files = provider
+        .list(".")
+        .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-    
-    let current_path = provider.pwd().await
-        .unwrap_or_else(|_| path.clone());
-    
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| path.clone());
+
     Ok(ProviderListResponse {
         files,
         current_path,
@@ -547,19 +565,23 @@ pub async fn provider_go_up(
     state: State<'_, ProviderState>,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.cd_up().await
+
+    provider
+        .cd_up()
+        .await
         .map_err(|e| format!("Failed to go up: {}", e))?;
-    
-    let files = provider.list(".").await
+
+    let files = provider
+        .list(".")
+        .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
-    
-    let current_path = provider.pwd().await
-        .unwrap_or_else(|_| "/".to_string());
-    
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+
     Ok(ProviderListResponse {
         files,
         current_path,
@@ -568,15 +590,16 @@ pub async fn provider_go_up(
 
 /// Get current working directory
 #[tauri::command]
-pub async fn provider_pwd(
-    state: State<'_, ProviderState>,
-) -> Result<String, String> {
+pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.pwd().await
+
+    provider
+        .pwd()
+        .await
         .map_err(|e| format!("Failed to get working directory: {}", e))
 }
 
@@ -591,7 +614,8 @@ pub async fn provider_download_file(
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
 
-    let provider = provider_lock.as_mut()
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
 
     let filename = std::path::Path::new(&remote_path)
@@ -599,14 +623,19 @@ pub async fn provider_download_file(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
 
-    info!("Downloading via provider: {} -> {}", remote_path, local_path);
+    info!(
+        "Downloading via provider: {} -> {}",
+        remote_path, local_path
+    );
 
     // Create parent directory if needed
     if let Some(parent) = std::path::Path::new(&local_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    provider.download(&remote_path, &local_path, None).await
+    provider
+        .download(&remote_path, &local_path, None)
+        .await
         .map_err(|e| format!("Download failed: {}", e))?;
 
     // Preserve remote mtime on the local file
@@ -623,12 +652,13 @@ pub async fn provider_download_folder(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
-    #[allow(unused_variables)]
-    file_exists_action: Option<String>,
+    #[allow(unused_variables)] file_exists_action: Option<String>,
 ) -> Result<String, String> {
     // Set transfer-in-progress flag to suppress filesystem watcher/AeroCloud
     TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
-    let result = provider_download_folder_inner(&app, &state, &remote_path, &local_path, file_exists_action).await;
+    let result =
+        provider_download_folder_inner(&app, &state, &remote_path, &local_path, file_exists_action)
+            .await;
     TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
     result
 }
@@ -665,8 +695,14 @@ fn sanitize_remote_filename(name: &str) -> Result<String, String> {
     let filename = sanitized.last().unwrap().to_string();
 
     // Reject Windows drive letters (e.g. "C:")
-    if filename.len() >= 2 && filename.as_bytes()[1] == b':' && filename.as_bytes()[0].is_ascii_alphabetic() {
-        return Err(format!("Unsafe remote filename with drive letter rejected: {:?}", name));
+    if filename.len() >= 2
+        && filename.as_bytes()[1] == b':'
+        && filename.as_bytes()[0].is_ascii_alphabetic()
+    {
+        return Err(format!(
+            "Unsafe remote filename with drive letter rejected: {:?}",
+            name
+        ));
     }
 
     Ok(filename)
@@ -675,17 +711,20 @@ fn sanitize_remote_filename(name: &str) -> Result<String, String> {
 /// Verify that a resolved path is safely contained within the expected base directory.
 fn verify_path_containment(base: &std::path::Path, target: &std::path::Path) -> Result<(), String> {
     // Use canonicalize on the base (which must already exist)
-    let canonical_base = base.canonicalize()
+    let canonical_base = base
+        .canonicalize()
         .map_err(|e| format!("Failed to canonicalize base path: {}", e))?;
 
     // For target, canonicalize the parent (which should exist after create_dir_all)
     // and then append the filename
     let canonical_target = if target.exists() {
-        target.canonicalize()
+        target
+            .canonicalize()
             .map_err(|e| format!("Failed to canonicalize target path: {}", e))?
     } else if let Some(parent) = target.parent() {
         if parent.exists() {
-            let canonical_parent = parent.canonicalize()
+            let canonical_parent = parent
+                .canonicalize()
                 .map_err(|e| format!("Failed to canonicalize parent path: {}", e))?;
             canonical_parent.join(target.file_name().unwrap_or_default())
         } else {
@@ -727,21 +766,28 @@ async fn provider_download_folder_inner(
 
     let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
 
-    info!("Downloading folder via provider: {} -> {}", remote_path, local_path);
+    info!(
+        "Downloading folder via provider: {} -> {}",
+        remote_path, local_path
+    );
 
     // Emit start event
-    let _ = app.emit("transfer_event", crate::TransferEvent {
-        event_type: "start".to_string(),
-        transfer_id: transfer_id.clone(),
-        filename: folder_name.clone(),
-        direction: "download".to_string(),
-        message: Some(format!("Starting folder download: {}", folder_name)),
-        progress: None,
-        path: Some(remote_path.to_string()),
-    });
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: folder_name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Starting folder download: {}", folder_name)),
+            progress: None,
+            path: Some(remote_path.to_string()),
+        },
+    );
 
     // Create local folder
-    tokio::fs::create_dir_all(local_path).await
+    tokio::fs::create_dir_all(local_path)
+        .await
         .map_err(|e| format!("Failed to create local folder: {}", e))?;
 
     // ── Streaming scan + transfer: directory-by-directory interleaving ──
@@ -756,7 +802,8 @@ async fn provider_download_folder_inner(
     //   scan dir B → transfer files from B
     //   ...until all directories are exhausted.
 
-    let mut folders_to_scan: Vec<(String, String)> = vec![(remote_path.to_string(), local_path.to_string())];
+    let mut folders_to_scan: Vec<(String, String)> =
+        vec![(remote_path.to_string(), local_path.to_string())];
     let mut files_downloaded = 0u32;
     let mut files_skipped = 0u32;
     let mut files_errored = 0u32;
@@ -773,17 +820,29 @@ async fn provider_download_folder_inner(
         {
             let cancel = state.cancel_flag.lock().await;
             if *cancel {
-                info!("Provider folder download cancelled by user after {} files", files_downloaded);
-                let _ = app.emit("transfer_event", crate::TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Download cancelled after {} files", files_downloaded)),
-                    progress: None,
-                    path: None,
-                });
-                return Ok(format!("Download cancelled after {} files", files_downloaded));
+                info!(
+                    "Provider folder download cancelled by user after {} files",
+                    files_downloaded
+                );
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "cancelled".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "Download cancelled after {} files",
+                            files_downloaded
+                        )),
+                        progress: None,
+                        path: None,
+                    },
+                );
+                return Ok(format!(
+                    "Download cancelled after {} files",
+                    files_downloaded
+                ));
             }
         }
 
@@ -791,13 +850,18 @@ async fn provider_download_folder_inner(
         let mut dir_files: Vec<DownloadEntry> = Vec::new();
         {
             let mut provider_lock = state.provider.lock().await;
-            let provider = provider_lock.as_mut()
+            let provider = provider_lock
+                .as_mut()
                 .ok_or("Not connected to any provider")?;
 
-            provider.cd(&remote_folder).await
+            provider
+                .cd(&remote_folder)
+                .await
                 .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
 
-            let files = provider.list(".").await
+            let files = provider
+                .list(".")
+                .await
                 .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
 
             for file in files {
@@ -818,8 +882,11 @@ async fn provider_download_folder_inner(
                 let local_file_path = local_file_path_buf.to_string_lossy().to_string();
 
                 if file.is_dir {
-                    tokio::fs::create_dir_all(&local_file_path).await
-                        .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
+                    tokio::fs::create_dir_all(&local_file_path)
+                        .await
+                        .map_err(|e| {
+                            format!("Failed to create folder {}: {}", local_file_path, e)
+                        })?;
                     verify_path_containment(base_local, &local_file_path_buf)?;
                     folders_to_scan.push((remote_file_path, local_file_path));
                 } else {
@@ -844,18 +911,23 @@ async fn provider_download_folder_inner(
 
         // Emit scanning progress
         if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            let _ = app.emit("transfer_event", crate::TransferEvent {
-                event_type: "scanning".to_string(),
-                transfer_id: transfer_id.clone(),
-                filename: folder_name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!(
-                    "Scanning... {} files found, {} downloaded ({} dirs queued)",
-                    total_files_discovered, files_downloaded, folders_to_scan.len()
-                )),
-                progress: None,
-                path: None,
-            });
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!(
+                        "Scanning... {} files found, {} downloaded ({} dirs queued)",
+                        total_files_discovered,
+                        files_downloaded,
+                        folders_to_scan.len()
+                    )),
+                    progress: None,
+                    path: None,
+                },
+            );
             last_scan_emit = std::time::Instant::now();
         }
 
@@ -865,17 +937,29 @@ async fn provider_download_folder_inner(
             {
                 let cancel = state.cancel_flag.lock().await;
                 if *cancel {
-                    info!("Provider folder download cancelled by user after {} files", files_downloaded);
-                    let _ = app.emit("transfer_event", crate::TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!("Download cancelled after {} files", files_downloaded)),
-                        progress: None,
-                        path: None,
-                    });
-                    return Ok(format!("Download cancelled after {} files", files_downloaded));
+                    info!(
+                        "Provider folder download cancelled by user after {} files",
+                        files_downloaded
+                    );
+                    let _ = app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "cancelled".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: folder_name.clone(),
+                            direction: "download".to_string(),
+                            message: Some(format!(
+                                "Download cancelled after {} files",
+                                files_downloaded
+                            )),
+                            progress: None,
+                            path: None,
+                        },
+                    );
+                    return Ok(format!(
+                        "Download cancelled after {} files",
+                        files_downloaded
+                    ));
                 }
             }
 
@@ -889,21 +973,34 @@ async fn provider_download_folder_inner(
                         let remote_modified = entry.modified.as_ref().and_then(|s| {
                             let clean = s.strip_suffix('Z').unwrap_or(s);
                             chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                                .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S"))
+                                .or_else(|_| {
+                                    chrono::NaiveDateTime::parse_from_str(
+                                        clean,
+                                        "%Y-%m-%dT%H:%M:%S",
+                                    )
+                                })
                                 .ok()
                                 .map(|ndt| ndt.and_utc())
                         });
-                        if crate::should_skip_file_download(&file_exists_action, remote_modified, entry.size, &local_meta) {
+                        if crate::should_skip_file_download(
+                            &file_exists_action,
+                            remote_modified,
+                            entry.size,
+                            &local_meta,
+                        ) {
                             files_skipped += 1;
-                            let _ = app.emit("transfer_event", crate::TransferEvent {
-                                event_type: "file_skip".to_string(),
-                                transfer_id: format!("{}-{}", transfer_id, file_global_index),
-                                filename: entry.name.clone(),
-                                direction: "download".to_string(),
-                                message: Some(format!("Skipped (identical): {}", entry.name)),
-                                progress: None,
-                                path: Some(entry.remote_path.clone()),
-                            });
+                            let _ = app.emit(
+                                "transfer_event",
+                                crate::TransferEvent {
+                                    event_type: "file_skip".to_string(),
+                                    transfer_id: format!("{}-{}", transfer_id, file_global_index),
+                                    filename: entry.name.clone(),
+                                    direction: "download".to_string(),
+                                    message: Some(format!("Skipped (identical): {}", entry.name)),
+                                    progress: None,
+                                    path: Some(entry.remote_path.clone()),
+                                },
+                            );
                             continue;
                         }
                     }
@@ -913,26 +1010,32 @@ async fn provider_download_folder_inner(
             let file_transfer_id = format!("{}-{}", transfer_id, file_global_index);
 
             // Emit file_start — use total_files_discovered as denominator (grows as scan progresses)
-            let _ = app.emit("transfer_event", crate::TransferEvent {
-                event_type: "file_start".to_string(),
-                transfer_id: file_transfer_id.clone(),
-                filename: entry.name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Downloading ({}/{}+): {}", file_global_index, total_files_discovered, entry.remote_path)),
-                progress: Some(crate::TransferProgress {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "file_start".to_string(),
                     transfer_id: file_transfer_id.clone(),
                     filename: entry.name.clone(),
-                    transferred: 0,
-                    total: entry.size,
-                    percentage: 0,
-                    speed_bps: 0,
-                    eta_seconds: 0,
                     direction: "download".to_string(),
-                    total_files: Some(total_files_discovered as u64),
-                    path: None,
-                }),
-                path: Some(entry.remote_path.clone()),
-            });
+                    message: Some(format!(
+                        "Downloading ({}/{}+): {}",
+                        file_global_index, total_files_discovered, entry.remote_path
+                    )),
+                    progress: Some(crate::TransferProgress {
+                        transfer_id: file_transfer_id.clone(),
+                        filename: entry.name.clone(),
+                        transferred: 0,
+                        total: entry.size,
+                        percentage: 0,
+                        speed_bps: 0,
+                        eta_seconds: 0,
+                        direction: "download".to_string(),
+                        total_files: Some(total_files_discovered as u64),
+                        path: None,
+                    }),
+                    path: Some(entry.remote_path.clone()),
+                },
+            );
 
             // Download with retry and per-file lock acquire/release
             let mut downloaded = false;
@@ -941,14 +1044,19 @@ async fn provider_download_folder_inner(
             for attempt in 0..=max_retries {
                 if attempt > 0 {
                     let delay = base_delay_ms * 2u64.pow(attempt - 1);
-                    info!("Retry {}/{} for {} after {}ms", attempt, max_retries, entry.name, delay);
+                    info!(
+                        "Retry {}/{} for {} after {}ms",
+                        attempt, max_retries, entry.name, delay
+                    );
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
 
                 let download_result: Result<(), String> = {
                     let mut provider_lock = state.provider.lock().await;
                     match provider_lock.as_mut() {
-                        Some(provider) => provider.download(&entry.remote_path, &entry.local_path, None).await
+                        Some(provider) => provider
+                            .download(&entry.remote_path, &entry.local_path, None)
+                            .await
                             .map_err(|e| e.to_string()),
                         None => Err("Provider disconnected".to_string()),
                     }
@@ -961,7 +1069,12 @@ async fn provider_download_folder_inner(
                     }
                     Err(e) => {
                         last_error = e;
-                        warn!("Download attempt {} failed for {}: {}", attempt + 1, entry.remote_path, last_error);
+                        warn!(
+                            "Download attempt {} failed for {}: {}",
+                            attempt + 1,
+                            entry.remote_path,
+                            last_error
+                        );
                     }
                 }
             }
@@ -969,45 +1082,72 @@ async fn provider_download_folder_inner(
             if downloaded {
                 crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
                 files_downloaded += 1;
-                let _ = app.emit("transfer_event", crate::TransferEvent {
-                    event_type: "file_complete".to_string(),
-                    transfer_id: file_transfer_id,
-                    filename: entry.name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Downloaded: {} ({}/{})", entry.name, files_downloaded, total_files_discovered)),
-                    progress: None,
-                    path: Some(entry.remote_path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "file_complete".to_string(),
+                        transfer_id: file_transfer_id,
+                        filename: entry.name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "Downloaded: {} ({}/{})",
+                            entry.name, files_downloaded, total_files_discovered
+                        )),
+                        progress: None,
+                        path: Some(entry.remote_path.clone()),
+                    },
+                );
             } else {
                 files_errored += 1;
-                let _ = app.emit("transfer_event", crate::TransferEvent {
-                    event_type: "file_error".to_string(),
-                    transfer_id: file_transfer_id,
-                    filename: entry.name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!("Failed after {} retries: {}", max_retries, last_error)),
-                    progress: None,
-                    path: Some(entry.remote_path.clone()),
-                });
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "file_error".to_string(),
+                        transfer_id: file_transfer_id,
+                        filename: entry.name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "Failed after {} retries: {}",
+                            max_retries, last_error
+                        )),
+                        progress: None,
+                        path: Some(entry.remote_path.clone()),
+                    },
+                );
             }
         }
     }
 
-    info!("Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)", folder_name, files_downloaded, files_skipped, files_errored);
+    info!(
+        "Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
+        folder_name, files_downloaded, files_skipped, files_errored
+    );
 
     // Emit complete event
-    let _ = app.emit("transfer_event", crate::TransferEvent {
-        event_type: "complete".to_string(),
-        transfer_id,
-        filename: folder_name.clone(),
-        direction: "download".to_string(),
-        message: Some(format!("Downloaded {} files, {} skipped, {} errors", files_downloaded, files_skipped, files_errored)),
-        progress: None,
-        path: None,
-    });
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type: "complete".to_string(),
+            transfer_id,
+            filename: folder_name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!(
+                "Downloaded {} files, {} skipped, {} errors",
+                files_downloaded, files_skipped, files_errored
+            )),
+            progress: None,
+            path: None,
+        },
+    );
 
-    info!("Folder download completed: {} ({} downloaded, {} skipped, {} errors)", folder_name, files_downloaded, files_skipped, files_errored);
-    Ok(format!("Downloaded folder: {} ({} files)", folder_name, files_downloaded))
+    info!(
+        "Folder download completed: {} ({} downloaded, {} skipped, {} errors)",
+        folder_name, files_downloaded, files_skipped, files_errored
+    );
+    Ok(format!(
+        "Downloaded folder: {} ({} files)",
+        folder_name, files_downloaded
+    ))
 }
 
 /// Upload a file to the remote server
@@ -1020,28 +1160,34 @@ pub async fn provider_upload_file(
     commit_message: Option<String>,
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     let filename = std::path::Path::new(&local_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
-    
+
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
     if provider.provider_type() == ProviderType::GitHub {
-        let github = provider.as_any_mut()
+        let github = provider
+            .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github.upload_file(&local_path, &remote_path, commit_message.as_deref()).await
+        github
+            .upload_file(&local_path, &remote_path, commit_message.as_deref())
+            .await
             .map_err(|e| format!("Upload failed: {}", e))?;
     } else {
-        provider.upload(&local_path, &remote_path, None).await
+        provider
+            .upload(&local_path, &remote_path, None)
+            .await
             .map_err(|e| format!("Upload failed: {}", e))?;
     }
-    
+
     info!("Upload completed: {}", filename);
     Ok(format!("Uploaded: {}", filename))
 }
@@ -1054,23 +1200,29 @@ pub async fn provider_mkdir(
     commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     info!("Creating directory: {}", path);
 
     if provider.provider_type() == ProviderType::GitHub {
-        let github = provider.as_any_mut()
+        let github = provider
+            .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github.create_directory(&path, commit_message.as_deref()).await
+        github
+            .create_directory(&path, commit_message.as_deref())
+            .await
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     } else {
-        provider.mkdir(&path).await
+        provider
+            .mkdir(&path)
+            .await
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
-    
+
     Ok(())
 }
 
@@ -1082,23 +1234,29 @@ pub async fn provider_delete_file(
     commit_message: Option<String>,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     info!("Deleting file: {}", path);
 
     if provider.provider_type() == ProviderType::GitHub {
-        let github = provider.as_any_mut()
+        let github = provider
+            .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github.delete_file(&path, commit_message.as_deref()).await
+        github
+            .delete_file(&path, commit_message.as_deref())
+            .await
             .map_err(|e| format!("Failed to delete file: {}", e))?;
     } else {
-        provider.delete(&path).await
+        provider
+            .delete(&path)
+            .await
             .map_err(|e| format!("Failed to delete file: {}", e))?;
     }
-    
+
     Ok(())
 }
 
@@ -1113,7 +1271,8 @@ pub async fn provider_delete_dir(
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
 
-    let provider = provider_lock.as_mut()
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
 
     info!("Deleting directory: {} (recursive: {})", path, recursive);
@@ -1124,29 +1283,39 @@ pub async fn provider_delete_dir(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
-        let _ = app.emit("transfer_event", crate::TransferEvent {
-            event_type: "scanning".to_string(),
-            transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
-            filename: folder_name,
-            direction: "delete".to_string(),
-            message: Some("Scanning folder for deletion...".to_string()),
-            progress: None,
-            path: Some(path.clone()),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "scanning".to_string(),
+                transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
+                filename: folder_name,
+                direction: "delete".to_string(),
+                message: Some("Scanning folder for deletion...".to_string()),
+                progress: None,
+                path: Some(path.clone()),
+            },
+        );
     }
 
     if provider.provider_type() == ProviderType::GitHub {
         // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
-        let github = provider.as_any_mut()
+        let github = provider
+            .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github.delete_directory_recursive(&path, commit_message.as_deref()).await
+        github
+            .delete_directory_recursive(&path, commit_message.as_deref())
+            .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else if recursive {
-        provider.rmdir_recursive(&path).await
+        provider
+            .rmdir_recursive(&path)
+            .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
-        provider.rmdir(&path).await
+        provider
+            .rmdir(&path)
+            .await
             .map_err(|e| format!("Failed to delete directory: {}", e))?;
     }
 
@@ -1156,15 +1325,18 @@ pub async fn provider_delete_dir(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
-        let _ = app.emit("transfer_event", crate::TransferEvent {
-            event_type: "delete_complete".to_string(),
-            transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
-            filename: folder_name,
-            direction: "delete".to_string(),
-            message: Some("Directory deleted".to_string()),
-            progress: None,
-            path: Some(path),
-        });
+        let _ = app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "delete_complete".to_string(),
+                transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
+                filename: folder_name,
+                direction: "delete".to_string(),
+                message: Some("Directory deleted".to_string()),
+                progress: None,
+                path: Some(path),
+            },
+        );
     }
 
     Ok(())
@@ -1178,15 +1350,18 @@ pub async fn provider_rename(
     to: String,
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
+
     info!("Renaming: {} -> {}", from, to);
-    
-    provider.rename(&from, &to).await
+
+    provider
+        .rename(&from, &to)
+        .await
         .map_err(|e| format!("Failed to rename: {}", e))?;
-    
+
     Ok(())
 }
 
@@ -1199,7 +1374,8 @@ pub async fn provider_server_copy(
 ) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
 
-    let provider = provider_lock.as_mut()
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
 
     if !provider.supports_server_copy() {
@@ -1208,7 +1384,9 @@ pub async fn provider_server_copy(
 
     info!("Server copy: {} -> {}", from, to);
 
-    provider.server_copy(&from, &to).await
+    provider
+        .server_copy(&from, &to)
+        .await
         .map_err(|e| format!("Failed to copy: {}", e))?;
 
     Ok(())
@@ -1220,7 +1398,8 @@ pub async fn provider_supports_server_copy(
     state: State<'_, ProviderState>,
 ) -> Result<bool, String> {
     let provider_lock = state.provider.lock().await;
-    let provider = provider_lock.as_ref()
+    let provider = provider_lock
+        .as_ref()
         .ok_or("Not connected to any provider")?;
     Ok(provider.supports_server_copy())
 }
@@ -1232,40 +1411,44 @@ pub async fn provider_stat(
     path: String,
 ) -> Result<RemoteEntry, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.stat(&path).await
+
+    provider
+        .stat(&path)
+        .await
         .map_err(|e| format!("Failed to get file info: {}", e))
 }
 
 /// Keep connection alive (NOOP equivalent)
 #[tauri::command]
-pub async fn provider_keep_alive(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut provider_lock = state.provider.lock().await;
-    
+
     if let Some(ref mut provider) = *provider_lock {
-        provider.keep_alive().await
+        provider
+            .keep_alive()
+            .await
             .map_err(|e| format!("Keep alive failed: {}", e))?;
     }
-    
+
     Ok(())
 }
 
 /// Get server information
 #[tauri::command]
-pub async fn provider_server_info(
-    state: State<'_, ProviderState>,
-) -> Result<String, String> {
+pub async fn provider_server_info(state: State<'_, ProviderState>) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.server_info().await
+
+    provider
+        .server_info()
+        .await
         .map_err(|e| format!("Failed to get server info: {}", e))
 }
 
@@ -1276,11 +1459,14 @@ pub async fn provider_file_size(
     path: String,
 ) -> Result<u64, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.size(&path).await
+
+    provider
+        .size(&path)
+        .await
         .map_err(|e| format!("Failed to get file size: {}", e))
 }
 
@@ -1291,11 +1477,14 @@ pub async fn provider_exists(
     path: String,
 ) -> Result<bool, String> {
     let mut provider_lock = state.provider.lock().await;
-    
-    let provider = provider_lock.as_mut()
+
+    let provider = provider_lock
+        .as_mut()
         .ok_or("Not connected to any provider")?;
-    
-    provider.exists(&path).await
+
+    provider
+        .exists(&path)
+        .await
         .map_err(|e| format!("Failed to check existence: {}", e))
 }
 
@@ -1331,29 +1520,19 @@ pub struct OAuthFlowStarted {
 /// Start OAuth2 authentication flow
 /// Returns the authorization URL to open in browser
 #[tauri::command]
-pub async fn oauth2_start_auth(
-    params: OAuthConnectionParams,
-) -> Result<OAuthFlowStarted, String> {
+pub async fn oauth2_start_auth(params: OAuthConnectionParams) -> Result<OAuthFlowStarted, String> {
     use crate::providers::{OAuth2Manager, OAuthConfig};
-    
+
     info!("Starting OAuth2 flow for {}", params.provider);
-    
+
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google(&params.client_id, &params.client_secret)
         }
-        "dropbox" => {
-            OAuthConfig::dropbox(&params.client_id, &params.client_secret)
-        }
-        "onedrive" | "microsoft" => {
-            OAuthConfig::onedrive(&params.client_id, &params.client_secret)
-        }
-        "box" => {
-            OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
-        }
-        "pcloud" => {
-            OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region)
-        }
+        "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
+        "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
+        "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
+        "pcloud" => OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region),
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
         }
@@ -1364,14 +1543,16 @@ pub async fn oauth2_start_auth(
     };
 
     let manager = OAuth2Manager::new();
-    let (auth_url, state) = manager.start_auth_flow(&config).await
+    let (auth_url, state) = manager
+        .start_auth_flow(&config)
+        .await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
 
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {
         info!("Could not open browser automatically: {}", e);
     }
-    
+
     Ok(OAuthFlowStarted { auth_url, state })
 }
 
@@ -1383,25 +1564,17 @@ pub async fn oauth2_complete_auth(
     state: String,
 ) -> Result<String, String> {
     use crate::providers::{OAuth2Manager, OAuthConfig};
-    
+
     info!("Completing OAuth2 flow for {}", params.provider);
-    
+
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google(&params.client_id, &params.client_secret)
         }
-        "dropbox" => {
-            OAuthConfig::dropbox(&params.client_id, &params.client_secret)
-        }
-        "onedrive" | "microsoft" => {
-            OAuthConfig::onedrive(&params.client_id, &params.client_secret)
-        }
-        "box" => {
-            OAuthConfig::box_cloud(&params.client_id, &params.client_secret)
-        }
-        "pcloud" => {
-            OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region)
-        }
+        "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
+        "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
+        "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
+        "pcloud" => OAuthConfig::pcloud(&params.client_id, &params.client_secret, &params.region),
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             OAuthConfig::zoho(&params.client_id, &params.client_secret, &params.region)
         }
@@ -1412,9 +1585,11 @@ pub async fn oauth2_complete_auth(
     };
 
     let manager = OAuth2Manager::new();
-    manager.complete_auth_flow(&config, &code, &state).await
+    manager
+        .complete_auth_flow(&config, &code, &state)
+        .await
         .map_err(|e| format!("Failed to complete OAuth flow: {}", e))?;
-    
+
     Ok("Authentication successful".to_string())
 }
 
@@ -1431,10 +1606,12 @@ pub async fn oauth2_connect(
     state: State<'_, ProviderState>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
-    use crate::providers::{GoogleDriveProvider, DropboxProvider, OneDriveProvider, BoxProvider, PCloudProvider, ZohoWorkdriveProvider,
-                          google_drive::GoogleDriveConfig, dropbox::DropboxConfig,
-                          onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
-                          zoho_workdrive::ZohoWorkdriveConfig};
+    use crate::providers::{
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
+        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
+        DropboxProvider, GoogleDriveProvider, OneDriveProvider, PCloudProvider,
+        ZohoWorkdriveProvider,
+    };
 
     info!("Connecting to OAuth2 provider: {}", params.provider);
 
@@ -1442,21 +1619,24 @@ pub async fn oauth2_connect(
         "google_drive" | "googledrive" | "google" => {
             let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
             let mut p = GoogleDriveProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Google Drive connection failed: {}", e))?;
             Box::new(p)
         }
         "dropbox" => {
             let config = DropboxConfig::new(&params.client_id, &params.client_secret);
             let mut p = DropboxProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Dropbox connection failed: {}", e))?;
             Box::new(p)
         }
         "onedrive" | "microsoft" => {
             let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
             let mut p = OneDriveProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("OneDrive connection failed: {}", e))?;
             Box::new(p)
         }
@@ -1466,7 +1646,8 @@ pub async fn oauth2_connect(
                 client_secret: params.client_secret.clone(),
             };
             let mut p = BoxProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Box connection failed: {}", e))?;
             Box::new(p)
         }
@@ -1482,14 +1663,17 @@ pub async fn oauth2_connect(
                 region,
             };
             let mut p = PCloudProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("pCloud connection failed: {}", e))?;
             Box::new(p)
         }
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            let config = ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
+            let config =
+                ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
             let mut p = ZohoWorkdriveProvider::new(config);
-            p.connect().await
+            p.connect()
+                .await
                 .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
             Box::new(p)
         }
@@ -1497,10 +1681,13 @@ pub async fn oauth2_connect(
             // Yandex Disk OAuth: retrieve token from stored OAuth tokens
             use crate::providers::{OAuth2Manager, OAuthProvider};
             let manager = OAuth2Manager::new();
-            let tokens = manager.load_tokens(OAuthProvider::YandexDisk)
+            let tokens = manager
+                .load_tokens(OAuthProvider::YandexDisk)
                 .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
-            let mut p = crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
-            p.connect().await
+            let mut p =
+                crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
+            p.connect()
+                .await
                 .map_err(|e| format!("Yandex Disk connection failed: {}", e))?;
             Box::new(p)
         }
@@ -1514,16 +1701,24 @@ pub async fn oauth2_connect(
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(provider);
 
-    info!("Connected to {} ({})", display_name, account_email.as_deref().unwrap_or("no email"));
-    Ok(OAuth2ConnectResult { display_name, account_email })
+    info!(
+        "Connected to {} ({})",
+        display_name,
+        account_email.as_deref().unwrap_or("no email")
+    );
+    Ok(OAuth2ConnectResult {
+        display_name,
+        account_email,
+    })
 }
 
 /// Full OAuth2 authentication flow - starts server, opens browser, waits for callback, completes auth
 #[tauri::command]
-pub async fn oauth2_full_auth(
-    params: OAuthConnectionParams,
-) -> Result<String, String> {
-    use crate::providers::{OAuth2Manager, OAuthConfig, oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback}};
+pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, String> {
+    use crate::providers::{
+        oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
+        OAuth2Manager, OAuthConfig,
+    };
 
     info!("Starting full OAuth2 flow for {}", params.provider);
 
@@ -1543,27 +1738,30 @@ pub async fn oauth2_full_auth(
         bind_callback_listener_on_port(fixed_port).await
     } else {
         bind_callback_listener().await
-    }.map_err(|e| format!("Failed to bind callback listener: {}", e))?;
+    }
+    .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
 
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
         }
-        "dropbox" => {
-            OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port)
-        }
+        "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
         "onedrive" | "microsoft" => {
             OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
         }
-        "box" => {
-            OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "pcloud" => {
-            OAuthConfig::pcloud_with_port(&params.client_id, &params.client_secret, port, &params.region)
-        }
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
-            OAuthConfig::zoho_with_port(&params.client_id, &params.client_secret, port, &params.region)
-        }
+        "box" => OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port),
+        "pcloud" => OAuthConfig::pcloud_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
+        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthConfig::zoho_with_port(
+            &params.client_id,
+            &params.client_secret,
+            port,
+            &params.region,
+        ),
         "yandexdisk" | "yandex_disk" | "yandex" => {
             OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
         }
@@ -1574,51 +1772,61 @@ pub async fn oauth2_full_auth(
     let manager = OAuth2Manager::new();
 
     // Generate auth URL with the dynamic port in redirect_uri
-    let (auth_url, expected_state) = manager.start_auth_flow(&config).await
+    let (auth_url, expected_state) = manager
+        .start_auth_flow(&config)
+        .await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
 
     // Start waiting for callback in background (listener already bound)
-    let callback_handle = tokio::spawn(async move {
-        wait_for_callback(listener).await
-    });
-    
+    let callback_handle = tokio::spawn(async move { wait_for_callback(listener).await });
+
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {
         info!("Could not open browser automatically: {}", e);
-        return Err(format!("Could not open browser: {}. Please open this URL manually: {}", e, auth_url));
+        return Err(format!(
+            "Could not open browser: {}. Please open this URL manually: {}",
+            e, auth_url
+        ));
     }
-    
+
     info!("Browser opened, waiting for callback...");
-    
+
     // Wait for callback (with timeout)
     let callback_result = tokio::time::timeout(
         tokio::time::Duration::from_secs(300), // 5 minute timeout
-        callback_handle
-    ).await
-        .map_err(|_| "OAuth timeout: no response within 5 minutes")?
-        .map_err(|e| format!("Callback server error: {}", e))?
-        .map_err(|e| format!("Callback error: {}", e))?;
-    
+        callback_handle,
+    )
+    .await
+    .map_err(|_| "OAuth timeout: no response within 5 minutes")?
+    .map_err(|e| format!("Callback server error: {}", e))?
+    .map_err(|e| format!("Callback error: {}", e))?;
+
     let (code, state) = callback_result;
-    
+
     // Verify state matches
     if state != expected_state {
         return Err("OAuth state mismatch - possible CSRF attack".to_string());
     }
-    
+
     info!("Callback received, completing authentication...");
-    
+
     // pCloud uses non-standard token exchange (GET, no PKCE, no expiry)
     if params.provider.to_lowercase() == "pcloud" {
-        pcloud_exchange_code(&config, &code).await
+        pcloud_exchange_code(&config, &code)
+            .await
             .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
     } else {
         // Standard OAuth2 flow using the SAME manager instance (which has the PKCE verifier stored)
-        manager.complete_auth_flow(&config, &code, &expected_state).await
+        manager
+            .complete_auth_flow(&config, &code, &expected_state)
+            .await
             .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
     }
 
-    info!("OAuth2 authentication completed successfully for {}", params.provider);
+    info!(
+        "OAuth2 authentication completed successfully for {}",
+        params.provider
+    );
     Ok("Authentication successful! You can now connect.".to_string())
 }
 
@@ -1632,18 +1840,25 @@ async fn pcloud_exchange_code(
     config: &crate::providers::OAuthConfig,
     code: &str,
 ) -> Result<(), crate::providers::ProviderError> {
-    use crate::providers::{OAuth2Manager, oauth2::StoredTokens, ProviderError};
+    use crate::providers::{oauth2::StoredTokens, OAuth2Manager, ProviderError};
 
-    let client_secret = config.client_secret.as_deref()
-        .ok_or_else(|| ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string()))?;
+    let client_secret = config.client_secret.as_deref().ok_or_else(|| {
+        ProviderError::InvalidConfig("Missing client_secret for pCloud".to_string())
+    })?;
 
     // pCloud accounts are region-locked (US=api.pcloud.com, EU=eapi.pcloud.com).
     // The auth code is only valid on the account's region endpoint.
     // Try configured endpoint first, fallback to the other region.
     let endpoints = if config.token_url.contains("eapi.pcloud.com") {
-        vec!["https://eapi.pcloud.com/oauth2_token", "https://api.pcloud.com/oauth2_token"]
+        vec![
+            "https://eapi.pcloud.com/oauth2_token",
+            "https://api.pcloud.com/oauth2_token",
+        ]
     } else {
-        vec!["https://api.pcloud.com/oauth2_token", "https://eapi.pcloud.com/oauth2_token"]
+        vec![
+            "https://api.pcloud.com/oauth2_token",
+            "https://eapi.pcloud.com/oauth2_token",
+        ]
     };
 
     let http = reqwest::Client::new();
@@ -1696,12 +1911,13 @@ async fn pcloud_exchange_code(
             }
         }
 
-        let access_token = body["access_token"].as_str()
-            .ok_or_else(|| ProviderError::AuthenticationFailed("pCloud: missing access_token".to_string()))?;
+        let access_token = body["access_token"].as_str().ok_or_else(|| {
+            ProviderError::AuthenticationFailed("pCloud: missing access_token".to_string())
+        })?;
 
         let tokens = StoredTokens {
             access_token: access_token.to_string(),
-            refresh_token: None,  // pCloud tokens don't expire
+            refresh_token: None, // pCloud tokens don't expire
             expires_at: None,
             token_type: "Bearer".to_string(),
             scopes: vec![],
@@ -1711,25 +1927,34 @@ async fn pcloud_exchange_code(
         manager.store_tokens(config.provider, &tokens)?;
 
         // Persist detected region so oauth2_connect uses the correct API endpoint
-        let region = if endpoint.contains("eapi") { "eu" } else { "us" };
+        let region = if endpoint.contains("eapi") {
+            "eu"
+        } else {
+            "us"
+        };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             let _ = store.store("oauth_pcloud_region", region);
         }
 
-        info!("pCloud OAuth tokens obtained via {} ({}, permanent, no expiry)", endpoint, region.to_uppercase());
+        info!(
+            "pCloud OAuth tokens obtained via {} ({}, permanent, no expiry)",
+            endpoint,
+            region.to_uppercase()
+        );
         return Ok(());
     }
 
-    Err(ProviderError::AuthenticationFailed(format!("pCloud token exchange failed on all endpoints: {}", last_error)))
+    Err(ProviderError::AuthenticationFailed(format!(
+        "pCloud token exchange failed on all endpoints: {}",
+        last_error
+    )))
 }
 
 /// Check if OAuth2 tokens exist for a provider
 #[tauri::command]
-pub async fn oauth2_has_tokens(
-    provider: String,
-) -> Result<bool, String> {
+pub async fn oauth2_has_tokens(provider: String) -> Result<bool, String> {
     use crate::providers::{OAuth2Manager, OAuthProvider};
-    
+
     let oauth_provider = match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "dropbox" => OAuthProvider::Dropbox,
@@ -1747,11 +1972,9 @@ pub async fn oauth2_has_tokens(
 
 /// Clear OAuth2 tokens for a provider (logout)
 #[tauri::command]
-pub async fn oauth2_logout(
-    provider: String,
-) -> Result<(), String> {
+pub async fn oauth2_logout(provider: String) -> Result<(), String> {
     use crate::providers::{OAuth2Manager, OAuthProvider};
-    
+
     let oauth_provider = match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "dropbox" => OAuthProvider::Dropbox,
@@ -1764,9 +1987,10 @@ pub async fn oauth2_logout(
     };
 
     let manager = OAuth2Manager::new();
-    manager.clear_tokens(oauth_provider)
+    manager
+        .clear_tokens(oauth_provider)
         .map_err(|e| format!("Failed to clear tokens: {}", e))?;
-    
+
     info!("Logged out from {}", provider);
     Ok(())
 }
@@ -1781,7 +2005,8 @@ pub async fn provider_create_share_link(
     permissions: Option<String>,
 ) -> Result<ShareLinkResult, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if !provider.supports_share_links() {
@@ -1797,7 +2022,9 @@ pub async fn provider_create_share_link(
         permissions,
     };
 
-    let result = provider.create_share_link(&path, options).await
+    let result = provider
+        .create_share_link(&path, options)
+        .await
         .map_err(|e| format!("Failed to create share link: {}", e))?;
 
     info!("Created share link for {}: {}", path, result.url);
@@ -1810,7 +2037,8 @@ pub async fn provider_share_link_capabilities(
     state: State<'_, ProviderState>,
 ) -> Result<ShareLinkCapabilities, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     Ok(provider.share_link_capabilities())
@@ -1823,10 +2051,13 @@ pub async fn provider_remove_share_link(
     path: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.remove_share_link(&path).await
+    provider
+        .remove_share_link(&path)
+        .await
         .map_err(|e| format!("Failed to remove share link: {}", e))?;
 
     info!("Removed share link for {}", path);
@@ -1841,7 +2072,8 @@ pub async fn provider_import_link(
     dest: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if !provider.supports_import_link() {
@@ -1851,7 +2083,9 @@ pub async fn provider_import_link(
         ));
     }
 
-    provider.import_link(&link, &dest).await
+    provider
+        .import_link(&link, &dest)
+        .await
         .map_err(|e| format!("Failed to import link: {}", e))?;
 
     info!("Imported link to {}", dest);
@@ -1860,14 +2094,15 @@ pub async fn provider_import_link(
 
 /// Get storage quota information (used/total/free bytes)
 #[tauri::command]
-pub async fn provider_storage_info(
-    state: State<'_, ProviderState>,
-) -> Result<StorageInfo, String> {
+pub async fn provider_storage_info(state: State<'_, ProviderState>) -> Result<StorageInfo, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.storage_info().await
+    provider
+        .storage_info()
+        .await
         .map_err(|e| format!("Failed to get storage info: {}", e))
 }
 
@@ -1878,10 +2113,13 @@ pub async fn provider_disk_usage(
     path: String,
 ) -> Result<u64, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.disk_usage(&path).await
+    provider
+        .disk_usage(&path)
+        .await
         .map_err(|e| format!("Failed to get disk usage: {}", e))
 }
 
@@ -1893,7 +2131,8 @@ pub async fn provider_find(
     pattern: String,
 ) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if !provider.supports_find() {
@@ -1903,7 +2142,9 @@ pub async fn provider_find(
         ));
     }
 
-    provider.find(&path, &pattern).await
+    provider
+        .find(&path, &pattern)
+        .await
         .map_err(|e| format!("Search failed: {}", e))
 }
 
@@ -1915,10 +2156,13 @@ pub async fn provider_set_speed_limit(
     download_kb: u64,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.set_speed_limit(upload_kb, download_kb).await
+    provider
+        .set_speed_limit(upload_kb, download_kb)
+        .await
         .map_err(|e| format!("Failed to set speed limit: {}", e))
 }
 
@@ -1928,20 +2172,22 @@ pub async fn provider_get_speed_limit(
     state: State<'_, ProviderState>,
 ) -> Result<(u64, u64), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.get_speed_limit().await
+    provider
+        .get_speed_limit()
+        .await
         .map_err(|e| format!("Failed to get speed limit: {}", e))
 }
 
 /// Check if the current provider supports resume transfers
 #[tauri::command]
-pub async fn provider_supports_resume(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
+pub async fn provider_supports_resume(state: State<'_, ProviderState>) -> Result<bool, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     Ok(provider.supports_resume())
 }
@@ -1955,14 +2201,17 @@ pub async fn provider_resume_download(
     offset: u64,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if let Some(parent) = std::path::Path::new(&local_path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    provider.resume_download(&remote_path, &local_path, offset, None).await
+    provider
+        .resume_download(&remote_path, &local_path, offset, None)
+        .await
         .map_err(|e| format!("Resume download failed: {}", e))?;
 
     Ok(format!("Resume download completed: {}", remote_path))
@@ -1977,10 +2226,13 @@ pub async fn provider_resume_upload(
     offset: u64,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider.resume_upload(&local_path, &remote_path, offset, None).await
+    provider
+        .resume_upload(&local_path, &remote_path, offset, None)
+        .await
         .map_err(|e| format!("Resume upload failed: {}", e))?;
 
     Ok(format!("Resume upload completed: {}", remote_path))
@@ -1989,11 +2241,10 @@ pub async fn provider_resume_upload(
 // --- File Versions ---
 
 #[tauri::command]
-pub async fn provider_supports_versions(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
+pub async fn provider_supports_versions(state: State<'_, ProviderState>) -> Result<bool, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     Ok(provider.supports_versions())
 }
@@ -2004,9 +2255,12 @@ pub async fn provider_list_versions(
     path: String,
 ) -> Result<Vec<FileVersion>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.list_versions(&path).await
+    provider
+        .list_versions(&path)
+        .await
         .map_err(|e| format!("List versions failed: {}", e))
 }
 
@@ -2018,9 +2272,12 @@ pub async fn provider_download_version(
     local_path: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.download_version(&path, &version_id, &local_path).await
+    provider
+        .download_version(&path, &version_id, &local_path)
+        .await
         .map_err(|e| format!("Download version failed: {}", e))?;
     Ok(format!("Downloaded version {} of {}", version_id, path))
 }
@@ -2032,20 +2289,22 @@ pub async fn provider_restore_version(
     version_id: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.restore_version(&path, &version_id).await
+    provider
+        .restore_version(&path, &version_id)
+        .await
         .map_err(|e| format!("Restore version failed: {}", e))
 }
 
 // --- File Locking ---
 
 #[tauri::command]
-pub async fn provider_supports_locking(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
+pub async fn provider_supports_locking(state: State<'_, ProviderState>) -> Result<bool, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     Ok(provider.supports_locking())
 }
@@ -2057,9 +2316,12 @@ pub async fn provider_lock_file(
     timeout: u64,
 ) -> Result<LockInfo, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.lock_file(&path, timeout).await
+    provider
+        .lock_file(&path, timeout)
+        .await
         .map_err(|e| format!("Lock failed: {}", e))
 }
 
@@ -2070,20 +2332,22 @@ pub async fn provider_unlock_file(
     lock_token: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.unlock_file(&path, &lock_token).await
+    provider
+        .unlock_file(&path, &lock_token)
+        .await
         .map_err(|e| format!("Unlock failed: {}", e))
 }
 
 // --- Thumbnails ---
 
 #[tauri::command]
-pub async fn provider_supports_thumbnails(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
+pub async fn provider_supports_thumbnails(state: State<'_, ProviderState>) -> Result<bool, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     Ok(provider.supports_thumbnails())
 }
@@ -2094,9 +2358,12 @@ pub async fn provider_get_thumbnail(
     path: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.get_thumbnail(&path).await
+    provider
+        .get_thumbnail(&path)
+        .await
         .map_err(|e| format!("Get thumbnail failed: {}", e))
 }
 
@@ -2107,7 +2374,8 @@ pub async fn provider_supports_permissions(
     state: State<'_, ProviderState>,
 ) -> Result<bool, String> {
     let provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_ref()
+    let provider = provider_guard
+        .as_ref()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     Ok(provider.supports_permissions())
 }
@@ -2118,9 +2386,12 @@ pub async fn provider_list_permissions(
     path: String,
 ) -> Result<Vec<SharePermission>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.list_permissions(&path).await
+    provider
+        .list_permissions(&path)
+        .await
         .map_err(|e| format!("List permissions failed: {}", e))
 }
 
@@ -2133,11 +2404,18 @@ pub async fn provider_add_permission(
     target: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    let perm = SharePermission { role, target_type, target };
-    provider.add_permission(&path, &perm).await
+    let perm = SharePermission {
+        role,
+        target_type,
+        target,
+    };
+    provider
+        .add_permission(&path, &perm)
+        .await
         .map_err(|e| format!("Add permission failed: {}", e))
 }
 
@@ -2148,9 +2426,12 @@ pub async fn provider_remove_permission(
     target: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider.remove_permission(&path, &target).await
+    provider
+        .remove_permission(&path, &target)
+        .await
         .map_err(|e| format!("Remove permission failed: {}", e))
 }
 
@@ -2164,25 +2445,42 @@ pub async fn provider_compare_directories(
     remote_path: String,
     options: Option<crate::sync::CompareOptions>,
 ) -> Result<Vec<crate::sync::FileComparison>, String> {
+    use crate::sync::{
+        build_comparison_results_with_index, load_sync_index, should_exclude, FileInfo,
+    };
     use std::collections::HashMap;
-    use crate::sync::{FileInfo, should_exclude, build_comparison_results_with_index, load_sync_index};
 
     let options = options.unwrap_or_default();
 
-    info!("Provider compare: local={}, remote={}", local_path, remote_path);
+    info!(
+        "Provider compare: local={}, remote={}",
+        local_path, remote_path
+    );
 
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "local", "files_found": 0,
-    }));
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "local", "files_found": 0,
+        }),
+    );
 
     // Get local files (reuse the same logic from lib.rs)
-    let local_files = crate::get_local_files_recursive(&local_path, &local_path, &options.exclude_patterns, options.compare_checksum, None)
-        .await
-        .map_err(|e| format!("Failed to scan local directory: {}", e))?;
+    let local_files = crate::get_local_files_recursive(
+        &local_path,
+        &local_path,
+        &options.exclude_patterns,
+        options.compare_checksum,
+        None,
+    )
+    .await
+    .map_err(|e| format!("Failed to scan local directory: {}", e))?;
 
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "remote", "files_found": local_files.len(),
-    }));
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "remote", "files_found": local_files.len(),
+        }),
+    );
 
     // Get remote files via provider - lock/unlock per directory to avoid blocking other operations
     let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
@@ -2200,9 +2498,12 @@ pub async fn provider_compare_directories(
         // Lock provider only for this single list operation, then release
         let entries = {
             let mut provider_lock = state.provider.lock().await;
-            let provider = provider_lock.as_mut()
+            let provider = provider_lock
+                .as_mut()
                 .ok_or("Not connected to any provider")?;
-            provider.list(&current_dir).await
+            provider
+                .list(&current_dir)
+                .await
                 .map_err(|e| format!("Failed to list {}: {}", current_dir, e))?
         };
 
@@ -2214,7 +2515,9 @@ pub async fn provider_compare_directories(
             let relative_path = if current_dir == remote_path {
                 entry.name.clone()
             } else {
-                let rel_dir = current_dir.strip_prefix(&remote_path).unwrap_or(&current_dir);
+                let rel_dir = current_dir
+                    .strip_prefix(&remote_path)
+                    .unwrap_or(&current_dir);
                 let rel_dir = rel_dir.trim_start_matches('/');
                 if rel_dir.is_empty() {
                     entry.name.clone()
@@ -2234,9 +2537,16 @@ pub async fn provider_compare_directories(
                     .or_else(|| {
                         let clean = s.strip_suffix('Z').unwrap_or(&s);
                         chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
-                            .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S"))
+                            .or_else(|_| {
+                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
+                            })
                             .ok()
-                            .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+                            .map(|dt| {
+                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                    dt,
+                                    chrono::Utc,
+                                )
+                            })
                     })
             });
 
@@ -2261,20 +2571,31 @@ pub async fn provider_compare_directories(
             }
         }
 
-        let _ = app.emit("sync_scan_progress", serde_json::json!({
-            "phase": "remote",
-            "files_found": local_files.len() + remote_files.len(),
-        }));
+        let _ = app.emit(
+            "sync_scan_progress",
+            serde_json::json!({
+                "phase": "remote",
+                "files_found": local_files.len() + remote_files.len(),
+            }),
+        );
     }
 
-    let _ = app.emit("sync_scan_progress", serde_json::json!({
-        "phase": "comparing",
-        "files_found": local_files.len() + remote_files.len(),
-    }));
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "comparing",
+            "files_found": local_files.len() + remote_files.len(),
+        }),
+    );
 
     let index = load_sync_index(&local_path, &remote_path).ok().flatten();
-    let results = build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
-    info!("Provider compare complete: {} differences found (index: {})", results.len(), if index.is_some() { "used" } else { "none" });
+    let results =
+        build_comparison_results_with_index(local_files, remote_files, &options, index.as_ref());
+    info!(
+        "Provider compare complete: {} differences found (index: {})",
+        results.len(),
+        if index.is_some() { "used" } else { "none" }
+    );
 
     Ok(results)
 }
@@ -2305,7 +2626,8 @@ fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Res
 
     // Try vault first
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        store.store(FOURSHARED_TOKEN_KEY, &token_data)
+        store
+            .store(FOURSHARED_TOKEN_KEY, &token_data)
             .map_err(|e| format!("Failed to store tokens: {}", e))?;
         return Ok(());
     }
@@ -2313,7 +2635,8 @@ fn store_fourshared_tokens(access_token: &str, access_token_secret: &str) -> Res
     // Try auto-init vault
     if crate::credential_store::CredentialStore::init().is_ok() {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            store.store(FOURSHARED_TOKEN_KEY, &token_data)
+            store
+                .store(FOURSHARED_TOKEN_KEY, &token_data)
                 .map_err(|e| format!("Failed to store tokens: {}", e))?;
             return Ok(());
         }
@@ -2345,10 +2668,13 @@ pub async fn fourshared_start_auth(
     info!("Starting 4shared OAuth 1.0 flow");
 
     // Bind a local callback listener to get a port
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
         .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
-    let port = listener.local_addr()
-        .map_err(|e| format!("Failed to get listener port: {}", e))?.port();
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to get listener port: {}", e))?
+        .port();
     drop(listener);
 
     let callback_url = format!("http://127.0.0.1:{}/callback", port);
@@ -2358,7 +2684,8 @@ pub async fn fourshared_start_auth(
         &params.consumer_secret,
         "https://api.4shared.com/v1_2/oauth/initiate",
         &callback_url,
-    ).await?;
+    )
+    .await?;
 
     let auth_url = oauth1::authorize_url(
         "https://api.4shared.com/v1_2/oauth/authorize",
@@ -2395,7 +2722,8 @@ pub async fn fourshared_complete_auth(
         &request_token,
         &request_token_secret,
         &verifier,
-    ).await?;
+    )
+    .await?;
 
     store_fourshared_tokens(&access_token, &access_token_secret)?;
 
@@ -2405,17 +2733,18 @@ pub async fn fourshared_complete_auth(
 
 /// Full 4shared OAuth 1.0 flow — start server, open browser, wait for callback, exchange tokens
 #[tauri::command]
-pub async fn fourshared_full_auth(
-    params: FourSharedAuthParams,
-) -> Result<String, String> {
+pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String, String> {
     use crate::providers::oauth1;
 
     info!("Starting full 4shared OAuth 1.0 flow");
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
         .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
-    let port = listener.local_addr()
-        .map_err(|e| format!("Failed to get listener port: {}", e))?.port();
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to get listener port: {}", e))?
+        .port();
 
     let callback_url = format!("http://127.0.0.1:{}/callback", port);
 
@@ -2425,7 +2754,8 @@ pub async fn fourshared_full_auth(
         &params.consumer_secret,
         "https://api.4shared.com/v1_2/oauth/initiate",
         &callback_url,
-    ).await?;
+    )
+    .await?;
 
     // Step 2: Open authorization URL
     let auth_url = oauth1::authorize_url(
@@ -2434,10 +2764,16 @@ pub async fn fourshared_full_auth(
     );
 
     if let Err(e) = open::that(&auth_url) {
-        return Err(format!("Could not open browser: {}. Open manually: {}", e, auth_url));
+        return Err(format!(
+            "Could not open browser: {}. Open manually: {}",
+            e, auth_url
+        ));
     }
 
-    info!("Browser opened, waiting for OAuth 1.0 callback on port {}...", port);
+    info!(
+        "Browser opened, waiting for OAuth 1.0 callback on port {}...",
+        port
+    );
 
     // Step 3: Wait for callback
     let (token, verifier) = tokio::time::timeout(
@@ -2460,7 +2796,8 @@ pub async fn fourshared_full_auth(
         &request_token,
         &request_token_secret,
         &verifier,
-    ).await?;
+    )
+    .await?;
 
     store_fourshared_tokens(&access_token, &access_token_secret)?;
 
@@ -2478,11 +2815,15 @@ async fn wait_for_oauth1_callback(
 
     // Accept connections in a loop — browsers may send favicon or prefetch requests first
     loop {
-        let (mut stream, _) = listener.accept().await
+        let (mut stream, _) = listener
+            .accept()
+            .await
             .map_err(|e| format!("Accept error: {}", e))?;
 
         let mut buf = vec![0u8; 4096];
-        let n = stream.read(&mut buf).await
+        let n = stream
+            .read(&mut buf)
+            .await
             .map_err(|e| format!("Read error: {}", e))?;
 
         let request = String::from_utf8_lossy(&buf[..n]);
@@ -2512,11 +2853,13 @@ async fn wait_for_oauth1_callback(
             })
             .collect();
 
-        let oauth_token = params.get("oauth_token")
+        let oauth_token = params
+            .get("oauth_token")
             .ok_or("Missing oauth_token in callback")?
             .to_string();
         // oauth_verifier is optional — 4shared (OAuth 1.0, not 1.0a) doesn't send it
-        let oauth_verifier = params.get("oauth_verifier")
+        let oauth_verifier = params
+            .get("oauth_verifier")
             .map(|v| v.to_string())
             .unwrap_or_default();
 
@@ -2672,7 +3015,7 @@ pub async fn fourshared_connect(
     state: State<'_, ProviderState>,
     params: FourSharedAuthParams,
 ) -> Result<OAuth2ConnectResult, String> {
-    use crate::providers::{FourSharedProvider, types::FourSharedConfig};
+    use crate::providers::{types::FourSharedConfig, FourSharedProvider};
 
     info!("Connecting to 4shared...");
 
@@ -2686,7 +3029,9 @@ pub async fn fourshared_connect(
     };
 
     let mut provider = FourSharedProvider::new(config);
-    provider.connect().await
+    provider
+        .connect()
+        .await
         .map_err(|e| format!("4shared connection failed: {}", e))?;
 
     let display_name = provider.display_name();
@@ -2695,19 +3040,24 @@ pub async fn fourshared_connect(
     let mut provider_lock = state.provider.lock().await;
     *provider_lock = Some(Box::new(provider));
 
-    info!("Connected to 4shared ({})", account_email.as_deref().unwrap_or("no email"));
-    Ok(OAuth2ConnectResult { display_name, account_email })
+    info!(
+        "Connected to 4shared ({})",
+        account_email.as_deref().unwrap_or("no email")
+    );
+    Ok(OAuth2ConnectResult {
+        display_name,
+        account_email,
+    })
 }
 
 // ── Zoho WorkDrive Trash Operations ────────────────────────────────────
 
 /// List trashed files/folders in Zoho WorkDrive (privatespace + team folders)
 #[tauri::command]
-pub async fn zoho_list_trash(
-    state: State<'_, ProviderState>,
-) -> Result<Vec<RemoteEntry>, String> {
+pub async fn zoho_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
@@ -2715,11 +3065,13 @@ pub async fn zoho_list_trash(
     }
 
     // Downcast to ZohoWorkdriveProvider
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.list_trash().await
+    zoho.list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -2730,22 +3082,26 @@ pub async fn zoho_permanent_delete(
     file_ids: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
     if file_ids.len() == 1 {
-        zoho.permanent_delete(&file_ids[0]).await
+        zoho.permanent_delete(&file_ids[0])
+            .await
             .map_err(|e| format!("Permanent delete failed: {}", e))
     } else {
-        zoho.permanent_delete_batch(&file_ids).await
+        zoho.permanent_delete_batch(&file_ids)
+            .await
             .map_err(|e| format!("Permanent delete batch failed: {}", e))
     }
 }
@@ -2757,22 +3113,26 @@ pub async fn zoho_restore_from_trash(
     file_ids: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
     if file_ids.len() == 1 {
-        zoho.restore_from_trash(&file_ids[0]).await
+        zoho.restore_from_trash(&file_ids[0])
+            .await
             .map_err(|e| format!("Restore failed: {}", e))
     } else {
-        zoho.restore_from_trash_batch(&file_ids).await
+        zoho.restore_from_trash_batch(&file_ids)
+            .await
             .map_err(|e| format!("Restore batch failed: {}", e))
     }
 }
@@ -2785,21 +3145,28 @@ pub async fn zoho_list_team_labels(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    let labels = zoho.list_team_labels().await
+    let labels = zoho
+        .list_team_labels()
+        .await
         .map_err(|e| format!("Failed to list team labels: {}", e))?;
 
-    Ok(labels.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+    Ok(labels
+        .into_iter()
+        .map(|l| serde_json::to_value(l).unwrap_or_default())
+        .collect())
 }
 
 /// List labels applied to a specific file in Zoho WorkDrive
@@ -2809,21 +3176,28 @@ pub async fn zoho_get_file_labels(
     path: String,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    let labels = zoho.get_file_labels(&path).await
+    let labels = zoho
+        .get_file_labels(&path)
+        .await
         .map_err(|e| format!("Failed to get file labels: {}", e))?;
 
-    Ok(labels.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+    Ok(labels
+        .into_iter()
+        .map(|l| serde_json::to_value(l).unwrap_or_default())
+        .collect())
 }
 
 /// Add a label to a file in Zoho WorkDrive
@@ -2834,18 +3208,21 @@ pub async fn zoho_add_file_label(
     label_id: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.add_file_label(&path, &label_id).await
+    zoho.add_file_label(&path, &label_id)
+        .await
         .map_err(|e| format!("Failed to add label: {}", e))
 }
 
@@ -2857,18 +3234,22 @@ pub async fn zoho_create_label(
     color: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    let label = zoho.create_label(&name, &color).await
+    let label = zoho
+        .create_label(&name, &color)
+        .await
         .map_err(|e| format!("Failed to create label: {}", e))?;
 
     serde_json::to_value(label).map_err(|e| format!("Serialize error: {}", e))
@@ -2882,18 +3263,21 @@ pub async fn zoho_remove_file_label(
     label_id: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.remove_file_label(&path, &label_id).await
+    zoho.remove_file_label(&path, &label_id)
+        .await
         .map_err(|e| format!("Failed to remove label: {}", e))
 }
 
@@ -2905,18 +3289,22 @@ pub async fn zoho_get_user_info(
     state: State<'_, ProviderState>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    let info = zoho.get_user_info().await
+    let info = zoho
+        .get_user_info()
+        .await
         .map_err(|e| format!("Failed to get user info: {}", e))?;
 
     serde_json::to_value(info).map_err(|e| format!("Serialize error: {}", e))
@@ -2929,21 +3317,28 @@ pub async fn zoho_get_file_share_links(
     path: String,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    let links = zoho.get_file_share_links(&path).await
+    let links = zoho
+        .get_file_share_links(&path)
+        .await
         .map_err(|e| format!("Failed to get share links: {}", e))?;
 
-    Ok(links.into_iter().map(|l| serde_json::to_value(l).unwrap_or_default()).collect())
+    Ok(links
+        .into_iter()
+        .map(|l| serde_json::to_value(l).unwrap_or_default())
+        .collect())
 }
 
 /// Delete an external share link (MCP parity: deleteExternalShareLink)
@@ -2953,18 +3348,21 @@ pub async fn zoho_delete_share_link(
     link_id: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.delete_share_link(&link_id).await
+    zoho.delete_share_link(&link_id)
+        .await
         .map_err(|e| format!("Failed to delete share link: {}", e))
 }
 
@@ -2978,18 +3376,21 @@ pub async fn zoho_create_native_document(
     folder_path: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::ZohoWorkdrive {
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = provider.as_any_mut()
+    let zoho = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
         .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
 
-    zoho.create_native_document(&name, &doc_type, &folder_path).await
+    zoho.create_native_document(&name, &doc_type, &folder_path)
+        .await
         .map_err(|e| format!("Failed to create native document: {}", e))
 }
 
@@ -3002,19 +3403,23 @@ pub async fn jottacloud_move_to_trash(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Jottacloud {
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider.as_any_mut()
+    let jotta = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
     for path in &paths {
-        jotta.move_to_trash(path).await
+        jotta
+            .move_to_trash(path)
+            .await
             .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3026,18 +3431,22 @@ pub async fn jottacloud_list_trash(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Jottacloud {
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider.as_any_mut()
+    let jotta = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
-    jotta.list_trash().await
+    jotta
+        .list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -3048,19 +3457,23 @@ pub async fn jottacloud_restore_from_trash(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Jottacloud {
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider.as_any_mut()
+    let jotta = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
     for path in &paths {
-        jotta.restore_from_trash(path).await
+        jotta
+            .restore_from_trash(path)
+            .await
             .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3073,19 +3486,23 @@ pub async fn jottacloud_permanent_delete(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Jottacloud {
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = provider.as_any_mut()
+    let jotta = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
         .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
 
     for path in &paths {
-        jotta.permanent_delete_from_trash(path).await
+        jotta
+            .permanent_delete_from_trash(path)
+            .await
             .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3100,7 +3517,8 @@ pub async fn mega_move_to_trash(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Mega {
@@ -3108,20 +3526,27 @@ pub async fn mega_move_to_trash(
     }
 
     // Try native provider first, then MEGAcmd
-    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+    if let Some(native) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
+    {
         for path in &paths {
-            native.move_to_trash(path).await
+            native
+                .move_to_trash(path)
+                .await
                 .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
         }
         return Ok(());
     }
 
-    let mega = provider.as_any_mut()
+    let mega = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     for path in &paths {
-        mega.move_to_trash(path).await
+        mega.move_to_trash(path)
+            .await
             .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3129,26 +3554,33 @@ pub async fn mega_move_to_trash(
 
 /// List items in MEGA Rubbish Bin
 #[tauri::command]
-pub async fn mega_list_trash(
-    state: State<'_, ProviderState>,
-) -> Result<Vec<RemoteEntry>, String> {
+pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Mega {
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
-        return native.list_trash().await.map_err(|e| format!("Failed to list trash: {}", e));
+    if let Some(native) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
+    {
+        return native
+            .list_trash()
+            .await
+            .map_err(|e| format!("Failed to list trash: {}", e));
     }
 
-    let mega = provider.as_any_mut()
+    let mega = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
-    mega.list_trash().await
+    mega.list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -3159,29 +3591,37 @@ pub async fn mega_restore_from_trash(
     filenames: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Mega {
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+    if let Some(native) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
+    {
         let cwd = native.pwd().await.unwrap_or_else(|_| "/".to_string());
         for filename in &filenames {
-            native.restore_from_trash(filename, &cwd).await
+            native
+                .restore_from_trash(filename, &cwd)
+                .await
                 .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
         }
         return Ok(());
     }
 
-    let mega = provider.as_any_mut()
+    let mega = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     let cwd = mega.pwd().await.unwrap_or_else(|_| "/".to_string());
     for filename in &filenames {
-        mega.restore_from_trash(filename, &cwd).await
+        mega.restore_from_trash(filename, &cwd)
+            .await
             .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
     }
     Ok(())
@@ -3194,27 +3634,35 @@ pub async fn mega_permanent_delete(
     filenames: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::Mega {
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = provider.as_any_mut().downcast_mut::<crate::providers::mega_native::MegaNativeProvider>() {
+    if let Some(native) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
+    {
         for filename in &filenames {
-            native.permanent_delete_from_trash(filename).await
+            native
+                .permanent_delete_from_trash(filename)
+                .await
                 .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
         }
         return Ok(());
     }
 
-    let mega = provider.as_any_mut()
+    let mega = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
         .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
 
     for filename in &filenames {
-        mega.permanent_delete_from_trash(filename).await
+        mega.permanent_delete_from_trash(filename)
+            .await
             .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
     }
     Ok(())
@@ -3229,19 +3677,23 @@ pub async fn google_drive_trash_file(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider.as_any_mut()
+    let gdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
 
     for path in &paths {
-        gdrive.trash_file(path).await
+        gdrive
+            .trash_file(path)
+            .await
             .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3253,18 +3705,22 @@ pub async fn google_drive_list_trash(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider.as_any_mut()
+    let gdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
 
-    gdrive.list_trash().await
+    gdrive
+        .list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -3275,19 +3731,23 @@ pub async fn google_drive_restore_from_trash(
     file_ids: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider.as_any_mut()
+    let gdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
 
     for file_id in &file_ids {
-        gdrive.restore_from_trash(file_id).await
+        gdrive
+            .restore_from_trash(file_id)
+            .await
             .map_err(|e| format!("Restore failed for {}: {}", file_id, e))?;
     }
     Ok(())
@@ -3300,19 +3760,23 @@ pub async fn google_drive_permanent_delete(
     file_ids: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = provider.as_any_mut()
+    let gdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
 
     for file_id in &file_ids {
-        gdrive.permanent_delete(file_id).await
+        gdrive
+            .permanent_delete(file_id)
+            .await
             .map_err(|e| format!("Permanent delete failed for {}: {}", file_id, e))?;
     }
     Ok(())
@@ -3326,18 +3790,22 @@ pub async fn opendrive_list_trash(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::OpenDrive {
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider.as_any_mut()
+    let opendrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
 
-    opendrive.list_trash().await
+    opendrive
+        .list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -3348,19 +3816,23 @@ pub async fn opendrive_restore_from_trash(
     items: Vec<OpenDriveTrashActionItem>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::OpenDrive {
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider.as_any_mut()
+    let opendrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
 
     for item in &items {
-        opendrive.restore_from_trash(&item.item_id, item.is_dir).await
+        opendrive
+            .restore_from_trash(&item.item_id, item.is_dir)
+            .await
             .map_err(|e| format!("Restore failed for {}: {}", item.item_id, e))?;
     }
     Ok(())
@@ -3373,19 +3845,23 @@ pub async fn opendrive_permanent_delete(
     items: Vec<OpenDriveTrashActionItem>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::OpenDrive {
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider.as_any_mut()
+    let opendrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
 
     for item in &items {
-        opendrive.permanent_delete_from_trash(&item.item_id, item.is_dir).await
+        opendrive
+            .permanent_delete_from_trash(&item.item_id, item.is_dir)
+            .await
             .map_err(|e| format!("Permanent delete failed for {}: {}", item.item_id, e))?;
     }
     Ok(())
@@ -3393,22 +3869,24 @@ pub async fn opendrive_permanent_delete(
 
 /// Empty OpenDrive Trash.
 #[tauri::command]
-pub async fn opendrive_empty_trash(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::OpenDrive {
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = provider.as_any_mut()
+    let opendrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
         .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
 
-    opendrive.empty_trash().await
+    opendrive
+        .empty_trash()
+        .await
         .map_err(|e| format!("Empty trash failed: {}", e))
 }
 
@@ -3420,18 +3898,22 @@ pub async fn yandex_list_trash(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<RemoteEntry>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::YandexDisk {
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider.as_any_mut()
+    let yandex = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
 
-    yandex.list_trash().await
+    yandex
+        .list_trash()
+        .await
         .map_err(|e| format!("Failed to list trash: {}", e))
 }
 
@@ -3442,19 +3924,23 @@ pub async fn yandex_restore_from_trash(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::YandexDisk {
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider.as_any_mut()
+    let yandex = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
 
     for path in &paths {
-        yandex.restore_from_trash(path).await
+        yandex
+            .restore_from_trash(path)
+            .await
             .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3467,19 +3953,23 @@ pub async fn yandex_permanent_delete(
     paths: Vec<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::YandexDisk {
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider.as_any_mut()
+    let yandex = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
 
     for path in &paths {
-        yandex.permanent_delete_from_trash(path).await
+        yandex
+            .permanent_delete_from_trash(path)
+            .await
             .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
     }
     Ok(())
@@ -3487,22 +3977,24 @@ pub async fn yandex_permanent_delete(
 
 /// Empty Yandex Disk trash
 #[tauri::command]
-pub async fn yandex_empty_trash(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn yandex_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::YandexDisk {
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = provider.as_any_mut()
+    let yandex = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
         .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
 
-    yandex.empty_trash().await
+    yandex
+        .empty_trash()
+        .await
         .map_err(|e| format!("Empty trash failed: {}", e))
 }
 
@@ -3510,18 +4002,19 @@ pub async fn yandex_empty_trash(
 
 /// List items in Box trash
 #[tauri::command]
-pub async fn box_list_trash(
-    state: State<'_, ProviderState>,
-) -> Result<Vec<RemoteEntry>, String> {
+pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.list_trash().await.map_err(|e| format!("List trash failed: {}", e))
+    bx.list_trash()
+        .await
+        .map_err(|e| format!("List trash failed: {}", e))
 }
 
 /// Move files/folders to Box trash (soft delete)
@@ -3535,10 +4028,13 @@ pub async fn box_trash_files(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.trash_files(&paths).await.map_err(|e| format!("Trash failed: {}", e))
+    bx.trash_files(&paths)
+        .await
+        .map_err(|e| format!("Trash failed: {}", e))
 }
 
 /// Restore an item from Box trash
@@ -3553,10 +4049,12 @@ pub async fn box_restore_from_trash(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.restore_from_trash(&item_id, &item_type).await
+    bx.restore_from_trash(&item_id, &item_type)
+        .await
         .map_err(|e| format!("Restore failed: {}", e))
 }
 
@@ -3572,10 +4070,12 @@ pub async fn box_permanent_delete(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.permanent_delete_from_trash(&item_id, &item_type).await
+    bx.permanent_delete_from_trash(&item_id, &item_type)
+        .await
         .map_err(|e| format!("Permanent delete failed: {}", e))
 }
 
@@ -3591,10 +4091,12 @@ pub async fn box_move_file(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.move_item(&from_path, &to_folder).await
+    bx.move_item(&from_path, &to_folder)
+        .await
         .map_err(|e| format!("Move failed: {}", e))
 }
 
@@ -3609,10 +4111,13 @@ pub async fn box_list_comments(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    let comments = bx.list_comments(&path).await
+    let comments = bx
+        .list_comments(&path)
+        .await
         .map_err(|e| format!("List comments failed: {}", e))?;
     serde_json::to_value(&comments)
         .map(|v| v.as_array().cloned().unwrap_or_default())
@@ -3631,10 +4136,12 @@ pub async fn box_add_comment(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.add_comment(&path, &message).await
+    bx.add_comment(&path, &message)
+        .await
         .map_err(|e| format!("Add comment failed: {}", e))
 }
 
@@ -3649,10 +4156,12 @@ pub async fn box_delete_comment(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.delete_comment(&comment_id).await
+    bx.delete_comment(&comment_id)
+        .await
         .map_err(|e| format!("Delete comment failed: {}", e))
 }
 
@@ -3669,10 +4178,12 @@ pub async fn box_add_collaboration(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.add_collaboration(&path, &email, &role).await
+    bx.add_collaboration(&path, &email, &role)
+        .await
         .map_err(|e| format!("Add collaboration failed: {}", e))
 }
 
@@ -3687,10 +4198,12 @@ pub async fn box_remove_collaboration(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.remove_collaboration(&collab_id).await
+    bx.remove_collaboration(&collab_id)
+        .await
         .map_err(|e| format!("Remove collaboration failed: {}", e))
 }
 
@@ -3705,10 +4218,12 @@ pub async fn box_set_watermark(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.set_watermark(&path).await
+    bx.set_watermark(&path)
+        .await
         .map_err(|e| format!("Set watermark failed: {}", e))
 }
 
@@ -3723,10 +4238,12 @@ pub async fn box_remove_watermark(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.remove_watermark(&path).await
+    bx.remove_watermark(&path)
+        .await
         .map_err(|e| format!("Remove watermark failed: {}", e))
 }
 
@@ -3742,28 +4259,29 @@ pub async fn box_set_tags(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.set_tags(&path, &tags).await
+    bx.set_tags(&path, &tags)
+        .await
         .map_err(|e| format!("Set tags failed: {}", e))
 }
 
 /// Lock a Box folder
 #[tauri::command]
-pub async fn box_lock_folder(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<(), String> {
+pub async fn box_lock_folder(state: State<'_, ProviderState>, path: String) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.lock_folder(&path).await
+    bx.lock_folder(&path)
+        .await
         .map_err(|e| format!("Lock folder failed: {}", e))
 }
 
@@ -3778,10 +4296,12 @@ pub async fn box_unlock_folder(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.unlock_folder(&lock_id).await
+    bx.unlock_folder(&lock_id)
+        .await
         .map_err(|e| format!("Unlock folder failed: {}", e))
 }
 
@@ -3796,10 +4316,13 @@ pub async fn box_list_collaborations(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    let collabs = bx.list_collaborations(&path).await
+    let collabs = bx
+        .list_collaborations(&path)
+        .await
         .map_err(|e| format!("List collaborations failed: {}", e))?;
     serde_json::to_value(&collabs)
         .map(|v| v.as_array().cloned().unwrap_or_default())
@@ -3817,10 +4340,13 @@ pub async fn box_list_folder_locks(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = provider.as_any_mut()
+    let bx = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::box_provider::BoxProvider>()
         .ok_or_else(|| "Box downcast failed".to_string())?;
-    let locks = bx.list_folder_locks(&path).await
+    let locks = bx
+        .list_folder_locks(&path)
+        .await
         .map_err(|e| format!("List folder locks failed: {}", e))?;
     serde_json::to_value(&locks)
         .map(|v| v.as_array().cloned().unwrap_or_default())
@@ -3858,10 +4384,13 @@ pub async fn filelu_set_file_password(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.set_file_password(&path, &password).await.map_err(|e| e.to_string())
+    fl.set_file_password(&path, &password)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Toggle a FileLu file between private (only_me=true) and public.
@@ -3876,10 +4405,13 @@ pub async fn filelu_set_file_privacy(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.set_file_privacy(&path, only_me).await.map_err(|e| e.to_string())
+    fl.set_file_privacy(&path, only_me)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Clone a FileLu file server-side. Returns the URL of the cloned file.
@@ -3893,7 +4425,8 @@ pub async fn filelu_clone_file(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
     fl.clone_file(&path).await.map_err(|e| e.to_string())
@@ -3911,10 +4444,13 @@ pub async fn filelu_set_folder_password(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.set_folder_password(&path, &password).await.map_err(|e| e.to_string())
+    fl.set_folder_password(&path, &password)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Configure FileLu folder settings: filedrop and public visibility.
@@ -3930,10 +4466,13 @@ pub async fn filelu_set_folder_settings(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.set_folder_settings(&path, filedrop, is_public).await.map_err(|e| e.to_string())
+    fl.set_folder_settings(&path, filedrop, is_public)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// List all deleted files in FileLu trash.
@@ -3946,7 +4485,8 @@ pub async fn filelu_list_deleted(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
     fl.list_deleted_files().await.map_err(|e| e.to_string())
@@ -3963,10 +4503,13 @@ pub async fn filelu_restore_file(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.restore_deleted_file(&file_code).await.map_err(|e| e.to_string())
+    fl.restore_deleted_file(&file_code)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete a FileLu file from trash by file_code.
@@ -3980,10 +4523,13 @@ pub async fn filelu_permanent_delete(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.permanent_delete_file(&file_code).await.map_err(|e| e.to_string())
+    fl.permanent_delete_file(&file_code)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Upload a file from a remote URL to a FileLu folder. Returns file_code.
@@ -3998,10 +4544,13 @@ pub async fn filelu_remote_url_upload(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.remote_url_upload(&remote_url, &dest_path).await.map_err(|e| e.to_string())
+    fl.remote_url_upload(&remote_url, &dest_path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a deleted folder from FileLu trash by fld_id.
@@ -4015,10 +4564,13 @@ pub async fn filelu_restore_folder(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = provider.as_any_mut()
+    let fl = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filelu::FileLuProvider>()
         .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.restore_deleted_folder(fld_id).await.map_err(|e| e.to_string())
+    fl.restore_deleted_folder(fld_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Google Drive Extended Commands ───────────────────────────────────────
@@ -4035,11 +4587,14 @@ pub async fn google_drive_set_starred(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
     for path in &paths {
-        gd.set_starred(path, starred).await.map_err(|e| format!("Star failed for {}: {}", path, e))?;
+        gd.set_starred(path, starred)
+            .await
+            .map_err(|e| format!("Star failed for {}: {}", path, e))?;
     }
     Ok(())
 }
@@ -4055,7 +4610,8 @@ pub async fn google_drive_list_comments(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
     gd.list_comments(&path).await.map_err(|e| e.to_string())
@@ -4073,10 +4629,13 @@ pub async fn google_drive_add_comment(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.add_comment(&path, &message).await.map_err(|e| e.to_string())
+    gd.add_comment(&path, &message)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Delete a comment from a Google Drive file
@@ -4091,10 +4650,13 @@ pub async fn google_drive_delete_comment(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.delete_comment(&path, &comment_id).await.map_err(|e| e.to_string())
+    gd.delete_comment(&path, &comment_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Set custom properties on a Google Drive file
@@ -4109,10 +4671,13 @@ pub async fn google_drive_set_properties(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.set_properties(&path, &properties).await.map_err(|e| e.to_string())
+    gd.set_properties(&path, &properties)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Set description on a Google Drive file
@@ -4127,10 +4692,13 @@ pub async fn google_drive_set_description(
     if provider.provider_type() != ProviderType::GoogleDrive {
         return Err("Only available for Google Drive".to_string());
     }
-    let gd = provider.as_any_mut()
+    let gd = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
         .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.set_description(&path, &description).await.map_err(|e| e.to_string())
+    gd.set_description(&path, &description)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Dropbox Extended Commands ────────────────────────────────────────────
@@ -4146,7 +4714,8 @@ pub async fn dropbox_list_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider.as_any_mut()
+    let db = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
     db.list_deleted(&path).await.map_err(|e| e.to_string())
@@ -4164,10 +4733,13 @@ pub async fn dropbox_restore_from_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider.as_any_mut()
+    let db = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.restore_file(&path, &rev).await.map_err(|e| e.to_string())
+    db.restore_file(&path, &rev)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete a file from Dropbox
@@ -4181,7 +4753,8 @@ pub async fn dropbox_permanent_delete(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider.as_any_mut()
+    let db = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
     db.permanent_delete(&path).await.map_err(|e| e.to_string())
@@ -4199,7 +4772,8 @@ pub async fn dropbox_set_tags(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider.as_any_mut()
+    let db = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
     db.set_tags(&path, &tags).await.map_err(|e| e.to_string())
@@ -4216,7 +4790,8 @@ pub async fn dropbox_get_tags(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = provider.as_any_mut()
+    let db = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
         .ok_or_else(|| "Dropbox downcast failed".to_string())?;
     db.get_tags(&paths).await.map_err(|e| e.to_string())
@@ -4234,7 +4809,8 @@ pub async fn onedrive_list_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider.as_any_mut()
+    let od = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
     od.list_trash().await.map_err(|e| e.to_string())
@@ -4251,11 +4827,14 @@ pub async fn onedrive_trash_files(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider.as_any_mut()
+    let od = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
     for path in &paths {
-        od.trash_file(path).await.map_err(|e| format!("Trash failed for {}: {}", path, e))?;
+        od.trash_file(path)
+            .await
+            .map_err(|e| format!("Trash failed for {}: {}", path, e))?;
     }
     Ok(())
 }
@@ -4271,10 +4850,13 @@ pub async fn onedrive_restore_from_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider.as_any_mut()
+    let od = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    od.restore_from_trash(&item_id).await.map_err(|e| e.to_string())
+    od.restore_from_trash(&item_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete an item from OneDrive
@@ -4288,10 +4870,13 @@ pub async fn onedrive_permanent_delete(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = provider.as_any_mut()
+    let od = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
         .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    od.permanent_delete(&item_id).await.map_err(|e| e.to_string())
+    od.permanent_delete(&item_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Folder Size Calculation ───
@@ -4352,7 +4937,9 @@ pub async fn provider_calculate_folder_size(
             let provider = provider_lock
                 .as_mut()
                 .ok_or("Not connected to any provider")?;
-            provider.list(&current_path).await
+            provider
+                .list(&current_path)
+                .await
                 .map_err(|e| format!("Failed to list {}: {}", current_path, e))?
         };
 
@@ -4409,35 +4996,39 @@ pub async fn github_list_branches(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    github.list_branches().await
+    github
+        .list_branches()
+        .await
         .map_err(|e| format!("Failed to list branches: {}", e))
 }
 
 /// Get info about the connected GitHub repository
 #[tauri::command]
-pub async fn github_get_info(
-    state: State<'_, ProviderState>,
-) -> Result<serde_json::Value, String> {
+pub async fn github_get_info(state: State<'_, ProviderState>) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
@@ -4466,42 +5057,51 @@ pub async fn gitlab_list_branches(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let branches = gitlab.list_branches().await
+    let branches = gitlab
+        .list_branches()
+        .await
         .map_err(|e| format!("Failed to list branches: {}", e))?;
 
-    Ok(branches.iter().map(|b| serde_json::json!({
-        "name": b.name,
-        "protected": b.is_protected,
-        "default": b.is_default,
-        "canPush": b.can_push,
-    })).collect())
+    Ok(branches
+        .iter()
+        .map(|b| {
+            serde_json::json!({
+                "name": b.name,
+                "protected": b.is_protected,
+                "default": b.is_default,
+                "canPush": b.can_push,
+            })
+        })
+        .collect())
 }
 
 /// Get info about the connected GitLab repository
 #[tauri::command]
-pub async fn gitlab_get_info(
-    state: State<'_, ProviderState>,
-) -> Result<serde_json::Value, String> {
+pub async fn gitlab_get_info(state: State<'_, ProviderState>) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
@@ -4510,7 +5110,11 @@ pub async fn gitlab_get_info(
         ("ReadOnly", "readonly", serde_json::Value::Null)
     } else if on_non_default {
         // On a non-default branch with push access → branch mode (MR available)
-        ("Branch", "branch", serde_json::Value::String(gitlab.active_branch_name().to_string()))
+        (
+            "Branch",
+            "branch",
+            serde_json::Value::String(gitlab.active_branch_name().to_string()),
+        )
     } else {
         ("Direct", "direct", serde_json::Value::Null)
     };
@@ -4533,18 +5137,22 @@ pub async fn gitlab_switch_branch(
     branch: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
 
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.switch_branch(&branch).await
+    gitlab
+        .switch_branch(&branch)
+        .await
         .map_err(|e| format!("Failed to switch branch: {}", e))
 }
 
@@ -4556,27 +5164,31 @@ pub async fn gitlab_batch_upload(
     message: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
     let mut actions = Vec::with_capacity(files.len());
     for file_val in &files {
-        let local_path = file_val.get("localPath").and_then(|v| v.as_str())
+        let local_path = file_val
+            .get("localPath")
+            .and_then(|v| v.as_str())
             .ok_or("Each file must have a 'localPath'")?;
-        let remote_path = file_val.get("remotePath").and_then(|v| v.as_str())
+        let remote_path = file_val
+            .get("remotePath")
+            .and_then(|v| v.as_str())
             .ok_or("Each file must have a 'remotePath'")?;
-        let data = tokio::fs::read(local_path).await
+        let data = tokio::fs::read(local_path)
+            .await
             .map_err(|e| format!("Failed to read {}: {}", local_path, e))?;
-        let content_b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &data,
-        );
+        let content_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
         let clean_path = remote_path.trim_start_matches('/');
         // Check if file exists to determine create vs update
         let action = if gitlab.exists(clean_path).await.unwrap_or(false) {
@@ -4592,7 +5204,9 @@ pub async fn gitlab_batch_upload(
         }));
     }
 
-    let commit = gitlab.commit_actions_pub(&message, actions).await
+    let commit = gitlab
+        .commit_actions_pub(&message, actions)
+        .await
         .map_err(|e| format!("Batch upload failed: {}", e))?;
 
     Ok(serde_json::json!({
@@ -4609,23 +5223,30 @@ pub async fn gitlab_batch_delete(
     message: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let actions: Vec<serde_json::Value> = paths.iter().map(|p| {
-        serde_json::json!({
-            "action": "delete",
-            "file_path": p.trim_start_matches('/'),
+    let actions: Vec<serde_json::Value> = paths
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "action": "delete",
+                "file_path": p.trim_start_matches('/'),
+            })
         })
-    }).collect();
+        .collect();
 
-    let commit = gitlab.commit_actions_pub(&message, actions).await
+    let commit = gitlab
+        .commit_actions_pub(&message, actions)
+        .await
         .map_err(|e| format!("Batch delete failed: {}", e))?;
 
     Ok(serde_json::json!({
@@ -4642,33 +5263,40 @@ pub async fn gitlab_list_releases(
     state: State<'_, ProviderState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let releases = gitlab.list_releases().await
+    let releases = gitlab
+        .list_releases()
+        .await
         .map_err(|e| format!("Failed to list releases: {}", e))?;
 
-    Ok(releases.iter().map(|r| {
-        serde_json::json!({
-            "tag_name": r.tag_name,
-            "name": r.name,
-            "description": r.description,
-            "created_at": r.created_at,
-            "released_at": r.released_at,
-            "author": r.author.username,
-            "assets_count": r.assets.count,
-            "sources": r.assets.sources.iter().map(|s| serde_json::json!({
-                "format": s.format,
-                "url": s.url,
-            })).collect::<Vec<_>>(),
+    Ok(releases
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "tag_name": r.tag_name,
+                "name": r.name,
+                "description": r.description,
+                "created_at": r.created_at,
+                "released_at": r.released_at,
+                "author": r.author.username,
+                "assets_count": r.assets.count,
+                "sources": r.assets.sources.iter().map(|s| serde_json::json!({
+                    "format": s.format,
+                    "url": s.url,
+                })).collect::<Vec<_>>(),
+            })
         })
-    }).collect())
+        .collect())
 }
 
 /// List asset links for a GitLab release
@@ -4678,28 +5306,35 @@ pub async fn gitlab_list_release_assets(
     tag: String,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let links = gitlab.list_release_links(&tag).await
+    let links = gitlab
+        .list_release_links(&tag)
+        .await
         .map_err(|e| format!("Failed to list release assets: {}", e))?;
 
-    Ok(links.iter().map(|l| {
-        serde_json::json!({
-            "id": l.id,
-            "name": l.name,
-            "url": l.url,
-            "direct_asset_url": l.direct_asset_url,
-            "link_type": l.link_type,
-            "external": l.external,
+    Ok(links
+        .iter()
+        .map(|l| {
+            serde_json::json!({
+                "id": l.id,
+                "name": l.name,
+                "url": l.url,
+                "direct_asset_url": l.direct_asset_url,
+                "link_type": l.link_type,
+                "external": l.external,
+            })
         })
-    }).collect())
+        .collect())
 }
 
 /// Create a new GitLab release
@@ -4711,16 +5346,20 @@ pub async fn gitlab_create_release(
     description: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let release = gitlab.create_release(&tag, &name, &description).await
+    let release = gitlab
+        .create_release(&tag, &name, &description)
+        .await
         .map_err(|e| format!("Failed to create release: {}", e))?;
 
     Ok(serde_json::json!({
@@ -4736,16 +5375,20 @@ pub async fn gitlab_delete_release(
     tag: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.delete_release(&tag).await
+    gitlab
+        .delete_release(&tag)
+        .await
         .map_err(|e| format!("Failed to delete release: {}", e))
 }
 
@@ -4760,18 +5403,20 @@ pub async fn gitlab_upload_release_asset(
     link_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    let link = gitlab.upload_release_asset(
-        &tag, &local_path, &asset_name, link_type.as_deref(),
-    ).await
+    let link = gitlab
+        .upload_release_asset(&tag, &local_path, &asset_name, link_type.as_deref())
+        .await
         .map_err(|e| format!("Failed to upload release asset: {}", e))?;
 
     Ok(serde_json::json!({
@@ -4790,16 +5435,20 @@ pub async fn gitlab_delete_release_asset(
     link_id: u64,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.delete_release_link(&tag, link_id).await
+    gitlab
+        .delete_release_link(&tag, link_id)
+        .await
         .map_err(|e| format!("Failed to delete release asset: {}", e))
 }
 
@@ -4810,16 +5459,20 @@ pub async fn gitlab_read_file(
     path: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.read_file_content(&path).await
+    gitlab
+        .read_file_content(&path)
+        .await
         .map_err(|e| format!("Failed to read file: {}", e))
 }
 
@@ -4831,16 +5484,20 @@ pub async fn gitlab_download_release_asset(
     local_path: String,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.download_release_asset(&url, &local_path).await
+    gitlab
+        .download_release_asset(&url, &local_path)
+        .await
         .map_err(|e| format!("Failed to download asset: {}", e))
 }
 
@@ -4854,16 +5511,20 @@ pub async fn gitlab_create_merge_request(
     body: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
-    gitlab.create_merge_request(&title, &body).await
+    gitlab
+        .create_merge_request(&title, &body)
+        .await
         .map_err(|e| format!("Failed to create merge request: {}", e))
 }
 
@@ -4877,12 +5538,14 @@ pub async fn gitlab_get_web_url(
     is_dir: bool,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitLab {
         return Err("This operation is only available for GitLab".to_string());
     }
-    let gitlab = provider.as_any_mut()
+    let gitlab = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
         .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
 
@@ -4897,18 +5560,22 @@ pub async fn github_create_pr(
     body: String,
 ) -> Result<String, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
 
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    let pr = github.ensure_pull_request(&title, Some(&body), false).await
+    let pr = github
+        .ensure_pull_request(&title, Some(&body), false)
+        .await
         .map_err(|e| format!("Failed to create PR: {}", e))?;
 
     Ok(pr.html_url)
@@ -4956,7 +5623,10 @@ fn github_pem_vault_key(app_id: &str, installation_id: &str) -> String {
 /// Validate PEM contents: non-empty, correct RSA header
 fn validate_pem_contents(pem_contents: &str) -> Result<(), String> {
     if pem_contents.trim().is_empty() {
-        return Err("PEM file is empty. Please download a new private key from GitHub App settings.".to_string());
+        return Err(
+            "PEM file is empty. Please download a new private key from GitHub App settings."
+                .to_string(),
+        );
     }
     if !pem_contents.contains("-----BEGIN RSA PRIVATE KEY-----")
         && !pem_contents.contains("-----BEGIN PRIVATE KEY-----")
@@ -5025,7 +5695,8 @@ pub async fn github_app_token_from_pem(
         &pem_contents,
         &app_id,
         &installation_id,
-    ).await?;
+    )
+    .await?;
 
     // SEC-GH-001: Hold the token backend-side — never return it to the frontend
     {
@@ -5048,12 +5719,16 @@ pub async fn github_app_token_from_vault(
     installation_id: String,
 ) -> Result<serde_json::Value, String> {
     let vault_key = github_pem_vault_key(&app_id, &installation_id);
-    log::info!("GitHub App token: reading PEM from vault key '{}'", vault_key);
+    log::info!(
+        "GitHub App token: reading PEM from vault key '{}'",
+        vault_key
+    );
 
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready — cannot retrieve stored PEM".to_string())?;
 
-    let pem_contents = store.get(&vault_key)
+    let pem_contents = store
+        .get(&vault_key)
         .map_err(|_| "PEM not found in vault. Please re-import the .pem file.".to_string())?;
 
     validate_pem_contents(&pem_contents)?;
@@ -5072,7 +5747,8 @@ pub async fn github_app_token_from_vault(
         &pem_contents,
         &app_id,
         &installation_id,
-    ).await?;
+    )
+    .await?;
 
     // SEC-GH-001: Hold the token backend-side — never return it to the frontend
     {
@@ -5103,7 +5779,8 @@ pub async fn github_get_app_credentials() -> Result<serde_json::Value, String> {
 pub async fn github_store_pat(pat: String) -> Result<(), String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    store.store("github_pat", &pat)
+    store
+        .store("github_pat", &pat)
         .map_err(|e| format!("Failed to store PAT: {}", e))?;
     log::info!("GitHub PAT stored in vault");
     Ok(())
@@ -5112,9 +5789,7 @@ pub async fn github_store_pat(pat: String) -> Result<(), String> {
 /// Store the held GitHub token into vault as PAT (for Device Flow persistence).
 /// SEC-GH-001: Takes from held_github_app_token and stores in vault without IPC exposure.
 #[tauri::command]
-pub async fn github_store_pat_from_held(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn github_store_pat_from_held(state: State<'_, ProviderState>) -> Result<(), String> {
     let token = {
         let held = state.held_github_app_token.lock().await;
         held.clone()
@@ -5122,7 +5797,8 @@ pub async fn github_store_pat_from_held(
     if let Some(token) = token {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Vault not ready".to_string())?;
-        store.store("github_oauth_token", &token)
+        store
+            .store("github_oauth_token", &token)
             .map_err(|e| format!("Failed to store OAuth token: {}", e))?;
         log::info!("GitHub Device Flow token stored in vault as OAuth token");
     }
@@ -5137,7 +5813,8 @@ pub async fn github_load_oauth_token(
 ) -> Result<serde_json::Value, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    let token = store.get("github_oauth_token")
+    let token = store
+        .get("github_oauth_token")
         .map_err(|_| "No OAuth token stored in vault".to_string())?;
     {
         let mut held = state.held_github_app_token.lock().await;
@@ -5149,12 +5826,11 @@ pub async fn github_load_oauth_token(
 /// Get stored GitHub PAT from vault.
 /// SEC-GH-001: Token held backend-side for connect, returns only success status.
 #[tauri::command]
-pub async fn github_get_pat(
-    state: State<'_, ProviderState>,
-) -> Result<serde_json::Value, String> {
+pub async fn github_get_pat(state: State<'_, ProviderState>) -> Result<serde_json::Value, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
-    let pat = store.get("github_pat")
+    let pat = store
+        .get("github_pat")
         .map_err(|_| "No PAT stored in vault".to_string())?;
     {
         let mut held = state.held_github_app_token.lock().await;
@@ -5165,10 +5841,7 @@ pub async fn github_get_pat(
 
 /// Check if a GitHub App PEM is stored in the vault
 #[tauri::command]
-pub async fn github_has_vault_pem(
-    app_id: String,
-    installation_id: String,
-) -> Result<bool, String> {
+pub async fn github_has_vault_pem(app_id: String, installation_id: String) -> Result<bool, String> {
     let vault_key = github_pem_vault_key(&app_id, &installation_id);
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not ready".to_string())?;
@@ -5322,8 +5995,7 @@ pub async fn github_read_file(
         .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
-    String::from_utf8(bytes)
-        .map_err(|e| format!("File is not valid UTF-8: {}", e))
+    String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e))
 }
 
 // ── GitHub Pages ──────────────────────────────────────────────────
@@ -5334,12 +6006,14 @@ pub async fn github_get_pages(
     state: State<'_, ProviderState>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
@@ -5356,16 +6030,20 @@ pub async fn github_list_pages_builds(
     state: State<'_, ProviderState>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    let builds = github.list_pages_builds().await
+    let builds = github
+        .list_pages_builds()
+        .await
         .map_err(|e| format!("Failed to list Pages builds: {}", e))?;
     Ok(serde_json::to_value(builds).unwrap_or_default())
 }
@@ -5376,16 +6054,20 @@ pub async fn github_trigger_pages_build(
     state: State<'_, ProviderState>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    let status = github.trigger_pages_build().await
+    let status = github
+        .trigger_pages_build()
+        .await
         .map_err(|e| format!("Failed to trigger Pages build: {}", e))?;
     Ok(serde_json::to_value(status).unwrap_or_default())
 }
@@ -5400,21 +6082,25 @@ pub async fn github_update_pages(
     source_path: Option<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    github.update_pages_config(
-        cname.as_deref(),
-        https_enforced,
-        source_branch.as_deref(),
-        source_path.as_deref(),
-    ).await
+    github
+        .update_pages_config(
+            cname.as_deref(),
+            https_enforced,
+            source_branch.as_deref(),
+            source_path.as_deref(),
+        )
+        .await
         .map_err(|e| format!("Failed to update Pages config: {}", e))
 }
 
@@ -5424,16 +6110,20 @@ pub async fn github_pages_health(
     state: State<'_, ProviderState>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    let health = github.pages_health_check().await
+    let health = github
+        .pages_health_check()
+        .await
         .map_err(|e| format!("Failed to check Pages DNS health: {}", e))?;
     Ok(serde_json::to_value(health).unwrap_or_default())
 }
@@ -5556,7 +6246,9 @@ pub async fn github_download_release_asset(
         .await
         .map_err(|e| format!("Failed to download release asset: {}", e))?;
 
-    Ok(serde_json::json!({ "tag": tag, "asset": asset_name, "path": local_path, "status": "downloaded" }))
+    Ok(
+        serde_json::json!({ "tag": tag, "asset": asset_name, "path": local_path, "status": "downloaded" }),
+    )
 }
 
 /// Get detailed release information by tag
@@ -5675,27 +6367,36 @@ pub async fn github_batch_upload(
     message: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
     let mut additions: Vec<(String, Vec<u8>)> = Vec::with_capacity(files.len());
     for file_val in &files {
-        let local_path = file_val.get("localPath").and_then(|v| v.as_str())
+        let local_path = file_val
+            .get("localPath")
+            .and_then(|v| v.as_str())
             .ok_or("Each file must have a 'localPath'")?;
-        let remote_path = file_val.get("remotePath").and_then(|v| v.as_str())
+        let remote_path = file_val
+            .get("remotePath")
+            .and_then(|v| v.as_str())
             .ok_or("Each file must have a 'remotePath'")?;
-        let data = tokio::fs::read(local_path).await
+        let data = tokio::fs::read(local_path)
+            .await
             .map_err(|e| format!("Failed to read {}: {}", local_path, e))?;
         additions.push((remote_path.trim_start_matches('/').to_string(), data));
     }
 
-    let oid = github.batch_upload(&message, &additions, &[]).await
+    let oid = github
+        .batch_upload(&message, &additions, &[])
+        .await
         .map_err(|e| format!("Batch upload failed: {}", e))?;
 
     Ok(serde_json::json!({
@@ -5712,20 +6413,25 @@ pub async fn github_batch_delete(
     message: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    let deletions: Vec<String> = paths.iter()
+    let deletions: Vec<String> = paths
+        .iter()
         .map(|p| p.trim_start_matches('/').to_string())
         .collect();
 
-    let oid = github.batch_upload(&message, &[], &deletions).await
+    let oid = github
+        .batch_upload(&message, &[], &deletions)
+        .await
         .map_err(|e| format!("Batch delete failed: {}", e))?;
 
     Ok(serde_json::json!({
@@ -5748,9 +6454,7 @@ fn remote_matches_repo(line: &str, owner: &str, repo: &str) -> bool {
             let after = idx + pattern.len();
             // Must be followed by `.git`, whitespace, or end of string
             let rest = &lower[after..];
-            if rest.is_empty()
-                || rest.starts_with(".git")
-                || rest.starts_with(char::is_whitespace)
+            if rest.is_empty() || rest.starts_with(".git") || rest.starts_with(char::is_whitespace)
             {
                 return true;
             }
@@ -5795,12 +6499,14 @@ pub async fn github_check_local_sync(
     local_path: String,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Ok(serde_json::json!({"is_local_repo": false}));
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
@@ -5820,7 +6526,9 @@ pub async fn github_check_local_sync(
     }
     let remote_output = String::from_utf8_lossy(&remote_out.stdout).to_string();
 
-    let matches = remote_output.lines().any(|line| remote_matches_repo(line, &owner, &repo));
+    let matches = remote_output
+        .lines()
+        .any(|line| remote_matches_repo(line, &owner, &repo));
 
     if !matches {
         return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": false}));
@@ -5831,29 +6539,45 @@ pub async fn github_check_local_sync(
     let local_head = if head_out.status.success() {
         String::from_utf8_lossy(&head_out.stdout).trim().to_string()
     } else {
-        return Ok(serde_json::json!({"is_local_repo": true, "repo_matches": true, "error": "Cannot read local HEAD"}));
+        return Ok(
+            serde_json::json!({"is_local_repo": true, "repo_matches": true, "error": "Cannot read local HEAD"}),
+        );
     };
 
     // Get remote HEAD via GitHub API
     let branch = github.active_branch().to_string();
     let remote_head = {
-        match github.client_mut().get_json::<serde_json::Value>(&format!(
-            "/repos/{}/{}/git/ref/heads/{}",
-            owner, repo, urlencoding::encode(&branch)
-        )).await {
+        match github
+            .client_mut()
+            .get_json::<serde_json::Value>(&format!(
+                "/repos/{}/{}/git/ref/heads/{}",
+                owner,
+                repo,
+                urlencoding::encode(&branch)
+            ))
+            .await
+        {
             Ok(val) => {
-                match val.get("object").and_then(|o| o.get("sha")).and_then(|s| s.as_str()) {
+                match val
+                    .get("object")
+                    .and_then(|o| o.get("sha"))
+                    .and_then(|s| s.as_str())
+                {
                     Some(sha) => sha.to_string(),
-                    None => return Ok(serde_json::json!({
-                        "is_local_repo": true, "repo_matches": true,
-                        "error": "Cannot parse remote HEAD SHA"
-                    })),
+                    None => {
+                        return Ok(serde_json::json!({
+                            "is_local_repo": true, "repo_matches": true,
+                            "error": "Cannot parse remote HEAD SHA"
+                        }))
+                    }
                 }
             }
-            Err(e) => return Ok(serde_json::json!({
-                "is_local_repo": true, "repo_matches": true,
-                "error": format!("Cannot fetch remote HEAD: {}", e)
-            })),
+            Err(e) => {
+                return Ok(serde_json::json!({
+                    "is_local_repo": true, "repo_matches": true,
+                    "error": format!("Cannot fetch remote HEAD: {}", e)
+                }))
+            }
         }
     };
 
@@ -5861,9 +6585,13 @@ pub async fn github_check_local_sync(
     let count_out = git_command(
         &["rev-list", &format!("{}..HEAD", remote_head), "--count"],
         &canonical,
-    ).await?;
+    )
+    .await?;
     let unpushed_count = if count_out.status.success() {
-        String::from_utf8_lossy(&count_out.stdout).trim().parse::<u32>().unwrap_or(0)
+        String::from_utf8_lossy(&count_out.stdout)
+            .trim()
+            .parse::<u32>()
+            .unwrap_or(0)
     } else {
         0
     };
@@ -5891,10 +6619,12 @@ pub async fn github_push_local(
     // Verify the repo remote matches the connected GitHub repo
     {
         let mut provider_guard = state.provider.lock().await;
-        let provider = provider_guard.as_mut()
+        let provider = provider_guard
+            .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
         if provider.provider_type() == ProviderType::GitHub {
-            let github = provider.as_any_mut()
+            let github = provider
+                .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
             let owner = github.owner().to_string();
@@ -5902,7 +6632,9 @@ pub async fn github_push_local(
 
             let remote_out = git_command(&["remote", "-v"], &canonical).await?;
             let remote_output = String::from_utf8_lossy(&remote_out.stdout).to_string();
-                let matches = remote_output.lines().any(|line| remote_matches_repo(line, &owner, &repo));
+            let matches = remote_output
+                .lines()
+                .any(|line| remote_matches_repo(line, &owner, &repo));
             if !matches {
                 return Err(format!(
                     "Local repo remote does not match connected GitHub repo {}/{}",
@@ -5935,12 +6667,14 @@ pub async fn github_list_actions_runs(
     per_page: Option<u8>,
 ) -> Result<serde_json::Value, String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
@@ -5958,16 +6692,20 @@ pub async fn github_rerun_workflow(
     run_id: u64,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    github.rerun_actions_workflow(run_id).await
+    github
+        .rerun_actions_workflow(run_id)
+        .await
         .map_err(|e| format!("Failed to re-run workflow: {}", e))
 }
 
@@ -5978,16 +6716,20 @@ pub async fn github_rerun_failed_jobs(
     run_id: u64,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    github.rerun_failed_jobs(run_id).await
+    github
+        .rerun_failed_jobs(run_id)
+        .await
         .map_err(|e| format!("Failed to re-run failed jobs: {}", e))
 }
 
@@ -5998,16 +6740,20 @@ pub async fn github_cancel_workflow(
     run_id: u64,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard.as_mut()
+    let provider = provider_guard
+        .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     if provider.provider_type() != ProviderType::GitHub {
         return Err("This operation is only available for GitHub".to_string());
     }
-    let github = provider.as_any_mut()
+    let github = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::github::GitHubProvider>()
         .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
 
-    github.cancel_actions_run(run_id).await
+    github
+        .cancel_actions_run(run_id)
+        .await
         .map_err(|e| format!("Failed to cancel workflow: {}", e))
 }
 
@@ -6023,7 +6769,8 @@ pub async fn filen_notes_list(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.list_notes().await.map_err(|e| e.to_string())
@@ -6042,11 +6789,15 @@ pub async fn filen_notes_create(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     let nt = parse_note_type_str(&note_type);
-    filen.create_note(&title, &content, &nt).await.map_err(|e| e.to_string())
+    filen
+        .create_note(&title, &content, &nt)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Get decrypted content of a Filen note
@@ -6060,10 +6811,14 @@ pub async fn filen_notes_get_content(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.get_note_content(&uuid).await.map_err(|e| e.to_string())
+    filen
+        .get_note_content(&uuid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Edit content of a Filen encrypted note
@@ -6079,11 +6834,15 @@ pub async fn filen_notes_edit_content(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     let nt = parse_note_type_str(&note_type);
-    filen.edit_note_content(&uuid, &content, &nt).await.map_err(|e| e.to_string())
+    filen
+        .edit_note_content(&uuid, &content, &nt)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Edit title of a Filen encrypted note
@@ -6098,10 +6857,14 @@ pub async fn filen_notes_edit_title(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.edit_note_title(&uuid, &title).await.map_err(|e| e.to_string())
+    filen
+        .edit_note_title(&uuid, &title)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Change the type of a Filen note (text, md, code, rich, checklist)
@@ -6116,11 +6879,15 @@ pub async fn filen_notes_change_type(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     let nt = parse_note_type_str(&note_type);
-    filen.change_note_type(&uuid, &nt).await.map_err(|e| e.to_string())
+    filen
+        .change_note_type(&uuid, &nt)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Move a Filen note to trash
@@ -6134,7 +6901,8 @@ pub async fn filen_notes_trash(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.trash_note(&uuid).await.map_err(|e| e.to_string())
@@ -6151,7 +6919,8 @@ pub async fn filen_notes_archive(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.archive_note(&uuid).await.map_err(|e| e.to_string())
@@ -6168,7 +6937,8 @@ pub async fn filen_notes_restore(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.restore_note(&uuid).await.map_err(|e| e.to_string())
@@ -6185,7 +6955,8 @@ pub async fn filen_notes_delete(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.delete_note(&uuid).await.map_err(|e| e.to_string())
@@ -6203,10 +6974,14 @@ pub async fn filen_notes_toggle_favorite(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.toggle_note_favorite(&uuid, favorite).await.map_err(|e| e.to_string())
+    filen
+        .toggle_note_favorite(&uuid, favorite)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Toggle pinned on a Filen note
@@ -6221,10 +6996,14 @@ pub async fn filen_notes_toggle_pinned(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.toggle_note_pinned(&uuid, pinned).await.map_err(|e| e.to_string())
+    filen
+        .toggle_note_pinned(&uuid, pinned)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Get version history for a Filen note
@@ -6238,10 +7017,14 @@ pub async fn filen_notes_history(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.get_note_history(&uuid).await.map_err(|e| e.to_string())
+    filen
+        .get_note_history(&uuid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a specific history version of a Filen note
@@ -6256,10 +7039,14 @@ pub async fn filen_notes_history_restore(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.restore_note_history(&uuid, history_id).await.map_err(|e| e.to_string())
+    filen
+        .restore_note_history(&uuid, history_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// List all Filen note tags
@@ -6272,7 +7059,8 @@ pub async fn filen_notes_tags_list(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
     filen.list_note_tags().await.map_err(|e| e.to_string())
@@ -6289,10 +7077,14 @@ pub async fn filen_notes_tags_create(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.create_note_tag(&name).await.map_err(|e| e.to_string())
+    filen
+        .create_note_tag(&name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Rename a Filen note tag
@@ -6307,10 +7099,14 @@ pub async fn filen_notes_tags_rename(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.rename_note_tag(&tag_uuid, &name).await.map_err(|e| e.to_string())
+    filen
+        .rename_note_tag(&tag_uuid, &name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Delete a Filen note tag
@@ -6324,10 +7120,14 @@ pub async fn filen_notes_tags_delete(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.delete_note_tag(&tag_uuid).await.map_err(|e| e.to_string())
+    filen
+        .delete_note_tag(&tag_uuid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Assign a tag to a Filen note
@@ -6342,10 +7142,14 @@ pub async fn filen_notes_tag_note(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.tag_note(&note_uuid, &tag_uuid).await.map_err(|e| e.to_string())
+    filen
+        .tag_note(&note_uuid, &tag_uuid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Remove a tag from a Filen note
@@ -6360,10 +7164,14 @@ pub async fn filen_notes_untag_note(
     if provider.provider_type() != ProviderType::Filen {
         return Err("Only available for Filen".into());
     }
-    let filen = provider.as_any_mut()
+    let filen = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::filen::FilenProvider>()
         .ok_or("Failed to access Filen provider")?;
-    filen.untag_note(&note_uuid, &tag_uuid).await.map_err(|e| e.to_string())
+    filen
+        .untag_note(&note_uuid, &tag_uuid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Parse note type string to enum (delegates to notes module).
@@ -6385,10 +7193,13 @@ pub async fn s3_change_storage_class(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider.as_any_mut()
+    let s3 = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
-    s3.change_storage_class(&path, &storage_class).await.map_err(|e| e.to_string())
+    s3.change_storage_class(&path, &storage_class)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Initiate Glacier/Deep Archive restore for an S3 object
@@ -6404,10 +7215,13 @@ pub async fn s3_glacier_restore(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider.as_any_mut()
+    let s3 = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
-    s3.glacier_restore(&path, days, &tier).await.map_err(|e| e.to_string())
+    s3.glacier_restore(&path, days, &tier)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Get object tags for an S3 object
@@ -6421,7 +7235,8 @@ pub async fn s3_get_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider.as_any_mut()
+    let s3 = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
     s3.get_object_tags(&path).await.map_err(|e| e.to_string())
@@ -6439,10 +7254,13 @@ pub async fn s3_set_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider.as_any_mut()
+    let s3 = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
-    s3.set_object_tags(&path, &tags).await.map_err(|e| e.to_string())
+    s3.set_object_tags(&path, &tags)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Delete all tags from an S3 object
@@ -6456,10 +7274,13 @@ pub async fn s3_delete_object_tags(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Only available for S3".into());
     }
-    let s3 = provider.as_any_mut()
+    let s3 = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::s3::S3Provider>()
         .ok_or("Failed to access S3 provider")?;
-    s3.delete_object_tags(&path).await.map_err(|e| e.to_string())
+    s3.delete_object_tags(&path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ============ Azure Enterprise Commands ============
@@ -6476,10 +7297,14 @@ pub async fn azure_set_blob_tier(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider.as_any_mut()
+    let azure = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
-    azure.set_blob_tier(&path, &tier).await.map_err(|e| e.to_string())
+    azure
+        .set_blob_tier(&path, &tier)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// List soft-deleted blobs in the Azure container
@@ -6492,7 +7317,8 @@ pub async fn azure_list_deleted_blobs(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider.as_any_mut()
+    let azure = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
     azure.list_deleted_blobs().await.map_err(|e| e.to_string())
@@ -6509,7 +7335,8 @@ pub async fn azure_undelete_blob(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = provider.as_any_mut()
+    let azure = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
     azure.undelete_blob(&path).await.map_err(|e| e.to_string())
@@ -6527,7 +7354,8 @@ pub async fn pcloud_list_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider.as_any_mut()
+    let pcloud = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
     pcloud.list_trash().await.map_err(|e| e.to_string())
@@ -6545,23 +7373,26 @@ pub async fn pcloud_restore_from_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider.as_any_mut()
+    let pcloud = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
-    pcloud.restore_from_trash(&id, is_folder).await.map_err(|e| e.to_string())
+    pcloud
+        .restore_from_trash(&id, is_folder)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty pCloud trash
 #[tauri::command]
-pub async fn pcloud_empty_trash(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn pcloud_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider.as_any_mut()
+    let pcloud = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
     pcloud.empty_trash().await.map_err(|e| e.to_string())
@@ -6579,10 +7410,14 @@ pub async fn pcloud_permanently_delete_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = provider.as_any_mut()
+    let pcloud = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
         .ok_or("Failed to access pCloud provider")?;
-    pcloud.permanent_delete_from_trash(&id, is_folder).await.map_err(|e| e.to_string())
+    pcloud
+        .permanent_delete_from_trash(&id, is_folder)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ============ kDrive Trash Commands ============
@@ -6597,7 +7432,8 @@ pub async fn kdrive_list_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider.as_any_mut()
+    let kdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
     kdrive.list_trash().await.map_err(|e| e.to_string())
@@ -6614,10 +7450,14 @@ pub async fn kdrive_restore_from_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider.as_any_mut()
+    let kdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
-    kdrive.restore_from_trash(&file_id).await.map_err(|e| e.to_string())
+    kdrive
+        .restore_from_trash(&file_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete item from kDrive trash
@@ -6631,23 +7471,26 @@ pub async fn kdrive_permanently_delete_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider.as_any_mut()
+    let kdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
-    kdrive.permanently_delete_trash(&file_id).await.map_err(|e| e.to_string())
+    kdrive
+        .permanently_delete_trash(&file_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty the entire kDrive trash
 #[tauri::command]
-pub async fn kdrive_empty_trash(
-    state: State<'_, ProviderState>,
-) -> Result<(), String> {
+pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = provider.as_any_mut()
+    let kdrive = provider
+        .as_any_mut()
         .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
         .ok_or("Failed to access kDrive provider")?;
     kdrive.empty_trash().await.map_err(|e| e.to_string())
@@ -6662,7 +7505,8 @@ mod tests {
     fn test_remote_matches_exact_ssh() {
         assert!(remote_matches_repo(
             "origin\tgit@github.com:axpdev-lab/aeroftp.git (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6670,7 +7514,8 @@ mod tests {
     fn test_remote_matches_exact_https() {
         assert!(remote_matches_repo(
             "origin\thttps://github.com/axpdev-lab/aeroftp.git (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6678,7 +7523,8 @@ mod tests {
     fn test_remote_matches_without_git_suffix() {
         assert!(remote_matches_repo(
             "origin\thttps://github.com/axpdev-lab/aeroftp (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6687,7 +7533,8 @@ mod tests {
         // "aeroftp" should NOT match "aeroftp-old"
         assert!(!remote_matches_repo(
             "origin\tgit@github.com:axpdev-lab/aeroftp-old.git (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6695,7 +7542,8 @@ mod tests {
     fn test_remote_rejects_different_owner() {
         assert!(!remote_matches_repo(
             "origin\tgit@github.com:other-org/aeroftp.git (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6703,7 +7551,8 @@ mod tests {
     fn test_remote_case_insensitive() {
         assert!(remote_matches_repo(
             "origin\tgit@GitHub.com:AxpDev-Lab/AeroFTP.git (fetch)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 
@@ -6717,7 +7566,8 @@ mod tests {
         // URL ends at whitespace (fetch/push marker)
         assert!(remote_matches_repo(
             "origin\thttps://github.com/axpdev-lab/aeroftp (push)",
-            "axpdev-lab", "aeroftp"
+            "axpdev-lab",
+            "aeroftp"
         ));
     }
 }

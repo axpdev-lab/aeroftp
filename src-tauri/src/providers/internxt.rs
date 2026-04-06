@@ -18,21 +18,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use async_trait::async_trait;
 use aes::cipher::{KeyIvInit, StreamCipher};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use reqwest::header::CONTENT_TYPE;
+use ripemd::Ripemd160;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
-use sha2::{Sha256, Sha512, Digest};
-use ripemd::Ripemd160;
+use sha2::{Digest, Sha256, Sha512};
 use std::collections::HashMap;
 
-use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
-    http_retry::{HttpRetryConfig, send_with_retry},
-};
 use super::types::InternxtConfig;
+use super::{
+    http_retry::{send_with_retry, HttpRetryConfig},
+    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+};
 
 // AES-256-CBC type alias (for mnemonic/salt decryption)
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
@@ -400,7 +400,7 @@ impl InternxtProvider {
     /// Derive AES-256 key and IV from secret + salt using 3 rounds of MD5
     /// (OpenSSL EVP_BytesToKey compatible)
     fn openssl_key_iv(secret: &[u8], salt: &[u8]) -> ([u8; 32], [u8; 16]) {
-        use md5::{Md5, Digest as Md5Digest};
+        use md5::{Digest as Md5Digest, Md5};
         let mut md5_hashes: Vec<Vec<u8>> = Vec::with_capacity(3);
         let mut digest_input = Vec::new();
         digest_input.extend_from_slice(secret);
@@ -432,29 +432,39 @@ impl InternxtProvider {
         })?;
 
         if ciphertext.len() < 16 {
-            return Err(ProviderError::AuthenticationFailed("Ciphertext too short".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Ciphertext too short".to_string(),
+            ));
         }
 
         if &ciphertext[..8] != SALTED_PREFIX {
-            return Err(ProviderError::AuthenticationFailed("Missing OpenSSL Salted__ prefix".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Missing OpenSSL Salted__ prefix".to_string(),
+            ));
         }
 
         let salt = &ciphertext[8..16];
         let encrypted_content = &ciphertext[16..];
 
         if encrypted_content.len() % 16 != 0 {
-            return Err(ProviderError::AuthenticationFailed("Ciphertext not aligned to block size".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Ciphertext not aligned to block size".to_string(),
+            ));
         }
 
         let (key, iv) = Self::openssl_key_iv(secret.as_bytes(), salt);
 
         let mut buf = encrypted_content.to_vec();
         let decryptor = Aes256CbcDec::new_from_slices(&key, &iv).map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("Failed to create AES-CBC decryptor: {}", e))
+            ProviderError::AuthenticationFailed(format!(
+                "Failed to create AES-CBC decryptor: {}",
+                e
+            ))
         })?;
 
         use aes::cipher::BlockDecryptMut;
-        let decrypted = decryptor.decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf)
+        let decrypted = decryptor
+            .decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf)
             .map_err(|e| {
                 ProviderError::AuthenticationFailed(format!("AES-CBC decryption failed: {}", e))
             })?;
@@ -473,7 +483,10 @@ impl InternxtProvider {
         let (key, iv) = Self::openssl_key_iv(secret.as_bytes(), &salt);
 
         let encryptor = Aes256CbcEnc::new_from_slices(&key, &iv).map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("Failed to create AES-CBC encryptor: {}", e))
+            ProviderError::AuthenticationFailed(format!(
+                "Failed to create AES-CBC encryptor: {}",
+                e
+            ))
         })?;
 
         use aes::cipher::BlockEncryptMut;
@@ -482,8 +495,11 @@ impl InternxtProvider {
         let padding_len = block_size - (plaintext.len() % block_size);
         let mut buf = vec![0u8; plaintext.len() + padding_len];
         buf[..plaintext.len()].copy_from_slice(plaintext.as_bytes());
-        let padded = encryptor.encrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf, plaintext.len())
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("AES-CBC encryption failed: {}", e)))?;
+        let padded = encryptor
+            .encrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf, plaintext.len())
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("AES-CBC encryption failed: {}", e))
+            })?;
 
         let mut result = Vec::with_capacity(8 + 8 + padded.len());
         result.extend_from_slice(SALTED_PREFIX);
@@ -518,7 +534,10 @@ impl InternxtProvider {
     /// 1. Decrypt encrypted salt with AppCryptoSecret
     /// 2. PBKDF2-SHA1(password, salt, 10000) → hash
     /// 3. Encrypt hash with AppCryptoSecret
-    fn encrypt_password_hash(password: &str, encrypted_salt: &str) -> Result<String, ProviderError> {
+    fn encrypt_password_hash(
+        password: &str,
+        encrypted_salt: &str,
+    ) -> Result<String, ProviderError> {
         let salt = Self::decrypt_text(encrypted_salt)?;
         let hash = Self::pass_to_hash(password, &salt)?;
         Self::encrypt_text(&hash)
@@ -530,12 +549,7 @@ impl InternxtProvider {
     fn mnemonic_to_seed(mnemonic: &str) -> Vec<u8> {
         // BIP39 seed: PBKDF2-SHA512(mnemonic, "mnemonic", 2048, 64)
         let mut seed = [0u8; 64];
-        pbkdf2::pbkdf2_hmac::<Sha512>(
-            mnemonic.as_bytes(),
-            b"mnemonic",
-            2048,
-            &mut seed,
-        );
+        pbkdf2::pbkdf2_hmac::<Sha512>(mnemonic.as_bytes(), b"mnemonic", 2048, &mut seed);
         seed.to_vec()
     }
 
@@ -568,11 +582,14 @@ impl InternxtProvider {
     /// Key derivation chain: BIP39(mnemonic) → seed → SHA-512(seed, bucket) → bucket_key
     /// → SHA-512(bucket_key[..32], index) → (key[..32], iv = index[..16])
     /// TODO: validate with official test vectors once Internxt publishes them
-    fn generate_file_key(mnemonic: &str, bucket_id: &str, index_hex: &str) -> Result<([u8; 32], [u8; 16]), ProviderError> {
+    fn generate_file_key(
+        mnemonic: &str,
+        bucket_id: &str,
+        index_hex: &str,
+    ) -> Result<([u8; 32], [u8; 16]), ProviderError> {
         let bucket_key = Self::generate_file_bucket_key(mnemonic, bucket_id)?;
-        let index_bytes = hex::decode(index_hex).map_err(|e| {
-            ProviderError::Other(format!("Failed to decode file index: {}", e))
-        })?;
+        let index_bytes = hex::decode(index_hex)
+            .map_err(|e| ProviderError::Other(format!("Failed to decode file index: {}", e)))?;
 
         let det_key = Self::get_file_deterministic_key(&bucket_key[..32], &index_bytes);
         let mut key = [0u8; 32];
@@ -586,7 +603,11 @@ impl InternxtProvider {
     }
 
     /// Decrypt file content using AES-256-CTR
-    fn decrypt_file_content(data: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Result<Vec<u8>, ProviderError> {
+    fn decrypt_file_content(
+        data: &[u8],
+        key: &[u8; 32],
+        iv: &[u8; 16],
+    ) -> Result<Vec<u8>, ProviderError> {
         let mut buf = data.to_vec();
         let mut cipher = Aes256Ctr::new(key.into(), iv.into());
         cipher.apply_keystream(&mut buf);
@@ -594,7 +615,11 @@ impl InternxtProvider {
     }
 
     /// Encrypt file content using AES-256-CTR
-    fn encrypt_file_content(data: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Result<Vec<u8>, ProviderError> {
+    fn encrypt_file_content(
+        data: &[u8],
+        key: &[u8; 32],
+        iv: &[u8; 16],
+    ) -> Result<Vec<u8>, ProviderError> {
         // CTR mode: encryption = decryption
         Self::decrypt_file_content(data, key, iv)
     }
@@ -607,7 +632,10 @@ impl InternxtProvider {
         let url = format!("{}/drive{}", self.api_base, path);
         self.client
             .request(method, &url)
-            .header("Authorization", format!("Bearer {}", self.token.expose_secret()))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.token.expose_secret()),
+            )
             .header("internxt-client", "aeroftp")
             .header("internxt-version", "v1.0.436")
     }
@@ -677,14 +705,15 @@ impl InternxtProvider {
             let found = self.find_subfolder(&current_uuid, segment).await?;
             match found {
                 Some(uuid) => {
-                    self.dir_cache_insert(check_path.clone(), DirInfo {
-                        uuid: uuid.clone(),
-                    });
+                    self.dir_cache_insert(check_path.clone(), DirInfo { uuid: uuid.clone() });
                     current_uuid = uuid;
                     current_path = check_path;
                 }
                 None => {
-                    return Err(ProviderError::NotFound(format!("Folder not found: {}", path)));
+                    return Err(ProviderError::NotFound(format!(
+                        "Folder not found: {}",
+                        path
+                    )));
                 }
             }
         }
@@ -693,19 +722,30 @@ impl InternxtProvider {
     }
 
     /// Find a subfolder by name within a parent folder
-    async fn find_subfolder(&self, parent_uuid: &str, name: &str) -> Result<Option<String>, ProviderError> {
+    async fn find_subfolder(
+        &self,
+        parent_uuid: &str,
+        name: &str,
+    ) -> Result<Option<String>, ProviderError> {
         let mut offset = 0;
         loop {
-            let url = format!("/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                parent_uuid, offset);
+            let url = format!(
+                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
+                parent_uuid, offset
+            );
 
-            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
+            let resp = self
+                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("List folders failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "List folders failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
 
             let wrapper: FoldersWrapper = resp.json().await.map_err(|e| {
@@ -713,7 +753,9 @@ impl InternxtProvider {
             })?;
 
             for folder in &wrapper.folders {
-                let folder_name = folder.plain_name.as_deref()
+                let folder_name = folder
+                    .plain_name
+                    .as_deref()
                     .or(folder.name.as_deref())
                     .unwrap_or("");
                 if folder_name.eq_ignore_ascii_case(name) {
@@ -740,7 +782,9 @@ impl InternxtProvider {
         for seg in trimmed.split('/') {
             match seg {
                 "" | "." => continue,
-                ".." => { segments.pop(); }
+                ".." => {
+                    segments.pop();
+                }
                 s => segments.push(s),
             }
         }
@@ -784,19 +828,30 @@ impl InternxtProvider {
     }
 
     /// Find a file by name in a folder, returns (uuid, file_id, bucket)
-    async fn find_file_in_folder(&self, folder_uuid: &str, filename: &str) -> Result<Option<(String, String, String)>, ProviderError> {
+    async fn find_file_in_folder(
+        &self,
+        folder_uuid: &str,
+        filename: &str,
+    ) -> Result<Option<(String, String, String)>, ProviderError> {
         let mut offset = 0;
         loop {
-            let url = format!("/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset);
+            let url = format!(
+                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
+                folder_uuid, offset
+            );
 
-            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
+            let resp = self
+                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("List files failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "List files failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
 
             let wrapper: FilesWrapper = resp.json().await.map_err(|e| {
@@ -833,7 +888,9 @@ impl InternxtProvider {
     }
 
     fn get_filename(file: &InternxtFile) -> String {
-        let base = file.plain_name.as_deref()
+        let base = file
+            .plain_name
+            .as_deref()
             .or(file.name.as_deref())
             .unwrap_or("unnamed");
         let ext = file.file_type.as_deref().unwrap_or("");
@@ -845,8 +902,17 @@ impl InternxtProvider {
     }
 
     /// Fallback auth using api.internxt.com /drive/auth/login/access (no CLI tier restriction)
-    async fn connect_web_auth(&mut self, email: &str, password: &str, tfa: &str, s_key: &str) -> Result<(), ProviderError> {
-        internxt_log(&format!("[WEB AUTH] Trying {} /drive/auth/login/access...", API_URL));
+    async fn connect_web_auth(
+        &mut self,
+        email: &str,
+        password: &str,
+        tfa: &str,
+        s_key: &str,
+    ) -> Result<(), ProviderError> {
+        internxt_log(&format!(
+            "[WEB AUTH] Trying {} /drive/auth/login/access...",
+            API_URL
+        ));
 
         // Re-use sKey from step 1 to encrypt password
         let encrypted_password = Self::encrypt_password_hash(password, s_key)?;
@@ -862,7 +928,8 @@ impl InternxtProvider {
             access_body["tfa"] = serde_json::Value::String(tfa.to_string());
         }
 
-        let access_resp = self.client
+        let access_resp = self
+            .client
             .post(&web_access_url)
             .header(CONTENT_TYPE, "application/json")
             .header("internxt-client", "aeroftp")
@@ -879,29 +946,43 @@ impl InternxtProvider {
 
         if !status.is_success() {
             let body = access_resp.text().await.unwrap_or_default();
-            internxt_log(&format!("[WEB AUTH FAIL] Body: {}", &body[..body.len().min(200)]));
+            internxt_log(&format!(
+                "[WEB AUTH FAIL] Body: {}",
+                &body[..body.len().min(200)]
+            ));
             return Err(ProviderError::AuthenticationFailed(format!(
                 "Authentication failed ({}): {}. Both CLI and web auth endpoints failed.",
-                status, super::sanitize_api_error(&body)
+                status,
+                super::sanitize_api_error(&body)
             )));
         }
 
         let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("Failed to parse web access response: {}", e))
+            ProviderError::AuthenticationFailed(format!(
+                "Failed to parse web access response: {}",
+                e
+            ))
         })?;
 
-        internxt_log(&format!("[WEB AUTH OK] token_len={}", access_data.token.len()));
+        internxt_log(&format!(
+            "[WEB AUTH OK] token_len={}",
+            access_data.token.len()
+        ));
 
         // Decrypt mnemonic
         let decrypted_mnemonic = Self::decrypt_text_with_key(&access_data.user.mnemonic, password)?;
         let word_count = decrypted_mnemonic.split_whitespace().count();
         if word_count != 12 && word_count != 24 {
             return Err(ProviderError::AuthenticationFailed(format!(
-                "Invalid mnemonic format (expected 12 or 24 words, got {})", word_count
+                "Invalid mnemonic format (expected 12 or 24 words, got {})",
+                word_count
             )));
         }
 
-        internxt_log(&format!("[WEB AUTH] Mnemonic decrypted OK ({} words)", word_count));
+        internxt_log(&format!(
+            "[WEB AUTH] Mnemonic decrypted OK ({} words)",
+            word_count
+        ));
 
         let token = if access_data.new_token.is_empty() {
             access_data.token.clone()
@@ -914,17 +995,18 @@ impl InternxtProvider {
         self.bucket = access_data.user.bucket.clone();
         self.root_folder_id = access_data.user.root_folder_id.clone();
         self.current_folder_id = self.root_folder_id.clone();
-        self.basic_auth = Self::compute_basic_auth(
-            &access_data.user.bridge_user,
-            &access_data.user.user_id,
-        );
+        self.basic_auth =
+            Self::compute_basic_auth(&access_data.user.bridge_user, &access_data.user.user_id);
 
         // Use api.internxt.com for all subsequent API calls since gateway blocked CLI
         self.api_base = API_URL.to_string();
 
-        self.dir_cache_insert("/".to_string(), DirInfo {
-            uuid: self.root_folder_id.clone(),
-        });
+        self.dir_cache_insert(
+            "/".to_string(),
+            DirInfo {
+                uuid: self.root_folder_id.clone(),
+            },
+        );
 
         self.connected = true;
         internxt_log(&format!("[WEB AUTH] Connected! API: {}", self.api_base));
@@ -934,14 +1016,20 @@ impl InternxtProvider {
             let initial = initial.trim().to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
-                internxt_log(&format!("[WEB AUTH] Navigating to initial path: {}", normalized));
+                internxt_log(&format!(
+                    "[WEB AUTH] Navigating to initial path: {}",
+                    normalized
+                ));
                 match self.resolve_folder_uuid(&normalized).await {
                     Ok(uuid) => {
                         self.current_path = normalized;
                         self.current_folder_id = uuid;
                     }
                     Err(e) => {
-                        internxt_log(&format!("[WEB AUTH] Initial path '{}' not found, staying at root: {}", initial, e));
+                        internxt_log(&format!(
+                            "[WEB AUTH] Initial path '{}' not found, staying at root: {}",
+                            initial, e
+                        ));
                     }
                 }
             }
@@ -984,7 +1072,8 @@ impl StorageProvider for InternxtProvider {
         let login_url = format!("{}/drive/auth/login", GATEWAY);
         tracing::debug!(target: "internxt", "[STEP 1] POST {}", login_url);
         let login_body = serde_json::json!({ "email": email });
-        let login_resp = self.client
+        let login_resp = self
+            .client
             .post(&login_url)
             .header(CONTENT_TYPE, "application/json")
             .header("internxt-client", "aeroftp")
@@ -1002,8 +1091,11 @@ impl StorageProvider for InternxtProvider {
         if !login_status.is_success() {
             let body = login_resp.text().await.unwrap_or_default();
             tracing::debug!(target: "internxt", "[STEP 1 FAIL] Body: {}", &body[..body.len().min(200)]);
-            return Err(ProviderError::AuthenticationFailed(format!("Login failed ({}): {}",
-                login_status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "Login failed ({}): {}",
+                login_status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         let login_data: LoginResponse = login_resp.json().await.map_err(|e| {
@@ -1014,12 +1106,15 @@ impl StorageProvider for InternxtProvider {
         tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
 
         if login_data.tfa && tfa.is_empty() {
-            return Err(ProviderError::AuthenticationFailed("2FA code required for this account".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "2FA code required for this account".to_string(),
+            ));
         }
 
         // Step 2: Encrypt password hash (use expose_secret() inline)
         tracing::debug!(target: "internxt", "[STEP 2] Encrypting password with sKey...");
-        let encrypted_password = Self::encrypt_password_hash(self.config.password.expose_secret(), &login_data.s_key)?;
+        let encrypted_password =
+            Self::encrypt_password_hash(self.config.password.expose_secret(), &login_data.s_key)?;
         tracing::debug!(target: "internxt", "[STEP 2 OK] Encrypted password length={}", encrypted_password.len());
 
         // Step 3: POST /drive/auth/cli/login/access
@@ -1034,7 +1129,8 @@ impl StorageProvider for InternxtProvider {
             access_body["tfa"] = serde_json::Value::String(tfa.clone());
         }
 
-        let access_resp = self.client
+        let access_resp = self
+            .client
             .post(&access_url)
             .header(CONTENT_TYPE, "application/json")
             .header("internxt-client", "aeroftp")
@@ -1059,7 +1155,9 @@ impl StorageProvider for InternxtProvider {
 
                 // Try alternative: api.internxt.com /drive/auth/login/access
                 let password_clone = self.config.password.expose_secret().to_string();
-                let result = self.connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key).await;
+                let result = self
+                    .connect_web_auth(&email, &password_clone, &tfa, &login_data.s_key)
+                    .await;
                 // password_clone is a plain String on the stack; it will be dropped here.
                 // SecretString's zeroize-on-drop still protects the original.
                 return result;
@@ -1079,13 +1177,17 @@ impl StorageProvider for InternxtProvider {
         tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
 
         // Step 4: Decrypt mnemonic with user's password (expose_secret() inline)
-        let decrypted_mnemonic = Self::decrypt_text_with_key(&access_data.user.mnemonic, self.config.password.expose_secret())?;
+        let decrypted_mnemonic = Self::decrypt_text_with_key(
+            &access_data.user.mnemonic,
+            self.config.password.expose_secret(),
+        )?;
 
         // Validate BIP39 mnemonic (basic word count check)
         let word_count = decrypted_mnemonic.split_whitespace().count();
         if word_count != 12 && word_count != 24 {
             return Err(ProviderError::AuthenticationFailed(format!(
-                "Invalid mnemonic format (expected 12 or 24 words, got {})", word_count
+                "Invalid mnemonic format (expected 12 or 24 words, got {})",
+                word_count
             )));
         }
 
@@ -1101,33 +1203,42 @@ impl StorageProvider for InternxtProvider {
         self.bucket = access_data.user.bucket.clone();
         self.root_folder_id = access_data.user.root_folder_id.clone();
         self.current_folder_id = self.root_folder_id.clone();
-        self.basic_auth = Self::compute_basic_auth(
-            &access_data.user.bridge_user,
-            &access_data.user.user_id,
-        );
+        self.basic_auth =
+            Self::compute_basic_auth(&access_data.user.bridge_user, &access_data.user.user_id);
 
         // Cache root
-        self.dir_cache_insert("/".to_string(), DirInfo {
-            uuid: self.root_folder_id.clone(),
-        });
+        self.dir_cache_insert(
+            "/".to_string(),
+            DirInfo {
+                uuid: self.root_folder_id.clone(),
+            },
+        );
 
         self.connected = true;
-        internxt_log(&format!("Connected! Root folder: {}, Bucket: {}",
-            self.root_folder_id, self.bucket));
+        internxt_log(&format!(
+            "Connected! Root folder: {}, Bucket: {}",
+            self.root_folder_id, self.bucket
+        ));
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
             let initial = initial.trim().to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
-                internxt_log(&format!("[CONNECT] Navigating to initial path: {}", normalized));
+                internxt_log(&format!(
+                    "[CONNECT] Navigating to initial path: {}",
+                    normalized
+                ));
                 match self.resolve_folder_uuid(&normalized).await {
                     Ok(uuid) => {
                         self.current_path = normalized;
                         self.current_folder_id = uuid;
                     }
                     Err(e) => {
-                        internxt_log(&format!("[CONNECT] Initial path '{}' not found, staying at root: {}", initial, e));
+                        internxt_log(&format!(
+                            "[CONNECT] Initial path '{}' not found, staying at root: {}",
+                            initial, e
+                        ));
                     }
                 }
             }
@@ -1159,19 +1270,26 @@ impl StorageProvider for InternxtProvider {
         let resolved = self.resolve_path(path);
         let folder_uuid = self.resolve_folder_uuid(&resolved).await?;
 
-        internxt_log(&format!("[LIST] path={} uuid={} api_base={}", resolved, folder_uuid, self.api_base));
+        internxt_log(&format!(
+            "[LIST] path={} uuid={} api_base={}",
+            resolved, folder_uuid, self.api_base
+        ));
 
         let mut entries = Vec::new();
 
         // List all folders (paginated)
         let mut offset = 0;
         loop {
-            let url = format!("/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset);
+            let url = format!(
+                "/folders/content/{}/folders?offset={}&limit=50&sort=plainName&order=ASC",
+                folder_uuid, offset
+            );
             let full_url = format!("{}/drive{}", self.api_base, url);
             tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
 
-            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
+            let resp = self
+                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .await?;
 
             let status = resp.status();
             tracing::debug!(target: "internxt", "[LIST FOLDERS] Status: {}", status);
@@ -1179,8 +1297,11 @@ impl StorageProvider for InternxtProvider {
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
                 tracing::debug!(target: "internxt", "[LIST FOLDERS] Error body: {}", &body[..body.len().min(200)]);
-                return Err(ProviderError::ServerError(format!("List folders failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "List folders failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
 
             let raw_text = resp.text().await.map_err(|e| {
@@ -1194,12 +1315,15 @@ impl StorageProvider for InternxtProvider {
 
             let count = wrapper.folders.len();
             for folder in wrapper.folders {
-                let name = folder.plain_name
+                let name = folder
+                    .plain_name
                     .or(folder.name)
                     .unwrap_or_else(|| "unnamed".to_string());
 
                 // Skip deleted/trashed
-                if folder.status.as_deref() == Some("TRASHED") || folder.status.as_deref() == Some("DELETED") {
+                if folder.status.as_deref() == Some("TRASHED")
+                    || folder.status.as_deref() == Some("DELETED")
+                {
                     continue;
                 }
 
@@ -1210,9 +1334,12 @@ impl StorageProvider for InternxtProvider {
                     format!("{}/{}", resolved, name)
                 };
                 let folder_path_clone = folder_path.clone();
-                self.dir_cache_insert(folder_path, DirInfo {
-                    uuid: folder.uuid.clone(),
-                });
+                self.dir_cache_insert(
+                    folder_path,
+                    DirInfo {
+                        uuid: folder.uuid.clone(),
+                    },
+                );
 
                 entries.push(RemoteEntry {
                     name: name.clone(),
@@ -1230,19 +1357,25 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 { break; }
+            if count < 50 {
+                break;
+            }
             offset += 50;
         }
 
         // List all files (paginated)
         offset = 0;
         loop {
-            let url = format!("/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
-                folder_uuid, offset);
+            let url = format!(
+                "/folders/content/{}/files?offset={}&limit=50&sort=plainName&order=ASC",
+                folder_uuid, offset
+            );
             let full_url = format!("{}/drive{}", self.api_base, url);
             tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
 
-            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
+            let resp = self
+                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .await?;
 
             let status = resp.status();
             tracing::debug!(target: "internxt", "[LIST FILES] Status: {}", status);
@@ -1250,8 +1383,11 @@ impl StorageProvider for InternxtProvider {
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
                 tracing::debug!(target: "internxt", "[LIST FILES] Error body: {}", &body[..body.len().min(200)]);
-                return Err(ProviderError::ServerError(format!("List files failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "List files failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
 
             let raw_text = resp.text().await.map_err(|e| {
@@ -1266,13 +1402,17 @@ impl StorageProvider for InternxtProvider {
             let count = wrapper.files.len();
             for file in wrapper.files {
                 // Skip deleted/trashed
-                if file.status.as_deref() == Some("TRASHED") || file.status.as_deref() == Some("DELETED") {
+                if file.status.as_deref() == Some("TRASHED")
+                    || file.status.as_deref() == Some("DELETED")
+                {
                     continue;
                 }
 
                 let name = Self::get_filename(&file);
                 let size = Self::extract_size(&file.size);
-                let mod_time = file.modification_time.clone()
+                let mod_time = file
+                    .modification_time
+                    .clone()
                     .or_else(|| file.updated_at.clone());
                 let file_path = if resolved == "/" {
                     format!("/{}", name)
@@ -1296,11 +1436,17 @@ impl StorageProvider for InternxtProvider {
                 });
             }
 
-            if count < 50 { break; }
+            if count < 50 {
+                break;
+            }
             offset += 50;
         }
 
-        internxt_log(&format!("[LIST] Total entries: {} (path: {})", entries.len(), resolved));
+        internxt_log(&format!(
+            "[LIST] Total entries: {} (path: {})",
+            entries.len(),
+            resolved
+        ));
         Ok(entries)
     }
 
@@ -1332,43 +1478,62 @@ impl StorageProvider for InternxtProvider {
         let filename = filename.to_string();
         let parent_uuid = self.resolve_folder_uuid(&parent_path).await?;
 
-        let file_info = self.find_file_in_folder(&parent_uuid, &filename).await?
+        let file_info = self
+            .find_file_in_folder(&parent_uuid, &filename)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
         let (file_uuid, file_id, file_bucket) = file_info;
 
-        internxt_log(&format!("Downloading {} (uuid: {}, fileId: {})", filename, file_uuid, file_id));
+        internxt_log(&format!(
+            "Downloading {} (uuid: {}, fileId: {})",
+            filename, file_uuid, file_id
+        ));
 
         // Get bucket file info (shards + encryption index)
         let info_url = format!("/buckets/{}/files/{}/info", file_bucket, file_id);
-        let info_resp = self.send_retryable(self.network_request(reqwest::Method::GET, &info_url)
-            .header("x-api-version", "2")).await?;
+        let info_resp = self
+            .send_retryable(
+                self.network_request(reqwest::Method::GET, &info_url)
+                    .header("x-api-version", "2"),
+            )
+            .await?;
 
         if !info_resp.status().is_success() {
             let status = info_resp.status();
             let body = info_resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Get file info failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Get file info failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
-        let bucket_info: BucketFileInfo = info_resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
-        })?;
+        let bucket_info: BucketFileInfo = info_resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
 
         // Handle empty files — atomic write for consistency
         if bucket_info.size == 0 {
-            let atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
-                ProviderError::Other(format!("Failed to create file: {}", e))
-            })?;
+            let atomic = super::atomic_write::AtomicFile::new(local_path)
+                .await
+                .map_err(|e| ProviderError::Other(format!("Failed to create file: {}", e)))?;
             atomic.commit().await.ok();
             return Ok(());
         }
 
         if bucket_info.shards.is_empty() {
-            return Err(ProviderError::ServerError("No shards found for file".to_string()));
+            return Err(ProviderError::ServerError(
+                "No shards found for file".to_string(),
+            ));
         }
 
         // Derive encryption key from mnemonic + bucket + index
-        let (key, iv) = Self::generate_file_key(self.mnemonic.expose_secret(), &file_bucket, &bucket_info.index)?;
+        let (key, iv) = Self::generate_file_key(
+            self.mnemonic.expose_secret(),
+            &file_bucket,
+            &bucket_info.index,
+        )?;
 
         // Single-shard download. Multi-shard files (very large, typically >5GB) would need
         // sequential shard download and concatenation. Not implemented yet.
@@ -1377,13 +1542,17 @@ impl StorageProvider for InternxtProvider {
         let dl_resp = self.send_retryable(self.client.get(&shard.url)).await?;
 
         if !dl_resp.status().is_success() {
-            return Err(ProviderError::ServerError(format!("Shard download failed: {}", dl_resp.status())));
+            return Err(ProviderError::ServerError(format!(
+                "Shard download failed: {}",
+                dl_resp.status()
+            )));
         }
 
         let total_size = dl_resp.content_length().unwrap_or(bucket_info.size as u64);
-        let encrypted_data = dl_resp.bytes().await.map_err(|e| {
-            ProviderError::Other(format!("Failed to read download stream: {}", e))
-        })?;
+        let encrypted_data = dl_resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to read download stream: {}", e)))?;
 
         if let Some(ref progress) = on_progress {
             progress(encrypted_data.len() as u64, total_size);
@@ -1393,17 +1562,23 @@ impl StorageProvider for InternxtProvider {
         let decrypted = Self::decrypt_file_content(&encrypted_data, &key, &iv)?;
 
         // Write to file atomically
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
-            ProviderError::Other(format!("Failed to create output file: {}", e))
-        })?;
-        atomic.write_all(&decrypted).await.map_err(|e| {
-            ProviderError::Other(format!("Failed to write file: {}", e))
-        })?;
-        atomic.commit().await.map_err(|e| {
-            ProviderError::Other(format!("Failed to finalize download: {}", e))
-        })?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to create output file: {}", e)))?;
+        atomic
+            .write_all(&decrypted)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to write file: {}", e)))?;
+        atomic
+            .commit()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to finalize download: {}", e)))?;
 
-        internxt_log(&format!("Downloaded {} ({} bytes)", filename, decrypted.len()));
+        internxt_log(&format!(
+            "Downloaded {} ({} bytes)",
+            filename,
+            decrypted.len()
+        ));
         Ok(())
     }
 
@@ -1414,9 +1589,9 @@ impl StorageProvider for InternxtProvider {
 
         // H2: Check file size before reading to prevent OOM
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
-        let metadata = tokio::fs::metadata(&tmp).await.map_err(|e| {
-            ProviderError::Other(format!("Failed to stat temp file: {}", e))
-        })?;
+        let metadata = tokio::fs::metadata(&tmp)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to stat temp file: {}", e)))?;
         if metadata.len() > limit {
             let _ = tokio::fs::remove_file(&tmp).await;
             return Err(ProviderError::TransferFailed(format!(
@@ -1426,9 +1601,9 @@ impl StorageProvider for InternxtProvider {
             )));
         }
 
-        let data = tokio::fs::read(&tmp).await.map_err(|e| {
-            ProviderError::Other(format!("Failed to read temp file: {}", e))
-        })?;
+        let data = tokio::fs::read(&tmp)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to read temp file: {}", e)))?;
         let _ = tokio::fs::remove_file(&tmp).await;
         Ok(data)
     }
@@ -1448,26 +1623,38 @@ impl StorageProvider for InternxtProvider {
         // M9: Full file read into memory for client-side AES-256-CTR encryption before upload.
         // Internxt requires encrypted content + HMAC, which needs buffering the entire plaintext.
         // Practical limit: available RAM. For files >1GB, memory pressure may be significant.
-        let data = tokio::fs::read(local_path).await.map_err(|e| {
-            ProviderError::Other(format!("Failed to read file: {}", e))
-        })?;
+        let data = tokio::fs::read(local_path)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to read file: {}", e)))?;
         let plain_size = data.len() as i64;
 
-        internxt_log(&format!("Uploading {} ({} bytes) to {}", filename, plain_size, resolved));
+        internxt_log(&format!(
+            "Uploading {} ({} bytes) to {}",
+            filename, plain_size, resolved
+        ));
 
         // Preemptive delete: if file already exists, remove it before uploading.
         // This avoids 409 Conflict and gives the server time to process the delete
         // during the upload/encryption phase.
-        if let Some((existing_uuid, _, _)) = self.find_file_in_folder(&parent_uuid, &filename).await? {
-            internxt_log(&format!("[UPLOAD] File {} exists, deleting before overwrite...", filename));
-            let _ = self.send_retryable(
-                self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", existing_uuid))
-            ).await;
+        if let Some((existing_uuid, _, _)) =
+            self.find_file_in_folder(&parent_uuid, &filename).await?
+        {
+            internxt_log(&format!(
+                "[UPLOAD] File {} exists, deleting before overwrite...",
+                filename
+            ));
+            let _ = self
+                .send_retryable(self.drive_request(
+                    reqwest::Method::DELETE,
+                    &format!("/files/{}", existing_uuid),
+                ))
+                .await;
         }
 
         if plain_size == 0 {
             let (name, ext) = Self::split_name_ext(&filename);
-            self.create_file_meta(None, &parent_uuid, &name, &ext, 0).await?;
+            self.create_file_meta(None, &parent_uuid, &name, &ext, 0)
+                .await?;
             return Ok(());
         }
 
@@ -1477,7 +1664,8 @@ impl StorageProvider for InternxtProvider {
         let enc_index = hex::encode(index_bytes);
 
         // Derive per-file key
-        let (key, iv) = Self::generate_file_key(self.mnemonic.expose_secret(), &self.bucket, &enc_index)?;
+        let (key, iv) =
+            Self::generate_file_key(self.mnemonic.expose_secret(), &self.bucket, &enc_index)?;
 
         // Encrypt
         let encrypted = Self::encrypt_file_content(&data, &key, &iv)?;
@@ -1496,18 +1684,26 @@ impl StorageProvider for InternxtProvider {
         });
 
         let full_start_url = format!("{}/network{}", GATEWAY, start_url);
-        internxt_log(&format!("[UPLOAD] POST {} (size={})", full_start_url, plain_size));
+        internxt_log(&format!(
+            "[UPLOAD] POST {} (size={})",
+            full_start_url, plain_size
+        ));
 
         let mut start_data: Option<StartUploadResp> = None;
         let mut last_error = String::new();
         for attempt in 0..3 {
             if attempt > 0 {
                 let delay = std::time::Duration::from_millis(1000 * (1 << attempt));
-                internxt_log(&format!("[UPLOAD] Retry attempt {} after {:?}...", attempt + 1, delay));
+                internxt_log(&format!(
+                    "[UPLOAD] Retry attempt {} after {:?}...",
+                    attempt + 1,
+                    delay
+                ));
                 tokio::time::sleep(delay).await;
             }
 
-            let resp = self.network_request(reqwest::Method::POST, &start_url)
+            let resp = self
+                .network_request(reqwest::Method::POST, &start_url)
                 .header(CONTENT_TYPE, "application/json; charset=utf-8")
                 .json(&start_body)
                 .send()
@@ -1517,25 +1713,44 @@ impl StorageProvider for InternxtProvider {
                 Ok(r) => r,
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    internxt_log(&format!("[UPLOAD] Attempt {} failed: {}", attempt + 1, last_error));
+                    internxt_log(&format!(
+                        "[UPLOAD] Attempt {} failed: {}",
+                        attempt + 1,
+                        last_error
+                    ));
                     continue;
                 }
             };
 
             let status = resp.status();
-            internxt_log(&format!("[UPLOAD] Attempt {} status: {}", attempt + 1, status));
+            internxt_log(&format!(
+                "[UPLOAD] Attempt {} status: {}",
+                attempt + 1,
+                status
+            ));
 
             if status.as_u16() == 500 || status.as_u16() == 502 || status.as_u16() == 503 {
                 let body = resp.text().await.unwrap_or_default();
-                last_error = format!("Server error ({}): {}", status, &body[..body.len().min(200)]);
-                internxt_log(&format!("[UPLOAD] Attempt {} server error, retrying: {}", attempt + 1, last_error));
+                last_error = format!(
+                    "Server error ({}): {}",
+                    status,
+                    &body[..body.len().min(200)]
+                );
+                internxt_log(&format!(
+                    "[UPLOAD] Attempt {} server error, retrying: {}",
+                    attempt + 1,
+                    last_error
+                ));
                 continue;
             }
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Start upload failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "Start upload failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
 
             let raw = resp.text().await.map_err(|e| {
@@ -1549,7 +1764,11 @@ impl StorageProvider for InternxtProvider {
                     break;
                 }
                 Err(e) => {
-                    last_error = format!("Parse error: {} | Response: {}", e, &raw[..raw.len().min(200)]);
+                    last_error = format!(
+                        "Parse error: {} | Response: {}",
+                        e,
+                        &raw[..raw.len().min(200)]
+                    );
                     internxt_log(&format!("[UPLOAD] {}", last_error));
                     continue;
                 }
@@ -1557,11 +1776,16 @@ impl StorageProvider for InternxtProvider {
         }
 
         let start_data = start_data.ok_or_else(|| {
-            ProviderError::ServerError(format!("Start upload failed after 3 attempts: {}", last_error))
+            ProviderError::ServerError(format!(
+                "Start upload failed after 3 attempts: {}",
+                last_error
+            ))
         })?;
 
         if start_data.uploads.is_empty() {
-            return Err(ProviderError::ServerError("No upload parts returned".to_string()));
+            return Err(ProviderError::ServerError(
+                "No upload parts returned".to_string(),
+            ));
         }
 
         let part = &start_data.uploads[0];
@@ -1572,21 +1796,29 @@ impl StorageProvider for InternxtProvider {
         };
 
         if upload_url.is_empty() {
-            return Err(ProviderError::ServerError("No upload URL provided".to_string()));
+            return Err(ProviderError::ServerError(
+                "No upload URL provided".to_string(),
+            ));
         }
 
         // Transfer encrypted data
-        let transfer_resp = self.send_retryable(
-            self.client.put(&upload_url)
-                .header(CONTENT_TYPE, "application/octet-stream")
-                .body(encrypted.clone())
-        ).await?;
+        let transfer_resp = self
+            .send_retryable(
+                self.client
+                    .put(&upload_url)
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .body(encrypted.clone()),
+            )
+            .await?;
 
         if !transfer_resp.status().is_success() {
             let status = transfer_resp.status();
             let body = transfer_resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Upload transfer failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Upload transfer failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         if let Some(ref progress) = on_progress {
@@ -1607,15 +1839,22 @@ impl StorageProvider for InternxtProvider {
             "shards": [{ "hash": ripemd_hash, "uuid": part.uuid }]
         });
 
-        let finish_resp = self.send_retryable(self.network_request(reqwest::Method::POST, &finish_url)
-            .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .json(&finish_body)).await?;
+        let finish_resp = self
+            .send_retryable(
+                self.network_request(reqwest::Method::POST, &finish_url)
+                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                    .json(&finish_body),
+            )
+            .await?;
 
         if !finish_resp.status().is_success() {
             let status = finish_resp.status();
             let body = finish_resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Finish upload failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Finish upload failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         let finish_data: FinishUploadResp = finish_resp.json().await.map_err(|e| {
@@ -1624,14 +1863,19 @@ impl StorageProvider for InternxtProvider {
 
         // Create file metadata in Drive
         let (name, ext) = Self::split_name_ext(&filename);
-        self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size).await.map_err(|e| {
-            // If still 409 despite preemptive delete, provide clear error
-            if format!("{}", e).contains("409") {
-                ProviderError::ServerError(format!("File {} already exists — try again in a few seconds", filename))
-            } else {
-                e
-            }
-        })?;
+        self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
+            .await
+            .map_err(|e| {
+                // If still 409 despite preemptive delete, provide clear error
+                if format!("{}", e).contains("409") {
+                    ProviderError::ServerError(format!(
+                        "File {} already exists — try again in a few seconds",
+                        filename
+                    ))
+                } else {
+                    e
+                }
+            })?;
 
         internxt_log(&format!("Uploaded {} OK", filename));
         Ok(())
@@ -1644,7 +1888,10 @@ impl StorageProvider for InternxtProvider {
         let folder_name = folder_name.to_string();
         let parent_uuid = self.resolve_folder_uuid(&parent_path).await?;
 
-        internxt_log(&format!("Creating folder: {} in {}", folder_name, parent_path));
+        internxt_log(&format!(
+            "Creating folder: {} in {}",
+            folder_name, parent_path
+        ));
 
         let now = chrono::Utc::now().to_rfc3339();
         let body = serde_json::json!({
@@ -1654,15 +1901,22 @@ impl StorageProvider for InternxtProvider {
             "modificationTime": now,
         });
 
-        let resp = self.send_retryable(self.drive_request(reqwest::Method::POST, "/folders")
-            .header(CONTENT_TYPE, "application/json")
-            .json(&body)).await?;
+        let resp = self
+            .send_retryable(
+                self.drive_request(reqwest::Method::POST, "/folders")
+                    .header(CONTENT_TYPE, "application/json")
+                    .json(&body),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Create folder failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Create folder failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         let folder_data: CreateFolderResponse = resp.json().await.map_err(|e| {
@@ -1670,9 +1924,12 @@ impl StorageProvider for InternxtProvider {
         })?;
 
         // Cache new folder
-        self.dir_cache_insert(resolved, DirInfo {
-            uuid: folder_data.uuid,
-        });
+        self.dir_cache_insert(
+            resolved,
+            DirInfo {
+                uuid: folder_data.uuid,
+            },
+        );
 
         Ok(())
     }
@@ -1684,18 +1941,25 @@ impl StorageProvider for InternxtProvider {
         let filename = filename.to_string();
         let parent_uuid = self.resolve_folder_uuid(&parent_path).await?;
 
-        let file_info = self.find_file_in_folder(&parent_uuid, &filename).await?
+        let file_info = self
+            .find_file_in_folder(&parent_uuid, &filename)
+            .await?
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
 
-        let resp = self.send_retryable(
-            self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0))
-        ).await?;
+        let resp = self
+            .send_retryable(
+                self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0)),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Delete failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Delete failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         Ok(())
@@ -1705,15 +1969,20 @@ impl StorageProvider for InternxtProvider {
         let resolved = self.resolve_path(path);
         let uuid = self.resolve_folder_uuid(&resolved).await?;
 
-        let resp = self.send_retryable(
-            self.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid))
-        ).await?;
+        let resp = self
+            .send_retryable(
+                self.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid)),
+            )
+            .await?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Delete folder failed ({}): {}",
-                status, super::sanitize_api_error(&body))));
+            return Err(ProviderError::ServerError(format!(
+                "Delete folder failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
         }
 
         // Remove from cache
@@ -1759,24 +2028,35 @@ impl StorageProvider for InternxtProvider {
         let from_parent_uuid = self.resolve_folder_uuid(&from_parent).await?;
 
         // Try as file first
-        if let Some((file_uuid, _, _)) = self.find_file_in_folder(&from_parent_uuid, &from_name).await? {
+        if let Some((file_uuid, _, _)) = self
+            .find_file_in_folder(&from_parent_uuid, &from_name)
+            .await?
+        {
             // If target is in a different directory, move first
             if from_parent != to_parent {
                 let to_parent_uuid = self.resolve_folder_uuid(&to_parent).await?;
                 let move_payload = serde_json::json!({
                     "destinationFolder": to_parent_uuid
                 });
-                let move_resp = self.send_retryable(
-                    self.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
+                let move_resp = self
+                    .send_retryable(
+                        self.drive_request(
+                            reqwest::Method::PATCH,
+                            &format!("/files/{}", file_uuid),
+                        )
                         .header(CONTENT_TYPE, "application/json")
-                        .json(&move_payload)
-                ).await?;
+                        .json(&move_payload),
+                    )
+                    .await?;
 
                 if !move_resp.status().is_success() {
                     let status = move_resp.status();
                     let body = move_resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!("Move file failed ({}): {}",
-                        status, super::sanitize_api_error(&body))));
+                    return Err(ProviderError::ServerError(format!(
+                        "Move file failed ({}): {}",
+                        status,
+                        super::sanitize_api_error(&body)
+                    )));
                 }
             }
 
@@ -1788,17 +2068,25 @@ impl StorageProvider for InternxtProvider {
                     payload["type"] = serde_json::Value::String(new_type);
                 }
 
-                let resp = self.send_retryable(
-                    self.drive_request(reqwest::Method::PUT, &format!("/files/{}/meta", file_uuid))
+                let resp = self
+                    .send_retryable(
+                        self.drive_request(
+                            reqwest::Method::PUT,
+                            &format!("/files/{}/meta", file_uuid),
+                        )
                         .header(CONTENT_TYPE, "application/json")
-                        .json(&payload)
-                ).await?;
+                        .json(&payload),
+                    )
+                    .await?;
 
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::ServerError(format!("Rename failed ({}): {}",
-                        status, super::sanitize_api_error(&body))));
+                    return Err(ProviderError::ServerError(format!(
+                        "Rename failed ({}): {}",
+                        status,
+                        super::sanitize_api_error(&body)
+                    )));
                 }
             }
             return Ok(());
@@ -1807,7 +2095,12 @@ impl StorageProvider for InternxtProvider {
         // Try as folder — resolve UUID (may not be cached)
         let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
             Ok(uuid) => uuid,
-            Err(_) => return Err(ProviderError::NotFound(format!("Not found: {}", from_resolved))),
+            Err(_) => {
+                return Err(ProviderError::NotFound(format!(
+                    "Not found: {}",
+                    from_resolved
+                )))
+            }
         };
 
         // Move folder to different parent if needed
@@ -1816,34 +2109,50 @@ impl StorageProvider for InternxtProvider {
             let move_payload = serde_json::json!({
                 "destinationFolder": to_parent_uuid
             });
-            let move_resp = self.send_retryable(
-                self.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
+            let move_resp = self
+                .send_retryable(
+                    self.drive_request(
+                        reqwest::Method::PATCH,
+                        &format!("/folders/{}", folder_uuid),
+                    )
                     .header(CONTENT_TYPE, "application/json")
-                    .json(&move_payload)
-            ).await?;
+                    .json(&move_payload),
+                )
+                .await?;
 
             if !move_resp.status().is_success() {
                 let status = move_resp.status();
                 let body = move_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Move folder failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "Move folder failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
         }
 
         // Rename folder if name changed
         if from_name != to_name {
             let rename_payload = serde_json::json!({ "plainName": to_name });
-            let rename_resp = self.send_retryable(
-                self.drive_request(reqwest::Method::PUT, &format!("/folders/{}/meta", folder_uuid))
+            let rename_resp = self
+                .send_retryable(
+                    self.drive_request(
+                        reqwest::Method::PUT,
+                        &format!("/folders/{}/meta", folder_uuid),
+                    )
                     .header(CONTENT_TYPE, "application/json")
-                    .json(&rename_payload)
-            ).await?;
+                    .json(&rename_payload),
+                )
+                .await?;
 
             if !rename_resp.status().is_success() {
                 let status = rename_resp.status();
                 let body = rename_resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Rename folder failed ({}): {}",
-                    status, super::sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "Rename folder failed ({}): {}",
+                    status,
+                    super::sanitize_api_error(&body)
+                )));
             }
         }
 
@@ -1909,9 +2218,9 @@ impl StorageProvider for InternxtProvider {
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // Attempt token refresh. JWT tokens last ~7 days but refreshing proactively
         // prevents expiration during long sessions.
-        let resp = self.send_retryable(
-            self.drive_request(reqwest::Method::GET, "/users/refresh")
-        ).await;
+        let resp = self
+            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/refresh"))
+            .await;
 
         match resp {
             Ok(r) if r.status().is_success() => {
@@ -1945,20 +2254,30 @@ impl StorageProvider for InternxtProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         // GET /drive/users/usage
-        let usage_resp = self.send_retryable(self.drive_request(reqwest::Method::GET, "/users/usage")).await?;
+        let usage_resp = self
+            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/usage"))
+            .await?;
 
         let used = if usage_resp.status().is_success() {
-            let data: UsageResponse = usage_resp.json().await.unwrap_or(UsageResponse { drive: None, total: None });
+            let data: UsageResponse = usage_resp.json().await.unwrap_or(UsageResponse {
+                drive: None,
+                total: None,
+            });
             data.total.or(data.drive).unwrap_or(0) as u64
         } else {
             0
         };
 
         // GET /drive/users/limit
-        let limit_resp = self.send_retryable(self.drive_request(reqwest::Method::GET, "/users/limit")).await?;
+        let limit_resp = self
+            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/limit"))
+            .await?;
 
         let total = if limit_resp.status().is_success() {
-            let data: LimitResponse = limit_resp.json().await.unwrap_or(LimitResponse { max_space_bytes: 0 });
+            let data: LimitResponse = limit_resp
+                .json()
+                .await
+                .unwrap_or(LimitResponse { max_space_bytes: 0 });
             data.max_space_bytes as u64
         } else {
             0
@@ -1978,9 +2297,7 @@ impl InternxtProvider {
     /// Split "document.pdf" → ("document", "pdf"), "README" → ("README", "")
     fn split_name_ext(filename: &str) -> (String, String) {
         match filename.rfind('.') {
-            Some(pos) if pos > 0 => {
-                (filename[..pos].to_string(), filename[pos + 1..].to_string())
-            }
+            Some(pos) if pos > 0 => (filename[..pos].to_string(), filename[pos + 1..].to_string()),
             _ => (filename.to_string(), String::new()),
         }
     }
@@ -2013,15 +2330,22 @@ impl InternxtProvider {
             body["fileId"] = serde_json::Value::String(id.to_string());
         }
 
-        let resp = self.send_retryable(self.drive_request(reqwest::Method::POST, "/files")
-            .header(CONTENT_TYPE, "application/json; charset=utf-8")
-            .json(&body)).await?;
+        let resp = self
+            .send_retryable(
+                self.drive_request(reqwest::Method::POST, "/files")
+                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                    .json(&body),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let resp_body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Create file meta failed ({}): {}",
-                status, super::sanitize_api_error(&resp_body))));
+            return Err(ProviderError::ServerError(format!(
+                "Create file meta failed ({}): {}",
+                status,
+                super::sanitize_api_error(&resp_body)
+            )));
         }
 
         resp.json::<CreateMetaResponse>().await.map_err(|e| {
@@ -2036,7 +2360,8 @@ impl InternxtProvider {
         &self,
         rb: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
-        let request = rb.build()
+        let request = rb
+            .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &self.retry_config)
             .await
@@ -2058,7 +2383,9 @@ impl InternxtProvider {
 
         loop {
             let url = format!("/storage/trash/paginated?offset={}&limit={}", offset, limit);
-            let resp = self.send_retryable(self.drive_request(reqwest::Method::GET, &url)).await?;
+            let resp = self
+                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -2084,13 +2411,21 @@ impl InternxtProvider {
             // Parse trashed folders
             if let Some(folders) = parsed.get("folders").and_then(|f| f.as_array()) {
                 for folder in folders {
-                    let name = folder.get("plainName")
+                    let name = folder
+                        .get("plainName")
                         .or_else(|| folder.get("name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("unnamed")
                         .to_string();
-                    let uuid = folder.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let updated = folder.get("updatedAt").and_then(|v| v.as_str()).map(String::from);
+                    let uuid = folder
+                        .get("uuid")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let updated = folder
+                        .get("updatedAt")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
 
                     results.push(RemoteEntry {
                         name,
@@ -2113,7 +2448,8 @@ impl InternxtProvider {
             // Parse trashed files
             if let Some(files) = parsed.get("files").and_then(|f| f.as_array()) {
                 for file in files {
-                    let plain_name = file.get("plainName")
+                    let plain_name = file
+                        .get("plainName")
                         .or_else(|| file.get("name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("unnamed");
@@ -2123,11 +2459,16 @@ impl InternxtProvider {
                     } else {
                         format!("{}.{}", plain_name, file_type)
                     };
-                    let uuid = file.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let size = file.get("size")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let updated = file.get("updatedAt").and_then(|v| v.as_str()).map(String::from);
+                    let uuid = file
+                        .get("uuid")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let size = file.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let updated = file
+                        .get("updatedAt")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
 
                     results.push(RemoteEntry {
                         name,

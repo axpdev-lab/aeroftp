@@ -7,12 +7,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
 use data_encoding::BASE32;
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -83,7 +83,9 @@ pub struct CryptomatorState {
 
 impl CryptomatorState {
     pub fn new() -> Self {
-        Self { vaults: Mutex::new(HashMap::new()) }
+        Self {
+            vaults: Mutex::new(HashMap::new()),
+        }
     }
 }
 
@@ -94,8 +96,7 @@ fn derive_kek(password: &str, salt: &[u8], n: u32, r: u32) -> Result<[u8; 32], S
     use scrypt::{scrypt, Params};
 
     let log_n = (n as f64).log2() as u8;
-    let params = Params::new(log_n, r, 1, 32)
-        .map_err(|e| format!("scrypt params: {}", e))?;
+    let params = Params::new(log_n, r, 1, 32).map_err(|e| format!("scrypt params: {}", e))?;
 
     let mut kek = [0u8; 32];
     scrypt(password.as_bytes(), salt, &params, &mut kek)
@@ -110,7 +111,8 @@ fn unwrap_key(kek: &[u8; 32], wrapped: &[u8]) -> Result<[u8; 32], String> {
 
     let kek_obj: Kek<aes_gcm::aes::Aes256> = Kek::from(*kek);
     let mut buf = [0u8; 32];
-    kek_obj.unwrap(wrapped, &mut buf)
+    kek_obj
+        .unwrap(wrapped, &mut buf)
         .map_err(|e| format!("AES-KW unwrap: {}", e))?;
     Ok(buf)
 }
@@ -121,13 +123,19 @@ fn wrap_key(kek: &[u8; 32], key: &[u8; 32]) -> Result<Vec<u8>, String> {
 
     let kek_obj: Kek<aes_gcm::aes::Aes256> = Kek::from(*kek);
     let mut buf = [0u8; 40]; // 32 + 8 byte integrity check
-    kek_obj.wrap(key, &mut buf)
+    kek_obj
+        .wrap(key, &mut buf)
         .map_err(|e| format!("AES-KW wrap: {}", e))?;
     Ok(buf.to_vec())
 }
 
 /// Encrypt data with AES-SIV (deterministic authenticated encryption)
-fn aes_siv_encrypt(enc_key: &[u8; 32], mac_key: &[u8; 32], plaintext: &[u8], associated_data: &[u8]) -> Result<Vec<u8>, String> {
+fn aes_siv_encrypt(
+    enc_key: &[u8; 32],
+    mac_key: &[u8; 32],
+    plaintext: &[u8],
+    associated_data: &[u8],
+) -> Result<Vec<u8>, String> {
     use aes_siv::siv::Aes256Siv;
     use aes_siv::KeyInit as SivKeyInit;
 
@@ -137,12 +145,18 @@ fn aes_siv_encrypt(enc_key: &[u8; 32], mac_key: &[u8; 32], plaintext: &[u8], ass
     combined_key[32..].copy_from_slice(enc_key);
 
     let mut cipher = Aes256Siv::new(&combined_key.into());
-    cipher.encrypt([associated_data], plaintext)
+    cipher
+        .encrypt([associated_data], plaintext)
         .map_err(|e| format!("AES-SIV encrypt: {}", e))
 }
 
 /// Decrypt data with AES-SIV
-fn aes_siv_decrypt(enc_key: &[u8; 32], mac_key: &[u8; 32], ciphertext: &[u8], associated_data: &[u8]) -> Result<Vec<u8>, String> {
+fn aes_siv_decrypt(
+    enc_key: &[u8; 32],
+    mac_key: &[u8; 32],
+    ciphertext: &[u8],
+    associated_data: &[u8],
+) -> Result<Vec<u8>, String> {
     use aes_siv::siv::Aes256Siv;
     use aes_siv::KeyInit as SivKeyInit;
 
@@ -151,7 +165,8 @@ fn aes_siv_decrypt(enc_key: &[u8; 32], mac_key: &[u8; 32], ciphertext: &[u8], as
     combined_key[32..].copy_from_slice(enc_key);
 
     let mut cipher = Aes256Siv::new(&combined_key.into());
-    cipher.decrypt([associated_data], ciphertext)
+    cipher
+        .decrypt([associated_data], ciphertext)
         .map_err(|e| format!("AES-SIV decrypt: {}", e))
 }
 
@@ -179,30 +194,48 @@ fn hash_dir_id(vault: &UnlockedVault, dir_id: &str) -> Result<PathBuf, String> {
 fn encrypt_filename(vault: &UnlockedVault, dir_id: &str, name: &str) -> Result<String, String> {
     use data_encoding::BASE64URL_NOPAD;
 
-    let encrypted = aes_siv_encrypt(&vault.enc_key, &vault.mac_key, name.as_bytes(), dir_id.as_bytes())?;
+    let encrypted = aes_siv_encrypt(
+        &vault.enc_key,
+        &vault.mac_key,
+        name.as_bytes(),
+        dir_id.as_bytes(),
+    )?;
     let encoded = BASE64URL_NOPAD.encode(&encrypted);
 
     Ok(format!("{}.c9r", encoded))
 }
 
 /// Decrypt an encrypted filename (strip .c9r, base64url decode, AES-SIV decrypt)
-fn decrypt_filename(vault: &UnlockedVault, dir_id: &str, encrypted_name: &str) -> Result<String, String> {
+fn decrypt_filename(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    encrypted_name: &str,
+) -> Result<String, String> {
     use data_encoding::BASE64URL_NOPAD;
 
-    let name_part = encrypted_name.strip_suffix(".c9r")
+    let name_part = encrypted_name
+        .strip_suffix(".c9r")
         .ok_or_else(|| format!("Not a .c9r entry: {}", encrypted_name))?;
 
-    let ciphertext = BASE64URL_NOPAD.decode(name_part.as_bytes())
+    let ciphertext = BASE64URL_NOPAD
+        .decode(name_part.as_bytes())
         .map_err(|e| format!("Base64url decode: {}", e))?;
 
-    let plaintext = aes_siv_decrypt(&vault.enc_key, &vault.mac_key, &ciphertext, dir_id.as_bytes())?;
+    let plaintext = aes_siv_decrypt(
+        &vault.enc_key,
+        &vault.mac_key,
+        &ciphertext,
+        dir_id.as_bytes(),
+    )?;
 
-    String::from_utf8(plaintext)
-        .map_err(|e| format!("UTF-8 decode: {}", e))
+    String::from_utf8(plaintext).map_err(|e| format!("UTF-8 decode: {}", e))
 }
 
 /// Unlock a Cryptomator vault
-fn unlock_vault_inner(vault_path: &Path, password: &str) -> Result<(UnlockedVault, VaultConfig), String> {
+fn unlock_vault_inner(
+    vault_path: &Path,
+    password: &str,
+) -> Result<(UnlockedVault, VaultConfig), String> {
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD;
 
@@ -223,27 +256,39 @@ fn unlock_vault_inner(vault_path: &Path, password: &str) -> Result<(UnlockedVaul
     if parts.len() != 3 {
         return Err("Invalid vault.cryptomator JWT format".to_string());
     }
-    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(parts[1])
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[1])
         .map_err(|e| format!("JWT decode: {}", e))?;
-    let config: VaultConfig = serde_json::from_slice(&payload)
-        .map_err(|e| format!("Invalid vault config: {}", e))?;
+    let config: VaultConfig =
+        serde_json::from_slice(&payload).map_err(|e| format!("Invalid vault config: {}", e))?;
 
     if config.format != 8 {
-        return Err(format!("Unsupported vault format: {} (only format 8 supported)", config.format));
+        return Err(format!(
+            "Unsupported vault format: {} (only format 8 supported)",
+            config.format
+        ));
     }
     if config.cipher_combo != "SIV_GCM" && config.cipher_combo != "SIV_CTRMAC" {
         return Err(format!("Unsupported cipher combo: {}", config.cipher_combo));
     }
 
     // Derive KEK
-    let salt = b64.decode(&masterkey.scrypt_salt)
+    let salt = b64
+        .decode(&masterkey.scrypt_salt)
         .map_err(|e| format!("Salt decode: {}", e))?;
-    let kek = derive_kek(password, &salt, masterkey.scrypt_cost_param, masterkey.scrypt_block_size)?;
+    let kek = derive_kek(
+        password,
+        &salt,
+        masterkey.scrypt_cost_param,
+        masterkey.scrypt_block_size,
+    )?;
 
     // Unwrap master keys
-    let wrapped_enc = b64.decode(&masterkey.primary_master_key)
+    let wrapped_enc = b64
+        .decode(&masterkey.primary_master_key)
         .map_err(|e| format!("Enc key decode: {}", e))?;
-    let wrapped_mac = b64.decode(&masterkey.hmac_master_key)
+    let wrapped_mac = b64
+        .decode(&masterkey.hmac_master_key)
         .map_err(|e| format!("MAC key decode: {}", e))?;
 
     let enc_key = unwrap_key(&kek, &wrapped_enc)?;
@@ -269,8 +314,8 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
     }
 
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&dir_path)
-        .map_err(|e| format!("Failed to read vault directory: {}", e))?;
+    let read_dir =
+        fs::read_dir(&dir_path).map_err(|e| format!("Failed to read vault directory: {}", e))?;
 
     for entry_result in read_dir {
         let entry = entry_result.map_err(|e| format!("Read dir entry: {}", e))?;
@@ -356,7 +401,13 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
     }
 
     entries.sort_by(|a, b| {
-        if a.is_dir != b.is_dir { return if a.is_dir { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }; }
+        if a.is_dir != b.is_dir {
+            return if a.is_dir {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
         a.name.to_lowercase().cmp(&b.name.to_lowercase())
     });
 
@@ -364,7 +415,12 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
 }
 
 /// Decrypt a file from the vault
-fn decrypt_file_inner(vault: &UnlockedVault, dir_id: &str, filename: &str, output_path: &Path) -> Result<(), String> {
+fn decrypt_file_inner(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    filename: &str,
+    output_path: &Path,
+) -> Result<(), String> {
     use std::io::Write;
 
     // Find the encrypted file
@@ -376,8 +432,7 @@ fn decrypt_file_inner(vault: &UnlockedVault, dir_id: &str, filename: &str, outpu
         return Err(format!("Encrypted file not found: {:?}", file_path));
     }
 
-    let data = fs::read(&file_path)
-        .map_err(|e| format!("Failed to read encrypted file: {}", e))?;
+    let data = fs::read(&file_path).map_err(|e| format!("Failed to read encrypted file: {}", e))?;
 
     if data.len() < 68 {
         return Err("File too small to contain a valid header".to_string());
@@ -390,7 +445,8 @@ fn decrypt_file_inner(vault: &UnlockedVault, dir_id: &str, filename: &str, outpu
     // Decrypt header to get content key
     let cipher = Aes256Gcm::new(GenericArray::from_slice(&vault.enc_key));
     let header_nonce = GenericArray::from_slice(header_nonce);
-    let decrypted_header = cipher.decrypt(header_nonce, header_payload)
+    let decrypted_header = cipher
+        .decrypt(header_nonce, header_payload)
         .map_err(|_| "Failed to decrypt file header — wrong key?".to_string())?;
 
     if decrypted_header.len() < 40 {
@@ -436,12 +492,18 @@ fn decrypt_file_inner(vault: &UnlockedVault, dir_id: &str, filename: &str, outpu
         aad.extend_from_slice(header_nonce.as_slice());
 
         let nonce = GenericArray::from_slice(chunk_nonce);
-        let decrypted = content_cipher.decrypt(nonce, aes_gcm::aead::Payload {
-            msg: &chunk[12..],
-            aad: &aad,
-        }).map_err(|_| format!("Failed to decrypt chunk {}", chunk_num))?;
+        let decrypted = content_cipher
+            .decrypt(
+                nonce,
+                aes_gcm::aead::Payload {
+                    msg: &chunk[12..],
+                    aad: &aad,
+                },
+            )
+            .map_err(|_| format!("Failed to decrypt chunk {}", chunk_num))?;
 
-        outfile.write_all(&decrypted)
+        outfile
+            .write_all(&decrypted)
             .map_err(|e| format!("Failed to write chunk: {}", e))?;
 
         chunk_num += 1;
@@ -452,17 +514,21 @@ fn decrypt_file_inner(vault: &UnlockedVault, dir_id: &str, filename: &str, outpu
 }
 
 /// Encrypt a file into the vault
-fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) -> Result<String, String> {
+fn encrypt_file_inner(
+    vault: &UnlockedVault,
+    dir_id: &str,
+    input_path: &Path,
+) -> Result<String, String> {
     use rand::RngCore;
     use std::io::Write;
 
-    let filename = input_path.file_name()
+    let filename = input_path
+        .file_name()
         .ok_or("Invalid input filename")?
         .to_string_lossy()
         .to_string();
 
-    let plaintext = fs::read(input_path)
-        .map_err(|e| format!("Failed to read input: {}", e))?;
+    let plaintext = fs::read(input_path).map_err(|e| format!("Failed to read input: {}", e))?;
 
     let encrypted_name = encrypt_filename(vault, dir_id, &filename)?;
     let dir_path = hash_dir_id(vault, dir_id)?;
@@ -487,13 +553,16 @@ fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) ->
     // Encrypt header with master enc_key
     let cipher = Aes256Gcm::new(GenericArray::from_slice(&vault.enc_key));
     let header_nonce = GenericArray::from_slice(&header_nonce_bytes);
-    let encrypted_header = cipher.encrypt(header_nonce, header_payload.as_ref())
+    let encrypted_header = cipher
+        .encrypt(header_nonce, header_payload.as_ref())
         .map_err(|_| "Failed to encrypt file header".to_string())?;
 
     // Write header: nonce + encrypted payload (includes GCM tag)
-    outfile.write_all(&header_nonce_bytes)
+    outfile
+        .write_all(&header_nonce_bytes)
         .map_err(|e| format!("Write header nonce: {}", e))?;
-    outfile.write_all(&encrypted_header)
+    outfile
+        .write_all(&encrypted_header)
         .map_err(|e| format!("Write header: {}", e))?;
 
     // Encrypt content in 32KiB chunks
@@ -515,20 +584,29 @@ fn encrypt_file_inner(vault: &UnlockedVault, dir_id: &str, input_path: &Path) ->
         aad.extend_from_slice(&header_nonce_bytes);
 
         let nonce = GenericArray::from_slice(&chunk_nonce);
-        let encrypted_chunk = content_cipher.encrypt(nonce, aes_gcm::aead::Payload {
-            msg: chunk,
-            aad: &aad,
-        }).map_err(|_| format!("Failed to encrypt chunk {}", chunk_num))?;
+        let encrypted_chunk = content_cipher
+            .encrypt(
+                nonce,
+                aes_gcm::aead::Payload {
+                    msg: chunk,
+                    aad: &aad,
+                },
+            )
+            .map_err(|_| format!("Failed to encrypt chunk {}", chunk_num))?;
 
-        outfile.write_all(&chunk_nonce)
+        outfile
+            .write_all(&chunk_nonce)
             .map_err(|e| format!("Write chunk nonce: {}", e))?;
-        outfile.write_all(&encrypted_chunk)
+        outfile
+            .write_all(&encrypted_chunk)
             .map_err(|e| format!("Write chunk: {}", e))?;
 
         chunk_num += 1;
         offset = end;
 
-        if plaintext.is_empty() { break; }
+        if plaintext.is_empty() {
+            break;
+        }
     }
 
     Ok(encrypted_name)
@@ -550,7 +628,8 @@ pub async fn cryptomator_unlock(
     let (vault, config) = result?;
 
     let vault_id = uuid::Uuid::new_v4().to_string();
-    let name = path.file_name()
+    let name = path
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "Vault".to_string());
 
@@ -584,8 +663,7 @@ pub async fn cryptomator_list(
     dir_id: String,
 ) -> Result<Vec<CryptomatorEntry>, String> {
     let vaults = state.vaults.lock().await;
-    let vault = vaults.get(&vault_id)
-        .ok_or("Vault not unlocked")?;
+    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
     list_dir_inner(vault, &dir_id)
 }
 
@@ -599,8 +677,7 @@ pub async fn cryptomator_decrypt_file(
 ) -> Result<String, String> {
     crate::filesystem::validate_path(&output_path)?;
     let vaults = state.vaults.lock().await;
-    let vault = vaults.get(&vault_id)
-        .ok_or("Vault not unlocked")?;
+    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
     decrypt_file_inner(vault, &dir_id, &filename, Path::new(&output_path))?;
     Ok(output_path)
 }
@@ -614,8 +691,7 @@ pub async fn cryptomator_encrypt_file(
 ) -> Result<String, String> {
     crate::filesystem::validate_path(&input_path)?;
     let vaults = state.vaults.lock().await;
-    let vault = vaults.get(&vault_id)
-        .ok_or("Vault not unlocked")?;
+    let vault = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
     encrypt_file_inner(vault, &dir_id, Path::new(&input_path))
 }
 
@@ -672,8 +748,8 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
     // Step 6: Compute versionMac = HMAC-SHA256(mac_key, version_bytes)
     let version: i32 = 999;
     let version_bytes = version.to_be_bytes();
-    let mut hmac_obj = <Hmac<Sha256> as Mac>::new_from_slice(&mac_key)
-        .map_err(|e| format!("HMAC init: {}", e))?;
+    let mut hmac_obj =
+        <Hmac<Sha256> as Mac>::new_from_slice(&mac_key).map_err(|e| format!("HMAC init: {}", e))?;
     hmac_obj.update(&version_bytes);
     let version_mac = hmac_obj.finalize().into_bytes();
 
@@ -689,9 +765,12 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
     });
 
     let masterkey_path = vault_dir.join("masterkey.cryptomator");
-    fs::write(&masterkey_path, serde_json::to_string_pretty(&masterkey_json)
-        .map_err(|e| format!("JSON serialize: {}", e))?)
-        .map_err(|e| format!("Failed to write masterkey.cryptomator: {}", e))?;
+    fs::write(
+        &masterkey_path,
+        serde_json::to_string_pretty(&masterkey_json)
+            .map_err(|e| format!("JSON serialize: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to write masterkey.cryptomator: {}", e))?;
 
     // Step 8: Generate JWT vault.cryptomator
     // Header: {"kid":"masterkeyfile:masterkey.cryptomator","typ":"JWT","alg":"HS256"}
@@ -729,8 +808,7 @@ pub async fn cryptomator_create(vault_path: String, password: String) -> Result<
 
     // Step 9: Create d/ directory
     let d_dir = vault_dir.join("d");
-    fs::create_dir_all(&d_dir)
-        .map_err(|e| format!("Failed to create d/ directory: {}", e))?;
+    fs::create_dir_all(&d_dir).map_err(|e| format!("Failed to create d/ directory: {}", e))?;
 
     // Step 10: Create root directory using hash_dir_id with empty dir_id
     let temp_vault = UnlockedVault {

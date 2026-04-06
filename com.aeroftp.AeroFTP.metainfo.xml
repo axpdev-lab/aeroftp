@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.3" date="2026-04-06">
+      <description>
+        <p>AeroSync advanced controls: conflict strategies, delete orphans with versioning, rename detection, file filters, bandwidth schedules, transfer budgets, snapshot rollback. Archive security hardening. Provider trash management for Box, Zoho, MEGA, OpenDrive, Yandex, pCloud, KDrive. Plugin integrity verification.</p>
+      </description>
+    </release>
     <release version="3.4.2" date="2026-04-05">
       <description>
         <p>CLI Pro: FUSE mount (read-write, cross-platform), ncdu TUI disk explorer, serve FTP/SFTP, background daemon with job queue, zero-knowledge crypt overlay (AES-256-GCM), bisync with snapshot and conflict resolution, transfer controls (retries, max-transfer, dump). ASPnix hosting provider integration.</p>

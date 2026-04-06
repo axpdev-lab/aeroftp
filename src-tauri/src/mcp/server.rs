@@ -52,9 +52,8 @@ impl McpServerCore {
     pub async fn run(&mut self) -> i32 {
         let mut reader = StdinReader::new();
         let writer = Arc::new(StdoutWriter::new());
-        let mut eviction_interval = tokio::time::interval(
-            std::time::Duration::from_secs(EVICTION_INTERVAL_SECS),
-        );
+        let mut eviction_interval =
+            tokio::time::interval(std::time::Duration::from_secs(EVICTION_INTERVAL_SECS));
 
         loop {
             tokio::select! {
@@ -123,7 +122,10 @@ impl McpServerCore {
 
                 if let Some(token) = self.in_flight.lock().await.remove(&request_id) {
                     if let Some(reason) = reason {
-                        eprintln!("[mcp] cancellation requested for {}: {}", request_id, reason);
+                        eprintln!(
+                            "[mcp] cancellation requested for {}: {}",
+                            request_id, reason
+                        );
                     } else {
                         eprintln!("[mcp] cancellation requested for {}", request_id);
                     }
@@ -141,7 +143,9 @@ impl McpServerCore {
                 self.vault_error.clone(),
                 Arc::clone(&self.pool),
                 Arc::clone(&self.rate_limiter),
-            ).await {
+            )
+            .await
+            {
                 let _ = writer.write_message(&resp).await;
             }
             return;
@@ -179,7 +183,6 @@ impl McpServerCore {
             in_flight.lock().await.remove(&request_id);
         });
     }
-
 }
 
 fn request_id_key(id: &Value) -> Option<String> {
@@ -400,7 +403,10 @@ mod tests {
     use crate::mcp::security::RateLimiter;
     use serde_json::json;
 
-    async fn dispatch(req: serde_json::Value, profiles: Vec<serde_json::Value>) -> serde_json::Value {
+    async fn dispatch(
+        req: serde_json::Value,
+        profiles: Vec<serde_json::Value>,
+    ) -> serde_json::Value {
         process_request(
             req,
             Arc::new(profiles),
@@ -415,7 +421,10 @@ mod tests {
     #[test]
     fn request_id_key_serializes_non_null_ids() {
         assert_eq!(request_id_key(&json!(42)).as_deref(), Some("42"));
-        assert_eq!(request_id_key(&json!("req-1")).as_deref(), Some("\"req-1\""));
+        assert_eq!(
+            request_id_key(&json!("req-1")).as_deref(),
+            Some("\"req-1\"")
+        );
     }
 
     #[test]
@@ -464,10 +473,22 @@ mod tests {
         assert_eq!(response["jsonrpc"], json!("2.0"));
         assert_eq!(response["id"], json!(1));
         assert_eq!(response["result"]["protocolVersion"], json!("2024-11-05"));
-        assert_eq!(response["result"]["capabilities"]["tools"]["listChanged"], json!(false));
-        assert_eq!(response["result"]["capabilities"]["resources"]["subscribe"], json!(false));
-        assert_eq!(response["result"]["capabilities"]["prompts"]["listChanged"], json!(false));
-        assert_eq!(response["result"]["serverInfo"]["name"], json!("aeroftp-mcp"));
+        assert_eq!(
+            response["result"]["capabilities"]["tools"]["listChanged"],
+            json!(false)
+        );
+        assert_eq!(
+            response["result"]["capabilities"]["resources"]["subscribe"],
+            json!(false)
+        );
+        assert_eq!(
+            response["result"]["capabilities"]["prompts"]["listChanged"],
+            json!(false)
+        );
+        assert_eq!(
+            response["result"]["serverInfo"]["name"],
+            json!("aeroftp-mcp")
+        );
     }
 
     #[tokio::test]
@@ -489,18 +510,28 @@ mod tests {
         .await;
         let tool_list = tools["result"]["tools"].as_array().expect("tools array");
         assert_eq!(tool_list.len(), 16);
-        assert!(tool_list.iter().any(|tool| tool["name"] == json!("aeroftp_list_servers")));
-        assert!(tool_list.iter().any(|tool| tool["name"] == json!("aeroftp_delete")));
+        assert!(tool_list
+            .iter()
+            .any(|tool| tool["name"] == json!("aeroftp_list_servers")));
+        assert!(tool_list
+            .iter()
+            .any(|tool| tool["name"] == json!("aeroftp_delete")));
 
         let resources = dispatch(
             json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/list" }),
             profiles.clone(),
         )
         .await;
-        let resource_list = resources["result"]["resources"].as_array().expect("resources array");
+        let resource_list = resources["result"]["resources"]
+            .as_array()
+            .expect("resources array");
         assert_eq!(resource_list.len(), 5);
-        assert!(resource_list.iter().any(|resource| resource["uri"] == json!("aeroftp://profiles")));
-        assert!(resource_list.iter().any(|resource| resource["uri"] == json!("aeroftp://profiles/srv_123")));
+        assert!(resource_list
+            .iter()
+            .any(|resource| resource["uri"] == json!("aeroftp://profiles")));
+        assert!(resource_list
+            .iter()
+            .any(|resource| resource["uri"] == json!("aeroftp://profiles/srv_123")));
 
         let profile_resource = dispatch(
             json!({
@@ -523,9 +554,13 @@ mod tests {
             profiles.clone(),
         )
         .await;
-        let prompt_list = prompts["result"]["prompts"].as_array().expect("prompts array");
+        let prompt_list = prompts["result"]["prompts"]
+            .as_array()
+            .expect("prompts array");
         assert_eq!(prompt_list.len(), 4);
-        assert!(prompt_list.iter().any(|prompt| prompt["name"] == json!("deploy_files")));
+        assert!(prompt_list
+            .iter()
+            .any(|prompt| prompt["name"] == json!("deploy_files")));
 
         let deploy_prompt = dispatch(
             json!({

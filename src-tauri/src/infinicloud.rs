@@ -149,10 +149,7 @@ async fn discover(
         403 => Err("Invalid API Key. Please verify your developer API key.".into()),
         code => {
             let body = resp.text().await.unwrap_or_default();
-            Err(format!(
-                "InfiniCloud API returned HTTP {}: {}",
-                code, body
-            ))
+            Err(format!("InfiniCloud API returned HTTP {}: {}", code, body))
         }
     }
 }

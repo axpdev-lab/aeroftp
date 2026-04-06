@@ -7,15 +7,15 @@
 use crate::cloud_config::CloudConfig;
 use crate::credential_store;
 use crate::providers::{
-    StorageProvider, ProviderFactory, ProviderConfig,
-    types::{ProviderType, BoxConfig, PCloudConfig, FourSharedConfig},
-    google_drive::{GoogleDriveProvider, GoogleDriveConfig},
-    dropbox::{DropboxProvider, DropboxConfig},
-    onedrive::{OneDriveProvider, OneDriveConfig},
     box_provider::BoxProvider,
-    pcloud::PCloudProvider,
-    zoho_workdrive::{ZohoWorkdriveProvider, ZohoWorkdriveConfig},
+    dropbox::{DropboxConfig, DropboxProvider},
     fourshared::FourSharedProvider,
+    google_drive::{GoogleDriveConfig, GoogleDriveProvider},
+    onedrive::{OneDriveConfig, OneDriveProvider},
+    pcloud::PCloudProvider,
+    types::{BoxConfig, FourSharedConfig, PCloudConfig, ProviderType},
+    zoho_workdrive::{ZohoWorkdriveConfig, ZohoWorkdriveProvider},
+    ProviderConfig, ProviderFactory, StorageProvider,
 };
 use secrecy::SecretString;
 use tracing::info;
@@ -35,7 +35,10 @@ pub(crate) fn parse_server_field(server: &str) -> (String, Option<u16>) {
             let host = &server[1..bracket_end];
             let rest = &server[bracket_end + 1..];
             let port = if let Some(stripped) = rest.strip_prefix(':') {
-                stripped.split('/').next().and_then(|p| p.parse::<u16>().ok())
+                stripped
+                    .split('/')
+                    .next()
+                    .and_then(|p| p.parse::<u16>().ok())
             } else {
                 None
             };
@@ -134,7 +137,12 @@ async fn create_via_factory(
 
     let creds_json = store
         .get(&format!("server_{}", config.server_profile))
-        .map_err(|e| format!("No credentials for profile '{}': {}", config.server_profile, e))?;
+        .map_err(|e| {
+            format!(
+                "No credentials for profile '{}': {}",
+                config.server_profile, e
+            )
+        })?;
 
     #[derive(serde::Deserialize)]
     struct SavedCreds {
@@ -189,7 +197,10 @@ async fn create_via_factory(
     // A3-05: Zeroize password after it has been consumed by the provider
     provider_config.zeroize_password();
 
-    info!("AeroCloud: connecting via {:?} to {}", provider_type, parsed_host);
+    info!(
+        "AeroCloud: connecting via {:?} to {}",
+        provider_type, parsed_host
+    );
     provider
         .connect()
         .await
@@ -213,7 +224,9 @@ async fn create_google_drive(config: &CloudConfig) -> Result<Box<dyn StorageProv
     let client_secret = get_param(config, "client_secret")?;
     let gc = GoogleDriveConfig::new(client_id, client_secret);
     let mut p = GoogleDriveProvider::new(gc);
-    p.connect().await.map_err(|e| format!("Google Drive: {}", e))?;
+    p.connect()
+        .await
+        .map_err(|e| format!("Google Drive: {}", e))?;
     info!("AeroCloud: connected to Google Drive");
     Ok(Box::new(p))
 }
@@ -251,7 +264,9 @@ async fn create_box(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, St
 async fn create_pcloud(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
     let client_id = get_param(config, "client_id")?;
     let client_secret = get_param(config, "client_secret")?;
-    let region = config.connection_params.get("region")
+    let region = config
+        .connection_params
+        .get("region")
         .and_then(|v| v.as_str())
         .unwrap_or("us");
     let pc = PCloudConfig::new(client_id, client_secret, region);
@@ -264,12 +279,16 @@ async fn create_pcloud(config: &CloudConfig) -> Result<Box<dyn StorageProvider>,
 async fn create_zoho(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
     let client_id = get_param(config, "client_id")?;
     let client_secret = get_param(config, "client_secret")?;
-    let region = config.connection_params.get("region")
+    let region = config
+        .connection_params
+        .get("region")
         .and_then(|v| v.as_str())
         .unwrap_or("us");
     let zc = ZohoWorkdriveConfig::new(client_id, client_secret, region);
     let mut p = ZohoWorkdriveProvider::new(zc);
-    p.connect().await.map_err(|e| format!("Zoho WorkDrive: {}", e))?;
+    p.connect()
+        .await
+        .map_err(|e| format!("Zoho WorkDrive: {}", e))?;
     info!("AeroCloud: connected to Zoho WorkDrive ({})", region);
     Ok(Box::new(p))
 }

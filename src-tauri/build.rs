@@ -60,21 +60,26 @@ const TRACKED_DEPS: &[&str] = &[
 
 fn main() {
     // Parse Cargo.lock to extract resolved dependency versions
-    let lock_contents = fs::read_to_string("Cargo.lock")
-        .expect("Failed to read Cargo.lock");
+    let lock_contents = fs::read_to_string("Cargo.lock").expect("Failed to read Cargo.lock");
 
     let versions = parse_cargo_lock(&lock_contents);
 
     for dep_name in TRACKED_DEPS {
         let env_key = format!("DEP_VERSION_{}", dep_name.to_uppercase().replace('-', "_"));
-        let version = versions.get(*dep_name).map(|v| v.as_str()).unwrap_or("unknown");
+        let version = versions
+            .get(*dep_name)
+            .map(|v| v.as_str())
+            .unwrap_or("unknown");
         println!("cargo:rustc-env={env_key}={version}");
     }
 
     println!("cargo:rerun-if-changed=Cargo.lock");
 
     // Detect Rust compiler version at build time: "rustc 1.84.0 (...)" → "1.84.0"
-    if let Ok(output) = std::process::Command::new("rustc").arg("--version").output() {
+    if let Ok(output) = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+    {
         let ver_line = String::from_utf8_lossy(&output.stdout);
         let ver = ver_line.split_whitespace().nth(1).unwrap_or("unknown");
         println!("cargo:rustc-env=RUSTC_VERSION={ver}");
@@ -107,7 +112,9 @@ fn parse_cargo_lock(contents: &str) -> HashMap<String, String> {
                 {
                     let should_replace = match versions.get(name) {
                         None => true,
-                        Some(existing) => compare_semver(ver, existing) == std::cmp::Ordering::Greater,
+                        Some(existing) => {
+                            compare_semver(ver, existing) == std::cmp::Ordering::Greater
+                        }
                     };
                     if should_replace {
                         versions.insert(name.clone(), ver.to_string());
@@ -123,8 +130,6 @@ fn parse_cargo_lock(contents: &str) -> HashMap<String, String> {
 
 /// Simple semver comparison: split on '.' and compare numerically
 fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse = |s: &str| -> Vec<u64> {
-        s.split('.').filter_map(|p| p.parse().ok()).collect()
-    };
+    let parse = |s: &str| -> Vec<u64> { s.split('.').filter_map(|p| p.parse().ok()).collect() };
     parse(a).cmp(&parse(b))
 }

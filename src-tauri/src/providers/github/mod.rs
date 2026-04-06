@@ -10,14 +10,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+pub(crate) mod actions;
 pub mod auth;
 mod client;
 mod errors;
 mod graphql;
 mod model;
-mod rate_limit;
-pub(crate) mod actions;
 pub(crate) mod pages;
+mod rate_limit;
 mod releases_mode;
 mod repo_mode;
 
@@ -26,12 +26,15 @@ pub use self::model::*;
 use self::client::GitHubHttpClient;
 use self::errors::GitHubError;
 use self::releases_mode::{
-    asset_to_entry, create_release, delete_release, delete_release_asset,
-    download_release_asset, get_release_info, list_release_assets, list_releases,
-    release_to_entry, upload_release_asset, CreateReleaseParams, VIRTUAL_RELEASES_DIR,
+    asset_to_entry, create_release, delete_release, delete_release_asset, download_release_asset,
+    get_release_info, list_release_assets, list_releases, release_to_entry, upload_release_asset,
+    CreateReleaseParams, VIRTUAL_RELEASES_DIR,
 };
 
-use super::{ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider, ShareLinkOptions, ShareLinkResult};
+use super::{
+    ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
+    StorageProvider,
+};
 use async_trait::async_trait;
 use secrecy::SecretString;
 use std::collections::HashMap;
@@ -313,11 +316,7 @@ impl GitHubProvider {
     }
 
     /// Delete a specific asset from a release.
-    pub async fn delete_asset(
-        &mut self,
-        tag: &str,
-        asset_name: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn delete_asset(&mut self, tag: &str, asset_name: &str) -> Result<(), ProviderError> {
         delete_release_asset(&mut self.client, &self.owner, &self.repo, tag, asset_name).await
     }
 
@@ -333,7 +332,15 @@ impl GitHubProvider {
         asset_name: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        download_release_asset(&mut self.client, &self.owner, &self.repo, tag, asset_name, local_path).await
+        download_release_asset(
+            &mut self.client,
+            &self.owner,
+            &self.repo,
+            tag,
+            asset_name,
+            local_path,
+        )
+        .await
     }
 
     /// Atomic multi-file commit via GraphQL `createCommitOnBranch`.
@@ -349,10 +356,9 @@ impl GitHubProvider {
         additions: &[(String, String)],
         deletions: &[String],
     ) -> Result<String, ProviderError> {
-        let head_oid =
-            graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, branch)
-                .await
-                .map_err(ProviderError::from)?;
+        let head_oid = graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, branch)
+            .await
+            .map_err(ProviderError::from)?;
 
         let additions_bytes: Vec<(String, Vec<u8>)> = additions
             .iter()
@@ -387,10 +393,9 @@ impl GitHubProvider {
         deletions: &[String],
     ) -> Result<String, ProviderError> {
         let branch = self.content_branch().to_string();
-        let head_oid =
-            graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, &branch)
-                .await
-                .map_err(ProviderError::from)?;
+        let head_oid = graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, &branch)
+            .await
+            .map_err(ProviderError::from)?;
 
         let full_message = self.with_co_author(message);
 
@@ -489,11 +494,7 @@ impl GitHubProvider {
             .map(|seg| urlencoding::encode(seg).into_owned())
             .collect::<Vec<_>>()
             .join("/");
-        format!(
-            "{}/contents/{}",
-            self.repo_url(),
-            encoded_path,
-        )
+        format!("{}/contents/{}", self.repo_url(), encoded_path,)
     }
 
     fn releases_entry(&self) -> RemoteEntry {
@@ -592,10 +593,12 @@ impl GitHubProvider {
             .await
         {
             Ok(_) => return Ok(()),
-            Err(GitHubError::PathNotFound(_)
+            Err(
+                GitHubError::PathNotFound(_)
                 | GitHubError::RepoNotFound
                 | GitHubError::BranchNotFound(_)
-                | GitHubError::NotFound(_)) => {}
+                | GitHubError::NotFound(_),
+            ) => {}
             Err(e) => return Err(ProviderError::from(e)),
         }
 
@@ -641,7 +644,12 @@ impl GitHubProvider {
             )
         })?;
 
-        log::info!("GitHub: creating PR '{}' ({} -> {})", title, working_branch, self.active_branch());
+        log::info!(
+            "GitHub: creating PR '{}' ({} -> {})",
+            title,
+            working_branch,
+            self.active_branch()
+        );
 
         let payload = serde_json::json!({
             "title": title,
@@ -652,7 +660,8 @@ impl GitHubProvider {
             "maintainer_can_modify": true,
         });
 
-        let pr = self.client
+        let pr = self
+            .client
             .post_json::<GitHubPullRequest>(&format!("{}/pulls", self.repo_url()), &payload)
             .await
             .map_err(ProviderError::from)?;
@@ -791,8 +800,13 @@ impl GitHubProvider {
         source_path: Option<&str>,
     ) -> Result<(), ProviderError> {
         pages::update_pages_config(
-            &mut self.client, &self.owner, &self.repo,
-            cname, https_enforced, source_branch, source_path,
+            &mut self.client,
+            &self.owner,
+            &self.repo,
+            cname,
+            https_enforced,
+            source_branch,
+            source_path,
         )
         .await
         .map_err(ProviderError::from)
@@ -846,9 +860,16 @@ impl GitHubProvider {
         path: &str,
         build_type: &str,
     ) -> Result<pages::PagesSite, ProviderError> {
-        pages::create_pages_site(&mut self.client, &self.owner, &self.repo, branch, path, build_type)
-            .await
-            .map_err(ProviderError::from)
+        pages::create_pages_site(
+            &mut self.client,
+            &self.owner,
+            &self.repo,
+            branch,
+            path,
+            build_type,
+        )
+        .await
+        .map_err(ProviderError::from)
     }
 
     /// Disable Pages on the repository.
@@ -894,9 +915,9 @@ impl StorageProvider for GitHubProvider {
             Err(e) => {
                 // Distinguish: 401 Unauthorized → likely installation token
                 // Other errors (network, rate limit) → propagate
-                let is_auth_error = matches!(&e,
-                    GitHubError::Unauthorized |
-                    GitHubError::InsufficientPermissions(_)
+                let is_auth_error = matches!(
+                    &e,
+                    GitHubError::Unauthorized | GitHubError::InsufficientPermissions(_)
                 );
                 if !is_auth_error {
                     // Network error, rate limit, etc. — not a token type issue
@@ -947,11 +968,7 @@ impl StorageProvider for GitHubProvider {
                 self.repo_url(),
                 self.encoded_branch_for_path(),
             );
-            match self
-                .client
-                .get_json::<GitHubBranch>(&branch_url)
-                .await
-            {
+            match self.client.get_json::<GitHubBranch>(&branch_url).await {
                 Ok(branch_info) => {
                     if branch_info.protected {
                         // Branch is protected, but user/app might have bypass.
@@ -1017,15 +1034,25 @@ impl StorageProvider for GitHubProvider {
 
         if let Some(virtual_path) = self.parse_virtual_path(&resolved) {
             return match virtual_path {
-                GitHubVirtualPath::ReleasesRoot => list_releases(&mut self.client, &self.owner, &self.repo).await,
+                GitHubVirtualPath::ReleasesRoot => {
+                    list_releases(&mut self.client, &self.owner, &self.repo).await
+                }
                 GitHubVirtualPath::ReleaseTag(tag) => {
                     list_release_assets(&mut self.client, &self.owner, &self.repo, &tag).await
                 }
                 GitHubVirtualPath::ReleaseAsset { tag, asset_name } => {
-                    let release = get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
-                    let asset = release.assets.iter().find(|asset| asset.name == asset_name).ok_or_else(|| {
-                        ProviderError::NotFound(format!("Asset '{}' not found in release '{}'", asset_name, tag))
-                    })?;
+                    let release =
+                        get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
+                    let asset = release
+                        .assets
+                        .iter()
+                        .find(|asset| asset.name == asset_name)
+                        .ok_or_else(|| {
+                            ProviderError::NotFound(format!(
+                                "Asset '{}' not found in release '{}'",
+                                asset_name, tag
+                            ))
+                        })?;
                     Ok(vec![asset_to_entry(asset, &tag)])
                 }
             };
@@ -1077,7 +1104,11 @@ impl StorageProvider for GitHubProvider {
             });
         }
 
-        if resolved.is_empty() && !entries.iter().any(|entry| entry.name == VIRTUAL_RELEASES_DIR) {
+        if resolved.is_empty()
+            && !entries
+                .iter()
+                .any(|entry| entry.name == VIRTUAL_RELEASES_DIR)
+        {
             entries.push(self.releases_entry());
         }
 
@@ -1142,7 +1173,9 @@ impl StorageProvider for GitHubProvider {
         }
         let resolved = self.resolve_path(remote_path);
 
-        if let Some(GitHubVirtualPath::ReleaseAsset { tag, asset_name }) = self.parse_virtual_path(&resolved) {
+        if let Some(GitHubVirtualPath::ReleaseAsset { tag, asset_name }) =
+            self.parse_virtual_path(&resolved)
+        {
             return download_release_asset(
                 &mut self.client,
                 &self.owner,
@@ -1186,9 +1219,11 @@ impl StorageProvider for GitHubProvider {
 
         use futures_util::StreamExt;
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result
-                .map_err(|e| ProviderError::TransferFailed(format!("Download stream error: {}", e)))?;
-            atomic.write_all(&chunk)
+            let chunk = chunk_result.map_err(|e| {
+                ProviderError::TransferFailed(format!("Download stream error: {}", e))
+            })?;
+            atomic
+                .write_all(&chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
@@ -1229,10 +1264,7 @@ impl StorageProvider for GitHubProvider {
 
         // Otherwise use the raw download URL.
         let download_url = content.download_url.ok_or_else(|| {
-            ProviderError::TransferFailed(format!(
-                "No download URL for '{}'",
-                resolved,
-            ))
+            ProviderError::TransferFailed(format!("No download URL for '{}'", resolved,))
         })?;
 
         self.client
@@ -1252,7 +1284,9 @@ impl StorageProvider for GitHubProvider {
         }
 
         let resolved = self.resolve_path(remote_path);
-        if let Some(GitHubVirtualPath::ReleaseAsset { tag, asset_name }) = self.parse_virtual_path(&resolved) {
+        if let Some(GitHubVirtualPath::ReleaseAsset { tag, asset_name }) =
+            self.parse_virtual_path(&resolved)
+        {
             return upload_release_asset(
                 &mut self.client,
                 &self.owner,
@@ -1303,10 +1337,7 @@ impl StorageProvider for GitHubProvider {
             }
         };
 
-        let file_name = resolved
-            .rsplit('/')
-            .next()
-            .unwrap_or(&resolved);
+        let file_name = resolved.rsplit('/').next().unwrap_or(&resolved);
         let message = if sha.is_some() {
             self.with_co_author(&format!("Update {}", file_name))
         } else {
@@ -1326,41 +1357,64 @@ impl StorageProvider for GitHubProvider {
         let mut body = serde_json::to_value(&update)
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        let result = self
-            .client
-            .put_json(&url, &body)
-            .await;
+        let result = self.client.put_json(&url, &body).await;
 
         // QA-GH-009: Structured error matching instead of string parsing
         let resp = match result {
-            Err(ref e) if matches!(self.write_mode, GitHubWriteMode::DirectWriteProtected { .. }) => {
-                let is_protected_rejection = matches!(e,
+            Err(ref e)
+                if matches!(
+                    self.write_mode,
+                    GitHubWriteMode::DirectWriteProtected { .. }
+                ) =>
+            {
+                let is_protected_rejection = matches!(
+                    e,
                     GitHubError::ProtectedBranch(_)
-                    | GitHubError::InsufficientPermissions(_)
-                    | GitHubError::RequiredPullRequest
-                    | GitHubError::ApiError { status: 403 | 422, .. }
+                        | GitHubError::InsufficientPermissions(_)
+                        | GitHubError::RequiredPullRequest
+                        | GitHubError::ApiError {
+                            status: 403 | 422,
+                            ..
+                        }
                 );
                 if is_protected_rejection {
                     log::info!("GitHub: direct push rejected on protected branch — falling back to working branch");
-                    let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } = self.write_mode {
+                    let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } =
+                        self.write_mode
+                    {
                         base_sha.clone()
                     } else {
                         unreachable!()
                     };
-                    let user = self.account_name.clone().unwrap_or_else(|| "aeroftp".to_string());
+                    let user = self
+                        .account_name
+                        .clone()
+                        .unwrap_or_else(|| "aeroftp".to_string());
                     let workflow_branch = Self::workflow_branch_name(&user, self.active_branch());
-                    self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha).await
-                        .map_err(|e2| ProviderError::TransferFailed(format!(
-                            "Cannot create working branch '{}': {}", workflow_branch, e2
-                        )))?;
-                    self.write_mode = GitHubWriteMode::BranchWorkflow { branch: workflow_branch };
+                    self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
+                        .await
+                        .map_err(|e2| {
+                            ProviderError::TransferFailed(format!(
+                                "Cannot create working branch '{}': {}",
+                                workflow_branch, e2
+                            ))
+                        })?;
+                    self.write_mode = GitHubWriteMode::BranchWorkflow {
+                        branch: workflow_branch,
+                    };
 
                     // QA-GH-019: Mutate the existing body in-place — no clone of the
                     // large base64 content. `body` is already a serde_json::Value on the stack.
                     if let Some(obj) = body.as_object_mut() {
-                        obj.insert("branch".to_string(), serde_json::json!(self.content_branch()));
+                        obj.insert(
+                            "branch".to_string(),
+                            serde_json::json!(self.content_branch()),
+                        );
                     }
-                    self.client.put_json(&url, &body).await.map_err(ProviderError::from)?
+                    self.client
+                        .put_json(&url, &body)
+                        .await
+                        .map_err(ProviderError::from)?
                 } else {
                     return Err(ProviderError::from(result.unwrap_err()));
                 }
@@ -1480,8 +1534,8 @@ impl StorageProvider for GitHubProvider {
         };
 
         let url = self.contents_mutation_url(&resolved);
-        let body = serde_json::to_value(&del)
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let body =
+            serde_json::to_value(&del).map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         self.client
             .delete_json(&url, &body)
@@ -1489,10 +1543,8 @@ impl StorageProvider for GitHubProvider {
             .map_err(ProviderError::from)?;
 
         // Remove from cache.
-        self.sha_cache.remove(&(
-            self.content_branch().to_string(),
-            resolved,
-        ));
+        self.sha_cache
+            .remove(&(self.content_branch().to_string(), resolved));
 
         Ok(())
     }
@@ -1551,10 +1603,7 @@ impl StorageProvider for GitHubProvider {
         let resolved_to = self.resolve_path(to);
 
         // Upload to new location.
-        let b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &data,
-        );
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
         let update = GitHubContentUpdate {
             message: self.with_co_author(&format!(
                 "Rename {} -> {}",
@@ -1592,14 +1641,23 @@ impl StorageProvider for GitHubProvider {
             return match virtual_path {
                 GitHubVirtualPath::ReleasesRoot => Ok(self.releases_entry()),
                 GitHubVirtualPath::ReleaseTag(tag) => {
-                    let release = get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
+                    let release =
+                        get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
                     Ok(release_to_entry(&release))
                 }
                 GitHubVirtualPath::ReleaseAsset { tag, asset_name } => {
-                    let release = get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
-                    let asset = release.assets.iter().find(|asset| asset.name == asset_name).ok_or_else(|| {
-                        ProviderError::NotFound(format!("Asset '{}' not found in release '{}'", asset_name, tag))
-                    })?;
+                    let release =
+                        get_release_info(&mut self.client, &self.owner, &self.repo, &tag).await?;
+                    let asset = release
+                        .assets
+                        .iter()
+                        .find(|asset| asset.name == asset_name)
+                        .ok_or_else(|| {
+                            ProviderError::NotFound(format!(
+                                "Asset '{}' not found in release '{}'",
+                                asset_name, tag
+                            ))
+                        })?;
                     Ok(asset_to_entry(asset, &tag))
                 }
             };
@@ -1635,7 +1693,8 @@ impl StorageProvider for GitHubProvider {
         };
 
         // Fetch last-commit date for this single entry
-        self.enrich_entries_with_dates(std::slice::from_mut(&mut entry)).await;
+        self.enrich_entries_with_dates(std::slice::from_mut(&mut entry))
+            .await;
 
         Ok(entry)
     }
@@ -1719,7 +1778,10 @@ impl StorageProvider for GitHubProvider {
         Ok(ShareLinkResult {
             url: format!(
                 "https://github.com/{}/{}/blob/{}/{}",
-                self.owner, self.repo, self.content_branch(), resolved,
+                self.owner,
+                self.repo,
+                self.content_branch(),
+                resolved,
             ),
             password: None,
             expires_at: None,
@@ -1730,10 +1792,7 @@ impl StorageProvider for GitHubProvider {
         true
     }
 
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut map = HashMap::new();
         if let Some(sha) = entry.metadata.get("sha") {
@@ -1747,7 +1806,11 @@ impl StorageProvider for GitHubProvider {
         true
     }
 
-    async fn find(&mut self, _path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(
+        &mut self,
+        _path: &str,
+        pattern: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1755,7 +1818,9 @@ impl StorageProvider for GitHubProvider {
         // Use Git Trees API with recursive flag — lists all files in repo
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-            self.owner, self.repo, urlencoding::encode(self.active_branch())
+            self.owner,
+            self.repo,
+            urlencoding::encode(self.active_branch())
         );
 
         #[derive(serde::Deserialize)]
@@ -1788,7 +1853,12 @@ impl StorageProvider for GitHubProvider {
             })
             .take(100)
             .map(|item| {
-                let name = item.path.rsplit('/').next().unwrap_or(&item.path).to_string();
+                let name = item
+                    .path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&item.path)
+                    .to_string();
                 RemoteEntry {
                     name,
                     path: item.path,
@@ -1818,7 +1888,11 @@ impl StorageProvider for GitHubProvider {
 mod tests {
     use super::*;
 
-    fn provider_config(host: &str, branch: Option<&str>, initial_path: Option<&str>) -> ProviderConfig {
+    fn provider_config(
+        host: &str,
+        branch: Option<&str>,
+        initial_path: Option<&str>,
+    ) -> ProviderConfig {
         let mut extra = HashMap::new();
         if let Some(branch_name) = branch {
             extra.insert("branch".to_string(), branch_name.to_string());
@@ -1850,23 +1924,29 @@ mod tests {
 
     #[test]
     fn test_new_normalizes_root_initial_path() {
-        let provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground",
-            None,
-            Some("/"),
-        ))
-        .unwrap()).unwrap();
+        let provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                None,
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         assert_eq!(provider.current_path, "");
     }
 
     #[test]
     fn test_resolve_path_honors_absolute_paths() {
-        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground",
-            Some("main"),
-            Some("/docs"),
-        ))
-        .unwrap()).unwrap();
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("main"),
+                Some("/docs"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         provider.current_path = "docs/guides".to_string();
         assert_eq!(provider.resolve_path("/README.md"), "README.md");
         assert_eq!(provider.resolve_path("guide.md"), "docs/guides/guide.md");
@@ -1882,12 +1962,15 @@ mod tests {
 
     #[test]
     fn test_content_branch_uses_working_branch_when_available() {
-        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground",
-            Some("main"),
-            Some("/"),
-        ))
-        .unwrap()).unwrap();
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("main"),
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         provider.write_mode = GitHubWriteMode::BranchWorkflow {
             branch: "aeroftp/tester/main".to_string(),
         };
@@ -1898,12 +1981,15 @@ mod tests {
 
     #[test]
     fn test_parse_virtual_release_paths() {
-        let provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground",
-            Some("main"),
-            Some("/"),
-        ))
-        .unwrap()).unwrap();
+        let provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("main"),
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
 
         assert_eq!(
             provider.parse_virtual_path("/.github-releases"),
@@ -1925,18 +2011,30 @@ mod tests {
     // W4: Write mode detection tests
     #[test]
     fn test_write_mode_direct_allows_content_branch() {
-        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground", Some("main"), Some("/"),
-        )).unwrap()).unwrap();
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("main"),
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         provider.write_mode = GitHubWriteMode::DirectWrite;
         assert_eq!(provider.content_branch(), "main");
     }
 
     #[test]
     fn test_write_mode_branch_workflow_uses_working_branch() {
-        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground", Some("main"), Some("/"),
-        )).unwrap()).unwrap();
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("main"),
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         provider.write_mode = GitHubWriteMode::BranchWorkflow {
             branch: "aeroftp/tester/main".to_string(),
         };
@@ -1946,9 +2044,15 @@ mod tests {
 
     #[test]
     fn test_write_mode_readonly_preserves_branch() {
-        let mut provider = GitHubProvider::new(GitHubConfig::from_provider_config(&provider_config(
-            "axpnet/aeroftp-test-playground", Some("develop"), Some("/"),
-        )).unwrap()).unwrap();
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config(
+                "axpnet/aeroftp-test-playground",
+                Some("develop"),
+                Some("/"),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         provider.write_mode = GitHubWriteMode::ReadOnly {
             reason: "No push access".to_string(),
         };
@@ -1978,17 +2082,26 @@ mod tests {
     // W4: Path normalization edge cases
     #[test]
     fn test_normalise_path_traversal() {
-        assert_eq!(GitHubProvider::normalise_path("src/../README.md"), "README.md");
+        assert_eq!(
+            GitHubProvider::normalise_path("src/../README.md"),
+            "README.md"
+        );
         assert_eq!(GitHubProvider::normalise_path("/a/b/../c"), "a/c");
     }
 
     #[test]
     fn test_normalise_path_double_slash() {
-        assert_eq!(GitHubProvider::normalise_path("//src//main.rs"), "src/main.rs");
+        assert_eq!(
+            GitHubProvider::normalise_path("//src//main.rs"),
+            "src/main.rs"
+        );
     }
 
     #[test]
     fn test_normalise_path_above_root() {
-        assert_eq!(GitHubProvider::normalise_path("../../etc/passwd"), "etc/passwd");
+        assert_eq!(
+            GitHubProvider::normalise_path("../../etc/passwd"),
+            "etc/passwd"
+        );
     }
 }

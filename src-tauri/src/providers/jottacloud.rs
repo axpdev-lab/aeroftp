@@ -23,9 +23,8 @@ use std::time::Instant;
 use tracing::info;
 
 use super::{
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
-    sanitize_api_error, JottacloudConfig, HttpRetryConfig, send_with_retry,
-    ShareLinkOptions, ShareLinkResult,
+    sanitize_api_error, send_with_retry, HttpRetryConfig, JottacloudConfig, ProviderError,
+    ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
@@ -127,21 +126,32 @@ impl JottacloudProvider {
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(token_str.trim())
             .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(token_str.trim()))
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("Invalid login token (Base64 decode failed): {}", e)
-            ))?;
-        let token: LoginToken = serde_json::from_slice(&decoded)
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("Invalid login token (JSON parse failed): {}", e)
-            ))?;
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!(
+                    "Invalid login token (Base64 decode failed): {}",
+                    e
+                ))
+            })?;
+        let token: LoginToken = serde_json::from_slice(&decoded).map_err(|e| {
+            ProviderError::AuthenticationFailed(format!(
+                "Invalid login token (JSON parse failed): {}",
+                e
+            ))
+        })?;
         if token.username.as_ref().is_none_or(|u| u.is_empty()) {
-            return Err(ProviderError::AuthenticationFailed("Login token missing username".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Login token missing username".to_string(),
+            ));
         }
         if token.auth_token.as_ref().is_none_or(|t| t.is_empty()) {
-            return Err(ProviderError::AuthenticationFailed("Login token missing auth_token".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Login token missing auth_token".to_string(),
+            ));
         }
         if token.well_known_link.as_ref().is_none_or(|l| l.is_empty()) {
-            return Err(ProviderError::AuthenticationFailed("Login token missing wellKnownLink".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Login token missing wellKnownLink".to_string(),
+            ));
         }
         Ok(token)
     }
@@ -150,19 +160,17 @@ impl JottacloudProvider {
         // Validate URL scheme
         if !well_known_url.starts_with("https://") {
             return Err(ProviderError::AuthenticationFailed(
-                "OIDC well-known URL must use HTTPS".to_string()
+                "OIDC well-known URL must use HTTPS".to_string(),
             ));
         }
-        let resp = self.client.get(well_known_url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("OIDC discovery failed: {}", e)
-            ))?;
+        let resp = self.client.get(well_known_url).send().await.map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("OIDC discovery failed: {}", e))
+        })?;
         if !resp.status().is_success() {
-            return Err(ProviderError::AuthenticationFailed(
-                format!("OIDC discovery returned {}", resp.status())
-            ));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "OIDC discovery returned {}",
+                resp.status()
+            )));
         }
         let config: OidcConfig = resp.json().await.map_err(|e| {
             ProviderError::AuthenticationFailed(format!("OIDC config parse failed: {}", e))
@@ -184,26 +192,29 @@ impl JottacloudProvider {
             urlencoding::encode(auth_token),
             urlencoding::encode("openid offline_access"),
         );
-        let resp = self.client.post(token_endpoint)
+        let resp = self
+            .client
+            .post(token_endpoint)
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(form_body)
             .send()
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("Token exchange failed: {}", e)
-            ))?;
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Token exchange failed: {}", e))
+            })?;
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(
-                format!("Token exchange failed: {}", sanitize_api_error(&body))
-            ));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "Token exchange failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         let token_resp: TokenResponse = resp.json().await.map_err(|e| {
             ProviderError::AuthenticationFailed(format!("Token response parse failed: {}", e))
         })?;
         if token_resp.access_token.is_none() {
             return Err(ProviderError::AuthenticationFailed(
-                "Token exchange returned no access_token".to_string()
+                "Token exchange returned no access_token".to_string(),
             ));
         }
         Ok(token_resp)
@@ -216,7 +227,7 @@ impl JottacloudProvider {
         }
         if self.refresh_token.expose_secret().is_empty() || self.token_endpoint.is_empty() {
             return Err(ProviderError::AuthenticationFailed(
-                "Cannot refresh: no refresh token available".to_string()
+                "Cannot refresh: no refresh token available".to_string(),
             ));
         }
         jotta_log("Refreshing access token");
@@ -225,19 +236,22 @@ impl JottacloudProvider {
             "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
             urlencoding::encode(self.refresh_token.expose_secret()),
         );
-        let resp = self.client.post(&self.token_endpoint)
+        let resp = self
+            .client
+            .post(&self.token_endpoint)
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(form_body)
             .send()
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("Token refresh failed: {}", e)
-            ))?;
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Token refresh failed: {}", e))
+            })?;
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(
-                format!("Token refresh failed: {}", sanitize_api_error(&body))
-            ));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "Token refresh failed: {}",
+                sanitize_api_error(&body)
+            )));
         }
         let token_resp: TokenResponse = resp.json().await.map_err(|e| {
             ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
@@ -319,14 +333,16 @@ impl JottacloudProvider {
             "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
             urlencoding::encode(&rt),
         );
-        let resp = self.client.post(&te)
+        let resp = self
+            .client
+            .post(&te)
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(form_body)
             .send()
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(
-                format!("Refresh token exchange failed: {}", e)
-            ))?;
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Refresh token exchange failed: {}", e))
+            })?;
 
         if !resp.status().is_success() {
             jotta_log("Persisted refresh token is invalid/expired, falling back to login token");
@@ -359,7 +375,9 @@ impl JottacloudProvider {
 
     async fn get_with_retry(&mut self, url: &str) -> Result<reqwest::Response, ProviderError> {
         self.refresh_if_needed().await?;
-        let request = self.client.get(url)
+        let request = self
+            .client
+            .get(url)
             .header(AUTHORIZATION, self.auth_header())
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
@@ -368,9 +386,16 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
-    async fn post_with_retry(&mut self, url: &str, content_type: &str, body: Vec<u8>) -> Result<reqwest::Response, ProviderError> {
+    async fn post_with_retry(
+        &mut self,
+        url: &str,
+        content_type: &str,
+        body: Vec<u8>,
+    ) -> Result<reqwest::Response, ProviderError> {
         self.refresh_if_needed().await?;
-        let request = self.client.post(url)
+        let request = self
+            .client
+            .post(url)
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_TYPE, content_type)
             .body(body)
@@ -387,9 +412,15 @@ impl JottacloudProvider {
     fn jfs_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
         if clean.is_empty() {
-            format!("{}/{}/{}/{}", JFS_BASE, self.username, self.config.device, self.config.mountpoint)
+            format!(
+                "{}/{}/{}/{}",
+                JFS_BASE, self.username, self.config.device, self.config.mountpoint
+            )
         } else {
-            format!("{}/{}/{}/{}/{}", JFS_BASE, self.username, self.config.device, self.config.mountpoint, clean)
+            format!(
+                "{}/{}/{}/{}/{}",
+                JFS_BASE, self.username, self.config.device, self.config.mountpoint, clean
+            )
         }
     }
 
@@ -398,7 +429,11 @@ impl JottacloudProvider {
         if trimmed.is_empty() || trimmed == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') { trimmed } else { format!("/{}", trimmed) };
+        let p = if trimmed.starts_with('/') {
+            trimmed
+        } else {
+            format!("/{}", trimmed)
+        };
         p.trim_end_matches('/').to_string()
     }
 
@@ -417,7 +452,11 @@ impl JottacloudProvider {
     fn split_path(path: &str) -> (String, String) {
         let normalized = Self::normalize_path(path);
         if let Some(pos) = normalized.rfind('/') {
-            let parent = if pos == 0 { "/".to_string() } else { normalized[..pos].to_string() };
+            let parent = if pos == 0 {
+                "/".to_string()
+            } else {
+                normalized[..pos].to_string()
+            };
             let name = normalized[pos + 1..].to_string();
             (parent, name)
         } else {
@@ -455,7 +494,10 @@ impl JottacloudProvider {
                 Ok(Event::End(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     match tag.as_str() {
-                        "devices" => { in_devices = false; in_device = false; }
+                        "devices" => {
+                            in_devices = false;
+                            in_device = false;
+                        }
                         "device" => in_device = false,
                         "name" => in_name = false,
                         _ => {}
@@ -522,14 +564,16 @@ impl JottacloudProvider {
         if let Ok(resp) = resp {
             if resp.status().is_success() {
                 let xml = resp.text().await.unwrap_or_default();
-                jotta_log(&format!("Device discovery XML ({} bytes): {}",
-                    xml.len(), &xml[..xml.len().min(500)]));
+                jotta_log(&format!(
+                    "Device discovery XML ({} bytes): {}",
+                    xml.len(),
+                    &xml[..xml.len().min(500)]
+                ));
                 let devices = Self::parse_device_names(&xml);
                 jotta_log(&format!("Available devices: {:?}", devices));
 
                 // Pick device: prefer configured, then "Jotta", then first available
-                if !devices.is_empty()
-                    && !devices.contains(&self.config.device) {
+                if !devices.is_empty() && !devices.contains(&self.config.device) {
                     if devices.contains(&"Jotta".to_string()) {
                         self.config.device = "Jotta".to_string();
                     } else {
@@ -546,14 +590,19 @@ impl JottacloudProvider {
         if let Ok(resp) = resp {
             if resp.status().is_success() {
                 let xml = resp.text().await.unwrap_or_default();
-                jotta_log(&format!("Mountpoint discovery XML ({} bytes): {}",
-                    xml.len(), &xml[..xml.len().min(500)]));
+                jotta_log(&format!(
+                    "Mountpoint discovery XML ({} bytes): {}",
+                    xml.len(),
+                    &xml[..xml.len().min(500)]
+                ));
                 let mountpoints = Self::parse_mountpoint_names(&xml);
-                jotta_log(&format!("Available mountpoints on {}: {:?}", self.config.device, mountpoints));
+                jotta_log(&format!(
+                    "Available mountpoints on {}: {:?}",
+                    self.config.device, mountpoints
+                ));
 
                 // Pick mountpoint: prefer configured, then "Archive", then "Sync", then first
-                if !mountpoints.is_empty()
-                    && !mountpoints.contains(&self.config.mountpoint) {
+                if !mountpoints.is_empty() && !mountpoints.contains(&self.config.mountpoint) {
                     if mountpoints.contains(&"Archive".to_string()) {
                         self.config.mountpoint = "Archive".to_string();
                     } else if mountpoints.contains(&"Sync".to_string()) {
@@ -565,7 +614,10 @@ impl JottacloudProvider {
             }
         }
 
-        jotta_log(&format!("Using device={}, mountpoint={}", self.config.device, self.config.mountpoint));
+        jotta_log(&format!(
+            "Using device={}, mountpoint={}",
+            self.config.device, self.config.mountpoint
+        ));
         Ok(())
     }
 
@@ -614,14 +666,18 @@ impl JottacloudProvider {
                         "folder" | "mountPoint" if root_depth.is_none() => {
                             root_depth = Some(depth);
                         }
-                        "folders" if root_depth == Some(depth - 1) && child_folder_depth.is_none() => {
+                        "folders"
+                            if root_depth == Some(depth - 1) && child_folder_depth.is_none() =>
+                        {
                             in_folders_section = true;
                             folders_section_depth = depth;
                         }
-                        "folder" if child_folder_depth.is_none() && (
-                            in_folders_section ||
-                            (root_depth.is_some() && depth == root_depth.unwrap() + 1)
-                        ) => {
+                        "folder"
+                            if child_folder_depth.is_none()
+                                && (in_folders_section
+                                    || (root_depth.is_some()
+                                        && depth == root_depth.unwrap() + 1)) =>
+                        {
                             // Direct child folder (full element) — inside <folders> or direct child of root
                             let mut name = String::new();
                             let mut is_deleted = false;
@@ -682,10 +738,11 @@ impl JottacloudProvider {
                 Ok(Event::Empty(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
 
-                    if tag == "folder" && child_folder_depth.is_none() && (
-                        in_folders_section ||
-                        (root_depth.is_some() && depth == root_depth.unwrap())
-                    ) {
+                    if tag == "folder"
+                        && child_folder_depth.is_none()
+                        && (in_folders_section
+                            || (root_depth.is_some() && depth == root_depth.unwrap()))
+                    {
                         // Self-closing <folder name="X"/> — direct child
                         let mut name = String::new();
                         let mut is_deleted = false;
@@ -733,7 +790,10 @@ impl JottacloudProvider {
                         "file" if in_file => {
                             in_file = false;
                             in_revision = false;
-                            if current_state == "COMPLETED" && !current_deleted && !current_name.is_empty() {
+                            if current_state == "COMPLETED"
+                                && !current_deleted
+                                && !current_name.is_empty()
+                            {
                                 let entry_path = if base_path == "/" {
                                     format!("/{}", current_name)
                                 } else {
@@ -748,14 +808,22 @@ impl JottacloudProvider {
                                     path: entry_path,
                                     is_dir: false,
                                     size: current_size,
-                                    modified: if current_modified.is_empty() { None } else { Some(current_modified.clone()) },
+                                    modified: if current_modified.is_empty() {
+                                        None
+                                    } else {
+                                        Some(current_modified.clone())
+                                    },
                                     permissions: None,
                                     owner: None,
                                     group: None,
                                     is_symlink: false,
                                     link_target: None,
                                     metadata,
-                                    mime_type: if current_mime.is_empty() { None } else { Some(current_mime.clone()) },
+                                    mime_type: if current_mime.is_empty() {
+                                        None
+                                    } else {
+                                        Some(current_mime.clone())
+                                    },
                                 });
                             }
                         }
@@ -777,10 +845,18 @@ impl JottacloudProvider {
                         }
                         if in_revision {
                             match current_tag.as_str() {
-                                "size" => { current_size = text.parse().unwrap_or(0); }
-                                "mime" => { current_mime = text; }
-                                "md5" => { current_md5 = text; }
-                                "state" => { current_state = text; }
+                                "size" => {
+                                    current_size = text.parse().unwrap_or(0);
+                                }
+                                "mime" => {
+                                    current_mime = text;
+                                }
+                                "md5" => {
+                                    current_md5 = text;
+                                }
+                                "state" => {
+                                    current_state = text;
+                                }
                                 "modified" | "updated" => {
                                     if current_modified.is_empty() {
                                         current_modified = Self::parse_jotta_time(&text);
@@ -823,7 +899,9 @@ impl JottacloudProvider {
 
 #[async_trait]
 impl StorageProvider for JottacloudProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::Jottacloud
@@ -847,7 +925,10 @@ impl StorageProvider for JottacloudProvider {
             let auth_token = login_token.auth_token.unwrap_or_default();
             let well_known_link = login_token.well_known_link.unwrap_or_default();
 
-            jotta_log(&format!("Username: {}, discovering OIDC from well-known URL", username));
+            jotta_log(&format!(
+                "Username: {}, discovering OIDC from well-known URL",
+                username
+            ));
 
             // Step 2: OIDC discovery
             let token_endpoint = self.discover_oidc(&well_known_link).await?;
@@ -887,7 +968,8 @@ impl StorageProvider for JottacloudProvider {
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ConnectionFailed(format!(
-                "Jottacloud connection failed: {}", sanitize_api_error(&body)
+                "Jottacloud connection failed: {}",
+                sanitize_api_error(&body)
             )));
         }
 
@@ -898,7 +980,11 @@ impl StorageProvider for JottacloudProvider {
         // Use customer info username for JFS paths (may differ from login token username)
         if let Some(ref u) = customer.username {
             if !u.is_empty() && *u != self.username {
-                jotta_log(&format!("JFS username from customer info: {} (token had: {})", mask_credential(u), mask_credential(&self.username)));
+                jotta_log(&format!(
+                    "JFS username from customer info: {} (token had: {})",
+                    mask_credential(u),
+                    mask_credential(&self.username)
+                ));
                 self.username = u.clone();
             } else {
                 jotta_log(&format!("Authenticated as: {}", mask_credential(u)));
@@ -922,7 +1008,10 @@ impl StorageProvider for JottacloudProvider {
         // Persist refresh token for future reconnections (login token is single-use)
         self.persist_refresh_token();
 
-        jotta_log(&format!("Connected (device={}, mountpoint={})", self.config.device, self.config.mountpoint));
+        jotta_log(&format!(
+            "Connected (device={}, mountpoint={})",
+            self.config.device, self.config.mountpoint
+        ));
         Ok(())
     }
 
@@ -946,7 +1035,11 @@ impl StorageProvider for JottacloudProvider {
         let new_path = if path.starts_with('/') {
             Self::normalize_path(path)
         } else if path == ".." {
-            let mut parts: Vec<&str> = self.current_path.split('/').filter(|s| !s.is_empty()).collect();
+            let mut parts: Vec<&str> = self
+                .current_path
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
             parts.pop();
             if parts.is_empty() {
                 "/".to_string()
@@ -962,7 +1055,10 @@ impl StorageProvider for JottacloudProvider {
         let url = self.jfs_url(&new_path);
         let resp = self.get_with_retry(&url).await?;
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(format!("Directory not found: {}", new_path)));
+            return Err(ProviderError::NotFound(format!(
+                "Directory not found: {}",
+                new_path
+            )));
         }
 
         self.current_path = new_path;
@@ -982,22 +1078,35 @@ impl StorageProvider for JottacloudProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             if status.as_u16() == 404 {
-                return Err(ProviderError::NotFound(format!("Path not found: {}", resolved)));
+                return Err(ProviderError::NotFound(format!(
+                    "Path not found: {}",
+                    resolved
+                )));
             }
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "List {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                "List {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
-        let xml = resp.text().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to read response: {}", e))
-        })?;
+        let xml = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
 
-        jotta_log(&format!("List XML for '{}' ({} bytes): {}", resolved, xml.len(), &xml[..xml.len().min(2000)]));
+        jotta_log(&format!(
+            "List XML for '{}' ({} bytes): {}",
+            resolved,
+            xml.len(),
+            &xml[..xml.len().min(2000)]
+        ));
 
         let entries = Self::parse_folder_xml(&xml, &resolved);
-        jotta_log(&format!("Parsed {} entries (dirs={}, files={})",
+        jotta_log(&format!(
+            "Parsed {} entries (dirs={}, files={})",
             entries.len(),
             entries.iter().filter(|e| e.is_dir).count(),
             entries.iter().filter(|e| !e.is_dir).count(),
@@ -1020,14 +1129,19 @@ impl StorageProvider for JottacloudProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
-                "Download {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                "Download {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
         let total_size = resp.content_length().unwrap_or(0);
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Create local file failed: {}", e))
-        })?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Create local file failed: {}", e))
+            })?;
 
         let mut stream = resp.bytes_stream();
         use futures_util::StreamExt;
@@ -1037,9 +1151,10 @@ impl StorageProvider for JottacloudProvider {
             let chunk = chunk.map_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
-            atomic.write_all(&chunk).await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Write failed: {}", e))
-            })?;
+            atomic
+                .write_all(&chunk)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write failed: {}", e)))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = progress {
                 cb(downloaded, total_size);
@@ -1063,20 +1178,21 @@ impl StorageProvider for JottacloudProvider {
         let resolved = self.resolve_path(remote_path);
         // M9: Full file read into memory — Jottacloud's upload API requires the complete body
         // with an MD5 hash for deduplication. This limits practical upload size to available RAM.
-        let data = tokio::fs::read(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Read local file failed: {}", e))
-        })?;
+        let data = tokio::fs::read(local_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Read local file failed: {}", e)))?;
 
         let total_size = data.len() as u64;
 
         // Calculate MD5 for deduplication
-        use md5::{Md5, Digest};
+        use md5::{Digest, Md5};
         let mut hasher = Md5::new();
         hasher.update(&data);
         let md5_hash = format!("{:x}", hasher.finalize());
 
         // Get file modification time in Jottacloud format: "2006-01-02-T15:04:05Z" (extra dash before T)
-        let modified_time = tokio::fs::metadata(local_path).await
+        let modified_time = tokio::fs::metadata(local_path)
+            .await
             .ok()
             .and_then(|m| m.modified().ok())
             .map(|t| {
@@ -1089,7 +1205,8 @@ impl StorageProvider for JottacloudProvider {
         // POST https://up.jottacloud.com/jfs/{user}/{device}/{mountpoint}/{path}
         let clean = resolved.trim_start_matches('/');
         // URL-encode each path segment to handle special characters
-        let encoded_path: String = clean.split('/')
+        let encoded_path: String = clean
+            .split('/')
             .map(|s| urlencoding::encode(s).into_owned())
             .collect::<Vec<_>>()
             .join("/");
@@ -1113,10 +1230,11 @@ impl StorageProvider for JottacloudProvider {
             .file_name(filename)
             .mime_str("application/octet-stream")
             .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
-        let form = reqwest::multipart::Form::new()
-            .part("file", file_part);
+        let form = reqwest::multipart::Form::new().part("file", file_part);
 
-        let resp = self.client.post(&upload_url)
+        let resp = self
+            .client
+            .post(&upload_url)
             .header(AUTHORIZATION, self.auth_header())
             .header("JMd5", &md5_hash)
             .header("JSize", total_size.to_string())
@@ -1130,9 +1248,14 @@ impl StorageProvider for JottacloudProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            jotta_log(&format!("Upload error response: {}", &body[..body.len().min(1000)]));
+            jotta_log(&format!(
+                "Upload error response: {}",
+                &body[..body.len().min(1000)]
+            ));
             return Err(ProviderError::TransferFailed(format!(
-                "Upload failed ({}): {}", status, sanitize_api_error(&body)
+                "Upload failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1148,13 +1271,18 @@ impl StorageProvider for JottacloudProvider {
         let resolved = self.resolve_path(path);
         let url = format!("{}?mkDir=true", self.jfs_url(&resolved));
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Mkdir {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                "Mkdir {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1167,17 +1295,24 @@ impl StorageProvider for JottacloudProvider {
         // Hard delete (?rm=true) — removes immediately without going to trash
         let url = format!("{}?rm=true", self.jfs_url(&resolved));
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             // Try directory hard delete
             let url_dir = format!("{}?rmDir=true", self.jfs_url(&resolved));
-            let resp_dir = self.post_with_retry(&url_dir, "application/octet-stream", vec![]).await?;
+            let resp_dir = self
+                .post_with_retry(&url_dir, "application/octet-stream", vec![])
+                .await?;
             if !resp_dir.status().is_success() {
                 let status = resp_dir.status();
                 let body = resp_dir.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
-                    "Delete {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                    "Delete {} failed ({}): {}",
+                    resolved,
+                    status,
+                    sanitize_api_error(&body)
                 )));
             }
         }
@@ -1191,17 +1326,32 @@ impl StorageProvider for JottacloudProvider {
         let resolved_to = self.resolve_path(to);
 
         // Use move operation for rename
-        let to_jfs = format!("/{}/{}/{}/{}", self.username, self.config.device, self.config.mountpoint,
-            resolved_to.trim_start_matches('/'));
-        let url = format!("{}?mv={}", self.jfs_url(&resolved_from), urlencoding::encode(&to_jfs));
+        let to_jfs = format!(
+            "/{}/{}/{}/{}",
+            self.username,
+            self.config.device,
+            self.config.mountpoint,
+            resolved_to.trim_start_matches('/')
+        );
+        let url = format!(
+            "{}?mv={}",
+            self.jfs_url(&resolved_from),
+            urlencoding::encode(&to_jfs)
+        );
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Rename {} → {} failed ({}): {}", resolved_from, resolved_to, status, sanitize_api_error(&body)
+                "Rename {} → {} failed ({}): {}",
+                resolved_from,
+                resolved_to,
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1216,12 +1366,16 @@ impl StorageProvider for JottacloudProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::NotFound(format!("Path not found: {}", resolved)));
+            return Err(ProviderError::NotFound(format!(
+                "Path not found: {}",
+                resolved
+            )));
         }
 
-        let xml = resp.text().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to read response: {}", e))
-        })?;
+        let xml = resp
+            .text()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
 
         // Check if response is a folder or file
         let (_, name) = Self::split_path(&resolved);
@@ -1266,9 +1420,10 @@ impl StorageProvider for JottacloudProvider {
         let xml = resp.text().await.unwrap_or_default();
         let all_entries = Self::parse_folder_xml(&xml, &resolved);
 
-        Ok(all_entries.into_iter().filter(|e| {
-            super::matches_find_pattern(&e.name, pattern)
-        }).collect())
+        Ok(all_entries
+            .into_iter()
+            .filter(|e| super::matches_find_pattern(&e.name, pattern))
+            .collect())
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -1276,7 +1431,9 @@ impl StorageProvider for JottacloudProvider {
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::ServerError("Failed to get storage info".to_string()));
+            return Err(ProviderError::ServerError(
+                "Failed to get storage info".to_string(),
+            ));
         }
 
         let customer: CustomerInfo = resp.json().await.map_err(|e| {
@@ -1287,14 +1444,14 @@ impl StorageProvider for JottacloudProvider {
         let total = customer.quota.max(0) as u64;
         let free = total.saturating_sub(used);
 
-        Ok(StorageInfo {
-            used,
-            total,
-            free,
-        })
+        Ok(StorageInfo { used, total, free })
     }
 
-    async fn create_share_link(&mut self, _path: &str, _options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
+    async fn create_share_link(
+        &mut self,
+        _path: &str,
+        _options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
         Err(ProviderError::NotSupported(
             "share links for Jottacloud are not yet verified against the live API".to_string(),
         ))
@@ -1310,7 +1467,10 @@ impl StorageProvider for JottacloudProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
-                "Download {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                "Download {} failed ({}): {}",
+                resolved,
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1352,9 +1512,15 @@ impl StorageProvider for JottacloudProvider {
         ))
     }
 
-    fn supports_find(&self) -> bool { true }
-    fn supports_share_links(&self) -> bool { false }
-    fn supports_versions(&self) -> bool { false }
+    fn supports_find(&self) -> bool {
+        true
+    }
+    fn supports_share_links(&self) -> bool {
+        false
+    }
+    fn supports_versions(&self) -> bool {
+        false
+    }
 }
 
 // ─── Jottacloud-specific methods (trash management) ──────────────────────
@@ -1377,17 +1543,24 @@ impl JottacloudProvider {
         let url = format!("{}?dl=true", self.jfs_url(&resolved));
         jotta_log(&format!("Moving to trash: {}", resolved));
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             // Try directory soft delete
             let url_dir = format!("{}?dlDir=true", self.jfs_url(&resolved));
-            let resp_dir = self.post_with_retry(&url_dir, "application/octet-stream", vec![]).await?;
+            let resp_dir = self
+                .post_with_retry(&url_dir, "application/octet-stream", vec![])
+                .await?;
             if !resp_dir.status().is_success() {
                 let status = resp_dir.status();
                 let body = resp_dir.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
-                    "Move to trash {} failed ({}): {}", resolved, status, sanitize_api_error(&body)
+                    "Move to trash {} failed ({}): {}",
+                    resolved,
+                    status,
+                    sanitize_api_error(&body)
                 )));
             }
         }
@@ -1411,12 +1584,18 @@ impl JottacloudProvider {
             }
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "List trash failed ({}): {}", status, sanitize_api_error(&body)
+                "List trash failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
         let xml = resp.text().await.unwrap_or_default();
-        jotta_log(&format!("Trash XML ({} bytes): {}", xml.len(), &xml[..xml.len().min(2000)]));
+        jotta_log(&format!(
+            "Trash XML ({} bytes): {}",
+            xml.len(),
+            &xml[..xml.len().min(2000)]
+        ));
 
         // Parse trash listing — include ALL items (even "deleted" ones, since they ARE trash)
         let entries = Self::parse_trash_xml(&xml);
@@ -1431,13 +1610,17 @@ impl JottacloudProvider {
         let url = format!("{}?restore=true", self.trash_url(clean));
         jotta_log(&format!("Restoring from trash: {}", url));
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Restore from trash failed ({}): {}", status, sanitize_api_error(&body)
+                "Restore from trash failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1452,13 +1635,17 @@ impl JottacloudProvider {
         let url = format!("{}?rm=true", self.trash_url(clean));
         jotta_log(&format!("Permanent delete from trash: {}", url));
 
-        let resp = self.post_with_retry(&url, "application/octet-stream", vec![]).await?;
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", vec![])
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Permanent delete failed ({}): {}", status, sanitize_api_error(&body)
+                "Permanent delete failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
             )));
         }
 
@@ -1468,7 +1655,9 @@ impl JottacloudProvider {
 
     /// Whether this provider supports trash operations.
     #[allow(dead_code)]
-    pub fn supports_trash(&self) -> bool { true }
+    pub fn supports_trash(&self) -> bool {
+        true
+    }
 
     /// Parse trash XML listing. Unlike regular listing, we include all items
     /// regardless of deleted status (they ARE trash items).
@@ -1505,14 +1694,18 @@ impl JottacloudProvider {
                         "folder" | "mountPoint" | "trashcan" if root_depth.is_none() => {
                             root_depth = Some(depth);
                         }
-                        "folders" if root_depth == Some(depth - 1) && child_folder_depth.is_none() => {
+                        "folders"
+                            if root_depth == Some(depth - 1) && child_folder_depth.is_none() =>
+                        {
                             in_folders_section = true;
                             folders_section_depth = depth;
                         }
-                        "folder" if child_folder_depth.is_none() && (
-                            in_folders_section ||
-                            (root_depth.is_some() && depth == root_depth.unwrap() + 1)
-                        ) => {
+                        "folder"
+                            if child_folder_depth.is_none()
+                                && (in_folders_section
+                                    || (root_depth.is_some()
+                                        && depth == root_depth.unwrap() + 1)) =>
+                        {
                             let mut name = String::new();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
@@ -1549,16 +1742,21 @@ impl JottacloudProvider {
                                 }
                             }
                         }
-                        "currentRevision" if in_file => { in_revision = true; }
-                        _ => { current_tag = tag; }
+                        "currentRevision" if in_file => {
+                            in_revision = true;
+                        }
+                        _ => {
+                            current_tag = tag;
+                        }
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if tag == "folder" && child_folder_depth.is_none() && (
-                        in_folders_section ||
-                        (root_depth.is_some() && depth == root_depth.unwrap())
-                    ) {
+                    if tag == "folder"
+                        && child_folder_depth.is_none()
+                        && (in_folders_section
+                            || (root_depth.is_some() && depth == root_depth.unwrap()))
+                    {
                         let mut name = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
@@ -1602,7 +1800,11 @@ impl JottacloudProvider {
                                     path: format!("/{}", current_name),
                                     is_dir: false,
                                     size: current_size,
-                                    modified: if current_modified.is_empty() { None } else { Some(current_modified.clone()) },
+                                    modified: if current_modified.is_empty() {
+                                        None
+                                    } else {
+                                        Some(current_modified.clone())
+                                    },
                                     permissions: None,
                                     owner: None,
                                     group: None,
@@ -1613,7 +1815,9 @@ impl JottacloudProvider {
                                 });
                             }
                         }
-                        "currentRevision" => { in_revision = false; }
+                        "currentRevision" => {
+                            in_revision = false;
+                        }
                         _ => {}
                     }
                     depth = depth.saturating_sub(1);
@@ -1623,8 +1827,12 @@ impl JottacloudProvider {
                     let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                     if in_revision && in_file {
                         match current_tag.as_str() {
-                            "size" => { current_size = text.parse().unwrap_or(0); }
-                            "state" => { current_state = text; }
+                            "size" => {
+                                current_size = text.parse().unwrap_or(0);
+                            }
+                            "state" => {
+                                current_state = text;
+                            }
                             "modified" | "updated" => {
                                 if current_modified.is_empty() {
                                     current_modified = Self::parse_jotta_time(&text);

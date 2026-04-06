@@ -4,15 +4,17 @@
 // AI Streaming Module for AeroFTP
 // SSE/chunked streaming for OpenAI, Anthropic, Gemini, Ollama
 
-use serde::Serialize;
-use reqwest::Client;
-use tauri::AppHandle;
 use futures_util::StreamExt;
+use reqwest::Client;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use tauri::AppHandle;
 
-use crate::ai::{AIRequest, AIProviderType, AIToolCall, truncate_safe, sanitize_error_message, AI_STREAM_CLIENT};
+use crate::ai::{
+    sanitize_error_message, truncate_safe, AIProviderType, AIRequest, AIToolCall, AI_STREAM_CLIENT,
+};
 use crate::ai_core::EventSink;
 
 /// Registry of active streams that can be cancelled by stream_id.
@@ -81,7 +83,10 @@ pub async fn ai_chat_stream_with_sink(
 ) -> Result<(), String> {
     // Register a cancellation flag for this stream
     let cancel = Arc::new(AtomicBool::new(false));
-    ACTIVE_STREAMS.lock().unwrap().insert(stream_id.to_string(), Arc::clone(&cancel));
+    ACTIVE_STREAMS
+        .lock()
+        .unwrap()
+        .insert(stream_id.to_string(), Arc::clone(&cancel));
 
     // Clamp top_p to [0.0, 1.0], top_k to [1, 500], and thinking_budget to [0, 128000]
     let request = AIRequest {
@@ -95,7 +100,9 @@ pub async fn ai_chat_stream_with_sink(
 
     let result = match request.provider_type {
         AIProviderType::Google => stream_gemini(client, &request, sink, stream_id, &cancel).await,
-        AIProviderType::Anthropic => stream_anthropic(client, &request, sink, stream_id, &cancel).await,
+        AIProviderType::Anthropic => {
+            stream_anthropic(client, &request, sink, stream_id, &cancel).await
+        }
         AIProviderType::Ollama => stream_ollama(client, &request, sink, stream_id, &cancel).await,
         // OpenAI, xAI, OpenRouter, Custom all use OpenAI-compatible SSE
         _ => stream_openai(client, &request, sink, stream_id, &cancel).await,
@@ -109,17 +116,20 @@ pub async fn ai_chat_stream_with_sink(
         Err(e) => {
             // Sanitize error message to prevent API key leakage in streamed error events
             let safe_msg = sanitize_error_message(&e.to_string());
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: format!("Error: {}", safe_msg),
-                done: true,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: format!("Error: {}", safe_msg),
+                    done: true,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             Err(safe_msg)
         }
     }
@@ -137,7 +147,10 @@ async fn stream_openai(
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
 
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(reqwest::header::AUTHORIZATION, format!("Bearer {}", api_key).parse()?);
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        format!("Bearer {}", api_key).parse()?,
+    );
 
     if request.provider_type == AIProviderType::OpenRouter {
         headers.insert("HTTP-Referer", "https://aeroftp.app".parse()?);
@@ -159,9 +172,11 @@ async fn stream_openai(
         top_p: Option<f32>,
     }
 
-    let messages: Vec<serde_json::Value> = request.messages.iter().map(|m| {
-        serde_json::json!({ "role": m.role, "content": m.to_openai_content() })
-    }).collect();
+    let messages: Vec<serde_json::Value> = request
+        .messages
+        .iter()
+        .map(|m| serde_json::json!({ "role": m.role, "content": m.to_openai_content() }))
+        .collect();
 
     // Build tools with strict mode for providers that support structured outputs
     let supports_strict = matches!(
@@ -169,26 +184,28 @@ async fn stream_openai(
         AIProviderType::OpenAI | AIProviderType::Xai | AIProviderType::OpenRouter
     );
     let tools = request.tools.as_ref().map(|defs| {
-        defs.iter().map(|d| {
-            let mut params = d.parameters.clone();
-            if supports_strict {
-                if let Some(obj) = params.as_object_mut() {
-                    obj.insert("additionalProperties".to_string(), serde_json::json!(false));
+        defs.iter()
+            .map(|d| {
+                let mut params = d.parameters.clone();
+                if supports_strict {
+                    if let Some(obj) = params.as_object_mut() {
+                        obj.insert("additionalProperties".to_string(), serde_json::json!(false));
+                    }
                 }
-            }
-            let mut func = serde_json::json!({
-                "name": d.name,
-                "description": d.description,
-                "parameters": params,
-            });
-            if supports_strict {
-                func["strict"] = serde_json::json!(true);
-            }
-            serde_json::json!({
-                "type": "function",
-                "function": func,
+                let mut func = serde_json::json!({
+                    "name": d.name,
+                    "description": d.description,
+                    "parameters": params,
+                });
+                if supports_strict {
+                    func["strict"] = serde_json::json!(true);
+                }
+                serde_json::json!({
+                    "type": "function",
+                    "function": func,
+                })
             })
-        }).collect()
+            .collect()
     });
 
     let stream_req = OpenAIStreamRequest {
@@ -202,8 +219,11 @@ async fn stream_openai(
     };
 
     // Convert to Value so we can inject reasoning_effort for o3
-    let mut body = serde_json::to_value(&stream_req)
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { format!("Failed to serialize request: {}", e).into() })?;
+    let mut body = serde_json::to_value(&stream_req).map_err(
+        |e| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("Failed to serialize request: {}", e).into()
+        },
+    )?;
 
     // Request token usage in the final streaming chunk (OpenAI-compat providers)
     // Note: some providers (Cohere, Perplexity) reject unknown fields like stream_options
@@ -218,7 +238,13 @@ async fn stream_openai(
     // OpenAI o3/o3-mini thinking support: map budget to reasoning_effort levels
     if let Some(budget) = request.thinking_budget {
         if budget > 0 {
-            let effort = if budget <= 5000 { "low" } else if budget <= 20000 { "medium" } else { "high" };
+            let effort = if budget <= 5000 {
+                "low"
+            } else if budget <= 20000 {
+                "medium"
+            } else {
+                "high"
+            };
             body["reasoning_effort"] = serde_json::json!(effort);
             // Reasoning models do not support temperature or top_p
             if let Some(o) = body.as_object_mut() {
@@ -249,18 +275,18 @@ async fn stream_openai(
     }
 
     // Kimi web search: inject $web_search as builtin_function tool
-    if matches!(request.provider_type, AIProviderType::Kimi)
-        && request.web_search.unwrap_or(false) {
-            let web_tool = serde_json::json!({
-                "type": "builtin_function",
-                "function": { "name": "$web_search" }
-            });
-            if let Some(tools_arr) = body["tools"].as_array_mut() {
-                tools_arr.push(web_tool);
-            } else {
-                body["tools"] = serde_json::json!([web_tool]);
-            }
+    if matches!(request.provider_type, AIProviderType::Kimi) && request.web_search.unwrap_or(false)
+    {
+        let web_tool = serde_json::json!({
+            "type": "builtin_function",
+            "function": { "name": "$web_search" }
+        });
+        if let Some(tools_arr) = body["tools"].as_array_mut() {
+            tools_arr.push(web_tool);
+        } else {
+            body["tools"] = serde_json::json!([web_tool]);
         }
+    }
 
     // Kimi context caching: inject cache_id if provided
     if matches!(request.provider_type, AIProviderType::Kimi) {
@@ -272,13 +298,13 @@ async fn stream_openai(
     }
 
     // Qwen web search: enable_search + search_options
-    if matches!(request.provider_type, AIProviderType::Qwen)
-        && request.web_search.unwrap_or(false) {
-            body["enable_search"] = serde_json::json!(true);
-            body["search_options"] = serde_json::json!({
-                "search_strategy": "pro"
-            });
-        }
+    if matches!(request.provider_type, AIProviderType::Qwen) && request.web_search.unwrap_or(false)
+    {
+        body["enable_search"] = serde_json::json!(true);
+        body["search_options"] = serde_json::json!({
+            "search_strategy": "pro"
+        });
+    }
 
     // DeepSeek prefix completion: add prefix:true to last assistant message
     if matches!(request.provider_type, AIProviderType::DeepSeek) {
@@ -293,7 +319,12 @@ async fn stream_openai(
         }
     }
 
-    let response = client.post(&url).headers(headers).json(&body).send().await?;
+    let response = client
+        .post(&url)
+        .headers(headers)
+        .json(&body)
+        .send()
+        .await?;
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
@@ -314,7 +345,9 @@ async fn stream_openai(
             c = stream.next() => c,
             _ = wait_for_cancel(cancel) => break,
         };
-        let Some(chunk) = chunk else { break; };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -327,17 +360,20 @@ async fn stream_openai(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
-                done: true,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
+                    done: true,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             break;
         }
 
@@ -349,38 +385,50 @@ async fn stream_openai(
                 if line == "data: [DONE]" {
                     // If reasoning was emitted, signal thinking_done before final done
                     if had_reasoning {
-                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                            content: String::new(),
-                            done: false,
-                            tool_calls: None,
-                            input_tokens: None,
-                            output_tokens: None,
-                            thinking: None,
-                            thinking_done: Some(true),
-                            cache_creation_input_tokens: None,
-                            cache_read_input_tokens: None,
-                        });
+                        sink.emit_stream_chunk(
+                            stream_id,
+                            &StreamChunk {
+                                content: String::new(),
+                                done: false,
+                                tool_calls: None,
+                                input_tokens: None,
+                                output_tokens: None,
+                                thinking: None,
+                                thinking_done: Some(true),
+                                cache_creation_input_tokens: None,
+                                cache_read_input_tokens: None,
+                            },
+                        );
                     }
                     let tool_calls = if accumulated_tool_calls.is_empty() {
                         None
                     } else {
-                        Some(accumulated_tool_calls.iter().map(|tc| AIToolCall {
-                            id: tc.id.clone(),
-                            name: tc.name.clone(),
-                            arguments: serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({})),
-                        }).collect())
+                        Some(
+                            accumulated_tool_calls
+                                .iter()
+                                .map(|tc| AIToolCall {
+                                    id: tc.id.clone(),
+                                    name: tc.name.clone(),
+                                    arguments: serde_json::from_str(&tc.arguments)
+                                        .unwrap_or(serde_json::json!({})),
+                                })
+                                .collect(),
+                        )
                     };
-                    sink.emit_stream_chunk(stream_id, &StreamChunk {
-                        content: String::new(),
-                        done: true,
-                        tool_calls,
-                        input_tokens: stream_input_tokens,
-                        output_tokens: stream_output_tokens,
-                        thinking: None,
-                        thinking_done: None,
-                        cache_creation_input_tokens: None,
-                        cache_read_input_tokens: None,
-                    });
+                    sink.emit_stream_chunk(
+                        stream_id,
+                        &StreamChunk {
+                            content: String::new(),
+                            done: true,
+                            tool_calls,
+                            input_tokens: stream_input_tokens,
+                            output_tokens: stream_output_tokens,
+                            thinking: None,
+                            thinking_done: None,
+                            cache_creation_input_tokens: None,
+                            cache_read_input_tokens: None,
+                        },
+                    );
                     done_emitted = true;
                 }
                 continue;
@@ -393,43 +441,52 @@ async fn stream_openai(
                         if let Some(prompt) = usage.get("prompt_tokens").and_then(|v| v.as_u64()) {
                             stream_input_tokens = Some(prompt as u32);
                         }
-                        if let Some(completion) = usage.get("completion_tokens").and_then(|v| v.as_u64()) {
+                        if let Some(completion) =
+                            usage.get("completion_tokens").and_then(|v| v.as_u64())
+                        {
                             stream_output_tokens = Some(completion as u32);
                         }
                     }
                     if let Some(delta) = parsed["choices"][0]["delta"].as_object() {
                         // Text content
                         if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                content: content.to_string(),
-                                done: false,
-                                tool_calls: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                thinking: None,
-                                thinking_done: None,
-                                cache_creation_input_tokens: None,
-                                cache_read_input_tokens: None,
-                            });
+                            sink.emit_stream_chunk(
+                                stream_id,
+                                &StreamChunk {
+                                    content: content.to_string(),
+                                    done: false,
+                                    tool_calls: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    thinking: None,
+                                    thinking_done: None,
+                                    cache_creation_input_tokens: None,
+                                    cache_read_input_tokens: None,
+                                },
+                            );
                         }
                         // Detect OpenAI o3 reasoning/thinking content
-                        if let Some(reasoning) = delta.get("reasoning_content")
+                        if let Some(reasoning) = delta
+                            .get("reasoning_content")
                             .or_else(|| delta.get("reasoning"))
                             .and_then(|r| r.as_str())
                         {
                             if !reasoning.is_empty() {
                                 had_reasoning = true;
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: String::new(),
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: Some(reasoning.to_string()),
-                                    thinking_done: None,
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: String::new(),
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: Some(reasoning.to_string()),
+                                        thinking_done: None,
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                             }
                         }
                         // Tool call chunks
@@ -465,17 +522,20 @@ async fn stream_openai(
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                 if let Some(delta) = parsed["choices"][0]["delta"].as_object() {
                     if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                            content: content.to_string(),
-                            done: false,
-                            tool_calls: None,
-                            input_tokens: None,
-                            output_tokens: None,
-                            thinking: None,
-                            thinking_done: None,
-                            cache_creation_input_tokens: None,
-                            cache_read_input_tokens: None,
-                        });
+                        sink.emit_stream_chunk(
+                            stream_id,
+                            &StreamChunk {
+                                content: content.to_string(),
+                                done: false,
+                                tool_calls: None,
+                                input_tokens: None,
+                                output_tokens: None,
+                                thinking: None,
+                                thinking_done: None,
+                                cache_creation_input_tokens: None,
+                                cache_read_input_tokens: None,
+                            },
+                        );
                     }
                 }
             }
@@ -486,37 +546,49 @@ async fn stream_openai(
     if !done_emitted {
         // If reasoning was emitted, signal thinking_done before final done
         if had_reasoning {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: String::new(),
+                    done: false,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: Some(true),
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
+        }
+        sink.emit_stream_chunk(
+            stream_id,
+            &StreamChunk {
                 content: String::new(),
-                done: false,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
+                done: true,
+                tool_calls: if accumulated_tool_calls.is_empty() {
+                    None
+                } else {
+                    Some(
+                        accumulated_tool_calls
+                            .iter()
+                            .map(|tc| AIToolCall {
+                                id: tc.id.clone(),
+                                name: tc.name.clone(),
+                                arguments: serde_json::from_str(&tc.arguments)
+                                    .unwrap_or(serde_json::json!({})),
+                            })
+                            .collect(),
+                    )
+                },
+                input_tokens: stream_input_tokens,
+                output_tokens: stream_output_tokens,
                 thinking: None,
-                thinking_done: Some(true),
+                thinking_done: None,
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
-            });
-        }
-        sink.emit_stream_chunk(stream_id, &StreamChunk {
-            content: String::new(),
-            done: true,
-            tool_calls: if accumulated_tool_calls.is_empty() {
-                None
-            } else {
-                Some(accumulated_tool_calls.iter().map(|tc| AIToolCall {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    arguments: serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({})),
-                }).collect())
             },
-            input_tokens: stream_input_tokens,
-            output_tokens: stream_output_tokens,
-            thinking: None,
-            thinking_done: None,
-            cache_creation_input_tokens: None,
-            cache_read_input_tokens: None,
-        });
+        );
     }
 
     Ok(())
@@ -535,22 +607,27 @@ async fn stream_anthropic(
 
     let tools: Option<Vec<serde_json::Value>> = request.tools.as_ref().map(|defs| {
         let len = defs.len();
-        defs.iter().enumerate().map(|(i, d)| {
-            let mut tool = serde_json::json!({
-                "name": d.name,
-                "description": d.description,
-                "input_schema": d.parameters,
-            });
-            // Cache breakpoint on last tool — caches the entire tools array (~4-5K tokens)
-            if i == len - 1 {
-                tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
-            }
-            tool
-        }).collect()
+        defs.iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let mut tool = serde_json::json!({
+                    "name": d.name,
+                    "description": d.description,
+                    "input_schema": d.parameters,
+                });
+                // Cache breakpoint on last tool — caches the entire tools array (~4-5K tokens)
+                if i == len - 1 {
+                    tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+                }
+                tool
+            })
+            .collect()
     });
 
     // Extract system message for top-level system parameter with cache_control
-    let system_text: Option<String> = request.messages.iter()
+    let system_text: Option<String> = request
+        .messages
+        .iter()
         .find(|m| m.role == "system")
         .map(|m| m.content.clone());
 
@@ -583,7 +660,10 @@ async fn stream_anthropic(
         if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
             let is_string = last_user["content"].is_string();
             if is_string {
-                let text = last_user["content"].as_str().unwrap_or_default().to_string();
+                let text = last_user["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 last_user["content"] = serde_json::json!([{
                     "type": "text",
                     "text": text,
@@ -622,7 +702,8 @@ async fn stream_anthropic(
     // Use 2025-04-15 for all Anthropic calls (required for prompt caching and thinking)
     let anthropic_version = "2025-04-15";
 
-    let response = client.post(&url)
+    let response = client
+        .post(&url)
         .header("x-api-key", api_key)
         .header("anthropic-version", anthropic_version)
         .header("content-type", "application/json")
@@ -653,7 +734,9 @@ async fn stream_anthropic(
             c = stream.next() => c,
             _ = wait_for_cancel(cancel) => break,
         };
-        let Some(chunk) = chunk else { break; };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -666,17 +749,20 @@ async fn stream_anthropic(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
-                done: true,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
+                    done: true,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             break;
         }
 
@@ -684,7 +770,9 @@ async fn stream_anthropic(
             let line = buffer[..line_end].trim().to_string();
             buffer.drain(..=line_end);
 
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
@@ -707,17 +795,20 @@ async fn stream_anthropic(
                                 }
                                 _ => {
                                     if is_thinking {
-                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                            content: String::new(),
-                                            done: false,
-                                            tool_calls: None,
-                                            input_tokens: None,
-                                            output_tokens: None,
-                                            thinking: None,
-                                            thinking_done: Some(true),
-                                            cache_creation_input_tokens: None,
-                                            cache_read_input_tokens: None,
-                                        });
+                                        sink.emit_stream_chunk(
+                                            stream_id,
+                                            &StreamChunk {
+                                                content: String::new(),
+                                                done: false,
+                                                tool_calls: None,
+                                                input_tokens: None,
+                                                output_tokens: None,
+                                                thinking: None,
+                                                thinking_done: Some(true),
+                                                cache_creation_input_tokens: None,
+                                                cache_read_input_tokens: None,
+                                            },
+                                        );
                                         is_thinking = false;
                                     }
                                 }
@@ -728,36 +819,44 @@ async fn stream_anthropic(
                             match delta["type"].as_str() {
                                 Some("text_delta") => {
                                     if let Some(text) = delta["text"].as_str() {
-                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                            content: text.to_string(),
-                                            done: false,
-                                            tool_calls: None,
-                                            input_tokens: None,
-                                            output_tokens: None,
-                                            thinking: None,
-                                            thinking_done: None,
-                                            cache_creation_input_tokens: None,
-                                            cache_read_input_tokens: None,
-                                        });
+                                        sink.emit_stream_chunk(
+                                            stream_id,
+                                            &StreamChunk {
+                                                content: text.to_string(),
+                                                done: false,
+                                                tool_calls: None,
+                                                input_tokens: None,
+                                                output_tokens: None,
+                                                thinking: None,
+                                                thinking_done: None,
+                                                cache_creation_input_tokens: None,
+                                                cache_read_input_tokens: None,
+                                            },
+                                        );
                                     }
                                 }
                                 Some("thinking_delta") => {
                                     if let Some(thinking_text) = delta["thinking"].as_str() {
-                                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                            content: String::new(),
-                                            done: false,
-                                            tool_calls: None,
-                                            input_tokens: None,
-                                            output_tokens: None,
-                                            thinking: Some(thinking_text.to_string()),
-                                            thinking_done: None,
-                                            cache_creation_input_tokens: None,
-                                            cache_read_input_tokens: None,
-                                        });
+                                        sink.emit_stream_chunk(
+                                            stream_id,
+                                            &StreamChunk {
+                                                content: String::new(),
+                                                done: false,
+                                                tool_calls: None,
+                                                input_tokens: None,
+                                                output_tokens: None,
+                                                thinking: Some(thinking_text.to_string()),
+                                                thinking_done: None,
+                                                cache_creation_input_tokens: None,
+                                                cache_read_input_tokens: None,
+                                            },
+                                        );
                                     }
                                 }
                                 Some("input_json_delta") => {
-                                    if let (Some(idx), Some(json)) = (current_tool_index, delta["partial_json"].as_str()) {
+                                    if let (Some(idx), Some(json)) =
+                                        (current_tool_index, delta["partial_json"].as_str())
+                                    {
                                         if let Some(tc) = tool_calls.get_mut(idx) {
                                             tc.arguments.push_str(json);
                                         }
@@ -768,55 +867,79 @@ async fn stream_anthropic(
                         }
                         "content_block_stop" => {
                             if is_thinking {
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: String::new(),
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: None,
-                                    thinking_done: Some(true),
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: String::new(),
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: None,
+                                        thinking_done: Some(true),
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                                 is_thinking = false;
                             }
                             current_tool_index = None;
                         }
                         "message_delta" => {
                             if let Some(usage) = event["usage"].as_object() {
-                                output_tokens = usage.get("output_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
+                                output_tokens = usage
+                                    .get("output_tokens")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
                             }
                         }
                         "message_start" => {
                             if let Some(usage) = event["message"]["usage"].as_object() {
-                                input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
+                                input_tokens = usage
+                                    .get("input_tokens")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
                                 // Extract prompt caching tokens from message_start usage
-                                cache_creation_input_tokens = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
-                                cache_read_input_tokens = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
+                                cache_creation_input_tokens = usage
+                                    .get("cache_creation_input_tokens")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
+                                cache_read_input_tokens = usage
+                                    .get("cache_read_input_tokens")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|v| v as u32);
                             }
                         }
                         "message_stop" => {
                             let tc = if tool_calls.is_empty() {
                                 None
                             } else {
-                                Some(tool_calls.iter().map(|t| AIToolCall {
-                                    id: t.id.clone(),
-                                    name: t.name.clone(),
-                                    arguments: serde_json::from_str(&t.arguments).unwrap_or(serde_json::json!({})),
-                                }).collect())
+                                Some(
+                                    tool_calls
+                                        .iter()
+                                        .map(|t| AIToolCall {
+                                            id: t.id.clone(),
+                                            name: t.name.clone(),
+                                            arguments: serde_json::from_str(&t.arguments)
+                                                .unwrap_or(serde_json::json!({})),
+                                        })
+                                        .collect(),
+                                )
                             };
-                            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                content: String::new(),
-                                done: true,
-                                tool_calls: tc,
-                                input_tokens,
-                                output_tokens,
-                                thinking: None,
-                                thinking_done: None,
-                                cache_creation_input_tokens,
-                                cache_read_input_tokens,
-                            });
+                            sink.emit_stream_chunk(
+                                stream_id,
+                                &StreamChunk {
+                                    content: String::new(),
+                                    done: true,
+                                    tool_calls: tc,
+                                    input_tokens,
+                                    output_tokens,
+                                    thinking: None,
+                                    thinking_done: None,
+                                    cache_creation_input_tokens,
+                                    cache_read_input_tokens,
+                                },
+                            );
                             done_emitted = true;
                         }
                         _ => {}
@@ -838,17 +961,20 @@ async fn stream_anthropic(
                 // Emit final text delta if present
                 if event_type == "content_block_delta" {
                     if let Some(text) = event["delta"]["text"].as_str() {
-                        sink.emit_stream_chunk(stream_id, &StreamChunk {
-                            content: text.to_string(),
-                            done: false,
-                            tool_calls: None,
-                            input_tokens: None,
-                            output_tokens: None,
-                            thinking: None,
-                            thinking_done: None,
-                            cache_creation_input_tokens: None,
-                            cache_read_input_tokens: None,
-                        });
+                        sink.emit_stream_chunk(
+                            stream_id,
+                            &StreamChunk {
+                                content: text.to_string(),
+                                done: false,
+                                tool_calls: None,
+                                input_tokens: None,
+                                output_tokens: None,
+                                thinking: None,
+                                thinking_done: None,
+                                cache_creation_input_tokens: None,
+                                cache_read_input_tokens: None,
+                            },
+                        );
                     }
                 }
             }
@@ -859,38 +985,50 @@ async fn stream_anthropic(
     if !done_emitted {
         // If thinking was active, signal thinking_done before final done
         if is_thinking {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: String::new(),
-                done: false,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: Some(true),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: String::new(),
+                    done: false,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: Some(true),
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
         }
         let tc = if tool_calls.is_empty() {
             None
         } else {
-            Some(tool_calls.iter().map(|t| AIToolCall {
-                id: t.id.clone(),
-                name: t.name.clone(),
-                arguments: serde_json::from_str(&t.arguments).unwrap_or(serde_json::json!({})),
-            }).collect())
+            Some(
+                tool_calls
+                    .iter()
+                    .map(|t| AIToolCall {
+                        id: t.id.clone(),
+                        name: t.name.clone(),
+                        arguments: serde_json::from_str(&t.arguments)
+                            .unwrap_or(serde_json::json!({})),
+                    })
+                    .collect(),
+            )
         };
-        sink.emit_stream_chunk(stream_id, &StreamChunk {
-            content: String::new(),
-            done: true,
-            tool_calls: tc,
-            input_tokens,
-            output_tokens,
-            thinking: None,
-            thinking_done: None,
-            cache_creation_input_tokens,
-            cache_read_input_tokens,
-        });
+        sink.emit_stream_chunk(
+            stream_id,
+            &StreamChunk {
+                content: String::new(),
+                done: true,
+                tool_calls: tc,
+                input_tokens,
+                output_tokens,
+                thinking: None,
+                thinking_done: None,
+                cache_creation_input_tokens,
+                cache_read_input_tokens,
+            },
+        );
     }
 
     Ok(())
@@ -938,9 +1076,12 @@ async fn stream_gemini(
     }
     if let Some(budget) = request.thinking_budget {
         if budget > 0 {
-            gen_config.insert("thinkingConfig".to_string(), serde_json::json!({
-                "thinkingBudget": budget
-            }));
+            gen_config.insert(
+                "thinkingConfig".to_string(),
+                serde_json::json!({
+                    "thinkingBudget": budget
+                }),
+            );
         }
     }
 
@@ -977,7 +1118,12 @@ async fn stream_gemini(
         let status = response.status();
         let err_body = response.text().await.unwrap_or_default();
         // Sanitize error to strip API key from any reflected URL in the error body
-        return Err(sanitize_error_message(&format!("HTTP {} — {}", status, truncate_safe(&err_body, 500))).into());
+        return Err(sanitize_error_message(&format!(
+            "HTTP {} — {}",
+            status,
+            truncate_safe(&err_body, 500)
+        ))
+        .into());
     }
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
@@ -994,7 +1140,9 @@ async fn stream_gemini(
             c = stream.next() => c,
             _ = wait_for_cancel(cancel) => break,
         };
-        let Some(chunk) = chunk else { break; };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -1007,17 +1155,20 @@ async fn stream_gemini(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
-                done: true,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
+                    done: true,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             break;
         }
 
@@ -1025,7 +1176,9 @@ async fn stream_gemini(
             let line = buffer[..line_end].trim().to_string();
             buffer.drain(..=line_end);
 
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if let Some(data) = line.strip_prefix("data: ") {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
@@ -1033,87 +1186,114 @@ async fn stream_gemini(
                     if let Some(parts) = parsed["candidates"][0]["content"]["parts"].as_array() {
                         for part in parts {
                             // Detect Gemini thinking/reasoning parts
-                            let is_thought = part.get("thought").and_then(|t| t.as_bool()).unwrap_or(false);
+                            let is_thought = part
+                                .get("thought")
+                                .and_then(|t| t.as_bool())
+                                .unwrap_or(false);
                             if is_thought {
                                 gemini_was_thinking = true;
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                        content: String::new(),
-                                        done: false,
-                                        tool_calls: None,
-                                        input_tokens: None,
-                                        output_tokens: None,
-                                        thinking: Some(text.to_string()),
-                                        thinking_done: None,
-                                        cache_creation_input_tokens: None,
-                                        cache_read_input_tokens: None,
-                                    });
+                                    sink.emit_stream_chunk(
+                                        stream_id,
+                                        &StreamChunk {
+                                            content: String::new(),
+                                            done: false,
+                                            tool_calls: None,
+                                            input_tokens: None,
+                                            output_tokens: None,
+                                            thinking: Some(text.to_string()),
+                                            thinking_done: None,
+                                            cache_creation_input_tokens: None,
+                                            cache_read_input_tokens: None,
+                                        },
+                                    );
                                     continue; // Skip adding to regular content
                                 }
                             } else if gemini_was_thinking {
                                 // Transitioned from thinking to non-thinking: emit thinking_done
                                 gemini_was_thinking = false;
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: String::new(),
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: None,
-                                    thinking_done: Some(true),
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: String::new(),
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: None,
+                                        thinking_done: Some(true),
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                             }
                             if let Some(text) = part["text"].as_str() {
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: text.to_string(),
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: None,
-                                    thinking_done: None,
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: text.to_string(),
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: None,
+                                        thinking_done: None,
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                             }
                             // Handle executableCode parts
                             if let Some(exec_code) = part.get("executableCode") {
-                                let lang = exec_code["language"].as_str().unwrap_or("python").to_lowercase();
+                                let lang = exec_code["language"]
+                                    .as_str()
+                                    .unwrap_or("python")
+                                    .to_lowercase();
                                 let code = exec_code["code"].as_str().unwrap_or("");
                                 let formatted = format!("\n```{}\n{}\n```\n", lang, code);
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: formatted,
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: None,
-                                    thinking_done: None,
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: formatted,
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: None,
+                                        thinking_done: None,
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                             }
                             // Handle codeExecutionResult parts
                             if let Some(exec_result) = part.get("codeExecutionResult") {
-                                let outcome = exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
+                                let outcome =
+                                    exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
                                 let output = exec_result["output"].as_str().unwrap_or("");
-                                let formatted = format!("\n**Execution Output** ({}):\n```\n{}\n```\n", outcome, output);
-                                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                    content: formatted,
-                                    done: false,
-                                    tool_calls: None,
-                                    input_tokens: None,
-                                    output_tokens: None,
-                                    thinking: None,
-                                    thinking_done: None,
-                                    cache_creation_input_tokens: None,
-                                    cache_read_input_tokens: None,
-                                });
+                                let formatted = format!(
+                                    "\n**Execution Output** ({}):\n```\n{}\n```\n",
+                                    outcome, output
+                                );
+                                sink.emit_stream_chunk(
+                                    stream_id,
+                                    &StreamChunk {
+                                        content: formatted,
+                                        done: false,
+                                        tool_calls: None,
+                                        input_tokens: None,
+                                        output_tokens: None,
+                                        thinking: None,
+                                        thinking_done: None,
+                                        cache_creation_input_tokens: None,
+                                        cache_read_input_tokens: None,
+                                    },
+                                );
                             }
                             if let Some(fc) = part.get("functionCall") {
-                                if let (Some(name), Some(args)) = (fc["name"].as_str(), fc.get("args")) {
+                                if let (Some(name), Some(args)) =
+                                    (fc["name"].as_str(), fc.get("args"))
+                                {
                                     tool_call_counter += 1;
                                     final_tool_calls.push(AIToolCall {
                                         id: format!("gemini_{}_{}", name, tool_call_counter),
@@ -1145,70 +1325,90 @@ async fn stream_gemini(
                         if let Some(thought) = part.get("thought").and_then(|t| t.as_bool()) {
                             if thought {
                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                    sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                        content: String::new(),
-                                        done: false,
-                                        tool_calls: None,
-                                        input_tokens: None,
-                                        output_tokens: None,
-                                        thinking: Some(text.to_string()),
-                                        thinking_done: None,
-                                        cache_creation_input_tokens: None,
-                                        cache_read_input_tokens: None,
-                                    });
+                                    sink.emit_stream_chunk(
+                                        stream_id,
+                                        &StreamChunk {
+                                            content: String::new(),
+                                            done: false,
+                                            tool_calls: None,
+                                            input_tokens: None,
+                                            output_tokens: None,
+                                            thinking: Some(text.to_string()),
+                                            thinking_done: None,
+                                            cache_creation_input_tokens: None,
+                                            cache_read_input_tokens: None,
+                                        },
+                                    );
                                     continue;
                                 }
                             }
                         }
                         if let Some(text) = part["text"].as_str() {
-                            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                content: text.to_string(),
-                                done: false,
-                                tool_calls: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                thinking: None,
-                                thinking_done: None,
-                                cache_creation_input_tokens: None,
-                                cache_read_input_tokens: None,
-                            });
+                            sink.emit_stream_chunk(
+                                stream_id,
+                                &StreamChunk {
+                                    content: text.to_string(),
+                                    done: false,
+                                    tool_calls: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    thinking: None,
+                                    thinking_done: None,
+                                    cache_creation_input_tokens: None,
+                                    cache_read_input_tokens: None,
+                                },
+                            );
                         }
                         // Handle executableCode parts (remaining buffer)
                         if let Some(exec_code) = part.get("executableCode") {
-                            let lang = exec_code["language"].as_str().unwrap_or("python").to_lowercase();
+                            let lang = exec_code["language"]
+                                .as_str()
+                                .unwrap_or("python")
+                                .to_lowercase();
                             let code = exec_code["code"].as_str().unwrap_or("");
                             let formatted = format!("\n```{}\n{}\n```\n", lang, code);
-                            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                content: formatted,
-                                done: false,
-                                tool_calls: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                thinking: None,
-                                thinking_done: None,
-                                cache_creation_input_tokens: None,
-                                cache_read_input_tokens: None,
-                            });
+                            sink.emit_stream_chunk(
+                                stream_id,
+                                &StreamChunk {
+                                    content: formatted,
+                                    done: false,
+                                    tool_calls: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    thinking: None,
+                                    thinking_done: None,
+                                    cache_creation_input_tokens: None,
+                                    cache_read_input_tokens: None,
+                                },
+                            );
                         }
                         // Handle codeExecutionResult parts (remaining buffer)
                         if let Some(exec_result) = part.get("codeExecutionResult") {
-                            let outcome = exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
+                            let outcome =
+                                exec_result["outcome"].as_str().unwrap_or("OUTCOME_UNKNOWN");
                             let output = exec_result["output"].as_str().unwrap_or("");
-                            let formatted = format!("\n**Execution Output** ({}):\n```\n{}\n```\n", outcome, output);
-                            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                                content: formatted,
-                                done: false,
-                                tool_calls: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                thinking: None,
-                                thinking_done: None,
-                                cache_creation_input_tokens: None,
-                                cache_read_input_tokens: None,
-                            });
+                            let formatted = format!(
+                                "\n**Execution Output** ({}):\n```\n{}\n```\n",
+                                outcome, output
+                            );
+                            sink.emit_stream_chunk(
+                                stream_id,
+                                &StreamChunk {
+                                    content: formatted,
+                                    done: false,
+                                    tool_calls: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    thinking: None,
+                                    thinking_done: None,
+                                    cache_creation_input_tokens: None,
+                                    cache_read_input_tokens: None,
+                                },
+                            );
                         }
                         if let Some(fc) = part.get("functionCall") {
-                            if let (Some(name), Some(args)) = (fc["name"].as_str(), fc.get("args")) {
+                            if let (Some(name), Some(args)) = (fc["name"].as_str(), fc.get("args"))
+                            {
                                 tool_call_counter += 1;
                                 final_tool_calls.push(AIToolCall {
                                     id: format!("gemini_{}_{}", name, tool_call_counter),
@@ -1228,17 +1428,24 @@ async fn stream_gemini(
     }
 
     // Final done event (always emitted for Gemini)
-    sink.emit_stream_chunk(stream_id, &StreamChunk {
-        content: String::new(),
-        done: true,
-        tool_calls: if final_tool_calls.is_empty() { None } else { Some(final_tool_calls) },
-        input_tokens,
-        output_tokens,
-        thinking: None,
-        thinking_done: None,
-        cache_creation_input_tokens: None,
-        cache_read_input_tokens: None,
-    });
+    sink.emit_stream_chunk(
+        stream_id,
+        &StreamChunk {
+            content: String::new(),
+            done: true,
+            tool_calls: if final_tool_calls.is_empty() {
+                None
+            } else {
+                Some(final_tool_calls)
+            },
+            input_tokens,
+            output_tokens,
+            thinking: None,
+            thinking_done: None,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: None,
+        },
+    );
 
     Ok(())
 }
@@ -1288,7 +1495,9 @@ async fn stream_ollama(
             c = stream.next() => c,
             _ = wait_for_cancel(cancel) => break,
         };
-        let Some(chunk) = chunk else { break; };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let bytes = chunk?;
         raw_buffer.extend_from_slice(&bytes);
         match String::from_utf8(std::mem::take(&mut raw_buffer)) {
@@ -1301,17 +1510,20 @@ async fn stream_ollama(
             }
         }
         if buffer.len() > MAX_BUFFER_SIZE {
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
-                done: true,
-                tool_calls: None,
-                input_tokens: None,
-                output_tokens: None,
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content: "\n\n[Error: Stream buffer exceeded 50MB limit]".to_string(),
+                    done: true,
+                    tool_calls: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             break;
         }
 
@@ -1319,23 +1531,39 @@ async fn stream_ollama(
             let line = buffer[..line_end].trim().to_string();
             buffer.drain(..=line_end);
 
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
                 let done = parsed["done"].as_bool().unwrap_or(false);
-                let content = parsed["message"]["content"].as_str().unwrap_or("").to_string();
+                let content = parsed["message"]["content"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
 
-                sink.emit_stream_chunk(stream_id, &StreamChunk {
-                    content,
-                    done,
-                    tool_calls: None,
-                    input_tokens: if done { parsed["prompt_eval_count"].as_u64().map(|v| v as u32) } else { None },
-                    output_tokens: if done { parsed["eval_count"].as_u64().map(|v| v as u32) } else { None },
-                    thinking: None,
-                    thinking_done: None,
-                    cache_creation_input_tokens: None,
-                    cache_read_input_tokens: None,
-                });
+                sink.emit_stream_chunk(
+                    stream_id,
+                    &StreamChunk {
+                        content,
+                        done,
+                        tool_calls: None,
+                        input_tokens: if done {
+                            parsed["prompt_eval_count"].as_u64().map(|v| v as u32)
+                        } else {
+                            None
+                        },
+                        output_tokens: if done {
+                            parsed["eval_count"].as_u64().map(|v| v as u32)
+                        } else {
+                            None
+                        },
+                        thinking: None,
+                        thinking_done: None,
+                        cache_creation_input_tokens: None,
+                        cache_read_input_tokens: None,
+                    },
+                );
                 if done {
                     done_emitted = true;
                 }
@@ -1348,19 +1576,33 @@ async fn stream_ollama(
         let line = buffer.trim().to_string();
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
             let done = parsed["done"].as_bool().unwrap_or(false);
-            let content = parsed["message"]["content"].as_str().unwrap_or("").to_string();
+            let content = parsed["message"]["content"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
 
-            sink.emit_stream_chunk(stream_id, &StreamChunk {
-                content,
-                done,
-                tool_calls: None,
-                input_tokens: if done { parsed["prompt_eval_count"].as_u64().map(|v| v as u32) } else { None },
-                output_tokens: if done { parsed["eval_count"].as_u64().map(|v| v as u32) } else { None },
-                thinking: None,
-                thinking_done: None,
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-            });
+            sink.emit_stream_chunk(
+                stream_id,
+                &StreamChunk {
+                    content,
+                    done,
+                    tool_calls: None,
+                    input_tokens: if done {
+                        parsed["prompt_eval_count"].as_u64().map(|v| v as u32)
+                    } else {
+                        None
+                    },
+                    output_tokens: if done {
+                        parsed["eval_count"].as_u64().map(|v| v as u32)
+                    } else {
+                        None
+                    },
+                    thinking: None,
+                    thinking_done: None,
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: None,
+                },
+            );
             if done {
                 done_emitted = true;
             }
@@ -1369,17 +1611,20 @@ async fn stream_ollama(
 
     // Ensure done is always emitted even if stream closes prematurely
     if !done_emitted {
-        sink.emit_stream_chunk(stream_id, &StreamChunk {
-            content: String::new(),
-            done: true,
-            tool_calls: None,
-            input_tokens: None,
-            output_tokens: None,
-            thinking: None,
-            thinking_done: None,
-            cache_creation_input_tokens: None,
-            cache_read_input_tokens: None,
-        });
+        sink.emit_stream_chunk(
+            stream_id,
+            &StreamChunk {
+                content: String::new(),
+                done: true,
+                tool_calls: None,
+                input_tokens: None,
+                output_tokens: None,
+                thinking: None,
+                thinking_done: None,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+            },
+        );
     }
 
     Ok(())

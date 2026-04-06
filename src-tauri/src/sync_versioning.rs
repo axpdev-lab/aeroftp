@@ -34,8 +34,12 @@ pub enum VersioningStrategy {
     Staggered,
 }
 
-fn default_max_age() -> u32 { 30 }
-fn default_max_copies() -> u32 { 5 }
+fn default_max_age() -> u32 {
+    30
+}
+fn default_max_copies() -> u32 {
+    5
+}
 
 impl Default for VersioningStrategy {
     fn default() -> Self {
@@ -143,8 +147,14 @@ impl SyncVersioning {
     /// List all archived versions of a specific file.
     pub fn list_versions(&self, relative_path: &str) -> Result<Vec<VersionEntry>, String> {
         let path = Path::new(relative_path);
-        let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let ext = path
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
         let prefix = format!("{}~", stem);
 
         let archive_dir = if let Some(parent) = path.parent() {
@@ -195,13 +205,18 @@ impl SyncVersioning {
         }
         self.walk_versions(|path, meta| {
             if meta.is_file() {
-                let rel = path.strip_prefix(&self.versions_dir)
+                let rel = path
+                    .strip_prefix(&self.versions_dir)
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_default();
                 // Parse "stem~timestamp.ext" → extract original_relative and archived_at
-                let filename = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                let filename = path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 if let Some(tilde_pos) = filename.find('~') {
-                    let parent_dir = path.parent()
+                    let parent_dir = path
+                        .parent()
                         .and_then(|p| p.strip_prefix(&self.versions_dir).ok())
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
@@ -269,11 +284,17 @@ impl SyncVersioning {
     /// Run cleanup based on the configured strategy.
     pub fn cleanup(&self) -> Result<CleanupStats, String> {
         if !self.versions_dir.exists() {
-            return Ok(CleanupStats { deleted_count: 0, freed_bytes: 0 });
+            return Ok(CleanupStats {
+                deleted_count: 0,
+                freed_bytes: 0,
+            });
         }
 
         match &self.strategy {
-            VersioningStrategy::Disabled => Ok(CleanupStats { deleted_count: 0, freed_bytes: 0 }),
+            VersioningStrategy::Disabled => Ok(CleanupStats {
+                deleted_count: 0,
+                freed_bytes: 0,
+            }),
             VersioningStrategy::TrashCan { max_age_days } => self.cleanup_by_age(*max_age_days),
             VersioningStrategy::Simple { max_copies } => self.cleanup_by_count(*max_copies),
             VersioningStrategy::Staggered => self.cleanup_staggered(),
@@ -284,7 +305,10 @@ impl SyncVersioning {
     fn cleanup_by_age(&self, max_age_days: u32) -> Result<CleanupStats, String> {
         let cutoff = std::time::SystemTime::now()
             - std::time::Duration::from_secs(u64::from(max_age_days) * 86400);
-        let mut stats = CleanupStats { deleted_count: 0, freed_bytes: 0 };
+        let mut stats = CleanupStats {
+            deleted_count: 0,
+            freed_bytes: 0,
+        };
 
         self.walk_versions(|path, meta| {
             if let Ok(modified) = meta.modified() {
@@ -303,7 +327,10 @@ impl SyncVersioning {
 
     /// Keep only the newest max_copies versions per original file.
     fn cleanup_by_count(&self, max_copies: u32) -> Result<CleanupStats, String> {
-        let mut stats = CleanupStats { deleted_count: 0, freed_bytes: 0 };
+        let mut stats = CleanupStats {
+            deleted_count: 0,
+            freed_bytes: 0,
+        };
 
         // Group by original file (stem before ~)
         let mut groups: std::collections::HashMap<String, Vec<(PathBuf, u64)>> =
@@ -315,7 +342,10 @@ impl SyncVersioning {
                     // Group key: parent dir + stem
                     let parent = path.parent().unwrap_or(Path::new(""));
                     let key = format!("{}/{}", parent.display(), &name[..tilde_pos]);
-                    groups.entry(key).or_default().push((path.to_path_buf(), meta.len()));
+                    groups
+                        .entry(key)
+                        .or_default()
+                        .push((path.to_path_buf(), meta.len()));
                 }
             }
         })?;
@@ -338,17 +368,27 @@ impl SyncVersioning {
     /// Staggered cleanup: 1/hour for 24h, 1/day for 30d, 1/week for older.
     fn cleanup_staggered(&self) -> Result<CleanupStats, String> {
         let now = std::time::SystemTime::now();
-        let mut stats = CleanupStats { deleted_count: 0, freed_bytes: 0 };
+        let mut stats = CleanupStats {
+            deleted_count: 0,
+            freed_bytes: 0,
+        };
 
-        let mut groups: std::collections::HashMap<String, Vec<(PathBuf, std::time::SystemTime, u64)>> =
-            std::collections::HashMap::new();
+        let mut groups: std::collections::HashMap<
+            String,
+            Vec<(PathBuf, std::time::SystemTime, u64)>,
+        > = std::collections::HashMap::new();
 
         self.walk_versions(|path, meta| {
-            if let (Some(name), Ok(modified)) = (path.file_name().and_then(|n| n.to_str()), meta.modified()) {
+            if let (Some(name), Ok(modified)) =
+                (path.file_name().and_then(|n| n.to_str()), meta.modified())
+            {
                 if let Some(tilde_pos) = name.find('~') {
                     let parent = path.parent().unwrap_or(Path::new(""));
                     let key = format!("{}/{}", parent.display(), &name[..tilde_pos]);
-                    groups.entry(key).or_default().push((path.to_path_buf(), modified, meta.len()));
+                    groups
+                        .entry(key)
+                        .or_default()
+                        .push((path.to_path_buf(), modified, meta.len()));
                 }
             }
         })?;
@@ -356,12 +396,18 @@ impl SyncVersioning {
         for (_key, mut versions) in groups {
             versions.sort_by(|a, b| b.1.cmp(&a.1)); // Newest first
 
-            let mut kept_in_hour: std::collections::HashMap<u64, bool> = std::collections::HashMap::new();
-            let mut kept_in_day: std::collections::HashMap<u64, bool> = std::collections::HashMap::new();
-            let mut kept_in_week: std::collections::HashMap<u64, bool> = std::collections::HashMap::new();
+            let mut kept_in_hour: std::collections::HashMap<u64, bool> =
+                std::collections::HashMap::new();
+            let mut kept_in_day: std::collections::HashMap<u64, bool> =
+                std::collections::HashMap::new();
+            let mut kept_in_week: std::collections::HashMap<u64, bool> =
+                std::collections::HashMap::new();
 
             for (path, modified, size) in &versions {
-                let age_secs = now.duration_since(*modified).map(|d| d.as_secs()).unwrap_or(0);
+                let age_secs = now
+                    .duration_since(*modified)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
                 let keep = if age_secs < 86400 {
                     // < 24h: keep 1 per hour
                     let hour_bucket = age_secs / 3600;
@@ -388,7 +434,10 @@ impl SyncVersioning {
     }
 
     /// Walk all files in .aeroversions/ recursively.
-    fn walk_versions(&self, mut callback: impl FnMut(&Path, std::fs::Metadata)) -> Result<(), String> {
+    fn walk_versions(
+        &self,
+        mut callback: impl FnMut(&Path, std::fs::Metadata),
+    ) -> Result<(), String> {
         fn walk(dir: &Path, cb: &mut dyn FnMut(&Path, std::fs::Metadata)) -> Result<(), String> {
             if !dir.exists() {
                 return Ok(());
@@ -441,7 +490,8 @@ impl SyncVersioning {
         let mut total = 0u64;
         self.walk_versions(|_, meta| {
             total += meta.len();
-        }).ok();
+        })
+        .ok();
         total
     }
 }

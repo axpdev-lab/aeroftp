@@ -92,7 +92,10 @@ impl TimeWindow {
             return Err(format!("end_hour {} out of range 0-23", self.end_hour));
         }
         if self.start_minute > 59 {
-            return Err(format!("start_minute {} out of range 0-59", self.start_minute));
+            return Err(format!(
+                "start_minute {} out of range 0-59",
+                self.start_minute
+            ));
         }
         if self.end_minute > 59 {
             return Err(format!("end_minute {} out of range 0-59", self.end_minute));
@@ -336,8 +339,7 @@ fn seconds_until_window_opens(window: &TimeWindow, now: &DateTime<Local>) -> u64
 
 /// Resolve the path to `~/.config/aeroftp/sync_schedule.json`.
 fn schedule_path() -> Result<PathBuf, String> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?;
+    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
     Ok(base.join("aeroftp").join("sync_schedule.json"))
 }
 
@@ -346,7 +348,9 @@ fn schedule_path() -> Result<PathBuf, String> {
 /// Returns `SyncSchedule::default()` when the file does not exist or cannot
 /// be parsed.
 pub fn load_sync_schedule() -> SyncSchedule {
-    let _lock = SCHEDULE_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = SCHEDULE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let path = match schedule_path() {
         Ok(p) => p,
         Err(e) => {
@@ -397,7 +401,9 @@ pub fn save_sync_schedule(schedule: &SyncSchedule) -> Result<(), String> {
         tw.validate()?;
     }
 
-    let _lock = SCHEDULE_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = SCHEDULE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let path = schedule_path()?;
 
     if let Some(parent) = path.parent() {
@@ -415,8 +421,13 @@ pub fn save_sync_schedule(schedule: &SyncSchedule) -> Result<(), String> {
 
     // Atomic write: temp file + rename
     let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, &json)
-        .map_err(|e| format!("Failed to write temp schedule to {}: {}", tmp_path.display(), e))?;
+    std::fs::write(&tmp_path, &json).map_err(|e| {
+        format!(
+            "Failed to write temp schedule to {}: {}",
+            tmp_path.display(),
+            e
+        )
+    })?;
     std::fs::rename(&tmp_path, &path)
         .map_err(|e| format!("Failed to rename schedule file: {}", e))?;
 
@@ -653,24 +664,30 @@ mod tests {
     fn test_time_window_validation() {
         // Valid window
         let w = TimeWindow {
-            start_hour: 9, start_minute: 0,
-            end_hour: 17, end_minute: 30,
+            start_hour: 9,
+            start_minute: 0,
+            end_hour: 17,
+            end_minute: 30,
             days: vec![],
         };
         assert!(w.validate().is_ok());
 
         // Invalid start_hour
         let w2 = TimeWindow {
-            start_hour: 25, start_minute: 0,
-            end_hour: 17, end_minute: 0,
+            start_hour: 25,
+            start_minute: 0,
+            end_hour: 17,
+            end_minute: 0,
             days: vec![],
         };
         assert!(w2.validate().is_err());
 
         // Invalid end_minute
         let w3 = TimeWindow {
-            start_hour: 9, start_minute: 0,
-            end_hour: 17, end_minute: 60,
+            start_hour: 9,
+            start_minute: 0,
+            end_hour: 17,
+            end_minute: 60,
             days: vec![],
         };
         assert!(w3.validate().is_err());

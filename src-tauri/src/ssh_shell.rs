@@ -7,14 +7,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler, Msg};
 use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
-use russh::client::AuthResult;
 use russh::{Channel, ChannelId, ChannelMsg};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::Mutex;
 
 /// SSH handler for shell connections (key verification reuses known_hosts)
 struct ShellSshHandler {
@@ -24,7 +24,10 @@ struct ShellSshHandler {
 
 impl ShellSshHandler {
     fn new(host: &str, port: u16) -> Self {
-        Self { host: host.to_string(), port }
+        Self {
+            host: host.to_string(),
+            port,
+        }
     }
 }
 
@@ -49,7 +52,8 @@ impl Handler for ShellSshHandler {
             Err(keys::Error::KeyChanged { line }) => {
                 tracing::error!(
                     "SSH Shell: REJECTING {} - host key changed at line {} (possible MITM)",
-                    self.host, line
+                    self.host,
+                    line
                 );
                 Ok(false)
             }
@@ -57,7 +61,8 @@ impl Handler for ShellSshHandler {
                 // SEC: Reject on unknown errors — do not silently accept.
                 tracing::error!(
                     "SSH Shell: REJECTING {} - known_hosts verification error: {}",
-                    self.host, e
+                    self.host,
+                    e
                 );
                 Ok(false)
             }
@@ -82,7 +87,10 @@ pub struct SshShellState {
 
 impl Default for SshShellState {
     fn default() -> Self {
-        Self { sessions: HashMap::new(), next_id: 1 }
+        Self {
+            sessions: HashMap::new(),
+            next_id: 1,
+        }
     }
 }
 
@@ -113,13 +121,9 @@ pub async fn ssh_shell_open(
     };
 
     let addr = format!("{}:{}", host, port);
-    let mut handle = client::connect(
-        Arc::new(config),
-        &addr,
-        ShellSshHandler::new(&host, port),
-    )
-    .await
-    .map_err(|e| format!("SSH connect failed: {}", e))?;
+    let mut handle = client::connect(Arc::new(config), &addr, ShellSshHandler::new(&host, port))
+        .await
+        .map_err(|e| format!("SSH connect failed: {}", e))?;
 
     // Authenticate
     let mut authenticated = false;
@@ -132,7 +136,9 @@ pub async fn ssh_shell_open(
             if let Ok(key_data) = std::fs::read_to_string(path) {
                 if let Ok(key) = keys::decode_secret_key(&key_data, passphrase) {
                     let key_pair = PrivateKeyWithHashAlg::new(Arc::new(key), None);
-                    if let Ok(AuthResult::Success) = handle.authenticate_publickey(&username, key_pair).await {
+                    if let Ok(AuthResult::Success) =
+                        handle.authenticate_publickey(&username, key_pair).await
+                    {
                         authenticated = true;
                     }
                 }
@@ -165,14 +171,19 @@ pub async fn ssh_shell_open(
     }
 
     // Open shell channel with PTY
-    let channel = handle.channel_open_session().await
+    let channel = handle
+        .channel_open_session()
+        .await
         .map_err(|e| format!("Open session: {}", e))?;
 
-    channel.request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
+    channel
+        .request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
         .await
         .map_err(|e| format!("Request PTY: {}", e))?;
 
-    channel.request_shell(true).await
+    channel
+        .request_shell(true)
+        .await
         .map_err(|e| format!("Request shell: {}", e))?;
 
     let channel_id = channel.id();
@@ -191,10 +202,8 @@ pub async fn ssh_shell_open(
     // Store handle + channel_id for writing
     {
         let mut mgr = state.lock().await;
-        mgr.sessions.insert(session_id.clone(), SshShellSession {
-            handle,
-            channel_id,
-        });
+        mgr.sessions
+            .insert(session_id.clone(), SshShellSession { handle, channel_id });
     }
 
     // Spawn read task — channel is consumed here, writing goes through Handle.data()
@@ -239,10 +248,14 @@ pub async fn ssh_shell_write(
     data: String,
 ) -> Result<(), String> {
     let mgr = state.lock().await;
-    let session = mgr.sessions.get(&session_id)
+    let session = mgr
+        .sessions
+        .get(&session_id)
         .ok_or("SSH shell session not found")?;
 
-    session.handle.data(session.channel_id, data.into_bytes())
+    session
+        .handle
+        .data(session.channel_id, data.into_bytes())
         .await
         .map_err(|_| "SSH write error".to_string())?;
 
@@ -275,7 +288,10 @@ pub async fn ssh_shell_close(
 ) -> Result<(), String> {
     let mut mgr = state.lock().await;
     if let Some(session) = mgr.sessions.remove(&session_id) {
-        let _ = session.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
+        let _ = session
+            .handle
+            .disconnect(russh::Disconnect::ByApplication, "", "en")
+            .await;
     }
     Ok(())
 }

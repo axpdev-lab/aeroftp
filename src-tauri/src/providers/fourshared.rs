@@ -10,14 +10,12 @@ use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
-use super::{
-    StorageProvider, ProviderType, ProviderError, RemoteEntry, StorageInfo,
-};
+use super::http_retry::{send_with_retry, HttpRetryConfig};
 use super::oauth1::{self, OAuth1Credentials};
-use super::http_retry::{HttpRetryConfig, send_with_retry};
 use super::types::FourSharedConfig;
+use super::{ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider};
 
 /// 4shared API base URL.
 /// FS-002: HTTPS is enforced — all API calls use this constant. Do not change to HTTP.
@@ -92,7 +90,10 @@ fn string_or_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i6
             match trimmed.parse::<i64>() {
                 Ok(n) => Ok(Some(n)),
                 Err(_) => {
-                    debug!("string_or_i64: could not parse '{}' as i64, returning None", trimmed);
+                    debug!(
+                        "string_or_i64: could not parse '{}' as i64, returning None",
+                        trimmed
+                    );
                     Ok(None)
                 }
             }
@@ -240,7 +241,8 @@ impl FourSharedProvider {
     /// Make a signed GET request with automatic retry on 429/5xx (FS-009)
     async fn signed_get(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
         let auth = oauth1::authorization_header("GET", url, &self.credentials(), &[]);
-        let request = self.client
+        let request = self
+            .client
             .get(url)
             .header("Authorization", &auth)
             .build()
@@ -274,12 +276,20 @@ impl FourSharedProvider {
         let auth = oauth1::authorization_header("POST", url, &self.credentials(), form);
 
         // Build URL-encoded body manually
-        let body: String = form.iter()
-            .map(|(k, v)| format!("{}={}", oauth1::percent_encode(k), oauth1::percent_encode(v)))
+        let body: String = form
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    oauth1::percent_encode(k),
+                    oauth1::percent_encode(v)
+                )
+            })
             .collect::<Vec<_>>()
             .join("&");
 
-        let request = self.client
+        let request = self
+            .client
             .post(url)
             .header("Authorization", &auth)
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -296,7 +306,8 @@ impl FourSharedProvider {
     /// Make a signed DELETE request with retry (FS-009)
     async fn signed_delete(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
         let auth = oauth1::authorization_header("DELETE", url, &self.credentials(), &[]);
-        let request = self.client
+        let request = self
+            .client
             .delete(url)
             .header("Authorization", &auth)
             .build()
@@ -316,12 +327,20 @@ impl FourSharedProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         let auth = oauth1::authorization_header("PUT", url, &self.credentials(), form);
 
-        let body: String = form.iter()
-            .map(|(k, v)| format!("{}={}", oauth1::percent_encode(k), oauth1::percent_encode(v)))
+        let body: String = form
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    oauth1::percent_encode(k),
+                    oauth1::percent_encode(v)
+                )
+            })
             .collect::<Vec<_>>()
             .join("&");
 
-        let request = self.client
+        let request = self
+            .client
             .put(url)
             .header("Authorization", &auth)
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -341,7 +360,8 @@ impl FourSharedProvider {
         if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == "./" {
             return "/".to_string();
         }
-        let parts: Vec<&str> = trimmed.split('/')
+        let parts: Vec<&str> = trimmed
+            .split('/')
             .filter(|s| !s.is_empty() && *s != "." && *s != "..")
             .collect();
         if parts.is_empty() {
@@ -364,7 +384,11 @@ impl FourSharedProvider {
             return Self::normalize_path(trimmed);
         }
         // Relative path — join with current_path
-        let base = if self.current_path == "/" { String::new() } else { self.current_path.clone() };
+        let base = if self.current_path == "/" {
+            String::new()
+        } else {
+            self.current_path.clone()
+        };
         Self::normalize_path(&format!("{}/{}", base, trimmed))
     }
 
@@ -372,7 +396,10 @@ impl FourSharedProvider {
     fn split_path(normalized: &str) -> (String, String) {
         match normalized.rfind('/') {
             Some(0) => ("/".to_string(), normalized[1..].to_string()),
-            Some(idx) => (normalized[..idx].to_string(), normalized[idx + 1..].to_string()),
+            Some(idx) => (
+                normalized[..idx].to_string(),
+                normalized[idx + 1..].to_string(),
+            ),
             None => ("/".to_string(), normalized.to_string()),
         }
     }
@@ -414,17 +441,23 @@ impl FourSharedProvider {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                info!("resolve_folder_id children failed ({}): {}", status, &body[..body.len().min(200)]);
+                info!(
+                    "resolve_folder_id children failed ({}): {}",
+                    status,
+                    &body[..body.len().min(200)]
+                );
                 return Err(ProviderError::NotFound(format!("Path not found: {}", path)));
             }
 
-            let body = resp.text().await
+            let body = resp
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(format!("Read children body: {}", e)))?;
             let folders = Self::parse_folder_list(&body);
 
-            let found = folders.iter().find(|f| {
-                f.name.as_deref().unwrap_or("") == part
-            });
+            let found = folders
+                .iter()
+                .find(|f| f.name.as_deref().unwrap_or("") == part);
 
             match found {
                 Some(folder) => {
@@ -433,7 +466,12 @@ impl FourSharedProvider {
                     Self::enforce_cache_limit(&mut self.folder_cache);
                     self.folder_cache.insert(built_path.clone(), fid);
                 }
-                None => return Err(ProviderError::NotFound(format!("Folder not found: {}", part))),
+                None => {
+                    return Err(ProviderError::NotFound(format!(
+                        "Folder not found: {}",
+                        part
+                    )))
+                }
             }
         }
 
@@ -457,11 +495,17 @@ impl FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            info!("resolve_file_id files failed ({}): {}", status, &body[..body.len().min(200)]);
+            info!(
+                "resolve_file_id files failed ({}): {}",
+                status,
+                &body[..body.len().min(200)]
+            );
             return Err(ProviderError::NotFound(format!("File not found: {}", path)));
         }
 
-        let body = resp.text().await
+        let body = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
         let files = Self::parse_file_list(&body);
 
@@ -491,9 +535,10 @@ impl FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(
-                format!("Download failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "Download failed ({}): {}",
+                status, body
+            )));
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -509,10 +554,7 @@ impl FourSharedProvider {
         content: Vec<u8>,
     ) -> Result<Option<String>, ProviderError> {
         let sign_url = format!("{}/files", UPLOAD_BASE);
-        let extra = [
-            ("folderId", folder_id),
-            ("fileName", file_name),
-        ];
+        let extra = [("folderId", folder_id), ("fileName", file_name)];
         let auth = oauth1::authorization_header("POST", &sign_url, &self.credentials(), &extra);
 
         let url = format!(
@@ -522,7 +564,8 @@ impl FourSharedProvider {
             oauth1::percent_encode(file_name)
         );
 
-        let request = self.client
+        let request = self
+            .client
             .post(&url)
             .header("Authorization", &auth)
             .header("Content-Type", "application/octet-stream")
@@ -537,12 +580,15 @@ impl FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(
-                format!("Upload failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "Upload failed ({}): {}",
+                status, body
+            )));
         }
 
-        let file_id: Option<String> = resp.json::<FourSharedUploadResponse>().await
+        let file_id: Option<String> = resp
+            .json::<FourSharedUploadResponse>()
+            .await
             .ok()
             .and_then(|r| r.id);
 
@@ -582,7 +628,9 @@ impl FourSharedProvider {
         }
 
         // Extract array, then parse each entry individually (skip failures)
-        if let Some(items) = Self::extract_json_array(body, &["children", "folders", "items", "data"]) {
+        if let Some(items) =
+            Self::extract_json_array(body, &["children", "folders", "items", "data"])
+        {
             let mut folders = Vec::new();
             for (i, item) in items.into_iter().enumerate() {
                 match serde_json::from_value::<FourSharedFolder>(item.clone()) {
@@ -591,7 +639,9 @@ impl FourSharedProvider {
                         let raw = item.to_string();
                         debug!(
                             "4shared: skipping folder entry {}: {} — raw: {}",
-                            i, e, &raw[..raw.len().min(200)]
+                            i,
+                            e,
+                            &raw[..raw.len().min(200)]
                         );
                     }
                 }
@@ -599,7 +649,10 @@ impl FourSharedProvider {
             return folders;
         }
 
-        debug!("4shared: could not parse folder list body: {}", &body[..body.len().min(300)]);
+        debug!(
+            "4shared: could not parse folder list body: {}",
+            &body[..body.len().min(300)]
+        );
         Vec::new()
     }
 
@@ -613,7 +666,8 @@ impl FourSharedProvider {
         }
 
         // Extract array, then parse each entry individually (skip failures)
-        if let Some(items) = Self::extract_json_array(body, &["files", "children", "items", "data"]) {
+        if let Some(items) = Self::extract_json_array(body, &["files", "children", "items", "data"])
+        {
             let mut files = Vec::new();
             for (i, item) in items.into_iter().enumerate() {
                 match serde_json::from_value::<FourSharedFile>(item.clone()) {
@@ -622,7 +676,9 @@ impl FourSharedProvider {
                         let raw = item.to_string();
                         debug!(
                             "4shared: skipping file entry {}: {} — raw: {}",
-                            i, e, &raw[..raw.len().min(200)]
+                            i,
+                            e,
+                            &raw[..raw.len().min(200)]
                         );
                     }
                 }
@@ -630,14 +686,19 @@ impl FourSharedProvider {
             return files;
         }
 
-        debug!("4shared: could not parse file list body: {}", &body[..body.len().min(300)]);
+        debug!(
+            "4shared: could not parse file list body: {}",
+            &body[..body.len().min(300)]
+        );
         Vec::new()
     }
 }
 
 #[async_trait]
 impl StorageProvider for FourSharedProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::FourShared
@@ -660,25 +721,32 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(
-                format!("4shared auth failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "4shared auth failed ({}): {}",
+                status, body
+            )));
         }
 
         // Read raw body for robust parsing — 4shared may return unexpected field types
-        let body_text = resp.text().await
+        let body_text = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(format!("Failed to read response: {}", e)))?;
 
-        let user: FourSharedUser = serde_json::from_str(&body_text)
-            .map_err(|e| ProviderError::ParseError(
-                format!("Failed to parse user info: {}. Body: {}", e, &body_text[..body_text.len().min(200)])
-            ))?;
+        let user: FourSharedUser = serde_json::from_str(&body_text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "Failed to parse user info: {}. Body: {}",
+                e,
+                &body_text[..body_text.len().min(200)]
+            ))
+        })?;
 
         self.root_folder_id = user.root_folder_id.unwrap_or_default();
         self.current_folder_id = self.root_folder_id.clone();
         self.account_email = user.email.clone();
 
-        self.folder_cache.insert("/".to_string(), self.root_folder_id.clone());
+        self.folder_cache
+            .insert("/".to_string(), self.root_folder_id.clone());
 
         self.connected = true;
         info!(
@@ -704,7 +772,11 @@ impl StorageProvider for FourSharedProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let normalized = self.resolve_path(path);
         let folder_id = self.resolve_folder_id(&normalized).await?;
-        tracing::debug!("[4shared] 4shared Listing path='{}' folder_id='{}'", normalized, folder_id);
+        tracing::debug!(
+            "[4shared] 4shared Listing path='{}' folder_id='{}'",
+            normalized,
+            folder_id
+        );
 
         let mut entries = Vec::new();
 
@@ -722,13 +794,23 @@ impl StorageProvider for FourSharedProvider {
 
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                tracing::debug!("[4shared] 4shared list children FAILED ({}): {}", status, &body[..body.len().min(300)]);
+                tracing::debug!(
+                    "[4shared] 4shared list children FAILED ({}): {}",
+                    status,
+                    &body[..body.len().min(300)]
+                );
                 break;
             }
 
-            let body = resp.text().await
+            let body = resp
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(format!("Read folders body: {}", e)))?;
-            tracing::debug!("[4shared] 4shared folders response ({}B): {}", body.len(), &body[..body.len().min(500)]);
+            tracing::debug!(
+                "[4shared] 4shared folders response ({}B): {}",
+                body.len(),
+                &body[..body.len().min(500)]
+            );
             let folders = Self::parse_folder_list(&body);
             let page_count = folders.len() as u32;
 
@@ -738,7 +820,9 @@ impl StorageProvider for FourSharedProvider {
                     continue;
                 }
                 let name = f.name.clone().unwrap_or_default();
-                if name.is_empty() { continue; }
+                if name.is_empty() {
+                    continue;
+                }
 
                 let entry_path = if normalized == "/" {
                     format!("/{}", name)
@@ -788,23 +872,38 @@ impl StorageProvider for FourSharedProvider {
 
             if !fstatus.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                tracing::debug!("[4shared] 4shared list files FAILED ({}): {}", fstatus, &body[..body.len().min(300)]);
+                tracing::debug!(
+                    "[4shared] 4shared list files FAILED ({}): {}",
+                    fstatus,
+                    &body[..body.len().min(300)]
+                );
                 break;
             }
 
-            let body = resp.text().await
+            let body = resp
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
-            tracing::debug!("[4shared] 4shared files response ({}B): {}", body.len(), &body[..body.len().min(500)]);
+            tracing::debug!(
+                "[4shared] 4shared files response ({}B): {}",
+                body.len(),
+                &body[..body.len().min(500)]
+            );
             let files = Self::parse_file_list(&body);
             let page_count = files.len() as u32;
 
             for f in &files {
                 // Skip deleted/trashed/incomplete entries
-                if matches!(f.status.as_deref(), Some("deleted") | Some("trashed") | Some("incomplete")) {
+                if matches!(
+                    f.status.as_deref(),
+                    Some("deleted") | Some("trashed") | Some("incomplete")
+                ) {
                     continue;
                 }
                 let name = f.name.clone().unwrap_or_default();
-                if name.is_empty() { continue; }
+                if name.is_empty() {
+                    continue;
+                }
 
                 let entry_path = if normalized == "/" {
                     format!("/{}", name)
@@ -887,9 +986,10 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(
-                format!("Download failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "Download failed ({}): {}",
+                status, body
+            )));
         }
 
         // FS-007: Streaming download with progress callback
@@ -897,21 +997,25 @@ impl StorageProvider for FourSharedProvider {
 
         let total_size = resp.content_length().unwrap_or(0);
         let mut stream = resp.bytes_stream();
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk).await
+            atomic
+                .write_all(&chunk)
+                .await
                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             downloaded += chunk.len() as u64;
             if let Some(ref cb) = on_progress {
                 cb(downloaded, total_size);
             }
         }
-        atomic.commit().await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         Ok(())
     }
@@ -933,12 +1037,14 @@ impl StorageProvider for FourSharedProvider {
         let folder_id = self.resolve_folder_id(&parent_path).await?;
 
         // FS-007: Get file size for progress reporting
-        let file_metadata = tokio::fs::metadata(local_path).await
+        let file_metadata = tokio::fs::metadata(local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Read file metadata: {}", e)))?;
         let file_size = file_metadata.len();
 
         // Streaming upload: read file as a stream instead of loading into memory
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(|e| ProviderError::Other(format!("Open local file: {}", e)))?;
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
@@ -960,7 +1066,8 @@ impl StorageProvider for FourSharedProvider {
         // Note: streaming upload cannot use send_with_retry because the body stream
         // is consumed on first attempt. The OAuth-signed URL is still retry-safe for
         // the signing portion; transport-level retries require re-opening the file.
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", &auth)
             .header("Content-Type", "application/octet-stream")
@@ -973,12 +1080,15 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let resp_body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(
-                format!("Upload failed ({}): {}", status, resp_body),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "Upload failed ({}): {}",
+                status, resp_body
+            )));
         }
 
-        let upload_resp_id: Option<String> = resp.json::<FourSharedUploadResponse>().await
+        let upload_resp_id: Option<String> = resp
+            .json::<FourSharedUploadResponse>()
+            .await
             .ok()
             .and_then(|r| r.id);
 
@@ -1009,9 +1119,10 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(
-                format!("Create folder failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::Other(format!(
+                "Create folder failed ({}): {}",
+                status, body
+            )));
         }
 
         if let Ok(body) = resp.text().await {
@@ -1034,9 +1145,10 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(
-                format!("Delete failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::Other(format!(
+                "Delete failed ({}): {}",
+                status, body
+            )));
         }
         self.file_cache.remove(&normalized);
         Ok(())
@@ -1051,9 +1163,10 @@ impl StorageProvider for FourSharedProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(
-                format!("Delete folder failed ({}): {}", status, body),
-            ));
+            return Err(ProviderError::Other(format!(
+                "Delete folder failed ({}): {}",
+                status, body
+            )));
         }
         self.folder_cache.remove(&normalized);
         Ok(())
@@ -1080,12 +1193,16 @@ impl StorageProvider for FourSharedProvider {
                 // 4shared move API expects folderId as query param, not form body
                 let sign_url = format!("{}/files/{}/move", API_BASE, file_id);
                 let extra = [("folderId", target_folder_id.as_str())];
-                let auth = oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
+                let auth =
+                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
                 let full_url = format!(
                     "{}/files/{}/move?folderId={}",
-                    API_BASE, file_id, oauth1::percent_encode(&target_folder_id)
+                    API_BASE,
+                    file_id,
+                    oauth1::percent_encode(&target_folder_id)
                 );
-                let request = self.client
+                let request = self
+                    .client
                     .put(&full_url)
                     .header("Authorization", &auth)
                     .build()
@@ -1097,11 +1214,16 @@ impl StorageProvider for FourSharedProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(
-                        format!("Move file failed ({}): {}", status, &body[..body.len().min(300)]),
-                    ));
+                    return Err(ProviderError::Other(format!(
+                        "Move file failed ({}): {}",
+                        status,
+                        &body[..body.len().min(300)]
+                    )));
                 }
-                info!("4shared moved file {} to folder {}", old_normalized, new_parent);
+                info!(
+                    "4shared moved file {} to folder {}",
+                    old_normalized, new_parent
+                );
             }
 
             // Step 2: Rename if the name changed
@@ -1113,9 +1235,10 @@ impl StorageProvider for FourSharedProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(
-                        format!("Rename failed ({}): {}", status, body),
-                    ));
+                    return Err(ProviderError::Other(format!(
+                        "Rename failed ({}): {}",
+                        status, body
+                    )));
                 }
             }
 
@@ -1131,12 +1254,16 @@ impl StorageProvider for FourSharedProvider {
                 // 4shared move API expects folderId as query param, not form body
                 let sign_url = format!("{}/folders/{}/move", API_BASE, folder_id);
                 let extra = [("folderId", target_folder_id.as_str())];
-                let auth = oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
+                let auth =
+                    oauth1::authorization_header("PUT", &sign_url, &self.credentials(), &extra);
                 let full_url = format!(
                     "{}/folders/{}/move?folderId={}",
-                    API_BASE, folder_id, oauth1::percent_encode(&target_folder_id)
+                    API_BASE,
+                    folder_id,
+                    oauth1::percent_encode(&target_folder_id)
                 );
-                let request = self.client
+                let request = self
+                    .client
                     .put(&full_url)
                     .header("Authorization", &auth)
                     .build()
@@ -1148,9 +1275,11 @@ impl StorageProvider for FourSharedProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(
-                        format!("Move folder failed ({}): {}", status, &body[..body.len().min(300)]),
-                    ));
+                    return Err(ProviderError::Other(format!(
+                        "Move folder failed ({}): {}",
+                        status,
+                        &body[..body.len().min(300)]
+                    )));
                 }
                 info!("4shared moved folder {} to {}", old_normalized, new_parent);
             }
@@ -1164,9 +1293,10 @@ impl StorageProvider for FourSharedProvider {
                 if !resp.status().is_success() {
                     let status = resp.status();
                     let body = resp.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(
-                        format!("Rename folder failed ({}): {}", status, body),
-                    ));
+                    return Err(ProviderError::Other(format!(
+                        "Rename folder failed ({}): {}",
+                        status, body
+                    )));
                 }
             }
 
@@ -1187,12 +1317,12 @@ impl StorageProvider for FourSharedProvider {
             let resp = self.signed_get(&url).await?;
 
             if resp.status().is_success() {
-                let body = resp.text().await
+                let body = resp
+                    .text()
+                    .await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
                 let file: FourSharedFile = serde_json::from_str(&body)
-                    .map_err(|e| ProviderError::ParseError(
-                        format!("stat file parse: {}", e)
-                    ))?;
+                    .map_err(|e| ProviderError::ParseError(format!("stat file parse: {}", e)))?;
 
                 return Ok(RemoteEntry {
                     name: file.name.unwrap_or_default(),
@@ -1221,12 +1351,12 @@ impl StorageProvider for FourSharedProvider {
             return Err(ProviderError::NotFound(format!("Not found: {}", path)));
         }
 
-        let body = resp.text().await
+        let body = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
         let folder: FourSharedFolder = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::ParseError(
-                format!("stat folder parse: {}", e)
-            ))?;
+            .map_err(|e| ProviderError::ParseError(format!("stat folder parse: {}", e)))?;
 
         Ok(RemoteEntry {
             name: folder.name.unwrap_or_default(),
@@ -1270,15 +1400,17 @@ impl StorageProvider for FourSharedProvider {
         let resp = self.signed_get(&url).await?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other("Failed to get storage info".to_string()));
+            return Err(ProviderError::Other(
+                "Failed to get storage info".to_string(),
+            ));
         }
 
-        let body = resp.text().await
+        let body = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
         let user: FourSharedUser = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::ParseError(
-                format!("storage_info parse: {}", e)
-            ))?;
+            .map_err(|e| ProviderError::ParseError(format!("storage_info parse: {}", e)))?;
 
         Ok(StorageInfo {
             used: user.used_space.unwrap_or(0) as u64,
@@ -1287,12 +1419,17 @@ impl StorageProvider for FourSharedProvider {
         })
     }
 
-    fn supports_find(&self) -> bool { true }
+    fn supports_find(&self) -> bool {
+        true
+    }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         // FS-005: Apply resolve_path to the search path parameter
         let _resolved = self.resolve_path(path);
-        info!("4shared find: searching for '{}' (scope: {})", pattern, _resolved);
+        info!(
+            "4shared find: searching for '{}' (scope: {})",
+            pattern, _resolved
+        );
 
         // FS-009: Use signed_get with retry for the search request.
         // The 4shared search API requires OAuth-signed query parameters.
@@ -1307,7 +1444,8 @@ impl StorageProvider for FourSharedProvider {
             oauth1::percent_encode(pattern)
         );
 
-        let request = self.client
+        let request = self
+            .client
             .get(&url)
             .header("Authorization", &auth)
             .build()
@@ -1321,19 +1459,31 @@ impl StorageProvider for FourSharedProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
-                "Search failed ({}): {}", status, &body[..body.len().min(300)]
+                "Search failed ({}): {}",
+                status,
+                &body[..body.len().min(300)]
             )));
         }
 
-        let body = resp.text().await
+        let body = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
         let files = Self::parse_file_list(&body);
 
-        let entries = files.iter()
-            .filter(|f| !matches!(f.status.as_deref(), Some("deleted") | Some("trashed") | Some("incomplete")))
+        let entries = files
+            .iter()
+            .filter(|f| {
+                !matches!(
+                    f.status.as_deref(),
+                    Some("deleted") | Some("trashed") | Some("incomplete")
+                )
+            })
             .filter_map(|f| {
                 let name = f.name.as_ref()?;
-                if name.is_empty() { return None; }
+                if name.is_empty() {
+                    return None;
+                }
                 Some(RemoteEntry {
                     name: name.clone(),
                     path: String::new(), // Search results don't have reliable full paths

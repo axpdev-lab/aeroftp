@@ -6,9 +6,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use serde::{Deserialize, Serialize};
 use super::client::GitHubHttpClient;
 use super::errors::GitHubError;
+use serde::{Deserialize, Serialize};
 
 // ── Response Models ──────────────────────────────────────────────
 
@@ -154,7 +154,9 @@ pub async fn list_pages_builds(
                 if let Some(s) = statuses.first() {
                     status = match s.state.as_deref() {
                         Some("success") => "built".to_string(),
-                        Some("in_progress") | Some("queued") | Some("pending") => "building".to_string(),
+                        Some("in_progress") | Some("queued") | Some("pending") => {
+                            "building".to_string()
+                        }
                         Some("failure") | Some("error") => "errored".to_string(),
                         _ => s.state.clone().unwrap_or_else(|| "built".to_string()),
                     };
@@ -167,7 +169,10 @@ pub async fn list_pages_builds(
             status,
             error: None,
             pusher: deploy.creator,
-            commit: deploy.sha.as_deref().map(|s| s[..7.min(s.len())].to_string()),
+            commit: deploy
+                .sha
+                .as_deref()
+                .map(|s| s[..7.min(s.len())].to_string()),
             duration: None,
             created_at: deploy.created_at,
             updated_at: deploy.updated_at,
@@ -217,7 +222,10 @@ pub async fn update_pages_config(
 
     let mut body = serde_json::Map::new();
     if let Some(cn) = cname {
-        body.insert("cname".to_string(), serde_json::Value::String(cn.to_string()));
+        body.insert(
+            "cname".to_string(),
+            serde_json::Value::String(cn.to_string()),
+        );
     }
     if let Some(https) = https_enforced {
         body.insert("https_enforced".to_string(), serde_json::Value::Bool(https));
@@ -225,15 +233,23 @@ pub async fn update_pages_config(
     if source_branch.is_some() || source_path.is_some() {
         let mut source = serde_json::Map::new();
         if let Some(branch) = source_branch {
-            source.insert("branch".to_string(), serde_json::Value::String(branch.to_string()));
+            source.insert(
+                "branch".to_string(),
+                serde_json::Value::String(branch.to_string()),
+            );
         }
         if let Some(path) = source_path {
-            source.insert("path".to_string(), serde_json::Value::String(path.to_string()));
+            source.insert(
+                "path".to_string(),
+                serde_json::Value::String(path.to_string()),
+            );
         }
         body.insert("source".to_string(), serde_json::Value::Object(source));
     }
 
-    client.put_json(&url, &serde_json::Value::Object(body)).await?;
+    client
+        .put_json(&url, &serde_json::Value::Object(body))
+        .await?;
     Ok(())
 }
 

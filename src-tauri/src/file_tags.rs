@@ -130,13 +130,11 @@ pub fn init_db(app: &AppHandle) -> Result<Connection, String> {
 
     // Ensure parent dir exists with 0700
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create config dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create config dir: {e}"))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ =
-                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
         }
     }
 
@@ -160,16 +158,12 @@ pub fn init_db(app: &AppHandle) -> Result<Connection, String> {
 
 /// List all labels ordered by sort_order
 #[tauri::command]
-pub async fn file_tags_list_labels(
-    app: AppHandle,
-) -> Result<Vec<TagLabel>, String> {
+pub async fn file_tags_list_labels(app: AppHandle) -> Result<Vec<TagLabel>, String> {
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
     let mut stmt = conn
-        .prepare(
-            "SELECT id, name, color, sort_order, is_preset FROM labels ORDER BY sort_order",
-        )
+        .prepare("SELECT id, name, color, sort_order, is_preset FROM labels ORDER BY sort_order")
         .map_err(|e| format!("Prepare: {e}"))?;
 
     let rows = stmt
@@ -184,10 +178,15 @@ pub async fn file_tags_list_labels(
         })
         .map_err(|e| format!("Query: {e}"))?;
 
-    Ok(rows.filter_map(|r| match r {
-        Ok(v) => Some(v),
-        Err(e) => { tracing::warn!("Row decode error in file_tags: {e}"); None }
-    }).collect())
+    Ok(rows
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("Row decode error in file_tags: {e}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// Create a new custom label
@@ -201,9 +200,11 @@ pub async fn file_tags_create_label(
     let conn = acquire_lock(&db);
 
     let max_order: i64 = conn
-        .query_row("SELECT COALESCE(MAX(sort_order), -1) FROM labels", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM labels",
+            [],
+            |r| r.get(0),
+        )
         .unwrap_or(-1);
 
     let next_order = max_order + 1;
@@ -247,10 +248,7 @@ pub async fn file_tags_update_label(
 
 /// Delete a label (CASCADE deletes associated file_tags)
 #[tauri::command]
-pub async fn file_tags_delete_label(
-    app: AppHandle,
-    id: i64,
-) -> Result<(), String> {
+pub async fn file_tags_delete_label(app: AppHandle, id: i64) -> Result<(), String> {
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
@@ -352,8 +350,10 @@ pub async fn file_tags_get_tags_for_files(
     );
 
     let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare: {e}"))?;
-    let params_vec: Vec<&dyn rusqlite::types::ToSql> =
-        file_paths.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+    let params_vec: Vec<&dyn rusqlite::types::ToSql> = file_paths
+        .iter()
+        .map(|p| p as &dyn rusqlite::types::ToSql)
+        .collect();
 
     let rows = stmt
         .query_map(params_vec.as_slice(), |row| {
@@ -368,10 +368,15 @@ pub async fn file_tags_get_tags_for_files(
         })
         .map_err(|e| format!("Query: {e}"))?;
 
-    Ok(rows.filter_map(|r| match r {
-        Ok(v) => Some(v),
-        Err(e) => { tracing::warn!("Row decode error in file_tags: {e}"); None }
-    }).collect())
+    Ok(rows
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("Row decode error in file_tags: {e}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// Get all file paths that have a specific label
@@ -391,10 +396,15 @@ pub async fn file_tags_get_files_by_label(
         .query_map(params![label_id], |row| row.get::<_, String>(0))
         .map_err(|e| format!("Query: {e}"))?;
 
-    Ok(rows.filter_map(|r| match r {
-        Ok(v) => Some(v),
-        Err(e) => { tracing::warn!("Row decode error in file_tags: {e}"); None }
-    }).collect())
+    Ok(rows
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("Row decode error in file_tags: {e}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// Update file path in all tags when a file is renamed/moved (prevents orphan tags)
@@ -435,9 +445,7 @@ pub async fn file_tags_delete_all_for_file(
 
 /// Get label usage counts (how many files each label is applied to)
 #[tauri::command]
-pub async fn file_tags_get_label_counts(
-    app: AppHandle,
-) -> Result<Vec<LabelCount>, String> {
+pub async fn file_tags_get_label_counts(app: AppHandle) -> Result<Vec<LabelCount>, String> {
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
@@ -462,8 +470,13 @@ pub async fn file_tags_get_label_counts(
         })
         .map_err(|e| format!("Query: {e}"))?;
 
-    Ok(rows.filter_map(|r| match r {
-        Ok(v) => Some(v),
-        Err(e) => { tracing::warn!("Row decode error in file_tags: {e}"); None }
-    }).collect())
+    Ok(rows
+        .filter_map(|r| match r {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("Row decode error in file_tags: {e}");
+                None
+            }
+        })
+        .collect())
 }

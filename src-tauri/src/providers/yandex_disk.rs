@@ -21,9 +21,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use super::{
-    sanitize_api_error, response_bytes_with_limit, MAX_DOWNLOAD_TO_BYTES,
-    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
-    ShareLinkOptions, ShareLinkResult,
+    response_bytes_with_limit, sanitize_api_error, ProviderError, ProviderType, RemoteEntry,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
@@ -100,16 +99,23 @@ struct YdLink {
 fn validate_yd_url(url: &str) -> Result<(), ProviderError> {
     if !url.starts_with("https://") {
         return Err(ProviderError::ServerError(format!(
-            "Unsafe URL scheme (expected https): {}", &url[..url.len().min(40)]
+            "Unsafe URL scheme (expected https): {}",
+            &url[..url.len().min(40)]
         )));
     }
-    if let Some(host) = url.strip_prefix("https://").and_then(|s| s.split('/').next()) {
+    if let Some(host) = url
+        .strip_prefix("https://")
+        .and_then(|s| s.split('/').next())
+    {
         let host = host.split(':').next().unwrap_or(host);
-        if !host.ends_with(".yandex.net") && !host.ends_with(".yandex.ru")
-            && !host.ends_with(".yandex.com") && !host.ends_with(".yandexcloud.net")
+        if !host.ends_with(".yandex.net")
+            && !host.ends_with(".yandex.ru")
+            && !host.ends_with(".yandex.com")
+            && !host.ends_with(".yandexcloud.net")
         {
             return Err(ProviderError::ServerError(format!(
-                "Unexpected host in Yandex URL: {}", host
+                "Unexpected host in Yandex URL: {}",
+                host
             )));
         }
     }
@@ -135,11 +141,15 @@ struct YdError {
 /// Validate a path for traversal attacks and null bytes.
 fn validate_yd_path(path: &str) -> Result<(), ProviderError> {
     if path.contains('\0') {
-        return Err(ProviderError::InvalidPath("Path contains null byte".to_string()));
+        return Err(ProviderError::InvalidPath(
+            "Path contains null byte".to_string(),
+        ));
     }
     for component in path.split('/') {
         if component == ".." {
-            return Err(ProviderError::InvalidPath("Path traversal (..) not allowed".to_string()));
+            return Err(ProviderError::InvalidPath(
+                "Path traversal (..) not allowed".to_string(),
+            ));
         }
     }
     Ok(())
@@ -247,7 +257,8 @@ impl YandexDiskProvider {
 
     /// Resolve a relative path (infallible — for backward compat in cd/pwd).
     fn resolve_path(&self, path: &str) -> String {
-        self.resolve_path_safe(path).unwrap_or_else(|_| "/".to_string())
+        self.resolve_path_safe(path)
+            .unwrap_or_else(|_| "/".to_string())
     }
 
     /// Parse an API error response into a ProviderError.
@@ -410,10 +421,7 @@ impl YandexDiskProvider {
     /// Restore a resource from trash.
     pub async fn restore_from_trash(&self, trash_path: &str) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
-        let url = format!(
-            "{}/trash/resources/restore?path={}",
-            API_BASE, encoded
-        );
+        let url = format!("{}/trash/resources/restore?path={}", API_BASE, encoded);
         let resp = self
             .client
             .put(&url)
@@ -452,10 +460,7 @@ impl YandexDiskProvider {
     /// Permanently delete a specific item from trash.
     pub async fn permanent_delete_from_trash(&self, trash_path: &str) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
-        let url = format!(
-            "{}/trash/resources?path={}",
-            API_BASE, encoded
-        );
+        let url = format!("{}/trash/resources?path={}", API_BASE, encoded);
         let resp = self
             .client
             .delete(&url)
@@ -505,10 +510,9 @@ impl StorageProvider for YandexDiskProvider {
         }
 
         // Verify we can parse the disk info
-        let _info: YdDiskInfo = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e)))?;
+        let _info: YdDiskInfo = resp.json().await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e))
+        })?;
 
         self.connected = true;
         yd_log("Connected successfully");
@@ -628,7 +632,8 @@ impl StorageProvider for YandexDiskProvider {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-            atomic.write_all(&chunk)
+            atomic
+                .write_all(&chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
             downloaded += chunk.len() as u64;
@@ -735,8 +740,8 @@ impl StorageProvider for YandexDiskProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
-        use tokio_util::io::ReaderStream;
         use futures_util::StreamExt;
+        use tokio_util::io::ReaderStream;
 
         let progress_cb = on_progress;
         let mut uploaded: u64 = 0;
@@ -802,10 +807,7 @@ impl StorageProvider for YandexDiskProvider {
         }
         let resolved = self.resolve_path(path);
         let encoded = encode_yd_path(&resolved);
-        let url = format!(
-            "{}/resources?path={}&permanently=true",
-            API_BASE, encoded
-        );
+        let url = format!("{}/resources?path={}&permanently=true", API_BASE, encoded);
         yd_log(&format!("delete: {}", resolved));
 
         let resp = self
@@ -950,9 +952,9 @@ impl StorageProvider for YandexDiskProvider {
 
         // Fetch updated metadata to get public_url
         let resource = self.get_resource(&resolved).await?;
-        let share_url = resource
-            .public_url
-            .ok_or_else(|| ProviderError::ServerError("No public URL returned after publish".into()))?;
+        let share_url = resource.public_url.ok_or_else(|| {
+            ProviderError::ServerError("No public URL returned after publish".into())
+        })?;
 
         let _ = &options; // acknowledge options
         Ok(ShareLinkResult {
@@ -1168,7 +1170,10 @@ mod tests {
 
     #[test]
     fn test_encode_yd_path_segments() {
-        assert_eq!(encode_yd_path("/Documents/test.txt"), "disk:/Documents/test.txt");
+        assert_eq!(
+            encode_yd_path("/Documents/test.txt"),
+            "disk:/Documents/test.txt"
+        );
         assert_eq!(
             encode_yd_path("/My Files/photo 1.jpg"),
             "disk:/My%20Files/photo%201.jpg"
@@ -1239,9 +1244,6 @@ mod tests {
         let provider = YandexDiskProvider::new("test".into(), Some("/Documents".into()));
         assert_eq!(provider.resolve_path("file.txt"), "/Documents/file.txt");
         assert_eq!(provider.resolve_path("/absolute/path"), "/absolute/path");
-        assert_eq!(
-            provider.resolve_path("disk:/something"),
-            "disk:/something"
-        );
+        assert_eq!(provider.resolve_path("disk:/something"), "disk:/something");
     }
 }

@@ -8,9 +8,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use log::{debug, info};
 use serde::Deserialize;
 use std::time::Duration;
-use log::{info, debug};
 
 /// GitHub App configuration for Device Flow (AeroFTP's official app)
 pub const GITHUB_APP_CLIENT_ID: &str = "Iv23liBpUihk573Igvos";
@@ -57,7 +57,10 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse, String> {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("GitHub device code request failed ({}): {}", status, body));
+        return Err(format!(
+            "GitHub device code request failed ({}): {}",
+            status, body
+        ));
     }
 
     resp.json::<DeviceCodeResponse>()
@@ -75,7 +78,11 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, 
     let max_attempts = 120;
 
     for attempt in 0..max_attempts {
-        debug!("GitHub Device Flow: polling attempt {} (interval: {}s)", attempt + 1, poll_interval.as_secs());
+        debug!(
+            "GitHub Device Flow: polling attempt {} (interval: {}s)",
+            attempt + 1,
+            poll_interval.as_secs()
+        );
 
         tokio::time::sleep(poll_interval).await;
 
@@ -113,13 +120,17 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, 
                 }
                 continue;
             }
-            Some("expired_token") => return Err("Authorization expired. Please try again.".to_string()),
+            Some("expired_token") => {
+                return Err("Authorization expired. Please try again.".to_string())
+            }
             Some("access_denied") => return Err("Authorization denied by user.".to_string()),
             Some(error) => {
                 let desc = token_resp.error_description.unwrap_or_default();
                 return Err(format!("Authorization failed: {} — {}", error, desc));
             }
-            None => return Err("Unexpected response from GitHub (no token and no error)".to_string()),
+            None => {
+                return Err("Unexpected response from GitHub (no token and no error)".to_string())
+            }
         }
     }
 
@@ -138,13 +149,13 @@ pub struct InstallationTokenResponse {
 /// Generate a JWT from a GitHub App private key (.pem file)
 /// The JWT is used to authenticate as the GitHub App and request installation tokens
 pub fn generate_app_jwt(pem_contents: &str, app_id: &str) -> Result<String, String> {
-    use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
     use serde::Serialize;
 
     #[derive(Serialize)]
     struct Claims {
-        iat: u64,   // Issued at
-        exp: u64,   // Expires at (max 10 minutes)
+        iat: u64,    // Issued at
+        exp: u64,    // Expires at (max 10 minutes)
         iss: String, // App ID
     }
 
@@ -163,8 +174,7 @@ pub fn generate_app_jwt(pem_contents: &str, app_id: &str) -> Result<String, Stri
         .map_err(|e| format!("Invalid PEM key: {}", e))?;
 
     let header = Header::new(Algorithm::RS256);
-    encode(&header, &claims, &key)
-        .map_err(|e| format!("JWT encoding failed: {}", e))
+    encode(&header, &claims, &key).map_err(|e| format!("JWT encoding failed: {}", e))
 }
 
 /// Exchange a JWT for an installation access token
@@ -176,7 +186,10 @@ pub async fn get_installation_token(
 ) -> Result<InstallationTokenResponse, String> {
     info!("GitHub App: generating JWT for app_id={}", app_id);
     let jwt = generate_app_jwt(pem_contents, app_id)?;
-    info!("GitHub App: JWT generated, requesting installation token for installation_id={}", installation_id);
+    info!(
+        "GitHub App: JWT generated, requesting installation token for installation_id={}",
+        installation_id
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -224,7 +237,10 @@ pub async fn get_installation_token(
         .await
         .map_err(|e| format!("Failed to parse installation token: {}", e))?;
 
-    info!("GitHub App installation token obtained (expires: {})", token_resp.expires_at);
+    info!(
+        "GitHub App installation token obtained (expires: {})",
+        token_resp.expires_at
+    );
     Ok(token_resp)
 }
 

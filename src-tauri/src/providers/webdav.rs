@@ -11,7 +11,7 @@
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use md5::{Md5, Digest as _};
+use md5::{Digest as _, Md5};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use rand::Rng;
@@ -20,9 +20,8 @@ use secrecy::ExposeSecret;
 use std::collections::HashMap;
 
 use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, WebDavConfig,
-    sanitize_api_error,
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    sanitize_api_error, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities,
+    ShareLinkOptions, ShareLinkResult, StorageProvider, WebDavConfig,
 };
 
 /// A trash item from a Nextcloud trashbin PROPFIND response.
@@ -95,7 +94,10 @@ impl DigestState {
         let ha2 = md5_hex(&format!("{}:{}", method, uri));
 
         let response = if !self.qop.is_empty() {
-            md5_hex(&format!("{}:{}:{}:{}:auth:{}", ha1, self.nonce, nc_str, cnonce, ha2))
+            md5_hex(&format!(
+                "{}:{}:{}:{}:auth:{}",
+                ha1, self.nonce, nc_str, cnonce, ha2
+            ))
         } else {
             md5_hex(&format!("{}:{}:{}", ha1, self.nonce, ha2))
         };
@@ -108,14 +110,23 @@ impl DigestState {
         );
 
         if !self.qop.is_empty() {
-            header.push_str(&format!(r#", qop="auth", nc={}, cnonce="{}""#, nc_str, cnonce));
+            header.push_str(&format!(
+                r#", qop="auth", nc={}, cnonce="{}""#,
+                nc_str, cnonce
+            ));
         }
 
         if let Some(ref opaque) = self.opaque {
             header.push_str(&format!(r#", opaque="{}""#, opaque));
         }
 
-        tracing::debug!("[WebDAV Digest] method={} uri={} nc={} response={}", method, uri, nc_str, response);
+        tracing::debug!(
+            "[WebDAV Digest] method={} uri={} nc={} response={}",
+            method,
+            uri,
+            nc_str,
+            response
+        );
 
         header
     }
@@ -150,20 +161,20 @@ fn extract_uri_path(url: &str) -> String {
 /// Custom HTTP methods for WebDAV
 mod webdav_methods {
     use reqwest::Method;
-    
+
     pub fn propfind() -> Method {
         Method::from_bytes(b"PROPFIND").unwrap()
     }
-    
+
     pub fn mkcol() -> Method {
         Method::from_bytes(b"MKCOL").unwrap()
     }
-    
+
     #[allow(dead_code)]
     pub fn copy() -> Method {
         Method::from_bytes(b"COPY").unwrap()
     }
-    
+
     pub fn move_method() -> Method {
         Method::from_bytes(b"MOVE").unwrap()
     }
@@ -204,7 +215,9 @@ impl WebDavProvider {
             .danger_accept_invalid_certs(!config.verify_cert)
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
+            })?;
 
         Ok(Self {
             config,
@@ -214,7 +227,7 @@ impl WebDavProvider {
             digest_auth: None,
         })
     }
-    
+
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
         let base = self.config.url.trim_end_matches('/');
@@ -228,7 +241,7 @@ impl WebDavProvider {
             format!("{}/{}", base, path)
         }
     }
-    
+
     /// Make an authenticated request (Basic or Digest depending on server)
     fn request(&mut self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = self.build_url(path);
@@ -236,14 +249,27 @@ impl WebDavProvider {
 
         if let Some(ref mut state) = self.digest_auth {
             let uri_path = extract_uri_path(&url);
-            tracing::debug!("[WebDAV] Digest request: {} {} (uri={})", method.as_str(), url, uri_path);
-            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, self.config.password.expose_secret());
+            tracing::debug!(
+                "[WebDAV] Digest request: {} {} (uri={})",
+                method.as_str(),
+                url,
+                uri_path
+            );
+            let auth = state.authorization(
+                method.as_str(),
+                &uri_path,
+                &self.config.username,
+                self.config.password.expose_secret(),
+            );
             builder.header("Authorization", auth)
         } else {
-            builder.basic_auth(&self.config.username, Some(self.config.password.expose_secret()))
+            builder.basic_auth(
+                &self.config.username,
+                Some(self.config.password.expose_secret()),
+            )
         }
     }
-    
+
     // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
 
     /// Detect if this WebDAV server is a Nextcloud instance (URL pattern match).
@@ -253,7 +279,9 @@ impl WebDavProvider {
 
     /// Extract the Nextcloud base URL (e.g. https://cloud.felicloud.com).
     fn nextcloud_base_url(&self) -> Option<String> {
-        self.config.url.find("/remote.php/")
+        self.config
+            .url
+            .find("/remote.php/")
             .map(|idx| self.config.url[..idx].to_string())
     }
 
@@ -263,30 +291,46 @@ impl WebDavProvider {
         let builder = self.client.request(method.clone(), url);
         if let Some(ref mut state) = self.digest_auth {
             let uri_path = extract_uri_path(url);
-            let auth = state.authorization(method.as_str(), &uri_path, &self.config.username, self.config.password.expose_secret());
+            let auth = state.authorization(
+                method.as_str(),
+                &uri_path,
+                &self.config.username,
+                self.config.password.expose_secret(),
+            );
             builder.header("Authorization", auth)
         } else {
-            builder.basic_auth(&self.config.username, Some(self.config.password.expose_secret()))
+            builder.basic_auth(
+                &self.config.username,
+                Some(self.config.password.expose_secret()),
+            )
         }
     }
 
     /// OCS: Create a public share link for a file/folder.
     /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
     /// retries automatically with a generated password and returns "url\npassword".
-    pub async fn nextcloud_create_share(&mut self, path: &str, options: ShareLinkOptions) -> Result<ShareLinkResult, ProviderError> {
-        let base = self.nextcloud_base_url()
+    pub async fn nextcloud_create_share(
+        &mut self,
+        path: &str,
+        options: ShareLinkOptions,
+    ) -> Result<ShareLinkResult, ProviderError> {
+        let base = self
+            .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
         let url = format!("{}/ocs/v2.php/apps/files_sharing/api/v1/shares", base);
 
-        let mut form_body = format!("path={}&shareType=3&permissions=1",
-            urlencoding::encode(path));
+        let mut form_body = format!(
+            "path={}&shareType=3&permissions=1",
+            urlencoding::encode(path)
+        );
         if let Some(secs) = options.expires_in_secs {
             let days = (secs / 86400).max(1);
             let expire = chrono::Utc::now() + chrono::Duration::days(days as i64);
             form_body.push_str(&format!("&expireDate={}", expire.format("%Y-%m-%d")));
         }
 
-        let resp: reqwest::Response = self.request_url(Method::POST, &url)
+        let resp: reqwest::Response = self
+            .request_url(Method::POST, &url)
             .header("OCS-APIREQUEST", "true")
             .header("Accept", "application/json")
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -296,7 +340,9 @@ impl WebDavProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = resp.status();
-        let text = resp.text().await
+        let text = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         // If server requires password on share links (403), retry with auto-generated password
@@ -304,7 +350,8 @@ impl WebDavProvider {
             let password = Self::generate_share_password();
             let form_with_pw = format!("{}&password={}", form_body, urlencoding::encode(&password));
 
-            let resp2: reqwest::Response = self.request_url(Method::POST, &url)
+            let resp2: reqwest::Response = self
+                .request_url(Method::POST, &url)
                 .header("OCS-APIREQUEST", "true")
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/x-www-form-urlencoded")
@@ -314,19 +361,28 @@ impl WebDavProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             let status2 = resp2.status();
-            let text2 = resp2.text().await
+            let text2 = resp2
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !status2.is_success() {
-                return Err(ProviderError::ServerError(format!("OCS share failed: HTTP {} - {}", status2, &text2[..text2.len().min(200)])));
+                return Err(ProviderError::ServerError(format!(
+                    "OCS share failed: HTTP {} - {}",
+                    status2,
+                    &text2[..text2.len().min(200)]
+                )));
             }
 
             let json: serde_json::Value = serde_json::from_str(&text2)
                 .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
 
-            let share_url = json.pointer("/ocs/data/url")
+            let share_url = json
+                .pointer("/ocs/data/url")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))?;
+                .ok_or_else(|| {
+                    ProviderError::ServerError("OCS share API did not return a URL".into())
+                })?;
 
             return Ok(ShareLinkResult {
                 url: share_url.to_string(),
@@ -336,14 +392,21 @@ impl WebDavProvider {
         }
 
         if !status.is_success() {
-            return Err(ProviderError::ServerError(format!("OCS share failed: HTTP {} - {}", status, &text[..text.len().min(200)])));
+            return Err(ProviderError::ServerError(format!(
+                "OCS share failed: HTTP {} - {}",
+                status,
+                &text[..text.len().min(200)]
+            )));
         }
         let json: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| ProviderError::ParseError(format!("OCS JSON parse error: {}", e)))?;
 
-        let share_url = json.pointer("/ocs/data/url")
+        let share_url = json
+            .pointer("/ocs/data/url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ProviderError::ServerError("OCS share API did not return a URL".into()))?;
+            .ok_or_else(|| {
+                ProviderError::ServerError("OCS share API did not return a URL".into())
+            })?;
 
         Ok(ShareLinkResult {
             url: share_url.to_string(),
@@ -381,10 +444,16 @@ impl WebDavProvider {
     }
 
     /// Nextcloud trashbin: list deleted items.
-    pub async fn nextcloud_list_trash(&mut self) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
-        let base = self.nextcloud_base_url()
+    pub async fn nextcloud_list_trash(
+        &mut self,
+    ) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
+        let base = self
+            .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let url = format!("{}/remote.php/dav/trashbin/{}/trash/", base, self.config.username);
+        let url = format!(
+            "{}/remote.php/dav/trashbin/{}/trash/",
+            base, self.config.username
+        );
 
         let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
             <d:propfind xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns" xmlns:oc="http://owncloud.org/ns">
@@ -397,7 +466,8 @@ impl WebDavProvider {
                 </d:prop>
             </d:propfind>"#;
 
-        let resp = self.request_url(webdav_methods::propfind(), &url)
+        let resp = self
+            .request_url(webdav_methods::propfind(), &url)
             .header("Depth", "1")
             .header("Content-Type", "application/xml")
             .body(propfind_body)
@@ -406,17 +476,25 @@ impl WebDavProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status() != StatusCode::MULTI_STATUS {
-            return Err(ProviderError::ServerError(format!("Trashbin PROPFIND failed: HTTP {}", resp.status())));
+            return Err(ProviderError::ServerError(format!(
+                "Trashbin PROPFIND failed: HTTP {}",
+                resp.status()
+            )));
         }
 
-        let xml = resp.text().await
+        let xml = resp
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         self.parse_trashbin_response(&xml)
     }
 
     /// Parse trashbin PROPFIND XML into entries.
-    fn parse_trashbin_response(&self, xml: &str) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
+    fn parse_trashbin_response(
+        &self,
+        xml: &str,
+    ) -> Result<Vec<NextcloudTrashEntry>, ProviderError> {
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
         reader.config_mut().trim_text(true);
@@ -438,7 +516,9 @@ impl WebDavProvider {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(ref e)) => {
                     let local = e.local_name();
-                    let tag = std::str::from_utf8(local.as_ref()).unwrap_or("").to_string();
+                    let tag = std::str::from_utf8(local.as_ref())
+                        .unwrap_or("")
+                        .to_string();
                     match tag.as_str() {
                         "response" => {
                             in_response = true;
@@ -449,16 +529,24 @@ impl WebDavProvider {
                             content_length.clear();
                             is_collection = false;
                         }
-                        "resourcetype" => { in_resourcetype = true; }
-                        "collection" if in_resourcetype => { is_collection = true; }
-                        _ if in_response => { current_tag = Some(tag); }
+                        "resourcetype" => {
+                            in_resourcetype = true;
+                        }
+                        "collection" if in_resourcetype => {
+                            is_collection = true;
+                        }
+                        _ if in_response => {
+                            current_tag = Some(tag);
+                        }
                         _ => {}
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
                     let local = e.local_name();
                     let tag = std::str::from_utf8(local.as_ref()).unwrap_or("");
-                    if tag == "collection" && in_resourcetype { is_collection = true; }
+                    if tag == "collection" && in_resourcetype {
+                        is_collection = true;
+                    }
                 }
                 Ok(Event::End(ref e)) => {
                     let local = e.local_name();
@@ -468,7 +556,11 @@ impl WebDavProvider {
                             in_response = false;
                             // Skip the collection itself (the trash/ container)
                             if !trash_filename.is_empty() {
-                                let id = href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("").to_string();
+                                let id = href
+                                    .rsplit('/')
+                                    .find(|s| !s.is_empty())
+                                    .unwrap_or("")
+                                    .to_string();
                                 entries.push(NextcloudTrashEntry {
                                     id,
                                     name: trash_filename.clone(),
@@ -479,8 +571,12 @@ impl WebDavProvider {
                                 });
                             }
                         }
-                        "resourcetype" => { in_resourcetype = false; }
-                        _ => { current_tag = None; }
+                        "resourcetype" => {
+                            in_resourcetype = false;
+                        }
+                        _ => {
+                            current_tag = None;
+                        }
                     }
                 }
                 Ok(Event::Text(ref e)) => {
@@ -508,12 +604,20 @@ impl WebDavProvider {
 
     /// Nextcloud trashbin: restore a single item.
     pub async fn nextcloud_restore_trash(&mut self, id: &str) -> Result<(), ProviderError> {
-        let base = self.nextcloud_base_url()
+        let base = self
+            .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let from = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, self.config.username, id);
-        let dest = format!("{}/remote.php/dav/trashbin/{}/restore/{}", base, self.config.username, id);
+        let from = format!(
+            "{}/remote.php/dav/trashbin/{}/trash/{}",
+            base, self.config.username, id
+        );
+        let dest = format!(
+            "{}/remote.php/dav/trashbin/{}/restore/{}",
+            base, self.config.username, id
+        );
 
-        let resp = self.request_url(Method::from_bytes(b"MOVE").unwrap(), &from)
+        let resp = self
+            .request_url(Method::from_bytes(b"MOVE").unwrap(), &from)
             .header("Destination", &dest)
             .header("Overwrite", "T")
             .send()
@@ -521,54 +625,83 @@ impl WebDavProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = resp.status();
-        if !status.is_success() && status != StatusCode::CREATED && status != StatusCode::NO_CONTENT {
+        if !status.is_success() && status != StatusCode::CREATED && status != StatusCode::NO_CONTENT
+        {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("Restore failed: HTTP {} — {}", status, &body[..body.len().min(200)])));
+            return Err(ProviderError::ServerError(format!(
+                "Restore failed: HTTP {} — {}",
+                status,
+                &body[..body.len().min(200)]
+            )));
         }
         Ok(())
     }
 
     /// Nextcloud trashbin: permanently delete a single item.
     pub async fn nextcloud_delete_trash_item(&mut self, id: &str) -> Result<(), ProviderError> {
-        let base = self.nextcloud_base_url()
+        let base = self
+            .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let url = format!("{}/remote.php/dav/trashbin/{}/trash/{}", base, self.config.username, id);
+        let url = format!(
+            "{}/remote.php/dav/trashbin/{}/trash/{}",
+            base, self.config.username, id
+        );
 
-        let resp = self.request_url(Method::DELETE, &url)
+        let resp = self
+            .request_url(Method::DELETE, &url)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = resp.status();
         if !status.is_success() && status != StatusCode::NO_CONTENT {
-            return Err(ProviderError::ServerError(format!("Delete trash item failed: HTTP {}", status)));
+            return Err(ProviderError::ServerError(format!(
+                "Delete trash item failed: HTTP {}",
+                status
+            )));
         }
         Ok(())
     }
 
     /// Nextcloud trashbin: empty entire trash.
     pub async fn nextcloud_empty_trash(&mut self) -> Result<(), ProviderError> {
-        let base = self.nextcloud_base_url()
+        let base = self
+            .nextcloud_base_url()
             .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
-        let url = format!("{}/remote.php/dav/trashbin/{}/trash", base, self.config.username);
+        let url = format!(
+            "{}/remote.php/dav/trashbin/{}/trash",
+            base, self.config.username
+        );
 
-        let resp = self.request_url(Method::DELETE, &url)
+        let resp = self
+            .request_url(Method::DELETE, &url)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = resp.status();
         if !status.is_success() && status != StatusCode::NO_CONTENT {
-            return Err(ProviderError::ServerError(format!("Empty trash failed: HTTP {}", status)));
+            return Err(ProviderError::ServerError(format!(
+                "Empty trash failed: HTTP {}",
+                status
+            )));
         }
         Ok(())
     }
 
     /// Parse PROPFIND XML response into RemoteEntry list using quick-xml
-    fn parse_propfind_response(&self, xml: &str, base_path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+    fn parse_propfind_response(
+        &self,
+        xml: &str,
+        base_path: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut entries = Vec::new();
 
-        tracing::debug!("[WebDAV] Parsing XML with base_path: {}, url: {}", base_path, self.config.url);
+        tracing::debug!(
+            "[WebDAV] Parsing XML with base_path: {}, url: {}",
+            base_path,
+            self.config.url
+        );
 
         // Event-based quick-xml parser
         let mut reader = Reader::from_str(xml);
@@ -590,7 +723,11 @@ impl WebDavProvider {
         loop {
             match reader.read_event_into(&mut buf) {
                 Err(e) => {
-                    tracing::warn!("[WebDAV] XML parse error at position {}: {}", reader.error_position(), e);
+                    tracing::warn!(
+                        "[WebDAV] XML parse error at position {}: {}",
+                        reader.error_position(),
+                        e
+                    );
                     break;
                 }
                 Ok(Event::Eof) => break,
@@ -616,7 +753,9 @@ impl WebDavProvider {
                             is_collection = true;
                         }
                         "href" | "displayname" | "getcontentlength" | "getlastmodified"
-                        | "getcontenttype" | "getetag" | "iscollection" if in_response => {
+                        | "getcontenttype" | "getetag" | "iscollection"
+                            if in_response =>
+                        {
                             current_tag = Some(local);
                         }
                         _ => {}
@@ -641,8 +780,8 @@ impl WebDavProvider {
                                 continue;
                             }
 
-                            let decoded_href = urlencoding::decode(&href)
-                                .unwrap_or_else(|_| href.clone().into());
+                            let decoded_href =
+                                urlencoding::decode(&href).unwrap_or_else(|_| href.clone().into());
                             let clean_path = decoded_href.trim_end_matches('/');
                             let base_clean = base_path.trim_end_matches('/');
                             let url_clean = self.config.url.trim_end_matches('/');
@@ -655,8 +794,7 @@ impl WebDavProvider {
 
                             let is_self_reference = clean_path == base_clean
                                 || clean_path == url_clean
-                                || (!base_clean.is_empty()
-                                    && clean_path.ends_with(base_clean))
+                                || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
                                 || (!base_clean.is_empty()
                                     && clean_path.ends_with(&format!(
                                         "/{}",
@@ -665,24 +803,18 @@ impl WebDavProvider {
                                 || (!base_clean.is_empty()
                                     && base_clean != "/"
                                     && url_clean.ends_with(clean_path))
-                                || (!url_path_clean.is_empty()
-                                    && clean_path == url_path_clean);
+                                || (!url_path_clean.is_empty() && clean_path == url_path_clean);
 
                             if is_self_reference {
-                                tracing::debug!(
-                                    "[WebDAV] Skipping self-reference: {}",
-                                    clean_path
-                                );
+                                tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
                                 continue;
                             }
 
                             let href_ends_slash = href.ends_with('/');
-                            let is_dir = is_collection
-                                || is_collection_by_iscollection
-                                || href_ends_slash;
+                            let is_dir =
+                                is_collection || is_collection_by_iscollection || href_ends_slash;
 
-                            let size: u64 =
-                                getcontentlength.parse().unwrap_or(0);
+                            let size: u64 = getcontentlength.parse().unwrap_or(0);
                             let modified = if getlastmodified.is_empty() {
                                 None
                             } else {
@@ -719,8 +851,7 @@ impl WebDavProvider {
 
                             let mut metadata = HashMap::new();
                             if !getetag.is_empty() {
-                                metadata
-                                    .insert("etag".to_string(), getetag.clone());
+                                metadata.insert("etag".to_string(), getetag.clone());
                             }
 
                             entries.push(RemoteEntry {
@@ -773,9 +904,7 @@ impl WebDavProvider {
 
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref())
-                            .trim()
-                            .to_string();
+                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         if !text.is_empty() {
                             match tag.as_str() {
                                 "href" => href = text,
@@ -820,11 +949,15 @@ impl WebDavProvider {
                 Ok(Event::Start(ref e)) => {
                     let local = local_name(e.name().as_ref());
                     match local.as_str() {
-                        "resourcetype" => { in_resourcetype = true; }
+                        "resourcetype" => {
+                            in_resourcetype = true;
+                        }
                         "collection" if in_resourcetype => {
                             props.insert("_is_collection".to_string(), "true".to_string());
                         }
-                        _ => { current_tag = Some(local); }
+                        _ => {
+                            current_tag = Some(local);
+                        }
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
@@ -835,8 +968,12 @@ impl WebDavProvider {
                 }
                 Ok(Event::End(ref e)) => {
                     let local = local_name(e.name().as_ref());
-                    if local == "resourcetype" { in_resourcetype = false; }
-                    if current_tag.as_deref() == Some(local.as_str()) { current_tag = None; }
+                    if local == "resourcetype" {
+                        in_resourcetype = false;
+                    }
+                    if current_tag.as_deref() == Some(local.as_str()) {
+                        current_tag = None;
+                    }
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
@@ -880,15 +1017,20 @@ fn local_name(raw: &[u8]) -> String {
 
 #[async_trait]
 impl StorageProvider for WebDavProvider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::WebDav
     }
-    
+
     fn display_name(&self) -> String {
-        format!("{}@{}", self.config.username, 
-            self.config.url
+        format!(
+            "{}@{}",
+            self.config.username,
+            self.config
+                .url
                 .replace("https://", "")
                 .replace("http://", "")
                 .split('/')
@@ -896,7 +1038,7 @@ impl StorageProvider for WebDavProvider {
                 .unwrap_or(&self.config.url)
         )
     }
-    
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // A3-03: Warn when using unencrypted HTTP — credentials and data sent in plaintext
         if self.config.url.starts_with("http://") {
@@ -914,7 +1056,8 @@ impl StorageProvider for WebDavProvider {
                 </d:propfind>"#;
 
         // First attempt with Basic auth
-        let response = self.request(webdav_methods::propfind(), "/")
+        let response = self
+            .request(webdav_methods::propfind(), "/")
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(propfind_body)
@@ -934,19 +1077,25 @@ impl StorageProvider for WebDavProvider {
             }
             StatusCode::UNAUTHORIZED => {
                 // Check if server requires Digest authentication
-                let www_auth = response.headers()
+                let www_auth = response
+                    .headers()
                     .get("www-authenticate")
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("")
                     .to_string();
 
                 if let Some(state) = DigestState::parse(&www_auth) {
-                    tracing::debug!("[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
-                        state.realm, state.qop, &state.nonce[..state.nonce.len().min(12)]);
+                    tracing::debug!(
+                        "[WebDAV] Server requires Digest auth (realm: {}, qop: {}, nonce: {}...)",
+                        state.realm,
+                        state.qop,
+                        &state.nonce[..state.nonce.len().min(12)]
+                    );
                     self.digest_auth = Some(state);
 
                     // Retry with Digest auth
-                    let response2 = self.request(webdav_methods::propfind(), "/")
+                    let response2 = self
+                        .request(webdav_methods::propfind(), "/")
                         .header("Depth", "0")
                         .header("Content-Type", "application/xml")
                         .body(propfind_body)
@@ -971,54 +1120,68 @@ impl StorageProvider for WebDavProvider {
                         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                             // Log the response body for debugging
                             let body = response2.text().await.unwrap_or_default();
-                            tracing::warn!("[WebDAV] Digest auth failed ({}): {}", retry_status, &body[..body.len().min(200)]);
+                            tracing::warn!(
+                                "[WebDAV] Digest auth failed ({}): {}",
+                                retry_status,
+                                &body[..body.len().min(200)]
+                            );
                             self.digest_auth = None;
-                            Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
+                            Err(ProviderError::AuthenticationFailed(
+                                "Invalid credentials".to_string(),
+                            ))
                         }
                         status => {
                             self.digest_auth = None;
-                            Err(ProviderError::ConnectionFailed(format!("Server returned status: {}", status)))
+                            Err(ProviderError::ConnectionFailed(format!(
+                                "Server returned status: {}",
+                                status
+                            )))
                         }
                     }
                 } else {
-                    Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
+                    Err(ProviderError::AuthenticationFailed(
+                        "Invalid credentials".to_string(),
+                    ))
                 }
             }
-            StatusCode::FORBIDDEN => {
-                Err(ProviderError::AuthenticationFailed("Invalid credentials".to_string()))
-            }
-            status => {
-                Err(ProviderError::ConnectionFailed(format!("Server returned status: {}", status)))
-            }
+            StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
+                "Invalid credentials".to_string(),
+            )),
+            status => Err(ProviderError::ConnectionFailed(format!(
+                "Server returned status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
         Ok(())
     }
-    
+
     fn is_connected(&self) -> bool {
         self.connected
     }
-    
+
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let list_path = if path.is_empty() || path == "." {
             self.current_path.clone()
         } else {
             path.to_string()
         };
-        
+
         tracing::debug!("[WebDAV] Listing path: {}", list_path);
-        
-        let response = self.request(webdav_methods::propfind(), &list_path)
+
+        let response = self
+            .request(webdav_methods::propfind(), &list_path)
             .header("Depth", "1")
             .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+            .body(
+                r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
@@ -1028,22 +1191,25 @@ impl StorageProvider for WebDavProvider {
                         <d:getetag/>
                         <d:displayname/>
                     </d:prop>
-                </d:propfind>"#)
+                </d:propfind>"#,
+            )
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         let status = response.status();
         tracing::debug!("[WebDAV] List response status: {}", status);
-        
+
         match status {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response.text().await
+                let xml = response
+                    .text()
+                    .await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-                
+
                 tracing::debug!("[WebDAV] Response XML length: {} bytes", xml.len());
                 tracing::debug!("[WebDAV] Full XML response:\n{}", xml);
-                
+
                 let entries = self.parse_propfind_response(&xml, &list_path)?;
                 tracing::debug!("[WebDAV] Parsed {} entries", entries.len());
                 Ok(entries)
@@ -1055,19 +1221,24 @@ impl StorageProvider for WebDavProvider {
             StatusCode::UNAUTHORIZED => {
                 self.connected = false;
                 tracing::error!("[WebDAV] Unauthorized - session expired");
-                Err(ProviderError::AuthenticationFailed("Session expired".to_string()))
+                Err(ProviderError::AuthenticationFailed(
+                    "Session expired".to_string(),
+                ))
             }
             status => {
                 tracing::error!("[WebDAV] Server error: {}", status);
-                Err(ProviderError::ServerError(format!("Server returned status: {}", status)))
+                Err(ProviderError::ServerError(format!(
+                    "Server returned status: {}",
+                    status
+                )))
             }
         }
     }
-    
+
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         Ok(self.current_path.clone())
     }
-    
+
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1082,30 +1253,36 @@ impl StorageProvider for WebDavProvider {
                     && !path_trimmed.starts_with(root_trimmed)
                     && path_trimmed != root_trimmed
                 {
-                    return Err(ProviderError::InvalidPath(
-                        format!("Cannot navigate above WebDAV root: {}", initial_path),
-                    ));
+                    return Err(ProviderError::InvalidPath(format!(
+                        "Cannot navigate above WebDAV root: {}",
+                        initial_path
+                    )));
                 }
             }
         }
 
         // Verify the path exists and is a directory
-        let response = self.request(webdav_methods::propfind(), path)
+        let response = self
+            .request(webdav_methods::propfind(), path)
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+            .body(
+                r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
                     </d:prop>
-                </d:propfind>"#)
+                </d:propfind>"#,
+            )
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response.text().await
+                let xml = response
+                    .text()
+                    .await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                 let props = self.extract_xml_properties(&xml);
@@ -1115,21 +1292,26 @@ impl StorageProvider for WebDavProvider {
                     self.current_path = path.to_string();
                     Ok(())
                 } else {
-                    Err(ProviderError::InvalidPath(format!("{} is not a directory", path)))
+                    Err(ProviderError::InvalidPath(format!(
+                        "{} is not a directory",
+                        path
+                    )))
                 }
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("Server returned status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "Server returned status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         // Determine the root boundary — initial_path if set, otherwise "/"
-        let root = self.config.initial_path.as_deref()
+        let root = self
+            .config
+            .initial_path
+            .as_deref()
             .filter(|p| !p.is_empty())
             .unwrap_or("/");
 
@@ -1144,7 +1326,11 @@ impl StorageProvider for WebDavProvider {
             .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "/".to_string());
-        let parent = if parent.is_empty() { "/".to_string() } else { parent };
+        let parent = if parent.is_empty() {
+            "/".to_string()
+        } else {
+            parent
+        };
 
         // Clamp: if parent would go above root, stay at root
         let parent_trimmed = parent.trim_end_matches('/');
@@ -1156,7 +1342,7 @@ impl StorageProvider for WebDavProvider {
 
         Ok(())
     }
-    
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -1166,12 +1352,13 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(Method::GET, remote_path)
+
+        let response = self
+            .request(Method::GET, remote_path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
@@ -1182,9 +1369,10 @@ impl StorageProvider for WebDavProvider {
                 let mut downloaded: u64 = 0;
 
                 while let Some(chunk_result) = stream.next().await {
-                    let chunk = chunk_result
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    atomic.write_all(&chunk)
+                    let chunk =
+                        chunk_result.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    atomic
+                        .write_all(&chunk)
                         .await
                         .map_err(ProviderError::IoError)?;
                     downloaded += chunk.len() as u64;
@@ -1196,21 +1384,21 @@ impl StorageProvider for WebDavProvider {
 
                 Ok(())
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(remote_path.to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self.request(Method::GET, remote_path)
+        let response = self
+            .request(Method::GET, remote_path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -1220,15 +1408,14 @@ impl StorageProvider for WebDavProvider {
                 // H2: Size-limited download to prevent OOM on large files
                 super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(remote_path.to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn upload(
         &mut self,
         local_path: &str,
@@ -1239,16 +1426,17 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
-        let total_size = file.metadata().await
-            .map_err(ProviderError::IoError)?.len();
+        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
 
         // Stream file with Content-Length header (required by some HTTP/1.1 servers)
         let stream = tokio_util::io::ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
 
-        let response = self.request(Method::PUT, remote_path)
+        let response = self
+            .request(Method::PUT, remote_path)
             .header("Content-Length", total_size)
             .body(body)
             .send()
@@ -1262,119 +1450,116 @@ impl StorageProvider for WebDavProvider {
                 }
                 Ok(())
             }
-            StatusCode::CONFLICT => {
-                Err(ProviderError::InvalidPath("Parent directory does not exist".to_string()))
-            }
-            StatusCode::INSUFFICIENT_STORAGE => {
-                Err(ProviderError::ServerError("Insufficient storage space".to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Upload failed with status: {}", status)))
-            }
+            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
+                "Parent directory does not exist".to_string(),
+            )),
+            StatusCode::INSUFFICIENT_STORAGE => Err(ProviderError::ServerError(
+                "Insufficient storage space".to_string(),
+            )),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Upload failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(webdav_methods::mkcol(), path)
+
+        let response = self
+            .request(webdav_methods::mkcol(), path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::CREATED | StatusCode::OK => Ok(()),
-            StatusCode::METHOD_NOT_ALLOWED => {
-                Err(ProviderError::AlreadyExists(path.to_string()))
-            }
-            StatusCode::CONFLICT => {
-                Err(ProviderError::InvalidPath("Parent directory does not exist".to_string()))
-            }
-            StatusCode::FORBIDDEN => {
-                Err(ProviderError::PermissionDenied(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("MKCOL failed with status: {}", status)))
-            }
+            StatusCode::METHOD_NOT_ALLOWED => Err(ProviderError::AlreadyExists(path.to_string())),
+            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
+                "Parent directory does not exist".to_string(),
+            )),
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "MKCOL failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(Method::DELETE, path)
+
+        let response = self
+            .request(Method::DELETE, path)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            StatusCode::FORBIDDEN => {
-                Err(ProviderError::PermissionDenied(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("DELETE failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "DELETE failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         // WebDAV DELETE works for both files and directories
         self.delete(path).await
     }
-    
+
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         // WebDAV DELETE automatically deletes recursively
         self.delete(path).await
     }
-    
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let destination = self.build_url(to);
-        
-        let response = self.request(webdav_methods::move_method(), from)
+
+        let response = self
+            .request(webdav_methods::move_method(), from)
             .header("Destination", destination)
             .header("Overwrite", "F") // Don't overwrite existing
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(from.to_string()))
-            }
-            StatusCode::PRECONDITION_FAILED => {
-                Err(ProviderError::AlreadyExists(to.to_string()))
-            }
-            StatusCode::CONFLICT => {
-                Err(ProviderError::InvalidPath("Destination parent does not exist".to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("MOVE failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::AlreadyExists(to.to_string())),
+            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
+                "Destination parent does not exist".to_string(),
+            )),
+            status => Err(ProviderError::ServerError(format!(
+                "MOVE failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(webdav_methods::propfind(), path)
+
+        let response = self
+            .request(webdav_methods::propfind(), path)
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+            .body(
+                r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
@@ -1383,19 +1568,23 @@ impl StorageProvider for WebDavProvider {
                         <d:getcontenttype/>
                         <d:getetag/>
                     </d:prop>
-                </d:propfind>"#)
+                </d:propfind>"#,
+            )
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response.text().await
+                let xml = response
+                    .text()
+                    .await
                     .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                 let props = self.extract_xml_properties(&xml);
                 let is_dir = props.contains_key("_is_collection");
-                let size: u64 = props.get("getcontentlength")
+                let size: u64 = props
+                    .get("getcontentlength")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
                 let modified = props.get("getlastmodified").cloned();
@@ -1421,20 +1610,19 @@ impl StorageProvider for WebDavProvider {
                     metadata: Default::default(),
                 })
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("PROPFIND failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "PROPFIND failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let entry = self.stat(path).await?;
         Ok(entry.size)
     }
-    
+
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         match self.stat(path).await {
             Ok(_) => Ok(true),
@@ -1442,52 +1630,59 @@ impl StorageProvider for WebDavProvider {
             Err(e) => Err(e),
         }
     }
-    
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // WebDAV uses HTTP which is stateless, no keep-alive needed
         // Just verify we can still authenticate
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(Method::OPTIONS, "/")
+
+        let response = self
+            .request(Method::OPTIONS, "/")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         if response.status() == StatusCode::UNAUTHORIZED {
             self.connected = false;
-            return Err(ProviderError::AuthenticationFailed("Session expired".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Session expired".to_string(),
+            ));
         }
-        
+
         Ok(())
     }
-    
+
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.request(Method::OPTIONS, "/")
+
+        let response = self
+            .request(Method::OPTIONS, "/")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         let server = response
             .headers()
             .get("server")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("Unknown WebDAV Server");
-        
+
         let dav = response
             .headers()
             .get("dav")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("1");
-        
-        Ok(format!("WebDAV Server: {} (DAV compliance: {})", server, dav))
+
+        Ok(format!(
+            "WebDAV Server: {} (DAV compliance: {})",
+            server, dav
+        ))
     }
-    
+
     fn supports_find(&self) -> bool {
         true
     }
@@ -1529,16 +1724,19 @@ impl StorageProvider for WebDavProvider {
         }
 
         // RFC 4331: WebDAV quota properties
-        let response = self.request(webdav_methods::propfind(), &self.current_path.clone())
+        let response = self
+            .request(webdav_methods::propfind(), &self.current_path.clone())
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0" encoding="utf-8"?>
+            .body(
+                r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:quota-available-bytes/>
                         <d:quota-used-bytes/>
                     </d:prop>
-                </d:propfind>"#)
+                </d:propfind>"#,
+            )
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -1547,14 +1745,18 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotSupported("storage_info".to_string()));
         }
 
-        let xml = response.text().await
+        let xml = response
+            .text()
+            .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let props = self.extract_xml_properties(&xml);
-        let used = props.get("quota-used-bytes")
+        let used = props
+            .get("quota-used-bytes")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
-        let free = props.get("quota-available-bytes")
+        let free = props
+            .get("quota-available-bytes")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
         let total = used + free;
@@ -1566,7 +1768,11 @@ impl StorageProvider for WebDavProvider {
         true
     }
 
-    async fn lock_file(&mut self, path: &str, timeout: u64) -> Result<super::LockInfo, ProviderError> {
+    async fn lock_file(
+        &mut self,
+        path: &str,
+        timeout: u64,
+    ) -> Result<super::LockInfo, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1584,7 +1790,8 @@ impl StorageProvider for WebDavProvider {
                 <d:owner><d:href>AeroFTP</d:href></d:owner>
             </d:lockinfo>"#;
 
-        let response = self.request(webdav_methods::lock(), path)
+        let response = self
+            .request(webdav_methods::lock(), path)
             .header("Depth", "0")
             .header("Timeout", &timeout_header)
             .header("Content-Type", "application/xml")
@@ -1596,11 +1803,16 @@ impl StorageProvider for WebDavProvider {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!("LOCK failed ({}): {}", status, sanitize_api_error(&text))));
+            return Err(ProviderError::ServerError(format!(
+                "LOCK failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
         }
 
         // Extract lock token from Lock-Token header or XML response
-        let lock_token = response.headers()
+        let lock_token = response
+            .headers()
             .get("lock-token")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.trim_matches(|c| c == '<' || c == '>').to_string())
@@ -1621,7 +1833,8 @@ impl StorageProvider for WebDavProvider {
 
         let token_header = format!("<{}>", lock_token);
 
-        let response = self.request(webdav_methods::unlock(), path)
+        let response = self
+            .request(webdav_methods::unlock(), path)
             .header("Lock-Token", &token_header)
             .send()
             .await
@@ -1631,7 +1844,11 @@ impl StorageProvider for WebDavProvider {
             reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT => Ok(()),
             status => {
                 let text = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(format!("UNLOCK failed ({}): {}", status, sanitize_api_error(&text))))
+                Err(ProviderError::ServerError(format!(
+                    "UNLOCK failed ({}): {}",
+                    status,
+                    sanitize_api_error(&text)
+                )))
             }
         }
     }
@@ -1665,27 +1882,25 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let destination = self.build_url(to);
-        
-        let response = self.request(webdav_methods::copy(), from)
+
+        let response = self
+            .request(webdav_methods::copy(), from)
             .header("Destination", destination)
             .header("Overwrite", "F")
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(from.to_string()))
-            }
-            StatusCode::PRECONDITION_FAILED => {
-                Err(ProviderError::AlreadyExists(to.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("COPY failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::AlreadyExists(to.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "COPY failed with status: {}",
+                status
+            ))),
         }
     }
 
@@ -1696,22 +1911,29 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
-    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(
-                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
-            ));
+            return Err(ProviderError::Other(format!(
+                "Read range size {} exceeds maximum {} bytes",
+                len, MAX_READ_RANGE
+            )));
         }
 
         let end = offset + len - 1; // HTTP Range is inclusive
         let range_header = format!("bytes={}-{}", offset, end);
 
-        let response = self.request(Method::GET, path)
+        let response = self
+            .request(Method::GET, path)
             .header("Range", &range_header)
             .send()
             .await
@@ -1720,7 +1942,9 @@ impl StorageProvider for WebDavProvider {
         let status = response.status();
         match status {
             StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
-                let bytes = response.bytes().await
+                let bytes = response
+                    .bytes()
+                    .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 // If server ignores Range and returns full content, slice to requested range
                 if status == StatusCode::OK {
@@ -1735,15 +1959,14 @@ impl StorageProvider for WebDavProvider {
                     Ok(bytes.to_vec())
                 }
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            StatusCode::RANGE_NOT_SATISFIABLE => {
-                Err(ProviderError::NotSupported("Server does not support range requests".to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Range download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
+                "Server does not support range requests".to_string(),
+            )),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Range download failed with status: {}",
+                status
+            ))),
         }
     }
 }
@@ -1756,10 +1979,14 @@ pub async fn webdav_list_trash(
 ) -> Result<Vec<NextcloudTrashEntry>, String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider.as_any_mut()
+    let webdav = provider
+        .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
-    webdav.nextcloud_list_trash().await.map_err(|e| e.to_string())
+    webdav
+        .nextcloud_list_trash()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1769,11 +1996,15 @@ pub async fn webdav_restore_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider.as_any_mut()
+    let webdav = provider
+        .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
     for id in &ids {
-        webdav.nextcloud_restore_trash(id).await.map_err(|e| e.to_string())?;
+        webdav
+            .nextcloud_restore_trash(id)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1785,11 +2016,15 @@ pub async fn webdav_delete_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider.as_any_mut()
+    let webdav = provider
+        .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
     for id in &ids {
-        webdav.nextcloud_delete_trash_item(id).await.map_err(|e| e.to_string())?;
+        webdav
+            .nextcloud_delete_trash_item(id)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1800,10 +2035,14 @@ pub async fn webdav_empty_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = provider.as_any_mut()
+    let webdav = provider
+        .as_any_mut()
         .downcast_mut::<WebDavProvider>()
         .ok_or("Not a WebDAV connection")?;
-    webdav.nextcloud_empty_trash().await.map_err(|e| e.to_string())
+    webdav
+        .nextcloud_empty_trash()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -1822,9 +2061,10 @@ mod tests {
 
     #[test]
     fn test_build_url() {
-        let provider = WebDavProvider::new(
-            test_config("https://cloud.example.com/remote.php/dav/files/user/"),
-        ).expect("Failed to create WebDavProvider");
+        let provider = WebDavProvider::new(test_config(
+            "https://cloud.example.com/remote.php/dav/files/user/",
+        ))
+        .expect("Failed to create WebDavProvider");
 
         assert_eq!(
             provider.build_url("/Documents"),

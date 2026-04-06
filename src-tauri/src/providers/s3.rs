@@ -14,15 +14,14 @@ use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use secrecy::ExposeSecret;
-use tracing::{debug, info};
 use reqwest::{Client, Method, StatusCode};
+use secrecy::ExposeSecret;
 use std::collections::HashMap;
+use tracing::{debug, info};
 
 use super::{
-    StorageProvider, ProviderError, ProviderType, RemoteEntry, S3Config, FileVersion,
-    sanitize_api_error,
-    ShareLinkOptions, ShareLinkResult, ShareLinkCapabilities,
+    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry, S3Config,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
 };
 
 /// S3 Storage Provider
@@ -31,6 +30,9 @@ pub struct S3Provider {
     client: Client,
     current_prefix: String,
     connected: bool,
+    /// Clock offset in seconds to compensate for local system clock skew.
+    /// Auto-detected from the server's Date header on time-related auth errors.
+    clock_offset_secs: i64,
 }
 
 impl S3Provider {
@@ -41,16 +43,24 @@ impl S3Provider {
             .timeout(std::time::Duration::from_secs(30))
             .http1_only()
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
+            })?;
 
         Ok(Self {
             config,
             client,
             current_prefix: String::new(),
             connected: false,
+            clock_offset_secs: 0,
         })
     }
-    
+
+    /// Returns the current UTC time adjusted for any detected clock skew.
+    fn now_adjusted(&self) -> DateTime<Utc> {
+        Utc::now() + chrono::Duration::seconds(self.clock_offset_secs)
+    }
+
     /// Get the S3 endpoint URL
     fn endpoint(&self) -> String {
         if let Some(ref endpoint) = self.config.endpoint {
@@ -59,12 +69,12 @@ impl S3Provider {
             format!("https://s3.{}.amazonaws.com", self.config.region)
         }
     }
-    
+
     /// Build URL for S3 operations
     fn build_url(&self, key: &str) -> String {
         let endpoint = self.endpoint();
         let key = key.trim_start_matches('/');
-        
+
         if self.config.path_style {
             // Path-style: https://endpoint/bucket/key
             if key.is_empty() {
@@ -74,15 +84,23 @@ impl S3Provider {
             }
         } else {
             // Virtual-hosted style: https://bucket.endpoint/key
-            let endpoint_without_scheme = endpoint
-                .replace("https://", "")
-                .replace("http://", "");
-            let scheme = if endpoint.starts_with("http://") { "http" } else { "https" };
-            
-            if key.is_empty() {
-                format!("{}://{}.{}", scheme, self.config.bucket, endpoint_without_scheme)
+            let endpoint_without_scheme = endpoint.replace("https://", "").replace("http://", "");
+            let scheme = if endpoint.starts_with("http://") {
+                "http"
             } else {
-                format!("{}://{}.{}/{}", scheme, self.config.bucket, endpoint_without_scheme, key)
+                "https"
+            };
+
+            if key.is_empty() {
+                format!(
+                    "{}://{}.{}",
+                    scheme, self.config.bucket, endpoint_without_scheme
+                )
+            } else {
+                format!(
+                    "{}://{}.{}/{}",
+                    scheme, self.config.bucket, endpoint_without_scheme, key
+                )
             }
         }
     }
@@ -129,7 +147,10 @@ impl S3Provider {
 
             // Some S3-compatible providers may return temporary/inconsistent HEAD results
             // immediately after CopyObject. Fall back to prefix listing and exact-key match.
-            if matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED) {
+            if matches!(
+                status,
+                StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED
+            ) {
                 let listed_keys = self.list_keys_with_prefix(to_key).await?;
                 debug!(
                     "S3 rename verify attempt {}: list prefix '{}' returned {} keys",
@@ -149,7 +170,11 @@ impl S3Provider {
 
             last_status = Some(status);
 
-            if !matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED) || attempt == 4 {
+            if !matches!(
+                status,
+                StatusCode::NOT_FOUND | StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED
+            ) || attempt == 4
+            {
                 break;
             }
 
@@ -176,8 +201,7 @@ impl S3Provider {
         if source_status != StatusCode::OK {
             return Err(ProviderError::ServerError(format!(
                 "FileLu safe rename read failed ({}): {}",
-                source_status,
-                from
+                source_status, from
             )));
         }
 
@@ -196,11 +220,13 @@ impl S3Provider {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 if put_body.to_ascii_lowercase().contains("<error>") {
                     let err_code = put_body
-                        .split("<Code>").nth(1)
+                        .split("<Code>")
+                        .nth(1)
                         .and_then(|s| s.split("</Code>").next())
                         .unwrap_or("PutError");
                     let err_msg = put_body
-                        .split("<Message>").nth(1)
+                        .split("<Message>")
+                        .nth(1)
                         .and_then(|s| s.split("</Message>").next())
                         .unwrap_or("S3 provider returned an error during put");
                     return Err(ProviderError::ServerError(format!(
@@ -224,7 +250,7 @@ impl S3Provider {
         info!("Renamed file (FileLu safe path) {} to {}", from, to);
         Ok(())
     }
-    
+
     /// Sign a request using AWS Signature Version 4
     /// This is a simplified implementation - for production, consider using aws-sigv4
     fn sign_request(
@@ -235,27 +261,28 @@ impl S3Provider {
         payload_hash: &str,
     ) -> Result<String, ProviderError> {
         use hmac::{Hmac, Mac};
-        use sha2::{Sha256, Digest};
-        
+        use sha2::{Digest, Sha256};
+
         type HmacSha256 = Hmac<Sha256>;
-        
-        let now: DateTime<Utc> = Utc::now();
+
+        let now: DateTime<Utc> = self.now_adjusted();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
-        
+
         headers.insert("x-amz-date".to_string(), amz_date.clone());
         headers.insert("x-amz-content-sha256".to_string(), payload_hash.to_string());
-        
+
         // Parse URL to get host and path
-        let parsed = url::Url::parse(url)
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-        
+        let parsed =
+            url::Url::parse(url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
-        
+
         // Query parameters must be sorted alphabetically for canonical request
         let canonical_query = {
-            let mut params: Vec<(String, String)> = parsed.query_pairs()
+            let mut params: Vec<(String, String)> = parsed
+                .query_pairs()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect();
             params.sort_by(|a, b| {
@@ -265,28 +292,31 @@ impl S3Provider {
                     other => other,
                 }
             });
-            params.iter()
-                .map(|(k, v)| format!("{}={}", 
-                    urlencoding::encode(k), 
-                    urlencoding::encode(v)))
+            params
+                .iter()
+                .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
                 .collect::<Vec<_>>()
                 .join("&")
         };
-        
+
         headers.insert("host".to_string(), host.to_string());
-        
+
         // Create canonical request
         let mut signed_headers: Vec<&str> = headers.keys().map(|s| s.as_str()).collect();
         signed_headers.sort();
         let signed_headers_str = signed_headers.join(";");
-        
+
         let mut canonical_headers = String::new();
         for header in &signed_headers {
             if let Some(value) = headers.get(*header) {
-                canonical_headers.push_str(&format!("{}:{}\n", header.to_lowercase(), value.trim()));
+                canonical_headers.push_str(&format!(
+                    "{}:{}\n",
+                    header.to_lowercase(),
+                    value.trim()
+                ));
             }
         }
-        
+
         // URI-encode each path segment individually (H-10: SigV4 requires encoded segments)
         // parsed.path() returns already-percent-encoded path, so decode first to avoid double-encoding
         // (e.g. "File%20Name.pdf" → decode → "File Name.pdf" → encode → "File%20Name.pdf")
@@ -317,32 +347,30 @@ impl S3Provider {
             signed_headers_str,
             payload_hash
         );
-        
+
         let canonical_request_hash = {
             let mut hasher = Sha256::new();
             hasher.update(canonical_request.as_bytes());
             hex::encode(hasher.finalize())
         };
-        
+
         // Create string to sign
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, self.config.region);
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date,
-            credential_scope,
-            canonical_request_hash
+            amz_date, credential_scope, canonical_request_hash
         );
-        
+
         // Calculate signature
         fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
             let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
             mac.update(data);
             mac.finalize().into_bytes().to_vec()
         }
-        
+
         let k_date = hmac_sha256(
             format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
-            date_stamp.as_bytes()
+            date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
         let k_service = hmac_sha256(&k_region, b"s3");
@@ -352,15 +380,12 @@ impl S3Provider {
         // Create authorization header
         let authorization = format!(
             "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
-            self.config.access_key_id,
-            credential_scope,
-            signed_headers_str,
-            signature
+            self.config.access_key_id, credential_scope, signed_headers_str, signature
         );
 
         Ok(authorization)
     }
-    
+
     /// Make a signed request to S3
     async fn s3_request(
         &self,
@@ -369,7 +394,8 @@ impl S3Provider {
         query_params: Option<&[(&str, &str)]>,
         body: Option<Vec<u8>>,
     ) -> Result<reqwest::Response, ProviderError> {
-        self.s3_request_ext(method, key, query_params, body, &[]).await
+        self.s3_request_ext(method, key, query_params, body, &[])
+            .await
     }
 
     /// Make a signed request to S3 with extra headers included in the signature
@@ -381,12 +407,13 @@ impl S3Provider {
         body: Option<Vec<u8>>,
         extra_headers: &[(&str, &str)],
     ) -> Result<reqwest::Response, ProviderError> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         use tracing::{debug, warn};
 
         let mut url = self.build_url(key);
         if let Some(params) = query_params {
-            let query: String = params.iter()
+            let query: String = params
+                .iter()
                 .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
                 .collect::<Vec<_>>()
                 .join("&");
@@ -396,8 +423,10 @@ impl S3Provider {
         }
 
         debug!("S3 Request: {} {}", method, url);
-        debug!("S3 Bucket: {}, Region: {}, Path-style: {}",
-               self.config.bucket, self.config.region, self.config.path_style);
+        debug!(
+            "S3 Bucket: {}, Region: {}, Path-style: {}",
+            self.config.bucket, self.config.region, self.config.path_style
+        );
 
         let payload = body.as_deref().unwrap_or(&[]);
         let payload_hash = {
@@ -411,7 +440,8 @@ impl S3Provider {
         for (k, v) in extra_headers {
             headers.insert(k.to_string(), v.to_string());
         }
-        let authorization = self.sign_request(method.as_str(), &url, &mut headers, &payload_hash)?;
+        let authorization =
+            self.sign_request(method.as_str(), &url, &mut headers, &payload_hash)?;
 
         let mut request = self.client.request(method.clone(), &url);
 
@@ -422,14 +452,17 @@ impl S3Provider {
 
         // SEC-06: Redact sensitive headers before logging
         {
-            let redacted: HashMap<&String, String> = headers.iter().map(|(k, v)| {
-                let lower = k.to_lowercase();
-                if lower == "authorization" || lower == "x-amz-security-token" {
-                    (k, "[REDACTED]".to_string())
-                } else {
-                    (k, v.clone())
-                }
-            }).collect();
+            let redacted: HashMap<&String, String> = headers
+                .iter()
+                .map(|(k, v)| {
+                    let lower = k.to_lowercase();
+                    if lower == "authorization" || lower == "x-amz-security-token" {
+                        (k, "[REDACTED]".to_string())
+                    } else {
+                        (k, v.clone())
+                    }
+                })
+                .collect();
             debug!("S3 Headers: {:?}", redacted);
         }
 
@@ -440,13 +473,16 @@ impl S3Provider {
         }
 
         // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504)
-        let built_request = request.build()
+        let built_request = request
+            .build()
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
         let response = super::send_with_retry(
             &self.client,
             built_request,
             &super::HttpRetryConfig::default(),
-        ).await.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        )
+        .await
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -455,12 +491,18 @@ impl S3Provider {
 
         Ok(response)
     }
-    
+
     /// Parse S3 ListObjectsV2 XML response using quick-xml (M-11/M-12)
-    fn parse_list_response(&self, xml_str: &str) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
+    fn parse_list_response(
+        &self,
+        xml_str: &str,
+    ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
 
-        debug!("Parsing S3 ListObjectsV2 XML response, {} bytes", xml_str.len());
+        debug!(
+            "Parsing S3 ListObjectsV2 XML response, {} bytes",
+            xml_str.len()
+        );
 
         let mut reader = Reader::from_str(xml_str);
         reader.config_mut().trim_text(true);
@@ -570,15 +612,19 @@ impl S3Provider {
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
                                     let dominated = key == &self.current_prefix
-                                        || key.trim_start_matches('/') == self.current_prefix.trim_start_matches('/');
+                                        || key.trim_start_matches('/')
+                                            == self.current_prefix.trim_start_matches('/');
                                     if !dominated {
-                                        let name = key.rsplit('/').next().unwrap_or(key).to_string();
+                                        let name =
+                                            key.rsplit('/').next().unwrap_or(key).to_string();
                                         if !name.is_empty() {
-                                            let size: u64 = c_size.as_ref()
+                                            let size: u64 = c_size
+                                                .as_ref()
                                                 .and_then(|s| s.parse().ok())
                                                 .unwrap_or(0);
 
-                                            let etag = c_etag.as_ref()
+                                            let etag = c_etag
+                                                .as_ref()
                                                 .map(|s| s.trim_matches('"').to_string());
 
                                             let mut metadata = HashMap::new();
@@ -586,7 +632,10 @@ impl S3Provider {
                                                 metadata.insert("etag".to_string(), etag);
                                             }
                                             if let Some(ref sc) = c_storage_class {
-                                                metadata.insert("storage_class".to_string(), sc.clone());
+                                                metadata.insert(
+                                                    "storage_class".to_string(),
+                                                    sc.clone(),
+                                                );
                                             }
 
                                             entries.push(RemoteEntry {
@@ -679,12 +728,21 @@ impl S3Provider {
         }
         match self.config.sse_mode.as_deref() {
             Some("AES256") => {
-                headers.insert("x-amz-server-side-encryption".to_string(), "AES256".to_string());
+                headers.insert(
+                    "x-amz-server-side-encryption".to_string(),
+                    "AES256".to_string(),
+                );
             }
             Some("aws:kms") => {
-                headers.insert("x-amz-server-side-encryption".to_string(), "aws:kms".to_string());
+                headers.insert(
+                    "x-amz-server-side-encryption".to_string(),
+                    "aws:kms".to_string(),
+                );
                 if let Some(ref key_id) = self.config.sse_kms_key_id {
-                    headers.insert("x-amz-server-side-encryption-aws-kms-key-id".to_string(), key_id.clone());
+                    headers.insert(
+                        "x-amz-server-side-encryption-aws-kms-key-id".to_string(),
+                        key_id.clone(),
+                    );
                 }
             }
             _ => {}
@@ -698,7 +756,11 @@ impl S3Provider {
 
     /// Initiate a multipart upload, returns the UploadId.
     /// Optionally sets Content-Type for the resulting object (UPLOAD-01).
-    async fn create_multipart_upload(&self, key: &str, content_type: Option<&str>) -> Result<String, ProviderError> {
+    async fn create_multipart_upload(
+        &self,
+        key: &str,
+        content_type: Option<&str>,
+    ) -> Result<String, ProviderError> {
         // For multipart, Content-Type must be set on initiation, not on individual parts.
         // We build a custom request to include the header.
         let url = {
@@ -706,7 +768,7 @@ impl S3Provider {
             format!("{}?uploads=", base)
         };
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(b"");
@@ -728,16 +790,20 @@ impl S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(
-                format!("CreateMultipartUpload failed ({}): {}", status, sanitize_api_error(&body)),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "CreateMultipartUpload failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         self.extract_xml_tag(&body, "UploadId")
@@ -753,19 +819,21 @@ impl S3Provider {
         data: Vec<u8>,
     ) -> Result<String, ProviderError> {
         let part_num_str = part_number.to_string();
-        let params: &[(&str, &str)] = &[
-            ("partNumber", &part_num_str),
-            ("uploadId", upload_id),
-        ];
+        let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
 
-        let response = self.s3_request(Method::PUT, key, Some(params), Some(data)).await?;
+        let response = self
+            .s3_request(Method::PUT, key, Some(params), Some(data))
+            .await?;
 
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(
-                format!("UploadPart {} failed ({}): {}", part_number, status, sanitize_api_error(&body)),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "UploadPart {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         // ETag is in the response headers
@@ -774,7 +842,9 @@ impl S3Provider {
             .get("etag")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string())
-            .ok_or_else(|| ProviderError::ParseError("Missing ETag in UploadPart response".to_string()))?;
+            .ok_or_else(|| {
+                ProviderError::ParseError("Missing ETag in UploadPart response".to_string())
+            })?;
 
         Ok(etag)
     }
@@ -796,30 +866,36 @@ impl S3Provider {
         }
         xml.push_str("</CompleteMultipartUpload>");
 
-        let response = self.s3_request(
-            Method::POST,
-            key,
-            Some(&[("uploadId", upload_id)]),
-            Some(xml.into_bytes()),
-        ).await?;
+        let response = self
+            .s3_request(
+                Method::POST,
+                key,
+                Some(&[("uploadId", upload_id)]),
+                Some(xml.into_bytes()),
+            )
+            .await?;
 
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(
-                format!("CompleteMultipartUpload failed ({}): {}", status, sanitize_api_error(&body)),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "CompleteMultipartUpload failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         // UPLOAD-07: AWS S3 can return HTTP 200 but include an <Error> in the XML body
         if body.contains("<Error>") {
-            let error_msg = self.extract_xml_tag(&body, "Message")
+            let error_msg = self
+                .extract_xml_tag(&body, "Message")
                 .or_else(|| self.extract_xml_tag(&body, "Code"))
                 .unwrap_or_else(|| "Unknown error in CompleteMultipartUpload response".to_string());
-            return Err(ProviderError::TransferFailed(
-                format!("CompleteMultipartUpload 200-with-error: {}", sanitize_api_error(&error_msg)),
-            ));
+            return Err(ProviderError::TransferFailed(format!(
+                "CompleteMultipartUpload 200-with-error: {}",
+                sanitize_api_error(&error_msg)
+            )));
         }
 
         Ok(())
@@ -840,9 +916,12 @@ impl S3Provider {
         let content_type = mime_guess::from_path(local_path)
             .first_or_octet_stream()
             .to_string();
-        let upload_id = self.create_multipart_upload(key, Some(&content_type)).await?;
+        let upload_id = self
+            .create_multipart_upload(key, Some(&content_type))
+            .await?;
         let mut parts: Vec<(u32, String)> = Vec::new();
-        let mut file = tokio::fs::File::open(local_path).await
+        let mut file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let mut part_number = 1u32;
         let mut uploaded: u64 = 0;
@@ -852,7 +931,9 @@ impl S3Provider {
             let mut filled = 0;
             // Read exactly MULTIPART_PART_SIZE bytes (or less at EOF)
             while filled < Self::MULTIPART_PART_SIZE {
-                let n = file.read(&mut buf[filled..]).await
+                let n = file
+                    .read(&mut buf[filled..])
+                    .await
                     .map_err(|e| ProviderError::TransferFailed(format!("Read error: {e}")))?;
                 if n == 0 {
                     break; // EOF
@@ -880,7 +961,8 @@ impl S3Provider {
             }
         }
 
-        self.complete_multipart_upload(key, &upload_id, &parts).await
+        self.complete_multipart_upload(key, &upload_id, &parts)
+            .await
     }
 
     /// Abort a multipart upload
@@ -889,12 +971,9 @@ impl S3Provider {
         key: &str,
         upload_id: &str,
     ) -> Result<(), ProviderError> {
-        let _ = self.s3_request(
-            Method::DELETE,
-            key,
-            Some(&[("uploadId", upload_id)]),
-            None,
-        ).await;
+        let _ = self
+            .s3_request(Method::DELETE, key, Some(&[("uploadId", upload_id)]), None)
+            .await;
         Ok(())
     }
 
@@ -906,11 +985,8 @@ impl S3Provider {
         let mut continuation_token: Option<String> = None;
 
         loop {
-            let mut params: Vec<(&str, &str)> = vec![
-                ("list-type", "2"),
-                ("prefix", prefix),
-                ("max-keys", "1000"),
-            ];
+            let mut params: Vec<(&str, &str)> =
+                vec![("list-type", "2"), ("prefix", prefix), ("max-keys", "1000")];
 
             let token_str: String;
             if let Some(ref token) = continuation_token {
@@ -918,18 +994,19 @@ impl S3Provider {
                 params.push(("continuation-token", &token_str));
             }
 
-            let response = self.s3_request(
-                Method::GET,
-                "",
-                Some(&params),
-                None,
-            ).await?;
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
 
             if response.status() != StatusCode::OK {
-                return Err(ProviderError::ServerError("Failed to list objects by prefix".to_string()));
+                return Err(ProviderError::ServerError(
+                    "Failed to list objects by prefix".to_string(),
+                ));
             }
 
-            let xml_str = response.text().await
+            let xml_str = response
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             // Parse keys and next token using quick-xml
@@ -990,14 +1067,29 @@ impl S3Provider {
     }
 }
 
+/// Extract error message from S3 XML error response
+fn extract_s3_error(body: &str) -> String {
+    if body.contains("<Message>") {
+        body.split("<Message>")
+            .nth(1)
+            .and_then(|s| s.split("</Message>").next())
+            .unwrap_or("Access denied")
+            .to_string()
+    } else {
+        body.to_string()
+    }
+}
+
 #[async_trait]
 impl StorageProvider for S3Provider {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 
     fn provider_type(&self) -> ProviderType {
         ProviderType::S3
     }
-    
+
     fn display_name(&self) -> String {
         if self.config.endpoint.is_some() {
             format!("s3://{} (custom)", self.config.bucket)
@@ -1005,104 +1097,169 @@ impl StorageProvider for S3Provider {
             format!("s3://{} ({})", self.config.bucket, self.config.region)
         }
     }
-    
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // Test connection by listing bucket with max-keys=0
-        let response = self.s3_request(
-            Method::GET,
-            "",
-            Some(&[("list-type", "2"), ("max-keys", "1")]),
-            None,
-        ).await?;
-        
+        // Reset clock offset for fresh connection
+        self.clock_offset_secs = 0;
+
+        let response = self
+            .s3_request(
+                Method::GET,
+                "",
+                Some(&[("list-type", "2"), ("max-keys", "1")]),
+                None,
+            )
+            .await?;
+
         match response.status() {
             StatusCode::OK => {
                 self.connected = true;
-                
-                // Set initial prefix if configured
                 if let Some(ref prefix) = self.config.prefix {
                     self.current_prefix = prefix.trim_matches('/').to_string();
                 }
-                
                 Ok(())
             }
             StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                // Grab server Date header before consuming response body
+                let server_date = response
+                    .headers()
+                    .get("date")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| DateTime::parse_from_rfc2822(s).ok())
+                    .map(|dt| dt.with_timezone(&Utc));
+
                 let body = response.text().await.unwrap_or_default();
-                // Extract error message from XML if present
-                let error_msg = if body.contains("<Message>") {
-                    body.split("<Message>").nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("Access denied")
-                        .to_string()
-                } else {
-                    body.clone()
+                let error_msg = extract_s3_error(&body);
+
+                // Detect clock skew: error mentions "time" or "expired" and we haven't retried yet
+                let is_time_error = {
+                    let lower = error_msg.to_lowercase();
+                    lower.contains("time")
+                        || lower.contains("expired")
+                        || body.contains("RequestTimeTooSkewed")
                 };
-                Err(ProviderError::AuthenticationFailed(format!("S3 auth error: {}", sanitize_api_error(&error_msg))))
+
+                if is_time_error {
+                    // Try server Date header first, then <ServerTime> from XML body
+                    let server_time = server_date.or_else(|| {
+                        body.split("<ServerTime>")
+                            .nth(1)
+                            .and_then(|s| s.split("</ServerTime>").next())
+                            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.with_timezone(&Utc))
+                    });
+
+                    if let Some(st) = server_time {
+                        let offset = (st - Utc::now()).num_seconds();
+                        info!(
+                            "S3 clock skew detected ({offset}s), retrying with corrected timestamp"
+                        );
+                        self.clock_offset_secs = offset;
+
+                        // Retry with corrected clock
+                        let retry = self
+                            .s3_request(
+                                Method::GET,
+                                "",
+                                Some(&[("list-type", "2"), ("max-keys", "1")]),
+                                None,
+                            )
+                            .await?;
+
+                        return match retry.status() {
+                            StatusCode::OK => {
+                                self.connected = true;
+                                if let Some(ref prefix) = self.config.prefix {
+                                    self.current_prefix = prefix.trim_matches('/').to_string();
+                                }
+                                Ok(())
+                            }
+                            _ => {
+                                let retry_body = retry.text().await.unwrap_or_default();
+                                Err(ProviderError::AuthenticationFailed(format!(
+                                    "S3 auth error: {}",
+                                    sanitize_api_error(&extract_s3_error(&retry_body))
+                                )))
+                            }
+                        };
+                    }
+                }
+
+                Err(ProviderError::AuthenticationFailed(format!(
+                    "S3 auth error: {}",
+                    sanitize_api_error(&error_msg)
+                )))
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(format!("Bucket '{}' not found", self.config.bucket)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
+                "Bucket '{}' not found",
+                self.config.bucket
+            ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ConnectionFailed(format!("S3 error ({}): {}", status, sanitize_api_error(&body))))
+                Err(ProviderError::ConnectionFailed(format!(
+                    "S3 error ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
-    
+
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
         Ok(())
     }
-    
+
     fn is_connected(&self) -> bool {
         self.connected
     }
-    
+
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let prefix = if path.is_empty() || path == "/" || path == "." {
             self.current_prefix.clone()
         } else {
             path.trim_matches('/').to_string()
         };
-        
+
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
             format!("{}/", prefix)
         };
-        
+
         let mut all_entries = Vec::new();
         let mut continuation_token: Option<String> = None;
 
         // LIST-01: Pagination loop handles >1000 items via NextContinuationToken
         loop {
-            let mut params: Vec<(&str, &str)> = vec![
-                ("list-type", "2"),
-                ("delimiter", "/"),
-                ("max-keys", "1000"),
-            ];
-            
+            let mut params: Vec<(&str, &str)> =
+                vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")];
+
             if !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
             }
-            
+
             let token_str: String;
             if let Some(ref token) = continuation_token {
                 token_str = token.clone();
                 params.push(("continuation-token", &token_str));
             }
-            
-            let response = self.s3_request(Method::GET, "", Some(&params), None).await?;
-            
+
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
+
             match response.status() {
                 StatusCode::OK => {
-                    let xml = response.text().await
+                    let xml = response
+                        .text()
+                        .await
                         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-                    
+
                     // Debug: Log raw XML response (truncated for readability)
                     let xml_preview = if xml.len() > 2000 {
                         format!("{}... [truncated, total {} bytes]", &xml[..2000], xml.len())
@@ -1110,11 +1267,11 @@ impl StorageProvider for S3Provider {
                         xml.clone()
                     };
                     debug!("S3 LIST response XML:\n{}", xml_preview);
-                    
+
                     let (entries, next_token) = self.parse_list_response(&xml)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
-                    
+
                     if let Some(token) = next_token {
                         continuation_token = Some(token);
                     } else {
@@ -1125,27 +1282,33 @@ impl StorageProvider for S3Provider {
                     let body = response.text().await.unwrap_or_default();
                     // Extract error message from XML if present
                     let error_msg = if body.contains("<Message>") {
-                        body.split("<Message>").nth(1)
+                        body.split("<Message>")
+                            .nth(1)
                             .and_then(|s| s.split("</Message>").next())
                             .unwrap_or(&body)
                             .to_string()
                     } else if body.contains("<Code>") {
                         // Try to get the error code
-                        body.split("<Code>").nth(1)
+                        body.split("<Code>")
+                            .nth(1)
                             .and_then(|s| s.split("</Code>").next())
                             .unwrap_or(&body)
                             .to_string()
                     } else {
                         body
                     };
-                    return Err(ProviderError::ServerError(format!("List failed ({}): {}", status, sanitize_api_error(&error_msg))));
+                    return Err(ProviderError::ServerError(format!(
+                        "List failed ({}): {}",
+                        status,
+                        sanitize_api_error(&error_msg)
+                    )));
                 }
             }
         }
-        
+
         Ok(all_entries)
     }
-    
+
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         if self.current_prefix.is_empty() {
             Ok("/".to_string())
@@ -1153,19 +1316,19 @@ impl StorageProvider for S3Provider {
             Ok(format!("/{}", self.current_prefix))
         }
     }
-    
+
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let new_prefix = if path == "/" || path.is_empty() {
             String::new()
         } else if path == ".." {
             // Go up one level
             let parts: Vec<&str> = self.current_prefix.split('/').collect();
             if parts.len() > 1 {
-                parts[..parts.len()-1].join("/")
+                parts[..parts.len() - 1].join("/")
             } else {
                 String::new()
             }
@@ -1174,25 +1337,27 @@ impl StorageProvider for S3Provider {
         } else {
             format!("{}/{}", self.current_prefix, path.trim_matches('/'))
         };
-        
+
         // Verify the prefix exists by listing it
         let prefix_check = if new_prefix.is_empty() {
             String::new()
         } else {
             format!("{}/", new_prefix)
         };
-        
-        let response = self.s3_request(
-            Method::GET,
-            "",
-            Some(&[
-                ("list-type", "2"),
-                ("prefix", &prefix_check),
-                ("max-keys", "1"),
-            ]),
-            None,
-        ).await?;
-        
+
+        let response = self
+            .s3_request(
+                Method::GET,
+                "",
+                Some(&[
+                    ("list-type", "2"),
+                    ("prefix", &prefix_check),
+                    ("max-keys", "1"),
+                ]),
+                None,
+            )
+            .await?;
+
         if response.status() == StatusCode::OK {
             self.current_prefix = new_prefix;
             Ok(())
@@ -1200,11 +1365,11 @@ impl StorageProvider for S3Provider {
             Err(ProviderError::NotFound(path.to_string()))
         }
     }
-    
+
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         self.cd("..").await
     }
-    
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -1214,7 +1379,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let key = remote_path.trim_start_matches('/');
         // DL-01: Retry handled by s3_request → send_with_retry (429, 5xx)
         let response = self.s3_request(Method::GET, key, None, None).await?;
@@ -1225,33 +1390,36 @@ impl StorageProvider for S3Provider {
 
                 // H-01: Streaming download — write chunks as they arrive (atomic)
                 let mut stream = response.bytes_stream();
-                let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+                    .await
                     .map_err(ProviderError::IoError)?;
                 let mut downloaded: u64 = 0;
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    atomic.write_all(&chunk).await
+                    atomic
+                        .write_all(&chunk)
+                        .await
                         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     downloaded += chunk.len() as u64;
                     if let Some(ref progress) = on_progress {
                         progress(downloaded, total_size);
                     }
                 }
-                atomic.commit().await
-                    .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+                atomic.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
 
                 Ok(())
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(remote_path.to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1265,15 +1433,14 @@ impl StorageProvider for S3Provider {
                 // H2: Size-limited download to prevent OOM on large files
                 super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(remote_path.to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn upload(
         &mut self,
         local_path: &str,
@@ -1284,7 +1451,8 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let file_meta = tokio::fs::metadata(local_path).await
+        let file_meta = tokio::fs::metadata(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let total_size = file_meta.len();
         let key = remote_path.trim_start_matches('/');
@@ -1292,12 +1460,15 @@ impl StorageProvider for S3Provider {
         // UPLOAD-02: Use streaming multipart upload for files larger than 5MB
         // Reads chunks from disk instead of buffering entire file in RAM
         if total_size > Self::MULTIPART_THRESHOLD as u64 {
-            return self.upload_multipart_streaming(key, local_path, total_size, on_progress).await;
+            return self
+                .upload_multipart_streaming(key, local_path, total_size, on_progress)
+                .await;
         }
 
         // Streaming upload for small files (< 5MB)
         use tokio_util::io::ReaderStream;
-        let file = tokio::fs::File::open(local_path).await
+        let file = tokio::fs::File::open(local_path)
+            .await
             .map_err(ProviderError::IoError)?;
         let stream = ReaderStream::new(file);
         let body = reqwest::Body::wrap_stream(stream);
@@ -1325,7 +1496,9 @@ impl StorageProvider for S3Provider {
         request = request.header("Content-Type", &content_type);
         request = request.body(body);
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
@@ -1337,55 +1510,61 @@ impl StorageProvider for S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::TransferFailed(format!("Upload failed ({}): {}", status, sanitize_api_error(&body))))
+                Err(ProviderError::TransferFailed(format!(
+                    "Upload failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
-    
+
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         // S3 doesn't have real directories, but we can create a zero-byte object with trailing /
         let key = format!("{}/", path.trim_matches('/'));
-        
-        let response = self.s3_request(Method::PUT, &key, None, Some(Vec::new())).await?;
-        
+
+        let response = self
+            .s3_request(Method::PUT, &key, None, Some(Vec::new()))
+            .await?;
+
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            status => {
-                Err(ProviderError::ServerError(format!("mkdir failed with status: {}", status)))
-            }
+            status => Err(ProviderError::ServerError(format!(
+                "mkdir failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let key = path.trim_start_matches('/');
         let response = self.s3_request(Method::DELETE, key, None, None).await?;
-        
+
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("Delete failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "Delete failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         // In S3, directories are virtual (just key prefixes). MinIO and some
         // S3-compatible providers may not create/delete marker objects reliably.
         // Use rmdir_recursive to clean up the marker AND any lingering objects.
         self.rmdir_recursive(path).await
     }
-    
+
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1406,7 +1585,11 @@ impl StorageProvider for S3Provider {
             keys.push(no_slash);
         }
 
-        tracing::info!("rmdir_recursive: deleting {} keys under prefix '{}'", keys.len(), prefix);
+        tracing::info!(
+            "rmdir_recursive: deleting {} keys under prefix '{}'",
+            keys.len(),
+            prefix
+        );
 
         // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per request
         for chunk in keys.chunks(1000) {
@@ -1423,8 +1606,8 @@ impl StorageProvider for S3Provider {
 
             // S3 batch delete requires Content-MD5
             let md5_digest = {
-                use md5::{Md5, Digest};
-                use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+                use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+                use md5::{Digest, Md5};
                 let mut hasher = Md5::new();
                 hasher.update(&xml_bytes);
                 BASE64.encode(hasher.finalize())
@@ -1433,7 +1616,7 @@ impl StorageProvider for S3Provider {
             // Build signed request manually (need custom Content-MD5 header)
             let url = format!("{}?delete", self.build_url(""));
             let payload_hash = {
-                use sha2::{Sha256, Digest};
+                use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(&xml_bytes);
                 hex::encode(hasher.finalize())
@@ -1451,12 +1634,17 @@ impl StorageProvider for S3Provider {
             request = request.header("Content-Length", xml_bytes.len().to_string());
             request = request.body(xml_bytes);
 
-            let response = request.send().await
+            let response = request
+                .send()
+                .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !response.status().is_success() {
                 // Fall back to sequential delete if batch fails
-                tracing::warn!("S3 batch delete failed ({}), falling back to sequential", response.status());
+                tracing::warn!(
+                    "S3 batch delete failed ({}), falling back to sequential",
+                    response.status()
+                );
                 for key in chunk {
                     let _ = self.s3_request(Method::DELETE, key, None, None).await;
                 }
@@ -1465,7 +1653,7 @@ impl StorageProvider for S3Provider {
 
         Ok(())
     }
-    
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1494,10 +1682,8 @@ impl StorageProvider for S3Provider {
 
             for old_key in &keys {
                 let new_key = old_key.replacen(&prefix, &to_prefix, 1);
-                self.server_copy(
-                    &format!("/{}", old_key),
-                    &format!("/{}", new_key),
-                ).await?;
+                self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
+                    .await?;
             }
 
             // Delete all original objects
@@ -1508,22 +1694,27 @@ impl StorageProvider for S3Provider {
             // Also try to delete the old directory marker (if exists)
             let _ = self.s3_request(Method::DELETE, &prefix, None, None).await;
 
-            info!("Renamed directory (copy+delete {} objects) {} to {}", keys.len(), from, to);
+            info!(
+                "Renamed directory (copy+delete {} objects) {} to {}",
+                keys.len(),
+                from,
+                to
+            );
         }
 
         Ok(())
     }
-    
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
+
         let key = path.trim_start_matches('/');
-        
+
         // Use HEAD request to get object metadata
         let response = self.s3_request(Method::HEAD, key, None, None).await?;
-        
+
         match response.status() {
             StatusCode::OK => {
                 let size = response
@@ -1532,33 +1723,33 @@ impl StorageProvider for S3Provider {
                     .and_then(|v| v.to_str().ok())
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
-                
+
                 let modified = response
                     .headers()
                     .get("last-modified")
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
-                
+
                 let content_type = response
                     .headers()
                     .get("content-type")
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
-                
+
                 let etag = response
                     .headers()
                     .get("etag")
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.trim_matches('"').to_string());
-                
+
                 let name = key.rsplit('/').next().unwrap_or(key).to_string();
                 let is_dir = key.ends_with('/') && size == 0;
-                
+
                 let mut metadata = HashMap::new();
                 if let Some(etag) = etag {
                     metadata.insert("etag".to_string(), etag);
                 }
-                
+
                 Ok(RemoteEntry {
                     name,
                     path: format!("/{}", key),
@@ -1574,20 +1765,19 @@ impl StorageProvider for S3Provider {
                     metadata,
                 })
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            status => {
-                Err(ProviderError::ServerError(format!("HEAD failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            status => Err(ProviderError::ServerError(format!(
+                "HEAD failed with status: {}",
+                status
+            ))),
         }
     }
-    
+
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let entry = self.stat(path).await?;
         Ok(entry.size)
     }
-    
+
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         match self.stat(path).await {
             Ok(_) => Ok(true),
@@ -1595,38 +1785,45 @@ impl StorageProvider for S3Provider {
             Err(e) => Err(e),
         }
     }
-    
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // S3 is stateless, just verify credentials still work
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        
-        let response = self.s3_request(
-            Method::GET,
-            "",
-            Some(&[("list-type", "2"), ("max-keys", "0")]),
-            None,
-        ).await?;
-        
+
+        let response = self
+            .s3_request(
+                Method::GET,
+                "",
+                Some(&[("list-type", "2"), ("max-keys", "0")]),
+                None,
+            )
+            .await?;
+
         if response.status() == StatusCode::FORBIDDEN {
             self.connected = false;
-            return Err(ProviderError::AuthenticationFailed("Credentials expired".to_string()));
+            return Err(ProviderError::AuthenticationFailed(
+                "Credentials expired".to_string(),
+            ));
         }
-        
+
         Ok(())
     }
-    
+
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         let endpoint = if let Some(ref ep) = self.config.endpoint {
             ep.clone()
         } else {
             format!("AWS S3 ({})", self.config.region)
         };
-        
-        Ok(format!("S3 Storage: {} - Bucket: {}", endpoint, self.config.bucket))
+
+        Ok(format!(
+            "S3 Storage: {} - Bucket: {}",
+            endpoint, self.config.bucket
+        ))
     }
-    
+
     // QUOTA-01: S3 buckets have no inherent storage quota. AWS S3 provides unlimited storage
     // with pay-per-use pricing. There is no API to query "used/total" space for a bucket.
     // CloudWatch metrics (BucketSizeBytes) are delayed by ~24h and require separate permissions.
@@ -1651,17 +1848,21 @@ impl StorageProvider for S3Provider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         // Generate a presigned URL
-        use sha2::{Sha256, Digest};
         use hmac::{Hmac, Mac};
+        use sha2::{Digest, Sha256};
 
         type HmacSha256 = Hmac<Sha256>;
 
         let key = path.trim_start_matches('/');
         // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
-        let max_expires = if self.is_mega_s4_endpoint() { 604800_u64 } else { u64::MAX };
+        let max_expires = if self.is_mega_s4_endpoint() {
+            604800_u64
+        } else {
+            u64::MAX
+        };
         let expires = options.expires_in_secs.unwrap_or(3600).min(max_expires);
 
-        let now: DateTime<Utc> = Utc::now();
+        let now: DateTime<Utc> = self.now_adjusted();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
@@ -1669,8 +1870,8 @@ impl StorageProvider for S3Provider {
         let credential = format!("{}/{}", self.config.access_key_id, credential_scope);
 
         let url = self.build_url(key);
-        let parsed = url::Url::parse(&url)
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        let parsed =
+            url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
 
         let host = parsed.host_str().unwrap_or("");
         let raw_path = parsed.path();
@@ -1705,10 +1906,7 @@ impl StorageProvider for S3Provider {
         // Canonical request
         let canonical_request = format!(
             "GET\n{}\n{}\nhost:{}\n\n{}\nUNSIGNED-PAYLOAD",
-            canonical_path,
-            query_params,
-            host,
-            signed_headers
+            canonical_path, query_params, host, signed_headers
         );
 
         let canonical_hash = {
@@ -1720,9 +1918,7 @@ impl StorageProvider for S3Provider {
         // String to sign
         let string_to_sign = format!(
             "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-            amz_date,
-            credential_scope,
-            canonical_hash
+            amz_date, credential_scope, canonical_hash
         );
 
         // Calculate signature
@@ -1734,7 +1930,7 @@ impl StorageProvider for S3Provider {
 
         let k_date = hmac_sha256(
             format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
-            date_stamp.as_bytes()
+            date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
         let k_service = hmac_sha256(&k_region, b"s3");
@@ -1774,10 +1970,7 @@ impl StorageProvider for S3Provider {
         let mut continuation_token: Option<String> = None;
 
         loop {
-            let mut params: Vec<(&str, &str)> = vec![
-                ("list-type", "2"),
-                ("max-keys", "1000"),
-            ];
+            let mut params: Vec<(&str, &str)> = vec![("list-type", "2"), ("max-keys", "1000")];
 
             if !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
@@ -1789,14 +1982,21 @@ impl StorageProvider for S3Provider {
                 params.push(("continuation-token", &token_str));
             }
 
-            let response = self.s3_request(Method::GET, "", Some(&params), None).await?;
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
 
             if response.status() != StatusCode::OK {
                 let body = response.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!("Search failed: {}", sanitize_api_error(&body))));
+                return Err(ProviderError::ServerError(format!(
+                    "Search failed: {}",
+                    sanitize_api_error(&body)
+                )));
             }
 
-            let xml_str = response.text().await
+            let xml_str = response
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             // Parse keys, sizes, and filter by pattern using quick-xml
@@ -1850,7 +2050,8 @@ impl StorageProvider for S3Provider {
                                     if !key.ends_with('/') {
                                         let name = key.rsplit('/').next().unwrap_or(key);
                                         if super::matches_find_pattern(name, pattern) {
-                                            let size: u64 = find_size.as_ref()
+                                            let size: u64 = find_size
+                                                .as_ref()
                                                 .and_then(|s| s.parse().ok())
                                                 .unwrap_or(0);
                                             all_entries.push(RemoteEntry {
@@ -1888,7 +2089,10 @@ impl StorageProvider for S3Provider {
 
             // M1: Stop paginating once we've collected enough results
             if all_entries.len() >= MAX_SEARCH_RESULTS {
-                info!("S3 find: reached {} result cap, stopping pagination", MAX_SEARCH_RESULTS);
+                info!(
+                    "S3 find: reached {} result cap, stopping pagination",
+                    MAX_SEARCH_RESULTS
+                );
                 break;
             }
 
@@ -1916,7 +2120,7 @@ impl StorageProvider for S3Provider {
 
         let url = self.build_url(to_key);
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(b"");
@@ -1936,7 +2140,9 @@ impl StorageProvider for S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
@@ -1948,11 +2154,13 @@ impl StorageProvider for S3Provider {
                 // Treat this as a failed copy to avoid deleting the source during rename.
                 if body.to_ascii_lowercase().contains("<error>") {
                     let err_code = body
-                        .split("<Code>").nth(1)
+                        .split("<Code>")
+                        .nth(1)
                         .and_then(|s| s.split("</Code>").next())
                         .unwrap_or("CopyError");
                     let err_msg = body
-                        .split("<Message>").nth(1)
+                        .split("<Message>")
+                        .nth(1)
                         .and_then(|s| s.split("</Message>").next())
                         .unwrap_or("S3 provider returned an error during copy");
                     return Err(ProviderError::ServerError(format!(
@@ -1966,9 +2174,11 @@ impl StorageProvider for S3Provider {
                 info!("Copied {} to {}", from, to);
                 Ok(())
             }
-            _ => {
-                Err(ProviderError::ServerError(format!("Copy failed ({}): {}", status, sanitize_api_error(&body))))
-            }
+            _ => Err(ProviderError::ServerError(format!(
+                "Copy failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            ))),
         }
     }
 
@@ -1985,42 +2195,48 @@ impl StorageProvider for S3Provider {
         }
     }
 
-    async fn read_range(&mut self, path: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
         if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(
-                format!("Read range size {} exceeds maximum {} bytes", len, MAX_READ_RANGE)
-            ));
+            return Err(ProviderError::Other(format!(
+                "Read range size {} exceeds maximum {} bytes",
+                len, MAX_READ_RANGE
+            )));
         }
 
         let key = path.trim_start_matches('/');
         let end = offset + len - 1; // HTTP Range is inclusive
         let range_value = format!("bytes={}-{}", offset, end);
 
-        let response = self.s3_request_ext(
-            Method::GET, key, None, None,
-            &[("range", &range_value)],
-        ).await?;
+        let response = self
+            .s3_request_ext(Method::GET, key, None, None, &[("range", &range_value)])
+            .await?;
 
         match response.status() {
             StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
-                let bytes = response.bytes().await
+                let bytes = response
+                    .bytes()
+                    .await
                     .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 Ok(bytes.to_vec())
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(path.to_string()))
-            }
-            StatusCode::RANGE_NOT_SATISFIABLE => {
-                Err(ProviderError::NotSupported("Server does not support range requests".to_string()))
-            }
-            status => {
-                Err(ProviderError::TransferFailed(format!("Range download failed with status: {}", status)))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
+                "Server does not support range requests".to_string(),
+            )),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Range download failed with status: {}",
+                status
+            ))),
         }
     }
 
@@ -2040,10 +2256,7 @@ impl StorageProvider for S3Provider {
         let mut version_id_marker: Option<String> = None;
 
         loop {
-            let mut params: Vec<(&str, &str)> = vec![
-                ("versions", ""),
-                ("prefix", key),
-            ];
+            let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
 
             let km_str: String;
             let vm_str: String;
@@ -2056,17 +2269,23 @@ impl StorageProvider for S3Provider {
                 params.push(("version-id-marker", &vm_str));
             }
 
-            let response = self.s3_request(Method::GET, "", Some(&params), None).await?;
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
 
             let status = response.status();
             if !status.is_success() {
                 let body = response.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(
-                    format!("ListObjectVersions failed ({}): {}", status, sanitize_api_error(&body)),
-                ));
+                return Err(ProviderError::ServerError(format!(
+                    "ListObjectVersions failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )));
             }
 
-            let xml_str = response.text().await
+            let xml_str = response
+                .text()
+                .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
@@ -2156,7 +2375,8 @@ impl StorageProvider for S3Provider {
                                     if vk == key {
                                         let version_id = v_version_id.clone().unwrap_or_default();
                                         let is_latest = v_is_latest.as_deref() == Some("true");
-                                        let size: u64 = v_size.as_ref()
+                                        let size: u64 = v_size
+                                            .as_ref()
                                             .and_then(|s| s.parse().ok())
                                             .unwrap_or(0);
 
@@ -2202,7 +2422,11 @@ impl StorageProvider for S3Provider {
             }
         }
 
-        info!("S3 ListObjectVersions: found {} versions for '{}'", all_versions.len(), key);
+        info!(
+            "S3 ListObjectVersions: found {} versions for '{}'",
+            all_versions.len(),
+            key
+        );
         Ok(all_versions)
     }
 
@@ -2217,40 +2441,45 @@ impl StorageProvider for S3Provider {
         }
 
         let key = path.trim_start_matches('/');
-        let response = self.s3_request(
-            Method::GET,
-            key,
-            Some(&[("versionId", version_id)]),
-            None,
-        ).await?;
+        let response = self
+            .s3_request(Method::GET, key, Some(&[("versionId", version_id)]), None)
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
                 let mut stream = response.bytes_stream();
-                let mut atomic = super::atomic_write::AtomicFile::new(local_path).await
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+                    .await
                     .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
                     let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    atomic.write_all(&chunk).await
+                    atomic
+                        .write_all(&chunk)
+                        .await
                         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 }
-                atomic.commit().await
-                    .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+                atomic.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
 
-                info!("Downloaded version '{}' of '{}' to '{}'", version_id, key, local_path);
+                info!(
+                    "Downloaded version '{}' of '{}' to '{}'",
+                    version_id, key, local_path
+                );
                 Ok(())
             }
-            StatusCode::NOT_FOUND => {
-                Err(ProviderError::NotFound(
-                    format!("Version '{}' of '{}' not found", version_id, path),
-                ))
-            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
+                "Version '{}' of '{}' not found",
+                version_id, path
+            ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::TransferFailed(
-                    format!("Download version failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::TransferFailed(format!(
+                    "Download version failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
@@ -2271,7 +2500,7 @@ impl StorageProvider for S3Provider {
 
         let url = self.build_url(key);
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(b"");
@@ -2289,7 +2518,9 @@ impl StorageProvider for S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
@@ -2299,9 +2530,11 @@ impl StorageProvider for S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(
-                    format!("Restore version failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::ServerError(format!(
+                    "Restore version failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
@@ -2314,7 +2547,11 @@ impl StorageProvider for S3Provider {
 impl S3Provider {
     /// Change the storage class of an existing object via server-side copy.
     /// Uses CopyObject with x-amz-storage-class to change class in-place.
-    pub async fn change_storage_class(&self, path: &str, storage_class: &str) -> Result<(), ProviderError> {
+    pub async fn change_storage_class(
+        &self,
+        path: &str,
+        storage_class: &str,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2322,7 +2559,7 @@ impl S3Provider {
         let copy_source = format!("/{}/{}", self.config.bucket, urlencoding::encode(key));
         let url = self.build_url(key);
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(b"");
@@ -2342,7 +2579,9 @@ impl S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
@@ -2352,9 +2591,11 @@ impl S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(
-                    format!("Change storage class failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::ServerError(format!(
+                    "Change storage class failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
@@ -2362,7 +2603,12 @@ impl S3Provider {
     /// Initiate a Glacier or Deep Archive restore.
     /// `days` = number of days the restored copy remains accessible.
     /// `tier` = "Expedited" | "Standard" | "Bulk"
-    pub async fn glacier_restore(&self, path: &str, days: u32, tier: &str) -> Result<(), ProviderError> {
+    pub async fn glacier_restore(
+        &self,
+        path: &str,
+        days: u32,
+        tier: &str,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2377,7 +2623,7 @@ impl S3Provider {
             format!("{}?restore=", base)
         };
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(body.as_bytes());
@@ -2396,46 +2642,62 @@ impl S3Provider {
         request = request.header("Content-Length", body.len().to_string());
         request = request.body(body);
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::ACCEPTED => {
-                info!("Glacier restore initiated for '{}' ({} days, tier={})", key, days, tier);
+                info!(
+                    "Glacier restore initiated for '{}' ({} days, tier={})",
+                    key, days, tier
+                );
                 Ok(())
             }
             StatusCode::CONFLICT => {
                 // 409 = restore already in progress
-                Err(ProviderError::Other("Restore already in progress for this object".to_string()))
+                Err(ProviderError::Other(
+                    "Restore already in progress for this object".to_string(),
+                ))
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(
-                    format!("Glacier restore failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::ServerError(format!(
+                    "Glacier restore failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
 
     /// Get all tags for an S3 object. Returns key-value pairs (max 10 per AWS).
-    pub async fn get_object_tags(&self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+    pub async fn get_object_tags(
+        &self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
         if self.is_mega_s4_endpoint() {
             return Err(ProviderError::NotSupported(
-                "MEGA S4 does not support object tagging".to_string()
+                "MEGA S4 does not support object tagging".to_string(),
             ));
         }
         let key = path.trim_start_matches('/');
-        let response = self.s3_request(Method::GET, key, Some(&[("tagging", "")]), None).await?;
+        let response = self
+            .s3_request(Method::GET, key, Some(&[("tagging", "")]), None)
+            .await?;
 
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(ProviderError::ServerError(
-                format!("GetObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
-            ));
+            return Err(ProviderError::ServerError(format!(
+                "GetObjectTagging failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
         }
 
         // Parse <Tagging><TagSet><Tag><Key>k</Key><Value>v</Value></Tag>...</TagSet></Tagging>
@@ -2450,30 +2712,30 @@ impl S3Provider {
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => {
-                    match e.name().as_ref() {
-                        b"Key" => in_key = true,
-                        b"Value" => in_value = true,
-                        _ => {}
-                    }
-                }
+                Ok(Event::Start(ref e)) => match e.name().as_ref() {
+                    b"Key" => in_key = true,
+                    b"Value" => in_value = true,
+                    _ => {}
+                },
                 Ok(Event::Text(ref e)) => {
                     let text = String::from_utf8_lossy(e.as_ref()).into_owned();
-                    if in_key { current_key = Some(text.clone()); }
-                    if in_value { current_value = Some(text); }
-                }
-                Ok(Event::End(ref e)) => {
-                    match e.name().as_ref() {
-                        b"Key" => in_key = false,
-                        b"Value" => in_value = false,
-                        b"Tag" => {
-                            if let (Some(k), Some(v)) = (current_key.take(), current_value.take()) {
-                                tags.insert(k, v);
-                            }
-                        }
-                        _ => {}
+                    if in_key {
+                        current_key = Some(text.clone());
+                    }
+                    if in_value {
+                        current_value = Some(text);
                     }
                 }
+                Ok(Event::End(ref e)) => match e.name().as_ref() {
+                    b"Key" => in_key = false,
+                    b"Value" => in_value = false,
+                    b"Tag" => {
+                        if let (Some(k), Some(v)) = (current_key.take(), current_value.take()) {
+                            tags.insert(k, v);
+                        }
+                    }
+                    _ => {}
+                },
                 Ok(Event::Eof) => break,
                 Err(e) => return Err(ProviderError::ParseError(format!("XML parse error: {}", e))),
                 _ => {}
@@ -2485,20 +2747,30 @@ impl S3Provider {
     }
 
     /// Set tags on an S3 object. Max 10 tags per AWS limits.
-    pub async fn set_object_tags(&self, path: &str, tags: &HashMap<String, String>) -> Result<(), ProviderError> {
+    pub async fn set_object_tags(
+        &self,
+        path: &str,
+        tags: &HashMap<String, String>,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
         if self.is_mega_s4_endpoint() {
             return Err(ProviderError::NotSupported(
-                "MEGA S4 does not support object tagging".to_string()
+                "MEGA S4 does not support object tagging".to_string(),
             ));
         }
         let key = path.trim_start_matches('/');
 
-        let tag_elements: String = tags.iter()
-            .map(|(k, v)| format!("<Tag><Key>{}</Key><Value>{}</Value></Tag>",
-                quick_xml::escape::escape(k), quick_xml::escape::escape(v)))
+        let tag_elements: String = tags
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "<Tag><Key>{}</Key><Value>{}</Value></Tag>",
+                    quick_xml::escape::escape(k),
+                    quick_xml::escape::escape(v)
+                )
+            })
             .collect();
         let body = format!("<Tagging><TagSet>{}</TagSet></Tagging>", tag_elements);
 
@@ -2507,7 +2779,7 @@ impl S3Provider {
             format!("{}?tagging=", base)
         };
 
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let payload_hash = {
             let mut hasher = Sha256::new();
             hasher.update(body.as_bytes());
@@ -2526,7 +2798,9 @@ impl S3Provider {
         request = request.header("Content-Length", body.len().to_string());
         request = request.body(body);
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
@@ -2536,9 +2810,11 @@ impl S3Provider {
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(
-                    format!("PutObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::ServerError(format!(
+                    "PutObjectTagging failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
@@ -2549,15 +2825,19 @@ impl S3Provider {
             return Err(ProviderError::NotConnected);
         }
         let key = path.trim_start_matches('/');
-        let response = self.s3_request(Method::DELETE, key, Some(&[("tagging", "")]), None).await?;
+        let response = self
+            .s3_request(Method::DELETE, key, Some(&[("tagging", "")]), None)
+            .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::ServerError(
-                    format!("DeleteObjectTagging failed ({}): {}", status, sanitize_api_error(&body)),
-                ))
+                Err(ProviderError::ServerError(format!(
+                    "DeleteObjectTagging failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body)
+                )))
             }
         }
     }
@@ -2566,7 +2846,7 @@ impl S3Provider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_build_url_path_style() {
         let provider = S3Provider::new(S3Config {
@@ -2580,7 +2860,8 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
-        }).expect("Failed to create S3Provider");
+        })
+        .expect("Failed to create S3Provider");
 
         assert_eq!(
             provider.build_url("path/to/file.txt"),
@@ -2601,7 +2882,8 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
-        }).expect("Failed to create S3Provider");
+        })
+        .expect("Failed to create S3Provider");
 
         assert_eq!(
             provider.build_url("path/to/file.txt"),

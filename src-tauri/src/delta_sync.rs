@@ -170,7 +170,10 @@ fn build_rolling_lookup(sigs: &[BlockSignature]) -> HashMap<u32, Vec<usize>> {
 }
 
 /// Compute delta between source data and destination signatures
-pub fn compute_delta(source_data: &[u8], sig_table: &SignatureTable) -> (Vec<DeltaOp>, DeltaResult) {
+pub fn compute_delta(
+    source_data: &[u8],
+    sig_table: &SignatureTable,
+) -> (Vec<DeltaOp>, DeltaResult) {
     let block_size = sig_table.block_size;
     let lookup = build_rolling_lookup(&sig_table.signatures);
 
@@ -276,7 +279,11 @@ pub fn compute_delta(source_data: &[u8], sig_table: &SignatureTable) -> (Vec<Del
 }
 
 /// Reconstruct a file from the original (destination) data and delta instructions
-pub fn apply_delta(dest_data: &[u8], ops: &[DeltaOp], block_size: usize) -> Result<Vec<u8>, String> {
+pub fn apply_delta(
+    dest_data: &[u8],
+    ops: &[DeltaOp],
+    block_size: usize,
+) -> Result<Vec<u8>, String> {
     let mut output = Vec::new();
 
     for op in ops {
@@ -335,7 +342,12 @@ pub fn deserialize_delta(data: &[u8]) -> Result<Vec<DeltaOp>, String> {
                 if pos + 5 > data.len() {
                     return Err("Truncated CopyBlock".to_string());
                 }
-                let idx = u32::from_le_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]);
+                let idx = u32::from_le_bytes([
+                    data[pos + 1],
+                    data[pos + 2],
+                    data[pos + 3],
+                    data[pos + 4],
+                ]);
                 ops.push(DeltaOp::CopyBlock(idx));
                 pos += 5;
             }
@@ -343,7 +355,12 @@ pub fn deserialize_delta(data: &[u8]) -> Result<Vec<DeltaOp>, String> {
                 if pos + 5 > data.len() {
                     return Err("Truncated Literal header".to_string());
                 }
-                let len = u32::from_le_bytes([data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]]) as usize;
+                let len = u32::from_le_bytes([
+                    data[pos + 1],
+                    data[pos + 2],
+                    data[pos + 3],
+                    data[pos + 4],
+                ]) as usize;
                 const MAX_LITERAL_SIZE: usize = 64 * 1024 * 1024; // 64 MB max per literal block
                 if len > MAX_LITERAL_SIZE {
                     return Err(format!(

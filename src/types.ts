@@ -279,7 +279,11 @@ export interface FileComparison {
   remote_info: FileInfo | null;
   is_dir: boolean;
   sync_reason: string;
+  /** True if this file existed in a previous sync index (for bisync delete detection) */
+  previously_synced?: boolean;
 }
+
+export type ConflictStrategy = 'ask' | 'newer' | 'older' | 'larger' | 'smaller' | 'skip';
 
 export interface CompareOptions {
   compare_timestamp: boolean;
@@ -287,6 +291,15 @@ export interface CompareOptions {
   compare_checksum: boolean;
   exclude_patterns: string[];
   direction: SyncDirection;
+  delete_orphans?: boolean;
+  conflict_strategy?: ConflictStrategy;
+  min_size?: number;
+  max_size?: number;
+  min_age_secs?: number;
+  max_age_secs?: number;
+  versioning_strategy?: 'disabled' | 'trash_can' | 'simple' | 'staggered';
+  /** Bandwidth schedule preset: off = manual limits, office = throttle 08-18, night = throttle 18-08 */
+  bw_schedule?: 'off' | 'office' | 'night';
 }
 
 export interface SyncIndexEntry {
@@ -474,6 +487,13 @@ export interface FileSnapshotEntry {
   modified: string | null;
   checksum: string | null;
   action_taken: string;
+}
+
+export interface RestoreSnapshotResult {
+  restored_from_remote: number;
+  restored_to_remote: number;
+  skipped: number;
+  failed: string[];
 }
 
 // Delta Sync (#155)

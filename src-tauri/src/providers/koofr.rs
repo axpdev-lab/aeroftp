@@ -18,11 +18,9 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use super::{
-    sanitize_api_error, response_bytes_with_limit, MAX_DOWNLOAD_TO_BYTES,
-    FileVersion, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
-    StorageInfo, StorageProvider, TransferOptimizationHints,
-    HttpRetryConfig, send_with_retry,
-    ShareLinkOptions, ShareLinkResult,
+    response_bytes_with_limit, sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig,
+    ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider, TransferOptimizationHints, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://app.koofr.net/api/v2.1";
@@ -79,7 +77,9 @@ impl KoofrConfig {
             .clone()
             .ok_or_else(|| ProviderError::InvalidConfig("App password is required".into()))?;
         if password.is_empty() {
-            return Err(ProviderError::InvalidConfig("App password cannot be empty".into()));
+            return Err(ProviderError::InvalidConfig(
+                "App password cannot be empty".into(),
+            ));
         }
         Ok(Self {
             email,
@@ -309,10 +309,7 @@ impl KoofrProvider {
         );
         let encoded = STANDARD.encode(credentials.as_bytes());
         HeaderValue::from_str(&format!("Basic {}", encoded)).map_err(|e| {
-            ProviderError::AuthenticationFailed(format!(
-                "Invalid characters in credentials: {}",
-                e
-            ))
+            ProviderError::AuthenticationFailed(format!("Invalid characters in credentials: {}", e))
         })
     }
 
@@ -415,9 +412,7 @@ impl KoofrProvider {
                 return match code {
                     "NotFound" => ProviderError::NotFound(message.to_string()),
                     "Forbidden" => ProviderError::PermissionDenied(message.to_string()),
-                    "Unauthorized" => {
-                        ProviderError::AuthenticationFailed(message.to_string())
-                    }
+                    "Unauthorized" => ProviderError::AuthenticationFailed(message.to_string()),
                     _ => ProviderError::ServerError(format!(
                         "Koofr API error ({}): {} — {}",
                         status, code, message
@@ -496,9 +491,8 @@ impl KoofrProvider {
             return None;
         }
         let secs = ms / 1000;
-        chrono::DateTime::from_timestamp(secs, 0).map(|dt| {
-            dt.format("%Y-%m-%d %H:%M:%SZ").to_string()
-        })
+        chrono::DateTime::from_timestamp(secs, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%SZ").to_string())
     }
 
     fn file_to_entry(&self, file: &KoofrFile, parent_path: &str) -> RemoteEntry {
@@ -558,19 +552,22 @@ impl StorageProvider for KoofrProvider {
         // 1. Verify credentials by fetching user info
         let resp = self.get(&self.api_url("/user")).await?;
         let resp = Self::check_response(resp).await?;
-        let user_body = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to read user body: {}", e)))?;
+        let user_body = resp.text().await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to read user body: {}", e))
+        })?;
 
-        koofr_log(&format!("User response: {}", &user_body[..user_body.len().min(300)]));
+        koofr_log(&format!(
+            "User response: {}",
+            &user_body[..user_body.len().min(300)]
+        ));
 
-        let user: KoofrUser = serde_json::from_str(&user_body)
-            .map_err(|e| ProviderError::ConnectionFailed(format!(
+        let user: KoofrUser = serde_json::from_str(&user_body).map_err(|e| {
+            ProviderError::ConnectionFailed(format!(
                 "Failed to parse user: {}. Body: {}",
                 e,
                 &user_body[..user_body.len().min(200)]
-            )))?;
+            ))
+        })?;
 
         self.account_email = user.email.clone();
         koofr_log(&format!(
@@ -582,23 +579,26 @@ impl StorageProvider for KoofrProvider {
         // 2. Get mounts and find primary
         let resp = self.get(&self.api_url("/mounts")).await?;
         let resp = Self::check_response(resp).await?;
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Failed to read mounts body: {}", e)))?;
+        let body = resp.text().await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!("Failed to read mounts body: {}", e))
+        })?;
 
-        koofr_log(&format!("Mounts response ({} bytes): {}", body.len(), &body[..body.len().min(500)]));
+        koofr_log(&format!(
+            "Mounts response ({} bytes): {}",
+            body.len(),
+            &body[..body.len().min(500)]
+        ));
 
         // Try parsing as bare array first, then as wrapped { "mounts": [...] }
         let mounts: Vec<KoofrMount> = serde_json::from_str(&body)
-            .or_else(|_| {
-                serde_json::from_str::<KoofrMountsResponse>(&body).map(|r| r.mounts)
-            })
-            .map_err(|e| ProviderError::ConnectionFailed(format!(
-                "Failed to parse mounts: {}. Body preview: {}",
-                e,
-                &body[..body.len().min(200)]
-            )))?;
+            .or_else(|_| serde_json::from_str::<KoofrMountsResponse>(&body).map(|r| r.mounts))
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "Failed to parse mounts: {}. Body preview: {}",
+                    e,
+                    &body[..body.len().min(200)]
+                ))
+            })?;
 
         let primary = mounts
             .iter()
@@ -619,24 +619,35 @@ impl StorageProvider for KoofrProvider {
         match self.get(&mount_detail_url).await {
             Ok(resp) => {
                 let detail_body = resp.text().await.unwrap_or_default();
-                koofr_log(&format!("Mount detail response: {}", &detail_body[..detail_body.len().min(500)]));
+                koofr_log(&format!(
+                    "Mount detail response: {}",
+                    &detail_body[..detail_body.len().min(500)]
+                ));
 
                 // Try bare KoofrMount first, then raw Value extraction
                 if let Ok(detail) = serde_json::from_str::<KoofrMount>(&detail_body) {
                     self.space_total = detail.space_total.unwrap_or(0) * MIB;
                     self.space_used = detail.space_used.unwrap_or(0) * MIB;
                 } else if let Ok(val) = serde_json::from_str::<serde_json::Value>(&detail_body) {
-                    self.space_total = val.get("spaceTotal").and_then(|v| v.as_i64()).unwrap_or(0) * MIB;
-                    self.space_used = val.get("spaceUsed").and_then(|v| v.as_i64()).unwrap_or(0) * MIB;
+                    self.space_total =
+                        val.get("spaceTotal").and_then(|v| v.as_i64()).unwrap_or(0) * MIB;
+                    self.space_used =
+                        val.get("spaceUsed").and_then(|v| v.as_i64()).unwrap_or(0) * MIB;
                 } else {
                     koofr_log("Mount detail parse failed, using list values");
                     self.space_total = primary.space_total.unwrap_or(0) * MIB;
                     self.space_used = primary.space_used.unwrap_or(0) * MIB;
                 }
-                koofr_log(&format!("Quota after MiB→bytes: total={}, used={}", self.space_total, self.space_used));
+                koofr_log(&format!(
+                    "Quota after MiB→bytes: total={}, used={}",
+                    self.space_total, self.space_used
+                ));
             }
             Err(e) => {
-                koofr_log(&format!("Mount detail fetch failed: {}, using list values", e));
+                koofr_log(&format!(
+                    "Mount detail fetch failed: {}, using list values",
+                    e
+                ));
                 self.space_total = primary.space_total.unwrap_or(0) * MIB;
                 self.space_used = primary.space_used.unwrap_or(0) * MIB;
             }
@@ -667,10 +678,7 @@ impl StorageProvider for KoofrProvider {
                         self.current_path = normalized;
                     }
                     _ => {
-                        koofr_log(&format!(
-                            "Initial path '{}' not found, using root",
-                            initial
-                        ));
+                        koofr_log(&format!("Initial path '{}' not found, using root", initial));
                     }
                 }
             }
@@ -708,9 +716,10 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let file_list: KoofrFileList = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse file list: {}", e))
-        })?;
+        let file_list: KoofrFileList = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file list: {}", e)))?;
 
         let entries: Vec<RemoteEntry> = file_list
             .files
@@ -743,9 +752,10 @@ impl StorageProvider for KoofrProvider {
         );
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let info: KoofrFileInfo = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
-        })?;
+        let info: KoofrFileInfo = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
 
         if info.file.file_type != "dir" {
             return Err(ProviderError::NotFound(format!(
@@ -816,9 +826,10 @@ impl StorageProvider for KoofrProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
-            atomic.write_all(&chunk)
+            let chunk =
+                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            atomic
+                .write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
             downloaded += chunk.len() as u64;
@@ -826,9 +837,9 @@ impl StorageProvider for KoofrProvider {
                 cb(downloaded, total_size);
             }
         }
-        atomic.commit()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         Ok(())
     }
@@ -947,7 +958,12 @@ impl StorageProvider for KoofrProvider {
         }
 
         let resp = self
-            .post_json(&url, &CreateFolder { name: folder_name.to_string() })
+            .post_json(
+                &url,
+                &CreateFolder {
+                    name: folder_name.to_string(),
+                },
+            )
             .await?;
         Self::check_response(resp).await?;
         Ok(())
@@ -1007,7 +1023,12 @@ impl StorageProvider for KoofrProvider {
             }
 
             let resp = self
-                .put_json(&url, &RenameRequest { name: to_name.to_string() })
+                .put_json(
+                    &url,
+                    &RenameRequest {
+                        name: to_name.to_string(),
+                    },
+                )
                 .await?;
             Self::check_response(resp).await?;
         } else {
@@ -1057,9 +1078,10 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let info: KoofrFileInfo = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
-        })?;
+        let info: KoofrFileInfo = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
 
         let (parent, _) = Self::split_path(&resolved);
         Ok(self.file_to_entry(&info.file, parent))
@@ -1155,28 +1177,24 @@ impl StorageProvider for KoofrProvider {
         }
 
         let resolved = self.resolve_path(path);
-        let url = format!(
-            "{}/mounts/{}/links",
-            API_BASE, self.mount_id
-        );
+        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
 
         #[derive(Serialize)]
         struct CreateLink {
             path: String,
         }
 
-        let resp = self
-            .post_json(&url, &CreateLink { path: resolved })
-            .await?;
+        let resp = self.post_json(&url, &CreateLink { path: resolved }).await?;
 
         let status = resp.status();
         if !status.is_success() && status.as_u16() != 201 {
             return Err(Self::parse_error(resp).await);
         }
 
-        let link: KoofrLink = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse link: {}", e))
-        })?;
+        let link: KoofrLink = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse link: {}", e)))?;
 
         let _ = &options; // acknowledge options
         Ok(ShareLinkResult {
@@ -1192,24 +1210,19 @@ impl StorageProvider for KoofrProvider {
         }
 
         // First, find the link for this path
-        let url = format!(
-            "{}/mounts/{}/links",
-            API_BASE, self.mount_id
-        );
+        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let links: KoofrLinksResponse = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse links: {}", e))
-        })?;
+        let links: KoofrLinksResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse links: {}", e)))?;
 
         let resolved = self.resolve_path(path);
         // No link found is not an error
         for link in &links.links {
             if link.url.contains(&resolved) || link.id == resolved {
-                let delete_url = format!(
-                    "{}/mounts/{}/links/{}",
-                    API_BASE, self.mount_id, link.id
-                );
+                let delete_url = format!("{}/mounts/{}/links/{}", API_BASE, self.mount_id, link.id);
                 let resp = self.delete_req(&delete_url).await?;
                 Self::check_response(resp).await?;
                 return Ok(());
@@ -1232,7 +1245,10 @@ impl StorageProvider for KoofrProvider {
         let body = resp.text().await.map_err(|e| {
             ProviderError::ServerError(format!("Failed to read mount response: {}", e))
         })?;
-        koofr_log(&format!("storage_info mount response: {}", &body[..body.len().min(500)]));
+        koofr_log(&format!(
+            "storage_info mount response: {}",
+            &body[..body.len().min(500)]
+        ));
 
         // Try typed parse first, then raw Value extraction
         if let Ok(mount) = serde_json::from_str::<KoofrMount>(&body) {
@@ -1262,11 +1278,7 @@ impl StorageProvider for KoofrProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1282,9 +1294,10 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let search: KoofrSearchResponse = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse search: {}", e))
-        })?;
+        let search: KoofrSearchResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse search: {}", e)))?;
 
         let entries: Vec<RemoteEntry> = search
             .hits
@@ -1365,8 +1378,8 @@ impl StorageProvider for KoofrProvider {
 
         let mut downloaded = offset;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            let chunk =
+                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
             file.write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
@@ -1414,9 +1427,10 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let versions: KoofrVersionsResponse = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse versions: {}", e))
-        })?;
+        let versions: KoofrVersionsResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse versions: {}", e)))?;
 
         let result: Vec<FileVersion> = versions
             .versions
@@ -1462,7 +1476,9 @@ impl StorageProvider for KoofrProvider {
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download version failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Download version failed: {}", e))
+            })?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -1476,24 +1492,21 @@ impl StorageProvider for KoofrProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
-            atomic.write_all(&chunk)
+            let chunk =
+                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            atomic
+                .write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
         }
-        atomic.commit()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to finalize download: {}", e)))?;
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })?;
 
         Ok(())
     }
 
-    async fn restore_version(
-        &mut self,
-        path: &str,
-        version_id: &str,
-    ) -> Result<(), ProviderError> {
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1534,12 +1547,8 @@ impl StorageProvider for KoofrProvider {
             urlencoding::encode(&resolved)
         );
 
-        let range_value = HeaderValue::from_str(&format!(
-            "bytes={}-{}",
-            offset,
-            offset + len - 1
-        ))
-        .map_err(|e| ProviderError::TransferFailed(format!("Invalid range: {}", e)))?;
+        let range_value = HeaderValue::from_str(&format!("bytes={}-{}", offset, offset + len - 1))
+            .map_err(|e| ProviderError::TransferFailed(format!("Invalid range: {}", e)))?;
 
         let request = self
             .client
@@ -1583,9 +1592,10 @@ impl KoofrProvider {
         let url = format!("{}/trash?pageSize=1000", API_BASE);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let trash: KoofrTrashResponse = resp.json().await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse trash: {}", e))
-        })?;
+        let trash: KoofrTrashResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse trash: {}", e)))?;
         Ok(trash.files)
     }
 
@@ -1648,9 +1658,7 @@ pub async fn koofr_list_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
 ) -> Result<Vec<KoofrTrashEntry>, String> {
     let mut guard = state.provider.lock().await;
-    let provider = guard
-        .as_mut()
-        .ok_or("Not connected")?;
+    let provider = guard.as_mut().ok_or("Not connected")?;
     let koofr = provider
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
@@ -1664,8 +1672,7 @@ pub async fn koofr_list_trash(
             name: f.name,
             path: f.path,
             size: f.size.max(0) as u64,
-            deleted: KoofrProvider::format_timestamp(f.deleted)
-                .unwrap_or_else(|| "Unknown".into()),
+            deleted: KoofrProvider::format_timestamp(f.deleted).unwrap_or_else(|| "Unknown".into()),
             content_type: f.content_type,
             mount_id: f.mount_id.unwrap_or_else(|| default_mount.clone()),
         })
@@ -1678,9 +1685,7 @@ pub async fn koofr_restore_trash(
     files: Vec<(String, String)>,
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
-    let provider = guard
-        .as_mut()
-        .ok_or("Not connected")?;
+    let provider = guard.as_mut().ok_or("Not connected")?;
     let koofr = provider
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
@@ -1697,9 +1702,7 @@ pub async fn koofr_empty_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
-    let provider = guard
-        .as_mut()
-        .ok_or("Not connected")?;
+    let provider = guard.as_mut().ok_or("Not connected")?;
     let koofr = provider
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()

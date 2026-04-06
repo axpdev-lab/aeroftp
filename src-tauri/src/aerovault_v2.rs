@@ -7,7 +7,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use aerovault::{EncryptionMode, Vault, CreateOptions};
+use aerovault::{CreateOptions, EncryptionMode, Vault};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -228,9 +228,7 @@ pub async fn vault_v2_delete_entry(
 ) -> Result<serde_json::Value, String> {
     validate_vault_relative_path(&entry_name)?;
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
-    vault
-        .delete_entry(&entry_name)
-        .map_err(|e| e.to_string())?;
+    vault.delete_entry(&entry_name).map_err(|e| e.to_string())?;
     let remaining = vault.list().map_err(|e| e.to_string())?.len();
 
     Ok(serde_json::json!({
@@ -471,7 +469,11 @@ pub async fn vault_v2_sync_apply(
     actions: Vec<VaultSyncAction>,
 ) -> Result<VaultSyncResult, String> {
     if actions.len() > MAX_SCAN_ENTRIES {
-        return Err(format!("Too many sync actions: {} (max {})", actions.len(), MAX_SCAN_ENTRIES));
+        return Err(format!(
+            "Too many sync actions: {} (max {})",
+            actions.len(),
+            MAX_SCAN_ENTRIES
+        ));
     }
     let local_dir_path = std::path::Path::new(&local_dir);
     if !local_dir_path.is_dir() {
@@ -519,7 +521,10 @@ pub async fn vault_v2_sync_apply(
 
         if !to_delete.is_empty() {
             if let Err(e) = vault.delete_entries(&to_delete, false) {
-                errors.push(format!("Failed to delete existing entries for overwrite: {}", e));
+                errors.push(format!(
+                    "Failed to delete existing entries for overwrite: {}",
+                    e
+                ));
             }
         }
         drop(vault);
@@ -581,16 +586,19 @@ pub async fn vault_v2_sync_apply(
             let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
             match vault.add_files_to_dir(file_paths, dir) {
                 Ok(added) => to_vault_count += added as usize,
-                Err(e) => {
-                    errors.push(format!("Failed to add files to vault dir '{}': {}", dir, e))
-                }
+                Err(e) => errors.push(format!("Failed to add files to vault dir '{}': {}", dir, e)),
             }
         }
     }
 
     // Process to_local: extract vault entries to local dir
     for name in &to_local_files {
-        if name.contains("..") || name.starts_with('/') || name.starts_with('\\') || name.contains('\0') || name.contains('\\') {
+        if name.contains("..")
+            || name.starts_with('/')
+            || name.starts_with('\\')
+            || name.contains('\0')
+            || name.contains('\\')
+        {
             errors.push(format!("Invalid file name blocked: {}", name));
             skipped_count += 1;
             continue;
@@ -659,9 +667,7 @@ const MAX_SCAN_ENTRIES: usize = 500_000;
 /// Scan a local directory and return file/directory counts and total size.
 /// This is a preview command — no vault operations are performed.
 #[tauri::command]
-pub async fn vault_v2_scan_directory(
-    source_dir: String,
-) -> Result<serde_json::Value, String> {
+pub async fn vault_v2_scan_directory(source_dir: String) -> Result<serde_json::Value, String> {
     let source = std::path::Path::new(&source_dir)
         .canonicalize()
         .map_err(|e| format!("Failed to resolve directory: {}", e))?;
@@ -842,8 +848,7 @@ pub async fn vault_v2_add_directory(
     let throttle = std::time::Duration::from_millis(150);
 
     for (dir_key, dir_files) in &files_by_dir {
-        let paths: Vec<std::path::PathBuf> =
-            dir_files.iter().map(|f| f.abs_path.clone()).collect();
+        let paths: Vec<std::path::PathBuf> = dir_files.iter().map(|f| f.abs_path.clone()).collect();
 
         let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
 
@@ -859,10 +864,7 @@ pub async fn vault_v2_add_directory(
 
         // Emit progress (per-batch, throttled)
         if last_emit.elapsed() >= throttle || added_files == total_files {
-            let current_file = dir_files
-                .last()
-                .map(|f| f.rel_path.as_str())
-                .unwrap_or("");
+            let current_file = dir_files.last().map(|f| f.rel_path.as_str()).unwrap_or("");
             let _ = app.emit(
                 "vault-add-progress",
                 serde_json::json!({

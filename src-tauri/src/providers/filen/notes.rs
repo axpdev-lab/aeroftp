@@ -384,7 +384,11 @@ impl FilenProvider {
     }
 
     /// Encrypt a field (title/content/preview) with a per-note key.
-    fn encrypt_note_field(value: &str, note_key: &str, field: &str) -> Result<String, ProviderError> {
+    fn encrypt_note_field(
+        value: &str,
+        note_key: &str,
+        field: &str,
+    ) -> Result<String, ProviderError> {
         let json = serde_json::json!({ field: value }).to_string();
         Self::encrypt_metadata_with_key(&json, note_key)
     }
@@ -392,23 +396,19 @@ impl FilenProvider {
     /// Build an authenticated GET request to the Filen gateway.
     fn notes_get(&self, endpoint: &str) -> reqwest::RequestBuilder {
         use secrecy::ExposeSecret;
-        self.client
-            .get(format!("{}{}", GATEWAY, endpoint))
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
-            )
+        self.client.get(format!("{}{}", GATEWAY, endpoint)).header(
+            "Authorization",
+            format!("Bearer {}", self.api_key.expose_secret()),
+        )
     }
 
     /// Build an authenticated POST request to the Filen gateway.
     fn notes_post(&self, endpoint: &str) -> reqwest::RequestBuilder {
         use secrecy::ExposeSecret;
-        self.client
-            .post(format!("{}{}", GATEWAY, endpoint))
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
-            )
+        self.client.post(format!("{}{}", GATEWAY, endpoint)).header(
+            "Authorization",
+            format!("Bearer {}", self.api_key.expose_secret()),
+        )
     }
 
     /// Send a notes POST request with retry and parse the response.
@@ -451,7 +451,9 @@ impl FilenProvider {
 
         if !api_resp.status {
             return Err(ProviderError::Other(
-                api_resp.message.unwrap_or_else(|| "Failed to list notes".into()),
+                api_resp
+                    .message
+                    .unwrap_or_else(|| "Failed to list notes".into()),
             ));
         }
 
@@ -467,10 +469,10 @@ impl FilenProvider {
                 }
             };
 
-            let title = Self::decrypt_note_field(&raw.title, &note_key, "title")
-                .unwrap_or_default();
-            let preview = Self::decrypt_note_field(&raw.preview, &note_key, "preview")
-                .unwrap_or_default();
+            let title =
+                Self::decrypt_note_field(&raw.title, &note_key, "title").unwrap_or_default();
+            let preview =
+                Self::decrypt_note_field(&raw.preview, &note_key, "preview").unwrap_or_default();
 
             notes.push(FilenNote {
                 uuid: raw.uuid.clone(),
@@ -483,13 +485,23 @@ impl FilenProvider {
                 archive: raw.archive,
                 created_timestamp: raw.created_timestamp,
                 edited_timestamp: raw.edited_timestamp,
-                tags: raw.tags.iter().map(|t| FilenNoteTagRef { uuid: t.uuid.clone() }).collect(),
-                participants: raw.participants.iter().map(|p| FilenNoteParticipant {
-                    user_id: p.user_id,
-                    is_owner: p.is_owner,
-                    email: p.email.clone(),
-                    permissions_write: p.permissions_write,
-                }).collect(),
+                tags: raw
+                    .tags
+                    .iter()
+                    .map(|t| FilenNoteTagRef {
+                        uuid: t.uuid.clone(),
+                    })
+                    .collect(),
+                participants: raw
+                    .participants
+                    .iter()
+                    .map(|p| FilenNoteParticipant {
+                        user_id: p.user_id,
+                        is_owner: p.is_owner,
+                        email: p.email.clone(),
+                        permissions_write: p.permissions_write,
+                    })
+                    .collect(),
             });
         }
 
@@ -527,7 +539,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to create note".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to create note".into()),
             ));
         }
 
@@ -585,18 +598,19 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to get note content".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to get note content".into()),
             ));
         }
 
-        let raw = resp.data.ok_or_else(|| {
-            ProviderError::Other("Note content response missing data".into())
-        })?;
+        let raw = resp
+            .data
+            .ok_or_else(|| ProviderError::Other("Note content response missing data".into()))?;
 
-        let content = Self::decrypt_note_field(&raw.content, &note_key, "content")
-            .unwrap_or_default();
-        let preview = Self::decrypt_note_field(&raw.preview, &note_key, "preview")
-            .unwrap_or_default();
+        let content =
+            Self::decrypt_note_field(&raw.content, &note_key, "content").unwrap_or_default();
+        let preview =
+            Self::decrypt_note_field(&raw.preview, &note_key, "preview").unwrap_or_default();
 
         Ok(FilenNoteContent {
             content,
@@ -616,8 +630,7 @@ impl FilenProvider {
     ) -> Result<(), ProviderError> {
         let note_key = self.get_or_fetch_note_key(uuid).await?;
 
-        let encrypted_content =
-            Self::encrypt_note_field(content, &note_key, "content")?;
+        let encrypted_content = Self::encrypt_note_field(content, &note_key, "content")?;
 
         // Validate ciphertext size
         if encrypted_content.len() > MAX_NOTE_CIPHERTEXT_SIZE {
@@ -629,8 +642,7 @@ impl FilenProvider {
         }
 
         let preview_text = make_preview(content);
-        let encrypted_preview =
-            Self::encrypt_note_field(&preview_text, &note_key, "preview")?;
+        let encrypted_preview = Self::encrypt_note_field(&preview_text, &note_key, "preview")?;
 
         let resp: GenericNoteResponse = self
             .notes_request(
@@ -646,7 +658,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to edit note content".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to edit note content".into()),
             ));
         }
 
@@ -670,7 +683,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to edit note title".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to edit note title".into()),
             ));
         }
 
@@ -688,10 +702,8 @@ impl FilenProvider {
         // Fetch current content to re-encrypt with the type change
         let current = self.get_note_content(uuid).await?;
 
-        let encrypted_content =
-            Self::encrypt_note_field(&current.content, &note_key, "content")?;
-        let encrypted_preview =
-            Self::encrypt_note_field(&current.preview, &note_key, "preview")?;
+        let encrypted_content = Self::encrypt_note_field(&current.content, &note_key, "content")?;
+        let encrypted_preview = Self::encrypt_note_field(&current.preview, &note_key, "preview")?;
 
         let resp: GenericNoteResponse = self
             .notes_request(
@@ -707,7 +719,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to change note type".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to change note type".into()),
             ));
         }
 
@@ -749,18 +762,15 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to toggle favorite".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to toggle favorite".into()),
             ));
         }
         Ok(())
     }
 
     /// Toggle note pinned.
-    pub async fn toggle_note_pinned(
-        &self,
-        uuid: &str,
-        pinned: bool,
-    ) -> Result<(), ProviderError> {
+    pub async fn toggle_note_pinned(&self, uuid: &str, pinned: bool) -> Result<(), ProviderError> {
         let resp: GenericNoteResponse = self
             .notes_request(
                 "/v3/notes/pinned",
@@ -770,7 +780,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to toggle pinned".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to toggle pinned".into()),
             ));
         }
         Ok(())
@@ -791,7 +802,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to get note history".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to get note history".into()),
             ));
         }
 
@@ -799,10 +811,10 @@ impl FilenProvider {
         let mut entries = Vec::with_capacity(raw_entries.len());
 
         for raw in &raw_entries {
-            let content = Self::decrypt_note_field(&raw.content, &note_key, "content")
-                .unwrap_or_default();
-            let preview = Self::decrypt_note_field(&raw.preview, &note_key, "preview")
-                .unwrap_or_default();
+            let content =
+                Self::decrypt_note_field(&raw.content, &note_key, "content").unwrap_or_default();
+            let preview =
+                Self::decrypt_note_field(&raw.preview, &note_key, "preview").unwrap_or_default();
 
             entries.push(FilenNoteHistoryEntry {
                 id: raw.id,
@@ -832,7 +844,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to restore note history".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to restore note history".into()),
             ));
         }
         Ok(())
@@ -846,7 +859,9 @@ impl FilenProvider {
 
         if !api_resp.status {
             return Err(ProviderError::Other(
-                api_resp.message.unwrap_or_else(|| "Failed to list tags".into()),
+                api_resp
+                    .message
+                    .unwrap_or_else(|| "Failed to list tags".into()),
             ));
         }
 
@@ -884,7 +899,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to create tag".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to create tag".into()),
             ));
         }
 
@@ -906,7 +922,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to rename tag".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to rename tag".into()),
             ));
         }
         Ok(())
@@ -946,7 +963,8 @@ impl FilenProvider {
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "Failed to untag note".into()),
+                resp.message
+                    .unwrap_or_else(|| "Failed to untag note".into()),
             ));
         }
         Ok(())
@@ -958,7 +976,10 @@ impl FilenProvider {
     fn decrypt_tag_name(&self, encrypted: &str) -> Option<String> {
         let decrypted = self.decrypt_metadata(encrypted)?;
         let parsed: serde_json::Value = serde_json::from_str(&decrypted).ok()?;
-        parsed.get("name").and_then(|v| v.as_str()).map(String::from)
+        parsed
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(String::from)
     }
 
     /// Encrypt a tag name with master key.
@@ -968,18 +989,15 @@ impl FilenProvider {
     }
 
     /// Send a simple action (trash, archive, restore, delete) that only takes a UUID.
-    async fn note_simple_action(
-        &self,
-        endpoint: &str,
-        uuid: &str,
-    ) -> Result<(), ProviderError> {
+    async fn note_simple_action(&self, endpoint: &str, uuid: &str) -> Result<(), ProviderError> {
         let resp: GenericNoteResponse = self
             .notes_request(endpoint, &serde_json::json!({ "uuid": uuid }))
             .await?;
 
         if !resp.status {
             return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| format!("Action failed: {}", endpoint)),
+                resp.message
+                    .unwrap_or_else(|| format!("Action failed: {}", endpoint)),
             ));
         }
         Ok(())

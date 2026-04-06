@@ -6,10 +6,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use hmac::{Hmac, Mac};
-use sha1::Sha1;
 use base64::Engine;
+use hmac::{Hmac, Mac};
 use rand::Rng;
+use sha1::Sha1;
 use std::collections::BTreeMap;
 
 type HmacSha1 = Hmac<Sha1>;
@@ -102,11 +102,15 @@ fn sign(
     );
 
     // 3. Signing key: consumer_secret&token_secret
-    let signing_key = format!("{}&{}", percent_encode(consumer_secret), percent_encode(token_secret));
+    let signing_key = format!(
+        "{}&{}",
+        percent_encode(consumer_secret),
+        percent_encode(token_secret)
+    );
 
     // 4. HMAC-SHA1
-    let mut mac = HmacSha1::new_from_slice(signing_key.as_bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac =
+        HmacSha1::new_from_slice(signing_key.as_bytes()).expect("HMAC accepts any key length");
     mac.update(base_string.as_bytes());
     let result = mac.finalize().into_bytes();
 
@@ -161,7 +165,10 @@ pub fn authorization_header(
     let mut params = BTreeMap::new();
     params.insert("oauth_consumer_key".to_string(), creds.consumer_key.clone());
     params.insert("oauth_nonce".to_string(), nonce.clone());
-    params.insert("oauth_signature_method".to_string(), "HMAC-SHA1".to_string());
+    params.insert(
+        "oauth_signature_method".to_string(),
+        "HMAC-SHA1".to_string(),
+    );
     params.insert("oauth_timestamp".to_string(), timestamp.clone());
     params.insert("oauth_token".to_string(), creds.token.clone());
     params.insert("oauth_version".to_string(), "1.0".to_string());
@@ -175,7 +182,13 @@ pub fn authorization_header(
         params.insert(k.to_string(), v.to_string());
     }
 
-    let signature = sign(method, &base_url, &params, &creds.consumer_secret, &creds.token_secret);
+    let signature = sign(
+        method,
+        &base_url,
+        &params,
+        &creds.consumer_secret,
+        &creds.token_secret,
+    );
 
     // Build header (only oauth_* params + signature)
     format!(
@@ -203,7 +216,10 @@ pub fn authorization_header_consumer_only(
     let mut params = BTreeMap::new();
     params.insert("oauth_consumer_key".to_string(), consumer_key.to_string());
     params.insert("oauth_nonce".to_string(), nonce.clone());
-    params.insert("oauth_signature_method".to_string(), "HMAC-SHA1".to_string());
+    params.insert(
+        "oauth_signature_method".to_string(),
+        "HMAC-SHA1".to_string(),
+    );
     params.insert("oauth_timestamp".to_string(), timestamp.clone());
     params.insert("oauth_version".to_string(), "1.0".to_string());
 
@@ -241,7 +257,13 @@ pub async fn request_token(
 ) -> Result<(String, String), String> {
     // Include oauth_callback in signature AND send as POST body
     let extra = [("oauth_callback", callback_url)];
-    let auth = authorization_header_consumer_only("POST", request_token_url, consumer_key, consumer_secret, &extra);
+    let auth = authorization_header_consumer_only(
+        "POST",
+        request_token_url,
+        consumer_key,
+        consumer_secret,
+        &extra,
+    );
 
     let body = format!("oauth_callback={}", percent_encode(callback_url));
 
@@ -264,7 +286,10 @@ pub async fn request_token(
         return Err(format!("Request token failed ({}): {}", status, body));
     }
 
-    let body = resp.text().await.map_err(|e| format!("Read body error: {}", e))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Read body error: {}", e))?;
     parse_token_response(&body)
 }
 
@@ -316,7 +341,10 @@ pub async fn access_token(
         return Err(format!("Access token failed ({}): {}", status, body));
     }
 
-    let body = resp.text().await.map_err(|e| format!("Read body error: {}", e))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Read body error: {}", e))?;
     parse_token_response(&body)
 }
 

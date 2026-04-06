@@ -6,11 +6,15 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, get_lang_id, get_lang_str};
+use whisper_rs::{
+    get_lang_id, get_lang_str, FullParams, SamplingStrategy, WhisperContext,
+    WhisperContextParameters,
+};
 
 const MODEL_FILE_NAME: &str = "ggml-tiny.bin";
 const MODEL_DISPLAY_NAME: &str = "Whisper tiny";
-const MODEL_DOWNLOAD_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
+const MODEL_DOWNLOAD_URL: &str =
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin";
 const MODEL_SHA256: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
 const MAX_AUDIO_BYTES: usize = 12 * 1024 * 1024;
 const EXPECTED_SAMPLE_RATE: u32 = 16_000;
@@ -47,7 +51,10 @@ pub struct SpeechTranscriptionResult {
 }
 
 fn speech_model_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let base_dir = app.path().app_data_dir().map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let base_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
     Ok(base_dir.join("speech").join(MODEL_FILE_NAME))
 }
 
@@ -80,17 +87,24 @@ fn normalize_language(language: Option<String>) -> Option<String> {
 
 fn read_wav_samples(bytes: &[u8]) -> Result<Vec<f32>, String> {
     if bytes.len() > MAX_AUDIO_BYTES {
-        return Err(format!("Audio payload exceeds {} MB", MAX_AUDIO_BYTES / 1024 / 1024));
+        return Err(format!(
+            "Audio payload exceeds {} MB",
+            MAX_AUDIO_BYTES / 1024 / 1024
+        ));
     }
 
-    let mut reader = hound::WavReader::new(Cursor::new(bytes)).map_err(|e| format!("Invalid WAV payload: {e}"))?;
+    let mut reader = hound::WavReader::new(Cursor::new(bytes))
+        .map_err(|e| format!("Invalid WAV payload: {e}"))?;
     let spec = reader.spec();
 
     if spec.channels != 1 {
         return Err("Voice input must be mono audio".to_string());
     }
     if spec.sample_rate != EXPECTED_SAMPLE_RATE {
-        return Err(format!("Voice input must be {} Hz mono WAV", EXPECTED_SAMPLE_RATE));
+        return Err(format!(
+            "Voice input must be {} Hz mono WAV",
+            EXPECTED_SAMPLE_RATE
+        ));
     }
 
     match (spec.sample_format, spec.bits_per_sample) {
@@ -135,8 +149,9 @@ fn transcribe_pcm_with_model(
     let model_path_str = model_path
         .to_str()
         .ok_or_else(|| "Speech model path contains invalid UTF-8".to_string())?;
-    let context = WhisperContext::new_with_params(model_path_str, WhisperContextParameters::default())
-        .map_err(|e| format!("Failed to load speech model: {e}"))?;
+    let context =
+        WhisperContext::new_with_params(model_path_str, WhisperContextParameters::default())
+            .map_err(|e| format!("Failed to load speech model: {e}"))?;
     let mut whisper_state = context
         .create_state()
         .map_err(|e| format!("Failed to create speech state: {e}"))?;
@@ -193,7 +208,10 @@ pub async fn speech_model_status(app: AppHandle) -> Result<SpeechModelStatus, St
 }
 
 #[tauri::command]
-pub async fn download_speech_model(app: AppHandle, state: State<'_, SpeechState>) -> Result<SpeechModelStatus, String> {
+pub async fn download_speech_model(
+    app: AppHandle,
+    state: State<'_, SpeechState>,
+) -> Result<SpeechModelStatus, String> {
     let _guard = state.download_lock.lock().await;
     let model_path = speech_model_path(&app)?;
 
@@ -201,7 +219,9 @@ pub async fn download_speech_model(app: AppHandle, state: State<'_, SpeechState>
         return build_status(&app);
     }
 
-    let parent = model_path.parent().ok_or_else(|| "Invalid speech model path".to_string())?;
+    let parent = model_path
+        .parent()
+        .ok_or_else(|| "Invalid speech model path".to_string())?;
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(|e| format!("Failed to create speech model directory: {e}"))?;
@@ -215,7 +235,10 @@ pub async fn download_speech_model(app: AppHandle, state: State<'_, SpeechState>
         .map_err(|e| format!("Failed to download speech model: {e}"))?;
 
     if !response.status().is_success() {
-        return Err(format!("Speech model download failed with HTTP {}", response.status()));
+        return Err(format!(
+            "Speech model download failed with HTTP {}",
+            response.status()
+        ));
     }
 
     let bytes = response
@@ -231,8 +254,7 @@ pub async fn download_speech_model(app: AppHandle, state: State<'_, SpeechState>
     if digest != MODEL_SHA256 {
         return Err(format!(
             "Speech model integrity check failed (expected {}, got {})",
-            MODEL_SHA256,
-            digest,
+            MODEL_SHA256, digest,
         ));
     }
 
@@ -271,11 +293,12 @@ pub async fn speech_to_text(
     let duration_ms = ((pcm.len() as u64) * 1000) / EXPECTED_SAMPLE_RATE as u64;
 
     let started_at = Instant::now();
-    let (text, detected_language) = tokio::task::spawn_blocking(move || -> Result<(String, Option<String>), String> {
-        transcribe_pcm_with_model(&model_path, &pcm, normalized_language)
-    })
-    .await
-    .map_err(|e| format!("Speech transcription task failed: {e}"))??;
+    let (text, detected_language) =
+        tokio::task::spawn_blocking(move || -> Result<(String, Option<String>), String> {
+            transcribe_pcm_with_model(&model_path, &pcm, normalized_language)
+        })
+        .await
+        .map_err(|e| format!("Speech transcription task failed: {e}"))??;
 
     let elapsed_ms = started_at.elapsed().as_millis() as u64;
     Ok(SpeechTranscriptionResult {
@@ -310,8 +333,14 @@ mod tests {
 
     #[test]
     fn normalize_language_accepts_valid_prefix() {
-        assert_eq!(normalize_language(Some("it-IT".to_string())), Some("it".to_string()));
-        assert_eq!(normalize_language(Some("EN_us".to_string())), Some("en".to_string()));
+        assert_eq!(
+            normalize_language(Some("it-IT".to_string())),
+            Some("it".to_string())
+        );
+        assert_eq!(
+            normalize_language(Some("EN_us".to_string())),
+            Some("en".to_string())
+        );
     }
 
     #[test]
@@ -350,7 +379,14 @@ mod tests {
         }
 
         let pcm = vec![0.0_f32; EXPECTED_SAMPLE_RATE as usize];
-        let result = transcribe_pcm_with_model(std::path::Path::new(&model_path), &pcm, Some("en".to_string()));
-        assert!(result.is_ok(), "silence smoke test should not fail: {result:?}");
+        let result = transcribe_pcm_with_model(
+            std::path::Path::new(&model_path),
+            &pcm,
+            Some("en".to_string()),
+        );
+        assert!(
+            result.is_ok(),
+            "silence smoke test should not fail: {result:?}"
+        );
     }
 }

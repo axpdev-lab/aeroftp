@@ -112,11 +112,10 @@ pub async fn process_image(
 
         // Atomic write: write to temp file then rename to prevent data loss
         let output_path_obj = std::path::Path::new(&output);
-        let parent_dir = output_path_obj.parent().unwrap_or(std::path::Path::new("."));
-        let temp_path = parent_dir.join(format!(
-            ".aeroftp-img-{}.tmp",
-            std::process::id()
-        ));
+        let parent_dir = output_path_obj
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        let temp_path = parent_dir.join(format!(".aeroftp-img-{}.tmp", std::process::id()));
 
         // Save with appropriate format to temp file
         match ext.as_str() {
@@ -127,19 +126,17 @@ pub async fn process_image(
                     .map_err(|e| format!("Failed to create output file: {e}"))?;
                 let writer = BufWriter::new(file);
                 let encoder = JpegEncoder::new_with_quality(writer, quality);
-                rgb.write_with_encoder(encoder)
-                    .map_err(|e| {
-                        let _ = std::fs::remove_file(&temp_path);
-                        format!("Failed to encode JPEG: {e}")
-                    })?;
+                rgb.write_with_encoder(encoder).map_err(|e| {
+                    let _ = std::fs::remove_file(&temp_path);
+                    format!("Failed to encode JPEG: {e}")
+                })?;
             }
             _ => {
                 // All other formats: auto-detect from extension
-                img.save(&temp_path)
-                    .map_err(|e| {
-                        let _ = std::fs::remove_file(&temp_path);
-                        format!("Failed to save image: {e}")
-                    })?;
+                img.save(&temp_path).map_err(|e| {
+                    let _ = std::fs::remove_file(&temp_path);
+                    format!("Failed to save image: {e}")
+                })?;
             }
         }
 
@@ -216,17 +213,12 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
         ImageOperation::Rotate270 => Ok(img.rotate270()),
         ImageOperation::FlipH => Ok(img.fliph()),
         ImageOperation::FlipV => Ok(img.flipv()),
-        ImageOperation::Brightness { value } => {
-            Ok(DynamicImage::ImageRgba8(image::imageops::brighten(
-                &img,
-                *value,
-            )))
-        }
-        ImageOperation::Contrast { value } => {
-            Ok(DynamicImage::ImageRgba8(image::imageops::contrast(
-                &img, *value,
-            )))
-        }
+        ImageOperation::Brightness { value } => Ok(DynamicImage::ImageRgba8(
+            image::imageops::brighten(&img, *value),
+        )),
+        ImageOperation::Contrast { value } => Ok(DynamicImage::ImageRgba8(
+            image::imageops::contrast(&img, *value),
+        )),
         ImageOperation::Blur { sigma } => Ok(img.blur(*sigma)),
         ImageOperation::Sharpen { sigma } => Ok(img.unsharpen(*sigma, 5)),
         ImageOperation::Grayscale => Ok(img.grayscale()),
@@ -235,10 +227,8 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
             inverted.invert();
             Ok(inverted)
         }
-        ImageOperation::HueRotate { degrees } => {
-            Ok(DynamicImage::ImageRgba8(image::imageops::huerotate(
-                &img, *degrees,
-            )))
-        }
+        ImageOperation::HueRotate { degrees } => Ok(DynamicImage::ImageRgba8(
+            image::imageops::huerotate(&img, *degrees),
+        )),
     }
 }

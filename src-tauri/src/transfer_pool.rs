@@ -115,9 +115,42 @@ pub enum CompressionMode {
 
 /// File extensions that are already compressed (compression counterproductive)
 const PRECOMPRESSED_EXTENSIONS: &[&str] = &[
-    "zip", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4", "br", "jpg", "jpeg", "png", "gif",
-    "webp", "avif", "heic", "heif", "mp3", "mp4", "mkv", "avi", "mov", "flac", "aac", "ogg",
-    "opus", "m4a", "m4v", "webm", "pdf", "docx", "xlsx", "pptx", "wasm", "woff", "woff2",
+    "zip",
+    "gz",
+    "bz2",
+    "xz",
+    "7z",
+    "rar",
+    "zst",
+    "lz4",
+    "br",
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "avif",
+    "heic",
+    "heif",
+    "mp3",
+    "mp4",
+    "mkv",
+    "avi",
+    "mov",
+    "flac",
+    "aac",
+    "ogg",
+    "opus",
+    "m4a",
+    "m4v",
+    "webm",
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx",
+    "wasm",
+    "woff",
+    "woff2",
     "aerovault",
 ];
 
@@ -235,9 +268,6 @@ mod tests {
         let deserialized: ParallelTransferConfig = serde_json::from_str(&serialized).unwrap();
 
         assert_eq!(config.max_streams, deserialized.max_streams);
-        assert_eq!(
-            config.acquire_timeout_ms,
-            deserialized.acquire_timeout_ms
-        );
+        assert_eq!(config.acquire_timeout_ms, deserialized.acquire_timeout_ms);
     }
 }

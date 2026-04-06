@@ -12,7 +12,9 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::providers::{StorageProvider, ProviderConfig, ProviderError, RemoteEntry, ShareLinkOptions, ShareLinkResult};
+use crate::providers::{
+    ProviderConfig, ProviderError, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageProvider,
+};
 
 /// Session information stored alongside the provider
 #[derive(Debug, Clone)]
@@ -42,7 +44,7 @@ pub struct ProviderSession {
 }
 
 /// Multi-session state manager
-/// 
+///
 /// Replaces the single-provider ProviderState with a HashMap that can
 /// hold multiple concurrent provider connections.
 pub struct MultiProviderState {
@@ -69,7 +71,7 @@ impl MultiProviderState {
     ) -> Result<SessionInfo, ProviderError> {
         let display_name = provider.display_name();
         let protocol = format!("{:?}", provider.provider_type());
-        
+
         let info = SessionInfo {
             session_id: session_id.clone(),
             display_name: display_name.clone(),
@@ -87,7 +89,7 @@ impl MultiProviderState {
 
         let mut sessions = self.sessions.write().await;
         sessions.insert(session_id.clone(), session);
-        
+
         // Set as active if it's the first session
         {
             let mut active = self.active_session_id.write().await;
@@ -108,7 +110,8 @@ impl MultiProviderState {
         F: FnOnce(&mut ProviderSession) -> Result<R, ProviderError>,
     {
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(session_id)
+        let session = sessions
+            .get_mut(session_id)
             .ok_or(ProviderError::NotConnected)?;
 
         // Update last activity
@@ -126,21 +129,24 @@ impl MultiProviderState {
     /// Close and remove a session
     pub async fn close_session(&self, session_id: &str) -> Result<(), ProviderError> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(mut session) = sessions.remove(session_id) {
-            info!("Closing session {} ({})", session_id, session.info.display_name);
-            
+            info!(
+                "Closing session {} ({})",
+                session_id, session.info.display_name
+            );
+
             // Disconnect the provider
             if let Err(e) = session.provider.disconnect().await {
                 warn!("Error disconnecting session {}: {}", session_id, e);
             }
-            
+
             // If this was the active session, clear or switch to another
             let mut active = self.active_session_id.write().await;
             if active.as_ref() == Some(&session_id.to_string()) {
                 *active = sessions.keys().next().cloned();
             }
-            
+
             Ok(())
         } else {
             Err(ProviderError::NotConnected)
@@ -167,7 +173,10 @@ impl MultiProviderState {
 
     /// Get the active session, or a specific session if session_id is provided
     /// This allows backwards compatibility with commands that don't pass session_id
-    pub async fn resolve_session_id(&self, session_id: Option<&str>) -> Result<String, ProviderError> {
+    pub async fn resolve_session_id(
+        &self,
+        session_id: Option<&str>,
+    ) -> Result<String, ProviderError> {
         match session_id {
             Some(id) => {
                 let sessions = self.sessions.read().await;
@@ -177,11 +186,12 @@ impl MultiProviderState {
                     Err(ProviderError::NotConnected)
                 }
             }
-            None => {
-                self.active_session_id.read().await
-                    .clone()
-                    .ok_or(ProviderError::NotConnected)
-            }
+            None => self
+                .active_session_id
+                .read()
+                .await
+                .clone()
+                .ok_or(ProviderError::NotConnected),
         }
     }
 
@@ -207,14 +217,14 @@ impl MultiProviderState {
     #[allow(dead_code)]
     pub async fn close_all_sessions(&self) {
         let mut sessions = self.sessions.write().await;
-        
+
         for (id, mut session) in sessions.drain() {
             info!("Closing session {} on shutdown", id);
             if let Err(e) = session.provider.disconnect().await {
                 warn!("Error disconnecting session {}: {}", id, e);
             }
         }
-        
+
         let mut active = self.active_session_id.write().await;
         *active = None;
     }
@@ -234,7 +244,8 @@ impl MultiProviderState {
             // We need to return a future, but we're in a sync closure
             // This is a limitation - we'll handle it differently
             Err(ProviderError::Other("Use async version".to_string()))
-        }).await
+        })
+        .await
     }
 
     /// Async list files - proper async implementation
@@ -244,11 +255,10 @@ impl MultiProviderState {
         path: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         session.provider.list(path).await
     }
@@ -260,59 +270,47 @@ impl MultiProviderState {
         path: &str,
     ) -> Result<String, ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         session.provider.cd(path).await?;
-        
+
         let new_path = session.provider.pwd().await?;
         session.info.current_path = new_path.clone();
-        
+
         Ok(new_path)
     }
 
     /// Get current directory for a session
     pub async fn pwd(&self, session_id: Option<&str>) -> Result<String, ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.provider.pwd().await
     }
 
     /// Create directory in a session
-    pub async fn mkdir(
-        &self,
-        session_id: Option<&str>,
-        path: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn mkdir(&self, session_id: Option<&str>, path: &str) -> Result<(), ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         session.provider.mkdir(path).await
     }
 
     /// Delete file/folder in a session
-    pub async fn delete(
-        &self,
-        session_id: Option<&str>,
-        path: &str,
-    ) -> Result<(), ProviderError> {
+    pub async fn delete(&self, session_id: Option<&str>, path: &str) -> Result<(), ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         session.provider.delete(path).await
     }
@@ -325,11 +323,10 @@ impl MultiProviderState {
         to: &str,
     ) -> Result<(), ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         session.provider.rename(from, to).await
     }
@@ -342,14 +339,16 @@ impl MultiProviderState {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         // No progress callback for now - can be added later
-        session.provider.download(remote_path, local_path, None).await
+        session
+            .provider
+            .download(remote_path, local_path, None)
+            .await
     }
 
     /// Upload file
@@ -360,11 +359,10 @@ impl MultiProviderState {
         remote_path: &str,
     ) -> Result<(), ProviderError> {
         let sid = self.resolve_session_id(session_id).await?;
-        
+
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
-        
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
+
         session.info.last_activity = std::time::Instant::now();
         // No progress callback for now - can be added later
         session.provider.upload(local_path, remote_path, None).await
@@ -380,8 +378,7 @@ impl MultiProviderState {
         let sid = self.resolve_session_id(session_id).await?;
 
         let mut sessions = self.sessions.write().await;
-        let session = sessions.get_mut(&sid)
-            .ok_or(ProviderError::NotConnected)?;
+        let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
 
         if !session.provider.supports_share_links() {
             return Err(ProviderError::Other(format!(
@@ -407,11 +404,11 @@ mod tests {
     #[tokio::test]
     async fn test_session_lifecycle() {
         let state = MultiProviderState::new();
-        
+
         // Initially no sessions
         assert_eq!(state.session_count().await, 0);
         assert!(state.get_active_session_id().await.is_none());
-        
+
         // After closing all, should be empty
         state.close_all_sessions().await;
         assert_eq!(state.session_count().await, 0);

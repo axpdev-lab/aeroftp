@@ -47,12 +47,9 @@ impl GitLabConfig {
     /// - `password`: the access token
     /// - `extra["branch"]`: optional branch override
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let token = config
-            .password
-            .clone()
-            .ok_or_else(|| {
-                ProviderError::InvalidConfig("GitLab access token is required".into())
-            })?;
+        let token = config.password.clone().ok_or_else(|| {
+            ProviderError::InvalidConfig("GitLab access token is required".into())
+        })?;
 
         let host = config.host.trim().to_string();
 
@@ -237,7 +234,11 @@ impl GitLabProvider {
         self.branch = branch_info.name;
         self.can_push = branch_info.can_push;
         self.current_path = String::new();
-        log::info!("GitLab: switched to branch '{}' (can_push: {})", self.branch, self.can_push);
+        log::info!(
+            "GitLab: switched to branch '{}' (can_push: {})",
+            self.branch,
+            self.can_push
+        );
         Ok(())
     }
 
@@ -291,7 +292,12 @@ impl GitLabProvider {
         name: &str,
         description: &str,
     ) -> Result<model::GitLabRelease, ProviderError> {
-        log::info!("GitLab: creating release '{}' (tag: {}) on branch '{}'", name, tag, self.active_branch());
+        log::info!(
+            "GitLab: creating release '{}' (tag: {}) on branch '{}'",
+            name,
+            tag,
+            self.active_branch()
+        );
         let body = serde_json::json!({
             "tag_name": tag,
             "name": name,
@@ -329,7 +335,11 @@ impl GitLabProvider {
             urlencoding::encode(tag),
         );
         let links: Vec<model::GitLabReleaseLink> = self.client.get_paginated(&path, 100).await?;
-        log::info!("GitLab: found {} asset links for release '{}'", links.len(), tag);
+        log::info!(
+            "GitLab: found {} asset links for release '{}'",
+            links.len(),
+            tag
+        );
         Ok(links)
     }
 
@@ -343,9 +353,9 @@ impl GitLabProvider {
         asset_name: &str,
         link_type: Option<&str>,
     ) -> Result<model::GitLabReleaseLink, ProviderError> {
-        let bytes = tokio::fs::read(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to read file: {}", e))
-        })?;
+        let bytes = tokio::fs::read(local_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to read file: {}", e)))?;
 
         let content_type = mime_guess::from_path(asset_name)
             .first_or_octet_stream()
@@ -403,7 +413,10 @@ impl GitLabProvider {
 
         log::info!(
             "GitLab: uploading release asset '{}' to tag '{}' (type: {}, size: {} bytes)",
-            asset_name, tag, resolved_type, bytes.len()
+            asset_name,
+            tag,
+            resolved_type,
+            bytes.len()
         );
 
         // Step 1: Upload to Generic Packages
@@ -413,7 +426,9 @@ impl GitLabProvider {
             urlencoding::encode(tag),
             urlencoding::encode(asset_name),
         );
-        self.client.put_bytes(&pkg_path, bytes, &content_type).await?;
+        self.client
+            .put_bytes(&pkg_path, bytes, &content_type)
+            .await?;
 
         // Use the API download URL which works for both public and private projects
         let download_url = format!(
@@ -444,7 +459,11 @@ impl GitLabProvider {
         tag: &str,
         link_id: u64,
     ) -> Result<(), ProviderError> {
-        log::info!("GitLab: deleting asset link {} from release '{}'", link_id, tag);
+        log::info!(
+            "GitLab: deleting asset link {} from release '{}'",
+            link_id,
+            tag
+        );
         let path = format!(
             "{}/releases/{}/assets/links/{}",
             self.project_api(),
@@ -452,7 +471,11 @@ impl GitLabProvider {
             link_id,
         );
         self.client.delete(&path).await?;
-        log::info!("GitLab: asset link {} deleted from release '{}'", link_id, tag);
+        log::info!(
+            "GitLab: asset link {} deleted from release '{}'",
+            link_id,
+            tag
+        );
         Ok(())
     }
 
@@ -464,13 +487,18 @@ impl GitLabProvider {
     ) -> Result<(), ProviderError> {
         log::info!("GitLab: downloading release asset to '{}'", local_path);
         let resp = self.client.get_raw_response(url).await?;
-        let bytes = resp.bytes().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Download failed: {}", e))
-        })?;
-        tokio::fs::write(local_path, &bytes).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to write file: {}", e))
-        })?;
-        log::info!("GitLab: asset downloaded ({} bytes) to '{}'", bytes.len(), local_path);
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
+        tokio::fs::write(local_path, &bytes)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to write file: {}", e)))?;
+        log::info!(
+            "GitLab: asset downloaded ({} bytes) to '{}'",
+            bytes.len(),
+            local_path
+        );
         Ok(())
     }
 
@@ -486,9 +514,8 @@ impl GitLabProvider {
             urlencoding::encode(self.active_branch()),
         );
         let bytes = self.client.get_raw_bytes(&url).await?;
-        String::from_utf8(bytes).map_err(|e| {
-            ProviderError::Other(format!("File is not valid UTF-8: {}", e))
-        })
+        String::from_utf8(bytes)
+            .map_err(|e| ProviderError::Other(format!("File is not valid UTF-8: {}", e)))
     }
 
     // ── Merge Requests ─────────────────────────────────────────────
@@ -508,7 +535,12 @@ impl GitLabProvider {
             ));
         }
 
-        log::info!("GitLab: creating merge request '{}' ({} -> {})", title, source, target);
+        log::info!(
+            "GitLab: creating merge request '{}' ({} -> {})",
+            title,
+            source,
+            target
+        );
 
         // Check for existing open MR with same source branch
         let search_path = format!(
@@ -579,7 +611,9 @@ impl GitLabProvider {
     ) -> Result<GitLabCommit, ProviderError> {
         log::info!(
             "GitLab: committing {} actions on branch '{}': {}",
-            actions.len(), self.active_branch(), message
+            actions.len(),
+            self.active_branch(),
+            message
         );
         let body = serde_json::json!({
             "branch": self.active_branch(),
@@ -626,7 +660,10 @@ impl StorageProvider for GitLabProvider {
         match self.client.get_json::<GitLabUser>("/user").await {
             Ok(user) => {
                 self.account_name = user.name.clone().or(Some(user.username.clone()));
-                self.account_email = user.email.clone().or(Some(format!("{}@gitlab", user.username)));
+                self.account_email = user
+                    .email
+                    .clone()
+                    .or(Some(format!("{}@gitlab", user.username)));
             }
             Err(ProviderError::AuthenticationFailed(_)) => {
                 // Project access tokens return a bot user, still works
@@ -637,10 +674,7 @@ impl StorageProvider for GitLabProvider {
         }
 
         // 2. Resolve project — GET /projects/:id
-        let project_url = format!(
-            "/projects/{}",
-            encode_project_path(&self.project_path)
-        );
+        let project_url = format!("/projects/{}", encode_project_path(&self.project_path));
         let project: GitLabProject = self.client.get_json(&project_url).await?;
 
         self.project_id = Some(project.id);
@@ -776,7 +810,9 @@ impl StorageProvider for GitLabProvider {
             urlencoding::encode(self.active_branch()),
             urlencoding::encode(&resolved),
         );
-        self.client.get_json::<Vec<GitLabTreeEntry>>(&tree_path).await?;
+        self.client
+            .get_json::<Vec<GitLabTreeEntry>>(&tree_path)
+            .await?;
 
         self.current_path = resolved;
         Ok(())
@@ -811,21 +847,20 @@ impl StorageProvider for GitLabProvider {
         );
 
         let resp = self.client.get_raw_response(&url).await?;
-        let total_size = resp
-            .content_length()
-            .unwrap_or(0);
+        let total_size = resp.content_length().unwrap_or(0);
 
-        let bytes = resp.bytes().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Download failed: {}", e))
-        })?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
 
         if let Some(ref progress) = on_progress {
             progress(total_size, total_size);
         }
 
-        tokio::fs::write(local_path, &bytes).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to write file: {}", e))
-        })?;
+        tokio::fs::write(local_path, &bytes)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Failed to write file: {}", e)))?;
 
         Ok(())
     }
@@ -861,10 +896,7 @@ impl StorageProvider for GitLabProvider {
         let data = tokio::fs::read(local_path).await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to read local file: {}", e))
         })?;
-        let content_b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &data,
-        );
+        let content_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
 
         // Check if file exists to determine create vs update action
         let encoded = encode_file_path(&resolved);
