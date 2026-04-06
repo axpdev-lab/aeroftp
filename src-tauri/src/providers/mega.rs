@@ -10,6 +10,7 @@
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use std::path::Path;
+#[cfg(not(windows))]
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 

@@ -12037,6 +12037,7 @@ async fn cmd_mount_windows(
         provider: Arc::new(AsyncMutex::new(provider)),
         provider_label,
         base_path,
+        auth_token: None, // local-only WebDAV bridge for Windows mount — no auth needed
     };
 
     let app = Router::new()
@@ -17820,6 +17821,7 @@ async fn main() {
             };
             cmd_ncdu(u, p, *max_depth, export.as_deref(), &cli, format).await
         }
+        #[allow(unused_variables)]
         Commands::Mount {
             url,
             mountpoint,

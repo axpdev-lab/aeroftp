@@ -1294,56 +1294,63 @@ async fn install_rpm_update(
 }
 
 /// Launch Windows installer (.msi or .exe) and exit the app
-#[cfg(windows)]
 #[tauri::command]
 async fn install_windows_update(
-    app: AppHandle,
-    downloaded_path: String,
-    verification_mode: String,
+    #[allow(unused_variables)] app: AppHandle,
+    #[allow(unused_variables)] downloaded_path: String,
+    #[allow(unused_variables)] verification_mode: String,
 ) -> Result<(), String> {
-    let downloaded = std::path::Path::new(&downloaded_path);
-    if !downloaded.exists() {
-        return Err("Downloaded file not found".to_string());
+    #[cfg(not(windows))]
+    {
+        Err("Windows installer is only available on Windows".to_string())
     }
 
-    let ext = downloaded
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    info!("Launching Windows installer: {} ({})", downloaded_path, ext);
-
-    match ext.as_str() {
-        "msi" => {
-            std::process::Command::new("msiexec")
-                .args(["/i", &downloaded_path])
-                .spawn()
-                .map_err(|e| format!("Failed to launch msiexec: {}", e))?;
+    #[cfg(windows)]
+    {
+        let downloaded = std::path::Path::new(&downloaded_path);
+        if !downloaded.exists() {
+            return Err("Downloaded file not found".to_string());
         }
-        "exe" => {
-            std::process::Command::new(&downloaded_path)
-                .spawn()
-                .map_err(|e| format!("Failed to launch installer: {}", e))?;
+
+        let ext = downloaded
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        info!("Launching Windows installer: {} ({})", downloaded_path, ext);
+
+        match ext.as_str() {
+            "msi" => {
+                std::process::Command::new("msiexec")
+                    .args(["/i", &downloaded_path])
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch msiexec: {}", e))?;
+            }
+            "exe" => {
+                std::process::Command::new(&downloaded_path)
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch installer: {}", e))?;
+            }
+            _ => return Err(format!("Unknown installer format: .{}", ext)),
         }
-        _ => return Err(format!("Unknown installer format: .{}", ext)),
+
+        let from_version = app.package_info().version.to_string();
+        write_update_marker(
+            &app,
+            &from_version,
+            "unknown",
+            ext.as_str(),
+            &verification_mode,
+        );
+        let _ = app.emit("update_install_phase", "restart");
+
+        // Give installer a moment to start, then exit
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        app.exit(0);
+
+        Ok(())
     }
-
-    let from_version = app.package_info().version.to_string();
-    write_update_marker(
-        &app,
-        &from_version,
-        "unknown",
-        ext.as_str(),
-        &verification_mode,
-    );
-    let _ = app.emit("update_install_phase", "restart");
-
-    // Give installer a moment to start, then exit
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    app.exit(0);
-
-    Ok(())
 }
 
 // ============ FTP Commands ============
@@ -10407,6 +10414,7 @@ pub fn run() {
             install_appimage_update,
             install_deb_update,
             install_rpm_update,
+            install_windows_update,
             // AI commands
             ai_chat,
             ai_test_provider,
