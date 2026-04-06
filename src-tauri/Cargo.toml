@@ -154,7 +154,7 @@ unftp-core = "0.1"                                                     # FTP ser
 
 # Interactive TUI (ncdu disk explorer)
 ratatui = "0.29"                                                       # Terminal UI framework
-crossterm = "0.28"                                                     # Cross-platform terminal control
+crossterm = "0.29"                                                     # Cross-platform terminal control
 
 # Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
 [target.'cfg(not(target_os = "macos"))'.dependencies]
