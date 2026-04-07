@@ -58,6 +58,17 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'yandexdisk', name: 'Yandex Disk', description: 'Russian cloud storage (5 GB free)', protocol: 'yandexdisk', badge: 'OAuth', signupUrl: 'https://disk.yandex.com', healthCheckUrl: 'https://cloud-api.yandex.net', source: 'protocol' },
 ];
 
+/** Media Services — photo/video platforms with file management.
+ *  Google Photos: STANDBY — photoslibrary.readonly scope removed by Google on 2025-03-31.
+ *  Browse/download no longer possible. Upload-only via appendonly scope still works.
+ *  Re-enable when: Google provides a REST replacement or Picker API is integrated. */
+const MEDIA_SERVICES: DiscoverItem[] = [
+    { id: 'immich', name: 'Immich', description: 'Self-hosted photo management (open source)', protocol: 'immich' as ProviderType, badge: 'API', isGeneric: true, signupUrl: 'https://immich.app', helpUrl: 'https://immich.app/docs/overview/introduction', source: 'protocol' },
+    { id: 'pixelunion', name: 'PixelUnion', description: 'EU-hosted Immich photo cloud', protocol: 'immich' as ProviderType, providerId: 'pixelunion', badge: 'EU', signupUrl: 'https://pixelunion.eu', healthCheckUrl: 'https://pixelunion.eu', source: 'protocol' },
+    // Google Photos: STANDBY — photoslibrary.readonly scope removed by Google on 2025-03-31.
+    // { id: 'googlephotos', name: 'Google Photos', ... },
+];
+
 const PROTOCOL_ITEMS: DiscoverItem[] = [
     { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
@@ -141,6 +152,9 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'azure-generic': 'protocol.discoverAzureBlob',
     'github': 'protocol.discoverGitHub',
     'gitlab': 'protocol.discoverGitLab',
+    'googlephotos': 'protocol.discoverGooglePhotos',
+    'immich': 'protocol.discoverImmich',
+    'pixelunion': 'protocol.discoverPixelUnion',
 };
 
 /** Badge overrides for registry providers with distinctive features */
@@ -250,6 +264,13 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
             icon: 'Cloud',
             count: CLOUD_SERVICES.length,
             items: CLOUD_SERVICES,
+        },
+        {
+            id: 'media-services',
+            labelKey: 'introHub.category.mediaServices',
+            icon: 'Camera',
+            count: MEDIA_SERVICES.length,
+            items: MEDIA_SERVICES,
         },
         {
             id: 'developer',

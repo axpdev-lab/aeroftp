@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.4" date="2026-04-07">
+      <description>
+        <p>Immich photo management provider: native REST API integration with albums, upload/download, delete, search, share links, and SHA-256 checksums. PixelUnion EU-hosted preset (16 GB free). New Media Services category in Discover. Full CLI support. Transfer infrastructure: FTP session pool, transfer orchestrator, event bridge.</p>
+      </description>
+    </release>
     <release version="3.4.3" date="2026-04-06">
       <description>
         <p>AeroSync advanced controls: conflict strategies, delete orphans with versioning, rename detection, file filters, bandwidth schedules, transfer budgets, snapshot rollback. Archive security hardening. Provider trash management for Box, Zoho, MEGA, OpenDrive, Yandex, pCloud, KDrive. Plugin integrity verification.</p>

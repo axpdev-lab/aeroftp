@@ -3,10 +3,10 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import type { EffectiveTheme } from '../hooks/useTheme';
+import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
 
 // ─── Shared timestamp helper ───────────────────────────────────────────────
 function ts() {
@@ -96,9 +96,9 @@ function activateNetworkCapture() {
     if (globalNetworkActive) return;
     globalNetworkActive = true;
 
-    // 1) Listen for transfer_event from Rust backend
-    listen<{ event_type: string; transfer_id: string; filename: string; direction: string; message?: string }>('transfer_event', (event) => {
-        const d = event.payload;
+    // 1) Listen for bridged transfer events from the primary transfer listener
+    window.addEventListener(TRANSFER_EVENT_BRIDGE, (event: Event) => {
+        const d = (event as CustomEvent<{ event_type: string; transfer_id: string; filename: string; direction: string; message?: string }>).detail;
         const evType = d.event_type.toLowerCase();
         const status: NetworkEntry['status'] = evType.includes('error') ? 'error'
             : evType.includes('complete') || evType.includes('done') ? 'complete'

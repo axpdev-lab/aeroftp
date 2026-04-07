@@ -70,10 +70,18 @@ export interface TransferProgressBarProps {
 
     /** Optional resolved app theme (recommended from parent) */
     effectiveTheme?: EffectiveTheme;
+    /** Optional fill tone override */
+    tone?: 'default' | 'success' | 'error';
 }
 
 /** Theme-specific gradient colors for the progress fill */
-function getThemeGradient(theme: string): { from: string; to: string; shimmer: string } {
+function getThemeGradient(theme: string, tone: 'default' | 'success' | 'error'): { from: string; to: string; shimmer: string } {
+    if (tone === 'success') {
+        return { from: '#10b981', to: '#22c55e', shimmer: 'rgba(34,197,94,0.28)' };
+    }
+    if (tone === 'error') {
+        return { from: '#f97316', to: '#ef4444', shimmer: 'rgba(239,68,68,0.28)' };
+    }
     switch (theme) {
         case 'tokyo':
             return { from: '#a855f7', to: '#ec4899', shimmer: 'rgba(168,85,247,0.3)' }; // purple→pink
@@ -104,6 +112,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     speedHistory,
     className = '',
     effectiveTheme,
+    tone = 'default',
 }) => {
     const resolvedTheme = effectiveTheme ?? resolveThemeFromDom();
     const [graphExpanded, setGraphExpanded] = useState(false);
@@ -117,7 +126,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         }
     }, [slideAnimation]);
 
-    const colors = getThemeGradient(resolvedTheme);
+    const colors = getThemeGradient(resolvedTheme, tone);
     const clampedPct = Math.max(0, Math.min(100, percentage));
     const hasDetails = filename || speedBps !== undefined || etaSeconds !== undefined;
     const hasBatch = currentFile !== undefined && totalFiles !== undefined;

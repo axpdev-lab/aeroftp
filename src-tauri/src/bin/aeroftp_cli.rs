@@ -3487,6 +3487,7 @@ fn profile_to_provider_config(
         "zohoworkdrive" => ProviderType::ZohoWorkdrive,
         "fourshared" => ProviderType::FourShared,
         "drime" => ProviderType::DrimeCloud,
+        "immich" => ProviderType::Immich,
         _ => {
             print_error(
                 format,
@@ -6864,7 +6865,17 @@ async fn cmd_get(
     };
 
     let filename = remote.rsplit('/').next().unwrap_or("download");
-    let local_path = local.unwrap_or(filename);
+    let local_path_owned: String;
+    let local_path = if let Some(dest) = local {
+        if dest.ends_with('/') || std::path::Path::new(dest).is_dir() {
+            local_path_owned = format!("{}{}{}", dest, if dest.ends_with('/') { "" } else { "/" }, filename);
+            &local_path_owned
+        } else {
+            dest
+        }
+    } else {
+        filename
+    };
     let start = Instant::now();
 
     // Get file size for progress bar

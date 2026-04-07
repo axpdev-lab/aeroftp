@@ -35,6 +35,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     s3: 'from-amber-500 to-yellow-400',
     aerocloud: 'from-sky-400 to-blue-500',
     googledrive: 'from-red-500 to-red-400',
+    googlephotos: 'from-amber-500 to-amber-400',
     dropbox: 'from-blue-600 to-blue-400',
     onedrive: 'from-sky-500 to-sky-400',
     mega: 'from-red-600 to-red-500',
@@ -43,6 +44,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     azure: 'from-blue-600 to-indigo-500',
     filen: 'from-emerald-500 to-green-400',
     opendrive: 'from-cyan-500 to-sky-400',
+    immich: 'from-indigo-500 to-violet-400',
 };
 
 // AeroCloud config interface (matching Rust struct)
@@ -672,6 +674,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ? {
                     ...connectionParams,
                     server: connectionParams.server || '',
+                    port: connectionParams.port || 443,
+                }
+            : protocol === 'immich'
+                ? {
+                    ...connectionParams,
+                    server: connectionParams.server || '',
+                    username: connectionParams.username || 'api-key',
                     port: connectionParams.port || 443,
                 }
             : selectedProvider?.defaults?.server && !connectionParams.server
@@ -1331,7 +1340,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -1352,9 +1361,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
                             </div>
                             {(() => {
-                                const logoId = selectedProviderId || protocol || '';
+                                const PROTOCOL_DISPLAY: Record<string, { name: string; desc?: string }> = {
+                                    pixelunion: { name: 'PixelUnion', desc: t('protocol.discoverPixelUnion') },
+                                    immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
+                                };
+                                const pid = connectionParams.providerId || '';
+                                const logoId = selectedProviderId || pid || protocol || '';
                                 const LogoComponent = PROVIDER_LOGOS[logoId];
-                                const providerName = selectedProvider?.name || protocol?.toUpperCase() || '';
+                                const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
+                                const providerName = selectedProvider?.name || display?.name || protocol?.toUpperCase() || '';
+                                const providerDesc = selectedProvider?.description || display?.desc;
                                 if (!LogoComponent && !providerName) return null;
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
@@ -1362,8 +1378,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
-                                        {selectedProvider?.description && (
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-xs text-right leading-tight">{selectedProvider.description}</span>
+                                        {providerDesc && (
+                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-xs text-right leading-tight">{providerDesc}</span>
                                         )}
                                     </div>
                                 );
@@ -1578,7 +1594,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             />
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
-                                provider={protocol as 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
+                                provider={protocol as 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 saveConnection={saveConnection}
@@ -3015,6 +3031,137 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </>
                                         )}
                                     </div>
+                                ) : protocol === 'immich' ? (
+                                    /* Immich Specific Form — Server URL + API Key */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        {/* LEFT COLUMN: Credentials */}
+                                        <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.immichServerUrl')}</label>
+                                            <input
+                                                type="url"
+                                                value={connectionParams.server}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    server: e.target.value,
+                                                    port: 443,
+                                                    username: 'api-key'
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                placeholder={connectionParams.providerId === 'pixelunion' ? 'https://yourname.pixelunion.eu' : 'https://immich.example.com'}
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    value={connectionParams.password}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        password: e.target.value,
+                                                        server: connectionParams.server || '',
+                                                        port: 443,
+                                                        username: 'api-key'
+                                                    })}
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    placeholder={t('connection.immichApiKeyPlaceholder')}
+                                                />
+                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            {t('connection.immichApiKeyHelp')}
+                                        </p>
+                                        <p className="text-xs text-gray-400/70 mt-1.5">
+                                            {t('connection.immichOps')}
+                                        </p>
+                                        </div>
+
+                                        {formOnly ? (
+                                            renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password, buttonColorClass: 'bg-indigo-600 hover:bg-indigo-700' })
+                                        ) : (
+                                        <>
+                                        {/* Optional Remote/Local Path */}
+                                        <div className="pt-2">
+                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                                {t('connection.optionalSettings')}
+                                            </label>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    value={quickConnectDirs.remoteDir}
+                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    placeholder={t('connection.initialRemotePath')}
+                                                />
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={quickConnectDirs.localDir}
+                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                        placeholder={t('connection.initialLocalPath')}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleBrowseLocalDir}
+                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                        title={t('common.browse')}
+                                                    >
+                                                        <FolderOpen size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Connection Option */}
+                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                                            <Checkbox
+                                                checked={saveConnection}
+                                                onChange={setSaveConnection}
+                                                label={
+                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
+                                                        <Save size={14} />
+                                                        {t('connection.saveToServers')}
+                                                    </span>
+                                                }
+                                            />
+
+                                            {saveConnection && (
+                                                <div className="mt-2 animate-fade-in-down">
+                                                    <input
+                                                        type="text"
+                                                        value={connectionName}
+                                                        onChange={(e) => setConnectionName(e.target.value)}
+                                                        placeholder={t('connection.connectionNamePlaceholder')}
+                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                    />
+                                                    {renderIconPicker()}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-3">
+                                            <button
+                                                onClick={handleConnectAndSave}
+                                                disabled={loading || !connectionParams.server || !connectionParams.password}
+                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                            >
+                                                {loading ? (
+                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                ) : (
+                                                    <>{ConnectIcon} {t('connection.connect')}</>
+                                                )}
+                                            </button>
+                                        </div>
+                                        </>
+                                        )}
+                                    </div>
                                 ) : protocol === 'mega' ? (
                                     /* MEGA Specific Form (Beta v0.5.0) */
                                     <div className="space-y-4 pt-2">
@@ -3842,9 +3989,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         {/* Provider independence disclaimer — outside formOnlyMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
+            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
             const providerName = disclaimerProvider?.name
-                || ({ googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab' } as Record<string, string>)[protocol || ''];
-            if (!providerName || disclaimerProvider?.isGeneric) return null;
+                || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
+            if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;
             const contactProtocols = new Set(['zohoworkdrive']);
             const isContact = disclaimerProvider?.contactVerified || contactProtocols.has(protocol || '');
             return (

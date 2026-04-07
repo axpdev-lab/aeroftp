@@ -43,6 +43,8 @@ mod file_tags;
 mod file_watcher;
 mod filesystem;
 mod ftp;
+mod ftp_session_pool;
+mod ftp_transfer_executor;
 mod health_check;
 mod host_key_check;
 mod infinicloud;
@@ -52,6 +54,7 @@ pub mod mcp;
 mod plugin_registry;
 mod plugins;
 mod profile_export;
+mod provider_transfer_executor;
 mod provider_commands;
 pub mod providers;
 mod pty;
@@ -66,6 +69,9 @@ mod sync_ignore;
 mod sync_scheduler;
 mod sync_versioning;
 mod totp;
+mod transfer_domain;
+mod transfer_orchestrator;
+mod transfer_settings;
 mod transfer_pool;
 mod tray_badge;
 mod vault_remote;
@@ -210,6 +216,12 @@ pub struct DownloadFolderParams {
     local_path: String,
     #[serde(default)]
     file_exists_action: String,
+    #[serde(default)]
+    max_concurrent: Option<u32>,
+    #[serde(default)]
+    retry_count: Option<u32>,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -218,6 +230,23 @@ pub struct UploadFolderParams {
     remote_path: String,
     #[serde(default)]
     file_exists_action: String,
+    #[serde(default)]
+    max_concurrent: Option<u32>,
+    #[serde(default)]
+    retry_count: Option<u32>,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FileTransferBatchParams {
+    entries: Vec<transfer_domain::TransferEntry>,
+    #[serde(default)]
+    max_concurrent: Option<u32>,
+    #[serde(default)]
+    retry_count: Option<u32>,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -1768,6 +1797,411 @@ async fn upload_file(
     }
 }
 
+#[tauri::command]
+async fn download_files_batch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    params: FileTransferBatchParams,
+) -> Result<String, String> {
+    if state.cancel_flag.load(Ordering::Relaxed) {
+        return Err("Transfer cancelled by user".to_string());
+    }
+
+    if params.entries.is_empty() {
+        return Ok("Downloaded 0 files, 0 errors".to_string());
+    }
+
+    let runtime_settings =
+        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+            max_concurrent: params.max_concurrent,
+            retry_count: params.retry_count,
+            timeout_seconds: params.timeout_seconds,
+        });
+
+    state.cancel_flag.store(false, Ordering::Relaxed);
+
+    let transfer_id = format!("dl-files-{}", chrono::Utc::now().timestamp_millis());
+    let display_name = format!(
+        "{} file{}",
+        params.entries.len(),
+        if params.entries.len() == 1 { "" } else { "s" }
+    );
+    let batch_path = params
+        .entries
+        .first()
+        .map(|entry| {
+            PathBuf::from(&entry.remote_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: display_name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Starting batch download: {}", display_name)),
+            progress: Some(TransferProgress {
+                transfer_id: transfer_id.clone(),
+                filename: display_name.clone(),
+                transferred: 0,
+                total: params.entries.len() as u64,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
+                direction: "download".to_string(),
+                total_files: Some(params.entries.len() as u64),
+                path: Some(batch_path.clone()),
+            }),
+            path: Some(batch_path.clone()),
+        },
+    );
+
+    for entry in &params.entries {
+        if let Some(parent) = Path::new(&entry.local_path).parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("Failed to create local directory {}: {}", parent.display(), e))?;
+        }
+    }
+
+    let connection_spec = {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        ftp_manager.apply_transfer_timeout(runtime_settings.timeout_seconds);
+        ftp_manager
+            .connection_spec()
+            .map_err(|e| format!("Failed to derive FTP pool config: {}", e))?
+    };
+
+    let batch_entries = params
+        .entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| transfer_domain::TransferEntry {
+            id: format!("{}-{}", transfer_id, index),
+            ..entry
+        })
+        .collect::<Vec<_>>();
+
+    let total_files_for_progress = batch_entries.len() as u32;
+    let batch = transfer_orchestrator::TransferBatch {
+        id: transfer_id.clone(),
+        display_name: display_name.clone(),
+        direction: transfer_domain::TransferDirection::Download,
+        config: transfer_domain::TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+        },
+        entries: batch_entries,
+    };
+
+    let pool = Arc::new(
+        ftp_session_pool::FtpSessionPool::create(ftp_session_pool::FtpPoolConfig::from_connection(
+            connection_spec,
+            runtime_settings.max_concurrent.max(1) as usize,
+            1,
+            runtime_settings.timeout_seconds * 1000,
+        ))
+        .await
+        .map_err(|e| format!("Failed to create FTP session pool: {}", e))?,
+    );
+
+    let progress_app = app.clone();
+    let progress_transfer_id = transfer_id.clone();
+    let progress_display_name = display_name.clone();
+    let progress_batch_path = batch_path.clone();
+    let progress_observer: transfer_orchestrator::ProgressObserver = Arc::new(move |snapshot| {
+        let processed = snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
+
+        let _ = progress_app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_display_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!(
+                    "Downloaded {} / {} files ({} errors)",
+                    snapshot.completed, total_files_for_progress, snapshot.failed
+                )),
+                progress: Some(TransferProgress {
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_display_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "download".to_string(),
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_batch_path.clone()),
+                }),
+                path: Some(progress_batch_path.clone()),
+            },
+        );
+    });
+
+    let executor = Arc::new(ftp_transfer_executor::FtpDownloadExecutor::new(
+        app.clone(),
+        pool.clone(),
+        runtime_settings,
+        state.cancel_flag.clone(),
+    ));
+
+    let batch_result = transfer_orchestrator::execute_batch(
+        &app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    if let Err(e) = pool.close().await {
+        warn!(
+            "Failed to close FTP session pool cleanly after batch file download: {}",
+            e
+        );
+    }
+
+    let files_downloaded = batch_result.completed;
+    let files_errored = batch_result.failed;
+    let result_message = if batch_result.cancelled {
+        format!(
+            "Download cancelled after {} files",
+            files_downloaded + files_errored
+        )
+    } else {
+        format!("Downloaded {} files, {} errors", files_downloaded, files_errored)
+    };
+
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: if batch_result.cancelled {
+                "cancelled".to_string()
+            } else {
+                "complete".to_string()
+            },
+            transfer_id,
+            filename: display_name,
+            direction: "download".to_string(),
+            message: Some(result_message.clone()),
+            progress: None,
+            path: Some(batch_path),
+        },
+    );
+
+    Ok(result_message)
+}
+
+#[tauri::command]
+async fn upload_files_batch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    params: FileTransferBatchParams,
+) -> Result<String, String> {
+    if state.cancel_flag.load(Ordering::Relaxed) {
+        return Err("Transfer cancelled by user".to_string());
+    }
+
+    if params.entries.is_empty() {
+        return Ok("Uploaded 0 files, 0 errors".to_string());
+    }
+
+    let runtime_settings =
+        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+            max_concurrent: params.max_concurrent,
+            retry_count: params.retry_count,
+            timeout_seconds: params.timeout_seconds,
+        });
+
+    state.cancel_flag.store(false, Ordering::Relaxed);
+
+    let transfer_id = format!("ul-files-{}", chrono::Utc::now().timestamp_millis());
+    let display_name = format!(
+        "{} file{}",
+        params.entries.len(),
+        if params.entries.len() == 1 { "" } else { "s" }
+    );
+    let batch_path = params
+        .entries
+        .first()
+        .map(|entry| {
+            PathBuf::from(&entry.remote_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: display_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Starting batch upload: {}", display_name)),
+            progress: Some(TransferProgress {
+                transfer_id: transfer_id.clone(),
+                filename: display_name.clone(),
+                transferred: 0,
+                total: params.entries.len() as u64,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
+                direction: "upload".to_string(),
+                total_files: Some(params.entries.len() as u64),
+                path: Some(batch_path.clone()),
+            }),
+            path: Some(batch_path.clone()),
+        },
+    );
+
+    let connection_spec = {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        ftp_manager.apply_transfer_timeout(runtime_settings.timeout_seconds);
+        ftp_manager
+            .connection_spec()
+            .map_err(|e| format!("Failed to derive FTP pool config: {}", e))?
+    };
+
+    let batch_entries = params
+        .entries
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry)| transfer_domain::TransferEntry {
+            id: format!("{}-{}", transfer_id, index),
+            ..entry
+        })
+        .collect::<Vec<_>>();
+
+    let total_files_for_progress = batch_entries.len() as u32;
+    let batch = transfer_orchestrator::TransferBatch {
+        id: transfer_id.clone(),
+        display_name: display_name.clone(),
+        direction: transfer_domain::TransferDirection::Upload,
+        config: transfer_domain::TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+        },
+        entries: batch_entries,
+    };
+
+    let pool = Arc::new(
+        ftp_session_pool::FtpSessionPool::create(ftp_session_pool::FtpPoolConfig::from_connection(
+            connection_spec,
+            runtime_settings.max_concurrent.max(1) as usize,
+            1,
+            runtime_settings.timeout_seconds * 1000,
+        ))
+        .await
+        .map_err(|e| format!("Failed to create FTP session pool: {}", e))?,
+    );
+
+    let progress_app = app.clone();
+    let progress_transfer_id = transfer_id.clone();
+    let progress_display_name = display_name.clone();
+    let progress_batch_path = batch_path.clone();
+    let progress_observer: transfer_orchestrator::ProgressObserver = Arc::new(move |snapshot| {
+        let processed = snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
+
+        let _ = progress_app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_display_name.clone(),
+                direction: "upload".to_string(),
+                message: Some(format!(
+                    "Uploaded {} / {} files ({} errors)",
+                    snapshot.completed, total_files_for_progress, snapshot.failed
+                )),
+                progress: Some(TransferProgress {
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_display_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "upload".to_string(),
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_batch_path.clone()),
+                }),
+                path: Some(progress_batch_path.clone()),
+            },
+        );
+    });
+
+    let executor = Arc::new(ftp_transfer_executor::FtpUploadExecutor::new(
+        app.clone(),
+        pool.clone(),
+        runtime_settings,
+        state.cancel_flag.clone(),
+    ));
+
+    let batch_result = transfer_orchestrator::execute_batch(
+        &app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    if let Err(e) = pool.close().await {
+        warn!(
+            "Failed to close FTP session pool cleanly after batch file upload: {}",
+            e
+        );
+    }
+
+    let files_uploaded = batch_result.completed;
+    let files_errored = batch_result.failed;
+    let result_message = if batch_result.cancelled {
+        format!("Upload cancelled after {} files", files_uploaded + files_errored)
+    } else {
+        format!("Uploaded {} files, {} errors", files_uploaded, files_errored)
+    };
+
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: if batch_result.cancelled {
+                "cancelled".to_string()
+            } else {
+                "complete".to_string()
+            },
+            transfer_id,
+            filename: display_name,
+            direction: "upload".to_string(),
+            message: Some(result_message.clone()),
+            progress: None,
+            path: Some(batch_path),
+        },
+    );
+
+    Ok(result_message)
+}
+
 /// Preserve remote file modification time on a downloaded local file.
 /// Parses common ISO 8601 / timestamp formats and sets the file's mtime via `filetime`.
 /// Best-effort: silently ignores failures (e.g. permission denied, unparseable timestamp).
@@ -1880,18 +2314,226 @@ fn should_skip_file_upload(
     }
 }
 
+#[derive(Debug, Default)]
+struct FtpDownloadScanResult {
+    entries: Vec<transfer_domain::TransferEntry>,
+    total_files_discovered: u32,
+    files_skipped: u32,
+    scan_errors: u32,
+    cancelled: bool,
+}
+
+fn parse_remote_modified_datetime(
+    remote_modified: Option<&str>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    let modified_str = remote_modified?;
+    let clean_str = modified_str.strip_suffix('Z').unwrap_or(modified_str);
+
+    chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(modified_str).map(|dt| dt.naive_utc()))
+        .ok()
+        .map(|ndt| ndt.and_utc())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn scan_ftp_download_entries(
+    app: &AppHandle,
+    cancel_flag: &Arc<AtomicBool>,
+    ftp_manager: &mut ftp::FtpManager,
+    remote_path: &str,
+    local_folder_path: &Path,
+    file_exists_action: &str,
+    transfer_id: &str,
+    folder_name: &str,
+) -> Result<FtpDownloadScanResult, String> {
+    let mut result = FtpDownloadScanResult::default();
+    let base_local = local_folder_path.to_path_buf();
+    let mut dirs_to_scan: Vec<(String, PathBuf)> =
+        vec![(remote_path.to_string(), local_folder_path.to_path_buf())];
+    let mut last_scan_emit = std::time::Instant::now();
+    let mut file_index: u32 = 0;
+
+    while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            result.cancelled = true;
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.to_string(),
+                    filename: folder_name.to_string(),
+                    direction: "download".to_string(),
+                    message: Some("Download cancelled during scan".to_string()),
+                    progress: None,
+                    path: Some(remote_path.to_string()),
+                },
+            );
+            return Ok(result);
+        }
+
+        if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
+            warn!("Cannot access remote directory {}: {}", remote_dir, e);
+            continue;
+        }
+
+        let files = match ftp_manager.list_files().await {
+            Ok(files) => files,
+            Err(e) => {
+                warn!("Cannot list files in {}: {}", remote_dir, e);
+                continue;
+            }
+        };
+
+        for file in files {
+            let safe_name = match crate::provider_commands::sanitize_remote_filename(&file.name) {
+                Ok(name) => name,
+                Err(error) => {
+                    warn!("Skipping unsafe FTP remote entry {}: {}", file.name, error);
+                    result.scan_errors += 1;
+                    continue;
+                }
+            };
+            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
+            let local_file_path = local_dir.join(&safe_name);
+
+            if file.is_dir {
+                if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
+                    warn!(
+                        "Failed to create local directory {}: {}",
+                        local_file_path.display(),
+                        e
+                    );
+                    result.scan_errors += 1;
+                    continue;
+                }
+
+                if let Err(error) =
+                    crate::provider_commands::verify_path_containment(&base_local, &local_file_path)
+                {
+                    warn!(
+                        "Skipping FTP directory {} due to unsafe local target {}: {}",
+                        remote_file_path,
+                        local_file_path.display(),
+                        error
+                    );
+                    result.scan_errors += 1;
+                    continue;
+                }
+
+                dirs_to_scan.push((remote_file_path, local_file_path));
+                continue;
+            }
+
+            result.total_files_discovered += 1;
+            let modified_dt = parse_remote_modified_datetime(file.modified.as_deref());
+
+            if let Some(parent) = local_file_path.parent() {
+                if parent.exists() {
+                    if let Err(error) = crate::provider_commands::verify_path_containment(
+                        &base_local,
+                        &local_file_path,
+                    ) {
+                        warn!(
+                            "Skipping FTP file {} due to unsafe local target {}: {}",
+                            remote_file_path,
+                            local_file_path.display(),
+                            error
+                        );
+                        result.scan_errors += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+                if let Ok(local_meta) = std::fs::metadata(&local_file_path) {
+                    if local_meta.is_file()
+                        && should_skip_file_download(
+                            file_exists_action,
+                            modified_dt,
+                            file.size.unwrap_or(0),
+                            &local_meta,
+                        )
+                    {
+                        result.files_skipped += 1;
+                        let _ = app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "file_skip".to_string(),
+                                transfer_id: transfer_id.to_string(),
+                                filename: safe_name.clone(),
+                                direction: "download".to_string(),
+                                message: Some(format!("Skipped (identical): {}", safe_name)),
+                                progress: None,
+                                path: Some(remote_file_path.clone()),
+                            },
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            let file_transfer_id = format!("{}-{}", transfer_id, file_index);
+            file_index += 1;
+
+            result.entries.push(transfer_domain::TransferEntry {
+                id: file_transfer_id,
+                display_name: safe_name,
+                remote_path: remote_file_path,
+                local_path: local_file_path.to_string_lossy().to_string(),
+                size: file.size.unwrap_or(0),
+                modified: file.modified,
+            });
+        }
+
+        if last_scan_emit.elapsed().as_millis() > 500 || result.total_files_discovered <= 1 {
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: transfer_id.to_string(),
+                    filename: folder_name.to_string(),
+                    direction: "download".to_string(),
+                    message: Some(format!(
+                        "Scanning... {} files found, {} skipped ({} dirs queued)",
+                        result.total_files_discovered,
+                        result.files_skipped,
+                        dirs_to_scan.len()
+                    )),
+                    progress: None,
+                    path: Some(remote_path.to_string()),
+                },
+            );
+            last_scan_emit = std::time::Instant::now();
+        }
+    }
+
+    Ok(result)
+}
+
 #[tauri::command]
 async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: DownloadFolderParams,
 ) -> Result<String, String> {
+    let runtime_settings =
+        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+            max_concurrent: params.max_concurrent,
+            retry_count: params.retry_count,
+            timeout_seconds: params.timeout_seconds,
+        });
     info!(
-        "Downloading folder: {} -> {}",
-        params.remote_path, params.local_path
+        "Downloading folder: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        params.remote_path,
+        params.local_path,
+        runtime_settings.max_concurrent,
+        runtime_settings.retry_count,
+        runtime_settings.timeout_seconds
     );
 
-    // Reset cancel flag
     state.cancel_flag.store(false, Ordering::Relaxed);
 
     let folder_name = PathBuf::from(&params.remote_path)
@@ -1901,7 +2543,6 @@ async fn download_folder(
 
     let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
 
-    // Emit start event
     let _ = app.emit(
         "transfer_event",
         TransferEvent {
@@ -1915,9 +2556,7 @@ async fn download_folder(
         },
     );
 
-    // Create local directory
     let local_folder_path = PathBuf::from(&params.local_path);
-
     if let Err(e) = tokio::fs::create_dir_all(&local_folder_path).await {
         let _ = app.emit(
             "transfer_event",
@@ -1934,430 +2573,152 @@ async fn download_folder(
         return Err(format!("Failed to create local directory: {}", e));
     }
 
-    // Get file list from remote folder
-    let mut ftp_manager = state.ftp_manager.lock().await;
-    let original_path = ftp_manager.current_path();
+    let (scan_result, connection_spec) = {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        ftp_manager.apply_transfer_timeout(runtime_settings.timeout_seconds);
+        let original_path = ftp_manager.current_path();
 
-    // ── Streaming scan + transfer: directory-by-directory interleaving ──
-    //
-    // Instead of scanning ALL directories first then downloading ALL files,
-    // we interleave: scan one directory → immediately download its files →
-    // scan next directory → download its files → etc.
-    //
-    // On a single FTP connection, scan and transfer cannot run concurrently
-    // (same TCP control/data channel), but interleaving means the first file
-    // starts downloading after listing just the root directory (~1-2s), not
-    // after the entire recursive scan (~30-40s for deep trees).
+        let scan_result = scan_ftp_download_entries(
+            &app,
+            &state.cancel_flag,
+            &mut ftp_manager,
+            &params.remote_path,
+            &local_folder_path,
+            params.file_exists_action.as_str(),
+            &transfer_id,
+            &folder_name,
+        )
+        .await?;
 
-    #[derive(Debug, Clone)]
-    struct DownloadItem {
-        remote_path: String,
-        local_path: PathBuf,
-        size: u64,
-        name: String,
-        modified: Option<chrono::DateTime<chrono::Utc>>,
-    }
+        let _ = ftp_manager.change_dir(&original_path).await;
 
-    let mut dirs_to_scan: Vec<(String, PathBuf)> =
-        vec![(params.remote_path.clone(), local_folder_path.clone())];
-    let mut downloaded_files: usize = 0;
-    let mut total_files_discovered: usize = 0;
-    let mut dirs_scanned: usize = 0;
-    let mut skipped_files = 0u64;
-    let mut errors = 0;
-    let mut last_scan_emit = std::time::Instant::now();
-    let file_exists_action = params.file_exists_action.as_str();
-
-    while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
-        // ── Check cancel ──
-        if state.cancel_flag.load(Ordering::Relaxed) {
-            info!(
-                "Folder download cancelled by user after {} files",
-                downloaded_files
-            );
-            let _ = app.emit(
-                "transfer_event",
-                TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Download cancelled after {} files",
-                        downloaded_files
-                    )),
-                    progress: None,
-                    path: None,
-                },
-            );
-            let _ = ftp_manager.change_dir(&original_path).await;
-            return Ok(format!(
-                "Download cancelled after {} files",
-                downloaded_files
-            ));
-        }
-
-        // ── Scan this directory ──
-        if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
-            warn!("Cannot access remote directory {}: {}", remote_dir, e);
-            continue;
-        }
-
-        let files = match ftp_manager.list_files().await {
-            Ok(f) => f,
-            Err(e) => {
-                warn!("Cannot list files in {}: {}", remote_dir, e);
-                continue;
-            }
+        let connection_spec = if scan_result.cancelled {
+            None
+        } else {
+            let mut connection_spec = ftp_manager
+                .connection_spec()
+                .map_err(|e| format!("Failed to derive FTP pool config: {}", e))?;
+            connection_spec.initial_path = original_path;
+            Some(connection_spec)
         };
 
-        dirs_scanned += 1;
-        let mut dir_files: Vec<DownloadItem> = Vec::new();
+        (scan_result, connection_spec)
+    };
 
-        for file in files {
-            let remote_file_path = format!("{}/{}", remote_dir.trim_end_matches('/'), file.name);
-            let local_file_path = local_dir.join(&file.name);
-
-            if file.is_dir {
-                // Create local subdir and queue for scanning
-                if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
-                    warn!(
-                        "Failed to create directory {}: {}",
-                        local_file_path.display(),
-                        e
-                    );
-                    errors += 1;
-                }
-                dirs_to_scan.push((remote_file_path, local_file_path));
-            } else {
-                let modified_dt = file.modified.as_ref().and_then(|s| {
-                    let clean = s.strip_suffix('Z').unwrap_or(s);
-                    chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                        .or_else(|_| {
-                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%dT%H:%M:%S")
-                        })
-                        .ok()
-                        .map(|ndt| ndt.and_utc())
-                });
-                dir_files.push(DownloadItem {
-                    remote_path: remote_file_path,
-                    local_path: local_file_path,
-                    size: file.size.unwrap_or(0),
-                    name: file.name,
-                    modified: modified_dt,
-                });
-            }
-        }
-
-        total_files_discovered += dir_files.len();
-
-        // Emit scanning progress
-        if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            let _ = app.emit(
-                "transfer_event",
-                TransferEvent {
-                    event_type: "scanning".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Scanning... {} files found, {} downloaded ({} dirs queued)",
-                        total_files_discovered,
-                        downloaded_files,
-                        dirs_to_scan.len()
-                    )),
-                    progress: None,
-                    path: None,
-                },
-            );
-            last_scan_emit = std::time::Instant::now();
-        }
-
-        // ── Download files from this directory immediately ──
-        for item in &dir_files {
-            // Check cancel before each file
-            if state.cancel_flag.load(Ordering::Relaxed) {
-                info!(
-                    "Folder download cancelled by user after {} files",
-                    downloaded_files
-                );
-                let _ = app.emit(
-                    "transfer_event",
-                    TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!(
-                            "Download cancelled after {} files",
-                            downloaded_files
-                        )),
-                        progress: None,
-                        path: None,
-                    },
-                );
-                let _ = ftp_manager.change_dir(&original_path).await;
-                return Ok(format!(
-                    "Download cancelled after {} files",
-                    downloaded_files
-                ));
-            }
-
-            // Check if local file exists and should be skipped
-            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-                if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
-                    if local_meta.is_file()
-                        && should_skip_file_download(
-                            file_exists_action,
-                            item.modified,
-                            item.size,
-                            &local_meta,
-                        )
-                    {
-                        skipped_files += 1;
-                        let _ = app.emit(
-                            "transfer_event",
-                            TransferEvent {
-                                event_type: "file_skip".to_string(),
-                                transfer_id: transfer_id.clone(),
-                                filename: item.name.clone(),
-                                direction: "download".to_string(),
-                                message: Some(format!("Skipped (identical): {}", item.name)),
-                                progress: None,
-                                path: Some(item.remote_path.clone()),
-                            },
-                        );
-                        continue;
-                    }
-                }
-            }
-
-            // cd to file's parent directory on server
-            if let Some(parent) = PathBuf::from(&item.remote_path).parent() {
-                let parent_str = parent.to_string_lossy().to_string();
-                if !parent_str.is_empty() {
-                    let _ = ftp_manager.change_dir(&parent_str).await;
-                }
-            }
-
-            let file_transfer_id = format!("{}-{}", transfer_id, downloaded_files);
-            let folder_pct = if total_files_discovered > 0 {
-                ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
-            } else {
-                0
-            };
-
-            // Emit file_start
-            let _ = app.emit(
-                "transfer_event",
-                TransferEvent {
-                    event_type: "file_start".to_string(),
-                    transfer_id: file_transfer_id.clone(),
-                    filename: item.name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Downloading ({}/{}+): {}",
-                        downloaded_files + 1,
-                        total_files_discovered,
-                        item.remote_path
-                    )),
-                    progress: Some(TransferProgress {
-                        transfer_id: file_transfer_id.clone(),
-                        filename: item.name.clone(),
-                        transferred: 0,
-                        total: item.size,
-                        percentage: folder_pct,
-                        speed_bps: 0,
-                        eta_seconds: 0,
-                        direction: "download".to_string(),
-                        total_files: Some(total_files_discovered as u64),
-                        path: None,
-                    }),
-                    path: Some(item.remote_path.clone()),
-                },
-            );
-
-            // Download file with streaming progress
-            let file_name_only = PathBuf::from(&item.remote_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| item.name.clone());
-
-            let dl_app = app.clone();
-            let dl_transfer_id = file_transfer_id.clone();
-            let dl_filename = item.name.clone();
-            let dl_file_size = item.size;
-            let dl_start = Instant::now();
-
-            match ftp_manager
-                .download_file_with_progress(
-                    &file_name_only,
-                    item.local_path.to_string_lossy().as_ref(),
-                    |transferred| {
-                        let elapsed = dl_start.elapsed().as_secs_f64();
-                        let speed = if elapsed > 0.0 {
-                            (transferred as f64 / elapsed) as u64
-                        } else {
-                            0
-                        };
-                        let pct = if dl_file_size > 0 {
-                            ((transferred as f64 / dl_file_size as f64) * 100.0) as u8
-                        } else {
-                            0
-                        };
-                        let eta = if speed > 0 && dl_file_size > transferred {
-                            ((dl_file_size - transferred) / speed) as u32
-                        } else {
-                            0
-                        };
-
-                        let _ = dl_app.emit(
-                            "transfer_event",
-                            TransferEvent {
-                                event_type: "progress".to_string(),
-                                transfer_id: dl_transfer_id.clone(),
-                                filename: dl_filename.clone(),
-                                direction: "download".to_string(),
-                                message: None,
-                                progress: Some(TransferProgress {
-                                    transfer_id: dl_transfer_id.clone(),
-                                    filename: dl_filename.clone(),
-                                    transferred,
-                                    total: dl_file_size,
-                                    percentage: pct,
-                                    speed_bps: speed,
-                                    eta_seconds: eta,
-                                    direction: "download".to_string(),
-                                    total_files: None,
-                                    path: None,
-                                }),
-                                path: None,
-                            },
-                        );
-                        true
-                    },
-                )
-                .await
-            {
-                Ok(_) => {
-                    preserve_remote_mtime_dt(&item.local_path, item.modified);
-                    downloaded_files += 1;
-
-                    let percentage = if total_files_discovered > 0 {
-                        ((downloaded_files as f64 / total_files_discovered as f64) * 100.0) as u8
-                    } else {
-                        100
-                    };
-
-                    let _ = app.emit(
-                        "transfer_event",
-                        TransferEvent {
-                            event_type: "file_complete".to_string(),
-                            transfer_id: file_transfer_id.clone(),
-                            filename: item.name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!(
-                                "Downloaded: {} ({}/{}+)",
-                                item.name, downloaded_files, total_files_discovered
-                            )),
-                            progress: Some(TransferProgress {
-                                transfer_id: transfer_id.clone(),
-                                filename: item.name.clone(),
-                                transferred: item.size,
-                                total: item.size,
-                                percentage,
-                                speed_bps: 0,
-                                eta_seconds: 0,
-                                direction: "download".to_string(),
-                                total_files: None,
-                                path: None,
-                            }),
-                            path: Some(item.remote_path.clone()),
-                        },
-                    );
-
-                    // Emit folder progress (for folder row counter in queue)
-                    let _ = app.emit(
-                        "transfer_event",
-                        TransferEvent {
-                            event_type: "progress".to_string(),
-                            transfer_id: transfer_id.clone(),
-                            filename: folder_name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!(
-                                "Downloaded {}/{}+ files",
-                                downloaded_files, total_files_discovered
-                            )),
-                            progress: Some(TransferProgress {
-                                transfer_id: transfer_id.clone(),
-                                filename: folder_name.clone(),
-                                transferred: downloaded_files as u64,
-                                total: total_files_discovered as u64,
-                                percentage,
-                                speed_bps: 0,
-                                eta_seconds: 0,
-                                direction: "download".to_string(),
-                                total_files: Some(total_files_discovered as u64),
-                                path: Some(params.remote_path.clone()),
-                            }),
-                            path: Some(params.remote_path.clone()),
-                        },
-                    );
-
-                    info!(
-                        "Downloaded: {} ({}/{}+)",
-                        item.name, downloaded_files, total_files_discovered
-                    );
-                }
-                Err(e) => {
-                    errors += 1;
-                    warn!("Failed to download {}: {}", item.name, e);
-                    let _ = app.emit(
-                        "transfer_event",
-                        TransferEvent {
-                            event_type: "file_error".to_string(),
-                            transfer_id: file_transfer_id,
-                            filename: item.name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!("Failed: {} - {}", item.name, e)),
-                            progress: None,
-                            path: Some(item.remote_path.clone()),
-                        },
-                    );
-                }
-            }
-        }
+    if scan_result.cancelled {
+        return Ok("Download cancelled after 0 files".to_string());
     }
 
-    info!(
-        "Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
-        folder_name, downloaded_files, skipped_files, errors
+    let batch = transfer_orchestrator::TransferBatch {
+        id: transfer_id.clone(),
+        display_name: folder_name.clone(),
+        direction: transfer_domain::TransferDirection::Download,
+        config: transfer_domain::TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+        },
+        entries: scan_result.entries,
+    };
+
+    let pool = Arc::new(
+        ftp_session_pool::FtpSessionPool::create(ftp_session_pool::FtpPoolConfig::from_connection(
+            connection_spec.ok_or("FTP pool configuration unavailable".to_string())?,
+            runtime_settings.max_concurrent.max(1) as usize,
+            1,
+            runtime_settings.timeout_seconds * 1000,
+        ))
+        .await
+        .map_err(|e| format!("Failed to create FTP session pool: {}", e))?,
     );
 
-    // Return to original directory
-    let _ = ftp_manager.change_dir(&original_path).await;
+    let progress_app = app.clone();
+    let total_files_for_progress = scan_result.total_files_discovered;
+    let initial_skipped = scan_result.files_skipped;
+    let progress_transfer_id = transfer_id.clone();
+    let progress_folder_name = folder_name.clone();
+    let progress_remote_path = params.remote_path.clone();
+    let progress_observer: transfer_orchestrator::ProgressObserver = Arc::new(move |snapshot| {
+        let processed = initial_skipped + snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
 
-    // Emit complete event
-    let result_message = if errors > 0 && skipped_files > 0 {
+        let _ = progress_app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!(
+                    "Downloaded {} / {} files ({} skipped, {} errors)",
+                    snapshot.completed,
+                    total_files_for_progress,
+                    initial_skipped,
+                    snapshot.failed
+                )),
+                progress: Some(TransferProgress {
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_folder_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "download".to_string(),
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_remote_path.clone()),
+                }),
+                path: Some(progress_remote_path.clone()),
+            },
+        );
+    });
+
+    let executor = Arc::new(ftp_transfer_executor::FtpDownloadExecutor::new(
+        app.clone(),
+        pool.clone(),
+        runtime_settings,
+        state.cancel_flag.clone(),
+    ));
+
+    let batch_result = transfer_orchestrator::execute_batch(
+        &app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    if let Err(e) = pool.close().await {
+        warn!("Failed to close FTP session pool cleanly: {}", e);
+    }
+
+    let files_downloaded = batch_result.completed;
+    let files_errored = batch_result.failed + scan_result.scan_errors;
+    let result_message = if batch_result.cancelled {
+        format!(
+            "Download cancelled after {} files",
+            files_downloaded + scan_result.files_skipped + files_errored
+        )
+    } else {
         format!(
             "Downloaded {} files, {} skipped, {} errors",
-            downloaded_files, skipped_files, errors
+            files_downloaded, scan_result.files_skipped, files_errored
         )
-    } else if skipped_files > 0 {
-        format!(
-            "Downloaded {} files, {} skipped",
-            downloaded_files, skipped_files
-        )
-    } else if errors > 0 {
-        format!("Downloaded {} files ({} errors)", downloaded_files, errors)
-    } else {
-        format!("Downloaded {} files successfully", downloaded_files)
     };
 
     let _ = app.emit(
         "transfer_event",
         TransferEvent {
-            event_type: "complete".to_string(),
+            event_type: if batch_result.cancelled {
+                "cancelled".to_string()
+            } else {
+                "complete".to_string()
+            },
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
             direction: "download".to_string(),
@@ -2373,18 +2734,311 @@ async fn download_folder(
 /// Upload an entire folder to the FTP server with full recursive support.
 /// Uses stack-based iterative traversal to upload ALL files in ALL subdirectories.
 /// Emits per-file events for activity log visibility.
+#[derive(Debug, Default)]
+struct FtpUploadPreparationResult {
+    entries: Vec<transfer_domain::TransferEntry>,
+    total_files_discovered: u32,
+    total_dirs_discovered: u32,
+    files_skipped: u32,
+    scan_errors: u32,
+    cancelled: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn prepare_ftp_upload_entries(
+    app: &AppHandle,
+    cancel_flag: &Arc<AtomicBool>,
+    ftp_manager: &mut ftp::FtpManager,
+    local_base_path: &Path,
+    remote_base_path: &str,
+    file_exists_action: &str,
+    transfer_id: &str,
+    folder_name: &str,
+) -> Result<FtpUploadPreparationResult, String> {
+    #[derive(Debug)]
+    struct UploadItem {
+        local_path: PathBuf,
+        remote_path: String,
+        size: u64,
+        name: String,
+    }
+
+    let mut result = FtpUploadPreparationResult::default();
+    let mut files_to_upload: Vec<UploadItem> = Vec::new();
+    let mut dirs_to_create: Vec<String> = vec![remote_base_path.to_string()];
+    let mut dirs_to_scan: Vec<(PathBuf, String)> =
+        vec![(local_base_path.to_path_buf(), remote_base_path.to_string())];
+    let mut scan_counter: u64 = 0;
+    let mut last_scan_emit = std::time::Instant::now();
+
+    while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            result.cancelled = true;
+            let _ = app.emit(
+                "transfer_event",
+                TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.to_string(),
+                    filename: folder_name.to_string(),
+                    direction: "upload".to_string(),
+                    message: Some("Upload cancelled during scan".to_string()),
+                    progress: None,
+                    path: Some(remote_base_path.to_string()),
+                },
+            );
+            return Ok(result);
+        }
+
+        let mut read_dir = match tokio::fs::read_dir(&current_local_dir).await {
+            Ok(rd) => rd,
+            Err(e) => {
+                warn!("Failed to read directory {:?}: {}", current_local_dir, e);
+                result.scan_errors += 1;
+                continue;
+            }
+        };
+
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
+            let local_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let remote_path = format!("{}/{}", current_remote_dir, name);
+
+            let file_type = match entry.file_type().await {
+                Ok(file_type) => file_type,
+                Err(error) => {
+                    warn!("Failed to read file type for {:?}: {}", local_path, error);
+                    result.scan_errors += 1;
+                    continue;
+                }
+            };
+
+            if file_type.is_symlink() {
+                result.files_skipped += 1;
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "file_skip".to_string(),
+                        transfer_id: transfer_id.to_string(),
+                        filename: name.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!("Skipped symlink: {}", name)),
+                        progress: None,
+                        path: Some(remote_path.clone()),
+                    },
+                );
+                continue;
+            }
+
+            if file_type.is_dir() {
+                dirs_to_scan.push((local_path.clone(), remote_path.clone()));
+                dirs_to_create.push(remote_path);
+                result.total_dirs_discovered += 1;
+            } else if file_type.is_file() {
+                let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+                files_to_upload.push(UploadItem {
+                    local_path,
+                    remote_path,
+                    size,
+                    name,
+                });
+                result.total_files_discovered += 1;
+            }
+
+            scan_counter += 1;
+            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
+                let _ = app.emit(
+                    "transfer_event",
+                    TransferEvent {
+                        event_type: "scanning".to_string(),
+                        transfer_id: transfer_id.to_string(),
+                        filename: folder_name.to_string(),
+                        direction: "upload".to_string(),
+                        message: Some(format!(
+                            "Scanning... {} files, {} folders found",
+                            result.total_files_discovered,
+                            result.total_dirs_discovered + 1
+                        )),
+                        progress: None,
+                        path: Some(remote_base_path.to_string()),
+                    },
+                );
+                last_scan_emit = std::time::Instant::now();
+            }
+        }
+    }
+
+    let _ = app.emit(
+        "transfer_event",
+        TransferEvent {
+            event_type: "scanning".to_string(),
+            transfer_id: transfer_id.to_string(),
+            filename: folder_name.to_string(),
+            direction: "upload".to_string(),
+            message: Some(format!(
+                "Scan complete: {} files in {} folders",
+                result.total_files_discovered,
+                result.total_dirs_discovered + 1
+            )),
+            progress: None,
+            path: Some(remote_base_path.to_string()),
+        },
+    );
+
+    let mut dirs_sorted = dirs_to_create;
+    dirs_sorted.sort_by_key(|a| a.matches('/').count());
+
+    for remote_dir in &dirs_sorted {
+        if cancel_flag.load(Ordering::Relaxed) {
+            result.cancelled = true;
+            break;
+        }
+
+        match ftp_manager.mkdir(remote_dir).await {
+            Ok(_) => {}
+            Err(e) => {
+                let err_str = e.to_string().to_lowercase();
+                if !err_str.contains("exist") && !err_str.contains("550") {
+                    warn!("Could not create directory {}: {}", remote_dir, e);
+                    result.scan_errors += 1;
+                }
+            }
+        }
+    }
+
+    if result.cancelled {
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: transfer_id.to_string(),
+                filename: folder_name.to_string(),
+                direction: "upload".to_string(),
+                message: Some("Upload cancelled before transfer execution".to_string()),
+                progress: None,
+                path: Some(remote_base_path.to_string()),
+            },
+        );
+        return Ok(result);
+    }
+
+    let mut remote_index: std::collections::HashMap<
+        String,
+        (u64, Option<chrono::DateTime<chrono::Utc>>),
+    > = std::collections::HashMap::new();
+
+    if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+        let saved_path = ftp_manager.current_path();
+        for remote_dir in &dirs_sorted {
+            if cancel_flag.load(Ordering::Relaxed) {
+                result.cancelled = true;
+                break;
+            }
+
+            if ftp_manager.change_dir(remote_dir).await.is_ok() {
+                if let Ok(entries) = ftp_manager.list_files().await {
+                    for entry in entries {
+                        if !entry.is_dir {
+                            let remote_file_path =
+                                format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
+                            let modified_dt = parse_remote_modified_datetime(entry.modified.as_deref());
+                            remote_index.insert(
+                                remote_file_path,
+                                (entry.size.unwrap_or(0), modified_dt),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let _ = ftp_manager.change_dir(&saved_path).await;
+    }
+
+    if result.cancelled {
+        let _ = app.emit(
+            "transfer_event",
+            TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: transfer_id.to_string(),
+                filename: folder_name.to_string(),
+                direction: "upload".to_string(),
+                message: Some("Upload cancelled before transfer execution".to_string()),
+                progress: None,
+                path: Some(remote_base_path.to_string()),
+            },
+        );
+        return Ok(result);
+    }
+
+    let mut file_index: u32 = 0;
+    for item in files_to_upload {
+        if cancel_flag.load(Ordering::Relaxed) {
+            result.cancelled = true;
+            break;
+        }
+
+        if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+            if let Some(&(remote_size, remote_modified)) = remote_index.get(&item.remote_path) {
+                if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
+                    if should_skip_file_upload(
+                        file_exists_action,
+                        &local_meta,
+                        remote_size,
+                        remote_modified,
+                    ) {
+                        result.files_skipped += 1;
+                        let _ = app.emit(
+                            "transfer_event",
+                            TransferEvent {
+                                event_type: "file_skip".to_string(),
+                                transfer_id: transfer_id.to_string(),
+                                filename: item.name.clone(),
+                                direction: "upload".to_string(),
+                                message: Some(format!("Skipped (identical): {}", item.name)),
+                                progress: None,
+                                path: Some(item.remote_path.clone()),
+                            },
+                        );
+                        continue;
+                    }
+                }
+            }
+        }
+
+        result.entries.push(transfer_domain::TransferEntry {
+            id: format!("ul-{}-{}", transfer_id, file_index),
+            display_name: item.name,
+            remote_path: item.remote_path,
+            local_path: item.local_path.to_string_lossy().to_string(),
+            size: item.size,
+            modified: None,
+        });
+        file_index += 1;
+    }
+
+    Ok(result)
+}
+
 #[tauri::command]
 async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: UploadFolderParams,
 ) -> Result<String, String> {
+    let runtime_settings =
+        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+            max_concurrent: params.max_concurrent,
+            retry_count: params.retry_count,
+            timeout_seconds: params.timeout_seconds,
+        });
     info!(
-        "Uploading folder recursively: {} -> {}",
-        params.local_path, params.remote_path
+        "Uploading folder recursively: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        params.local_path,
+        params.remote_path,
+        runtime_settings.max_concurrent,
+        runtime_settings.retry_count,
+        runtime_settings.timeout_seconds
     );
 
-    // Reset cancel flag
     state.cancel_flag.store(false, Ordering::Relaxed);
 
     let folder_name = PathBuf::from(&params.local_path)
@@ -2394,7 +3048,6 @@ async fn upload_folder(
 
     let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
 
-    // Emit folder upload start event
     let _ = app.emit(
         "transfer_event",
         TransferEvent {
@@ -2409,7 +3062,6 @@ async fn upload_folder(
     );
 
     let local_base_path = PathBuf::from(&params.local_path);
-
     if !local_base_path.is_dir() {
         let _ = app.emit(
             "transfer_event",
@@ -2426,463 +3078,154 @@ async fn upload_folder(
         return Err("Source is not a directory".to_string());
     }
 
-    // Get FTP connection
-    let mut ftp_manager = state.ftp_manager.lock().await;
-    let current_remote_path = ftp_manager.current_path();
-
-    // Determine remote base folder path
-    let remote_base_path = if params.remote_path.is_empty() || params.remote_path == "." {
-        if current_remote_path == "/" {
-            format!("/{}", folder_name)
-        } else {
-            format!("{}/{}", current_remote_path, folder_name)
-        }
-    } else {
-        params.remote_path.clone()
-    };
-
-    // ============ PHASE 1: Recursively scan ALL local files and directories ============
-    // Using stack-based traversal instead of recursion for better control
-
-    struct UploadItem {
-        local_path: PathBuf,
-        remote_path: String,
-        is_dir: bool,
-        size: u64,
-        name: String,
-    }
-
-    let mut items_to_upload: Vec<UploadItem> = Vec::new();
-    let mut dirs_to_create: Vec<String> = Vec::new();
-
-    // Stack for directory traversal: (local_dir_path, remote_dir_path)
-    let mut dirs_to_scan: Vec<(PathBuf, String)> =
-        vec![(local_base_path.clone(), remote_base_path.clone())];
-
-    // Add the root folder to create
-    dirs_to_create.push(remote_base_path.clone());
-
-    info!("Phase 1: Scanning local directory structure...");
-
-    let mut scan_counter: u64 = 0;
-    let mut last_scan_emit = std::time::Instant::now();
-
-    while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
-        let mut read_dir = match tokio::fs::read_dir(&current_local_dir).await {
-            Ok(rd) => rd,
-            Err(e) => {
-                warn!("Failed to read directory {:?}: {}", current_local_dir, e);
-                continue;
+    let (prep_result, remote_base_path, connection_spec) = {
+        let mut ftp_manager = state.ftp_manager.lock().await;
+        ftp_manager.apply_transfer_timeout(runtime_settings.timeout_seconds);
+        let current_remote_path = ftp_manager.current_path();
+        let remote_base_path = if params.remote_path.is_empty() || params.remote_path == "." {
+            if current_remote_path == "/" {
+                format!("/{}", folder_name)
+            } else {
+                format!("{}/{}", current_remote_path, folder_name)
             }
+        } else {
+            params.remote_path.clone()
         };
 
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
-            let local_path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-            let remote_path = format!("{}/{}", current_remote_dir, name);
+        let prep_result = prepare_ftp_upload_entries(
+            &app,
+            &state.cancel_flag,
+            &mut ftp_manager,
+            &local_base_path,
+            &remote_base_path,
+            params.file_exists_action.as_str(),
+            &transfer_id,
+            &folder_name,
+        )
+        .await?;
 
-            if local_path.is_dir() {
-                // Queue this directory for scanning
-                dirs_to_scan.push((local_path.clone(), remote_path.clone()));
-                // Add directory to create list
-                dirs_to_create.push(remote_path.clone());
+        let mut connection_spec = ftp_manager
+            .connection_spec()
+            .map_err(|e| format!("Failed to derive FTP pool config: {}", e))?;
+        connection_spec.initial_path = current_remote_path;
 
-                items_to_upload.push(UploadItem {
-                    local_path,
-                    remote_path,
-                    is_dir: true,
-                    size: 0,
-                    name,
-                });
-            } else if local_path.is_file() {
-                let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+        (prep_result, remote_base_path, connection_spec)
+    };
 
-                items_to_upload.push(UploadItem {
-                    local_path,
-                    remote_path,
-                    is_dir: false,
-                    size,
-                    name,
-                });
-            }
-
-            scan_counter += 1;
-
-            // Emit scan progress every 500ms or every 100 files
-            if last_scan_emit.elapsed().as_millis() > 500 || scan_counter % 100 == 0 {
-                let files_found = items_to_upload.iter().filter(|i| !i.is_dir).count();
-                let dirs_found = dirs_to_create.len();
-                let _ = app.emit(
-                    "transfer_event",
-                    TransferEvent {
-                        event_type: "scanning".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "upload".to_string(),
-                        message: Some(format!(
-                            "Scanning... {} files, {} folders found",
-                            files_found, dirs_found
-                        )),
-                        progress: None,
-                        path: None,
-                    },
-                );
-                last_scan_emit = std::time::Instant::now();
-            }
-        }
+    if prep_result.cancelled {
+        return Ok("Upload cancelled after 0 files".to_string());
     }
 
-    // Separate files from directories
-    let files_to_upload: Vec<&UploadItem> =
-        items_to_upload.iter().filter(|item| !item.is_dir).collect();
-
-    let total_files = files_to_upload.len();
-    let total_dirs = dirs_to_create.len();
-    let total_size: u64 = files_to_upload.iter().map(|f| f.size).sum();
-
-    info!(
-        "Phase 1 complete: Found {} files in {} directories (total: {} bytes)",
-        total_files, total_dirs, total_size
-    );
-
-    // Update event with scan results
-    let _ = app.emit(
-        "transfer_event",
-        TransferEvent {
-            event_type: "scanning".to_string(),
-            transfer_id: transfer_id.clone(),
-            filename: folder_name.clone(),
-            direction: "upload".to_string(),
-            message: Some(format!(
-                "Scan complete: {} files in {} folders",
-                total_files, total_dirs
-            )),
-            progress: None,
-            path: None,
+    let batch = transfer_orchestrator::TransferBatch {
+        id: transfer_id.clone(),
+        display_name: folder_name.clone(),
+        direction: transfer_domain::TransferDirection::Upload,
+        config: transfer_domain::TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
         },
+        entries: prep_result.entries,
+    };
+
+    let pool = Arc::new(
+        ftp_session_pool::FtpSessionPool::create(ftp_session_pool::FtpPoolConfig::from_connection(
+            connection_spec,
+            runtime_settings.max_concurrent.max(1) as usize,
+            1,
+            runtime_settings.timeout_seconds * 1000,
+        ))
+        .await
+        .map_err(|e| format!("Failed to create FTP session pool: {}", e))?,
     );
 
-    // ============ PHASE 2: Create all remote directories first ============
-    info!("Phase 2: Creating {} remote directories...", total_dirs);
+    let progress_app = app.clone();
+    let total_files_for_progress = prep_result.total_files_discovered;
+    let initial_skipped = prep_result.files_skipped;
+    let progress_transfer_id = transfer_id.clone();
+    let progress_folder_name = folder_name.clone();
+    let progress_remote_path = remote_base_path.clone();
+    let progress_observer: transfer_orchestrator::ProgressObserver = Arc::new(move |snapshot| {
+        let processed = initial_skipped + snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
 
-    // Sort directories by depth (shortest first) to ensure parent dirs exist
-    let mut dirs_sorted = dirs_to_create.clone();
-    dirs_sorted.sort_by_key(|a| a.matches('/').count());
-
-    for remote_dir in &dirs_sorted {
-        match ftp_manager.mkdir(remote_dir).await {
-            Ok(_) => info!("Created remote directory: {}", remote_dir),
-            Err(e) => {
-                // Ignore "directory exists" errors
-                let err_str = e.to_string().to_lowercase();
-                if !err_str.contains("exist") && !err_str.contains("550") {
-                    warn!("Could not create directory {}: {}", remote_dir, e);
-                }
-            }
-        }
-    }
-
-    // ============ PHASE 2.5: Collect remote file metadata for smart comparison ============
-    let file_exists_action = params.file_exists_action.as_str();
-    let mut remote_index: std::collections::HashMap<
-        String,
-        (u64, Option<chrono::DateTime<chrono::Utc>>),
-    > = std::collections::HashMap::new();
-
-    if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-        info!(
-            "Phase 2.5: Listing remote files for comparison (action: {})...",
-            file_exists_action
-        );
-        // Save current directory so we can restore it after scanning
-        let saved_path = ftp_manager.current_path();
-        for remote_dir in &dirs_sorted {
-            // Change to directory and list files
-            if ftp_manager.change_dir(remote_dir).await.is_ok() {
-                if let Ok(entries) = ftp_manager.list_files().await {
-                    for entry in entries {
-                        if !entry.is_dir {
-                            let remote_file_path =
-                                format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
-                            let modified_dt = entry.modified.as_ref().and_then(|s| {
-                                let clean = s.strip_suffix('Z').unwrap_or(s);
-                                chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S")
-                                    .or_else(|_| {
-                                        chrono::NaiveDateTime::parse_from_str(
-                                            clean,
-                                            "%Y-%m-%dT%H:%M:%S",
-                                        )
-                                    })
-                                    .ok()
-                                    .map(|ndt| ndt.and_utc())
-                            });
-                            remote_index
-                                .insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
-                        }
-                    }
-                }
-            }
-        }
-        // Restore original directory to prevent panel navigation after upload
-        if let Err(e) = ftp_manager.change_dir(&saved_path).await {
-            warn!("Could not restore directory to {}: {}", saved_path, e);
-        }
-        info!(
-            "Phase 2.5 complete: {} remote files indexed for comparison",
-            remote_index.len()
-        );
-    }
-
-    // ============ PHASE 3: Upload all files with per-file events ============
-    info!("Phase 3: Uploading {} files...", total_files);
-
-    let mut uploaded_files = 0u64;
-    let mut skipped_files = 0u64;
-    let mut errors = 0u64;
-
-    for item in &files_to_upload {
-        // Check cancel flag before each file
-        if state.cancel_flag.load(Ordering::Relaxed) {
-            info!(
-                "Folder upload cancelled by user after {} files",
-                uploaded_files
-            );
-            let _ = app.emit(
-                "transfer_event",
-                TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "upload".to_string(),
-                    message: Some(format!("Upload cancelled after {} files", uploaded_files)),
-                    progress: None,
-                    path: None,
-                },
-            );
-            return Ok(format!("Upload cancelled after {} files", uploaded_files));
-        }
-
-        // Check if remote file exists and should be skipped
-        if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-            if let Some(&(remote_size, remote_modified)) = remote_index.get(&item.remote_path) {
-                if let Ok(local_meta) = std::fs::metadata(&item.local_path) {
-                    if should_skip_file_upload(
-                        file_exists_action,
-                        &local_meta,
-                        remote_size,
-                        remote_modified,
-                    ) {
-                        skipped_files += 1;
-                        let _ = app.emit(
-                            "transfer_event",
-                            TransferEvent {
-                                event_type: "file_skip".to_string(),
-                                transfer_id: transfer_id.clone(),
-                                filename: item.name.clone(),
-                                direction: "upload".to_string(),
-                                message: Some(format!("Skipped (identical): {}", item.name)),
-                                progress: None,
-                                path: Some(item.remote_path.clone()),
-                            },
-                        );
-                        continue;
-                    }
-                }
-            }
-        }
-
-        let file_transfer_id = format!("ul-{}-{}", transfer_id, uploaded_files);
-
-        // Emit file_start event for activity log
-        let _ = app.emit(
+        let _ = progress_app.emit(
             "transfer_event",
             TransferEvent {
-                event_type: "file_start".to_string(),
-                transfer_id: file_transfer_id.clone(),
-                filename: item.name.clone(),
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_folder_name.clone(),
                 direction: "upload".to_string(),
-                message: Some(format!("Uploading: {}", item.remote_path)),
+                message: Some(format!(
+                    "Uploaded {} / {} files ({} skipped, {} errors)",
+                    snapshot.completed,
+                    total_files_for_progress,
+                    initial_skipped,
+                    snapshot.failed
+                )),
                 progress: Some(TransferProgress {
-                    transfer_id: file_transfer_id.clone(),
-                    filename: item.name.clone(),
-                    transferred: 0,
-                    total: item.size,
-                    percentage: 0,
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_folder_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
                     speed_bps: 0,
                     eta_seconds: 0,
                     direction: "upload".to_string(),
-                    total_files: None,
-                    path: None,
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_remote_path.clone()),
                 }),
-                path: Some(item.remote_path.clone()),
+                path: Some(progress_remote_path.clone()),
             },
         );
+    });
 
-        info!(
-            "Uploading [{}/{}]: {} -> {}",
-            uploaded_files + 1,
-            total_files,
-            item.local_path.display(),
-            item.remote_path
-        );
+    let executor = Arc::new(ftp_transfer_executor::FtpUploadExecutor::new(
+        app.clone(),
+        pool.clone(),
+        runtime_settings,
+        state.cancel_flag.clone(),
+    ));
 
-        let ul_app = app.clone();
-        let ul_transfer_id = file_transfer_id.clone();
-        let ul_filename = item.name.clone();
-        let ul_file_size = item.size;
-        let ul_start = Instant::now();
+    let batch_result = transfer_orchestrator::execute_batch(
+        &app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
 
-        match ftp_manager
-            .upload_file_with_progress(
-                item.local_path.to_string_lossy().as_ref(),
-                &item.remote_path,
-                item.size,
-                |transferred| {
-                    let elapsed = ul_start.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 {
-                        (transferred as f64 / elapsed) as u64
-                    } else {
-                        0
-                    };
-                    let pct = if ul_file_size > 0 {
-                        ((transferred as f64 / ul_file_size as f64) * 100.0) as u8
-                    } else {
-                        0
-                    };
-                    let eta = if speed > 0 && ul_file_size > transferred {
-                        ((ul_file_size - transferred) / speed) as u32
-                    } else {
-                        0
-                    };
-
-                    let _ = ul_app.emit(
-                        "transfer_event",
-                        TransferEvent {
-                            event_type: "progress".to_string(),
-                            transfer_id: ul_transfer_id.clone(),
-                            filename: ul_filename.clone(),
-                            direction: "upload".to_string(),
-                            message: None,
-                            progress: Some(TransferProgress {
-                                transfer_id: ul_transfer_id.clone(),
-                                filename: ul_filename.clone(),
-                                transferred,
-                                total: ul_file_size,
-                                percentage: pct,
-                                speed_bps: speed,
-                                eta_seconds: eta,
-                                direction: "upload".to_string(),
-                                total_files: None,
-                                path: None,
-                            }),
-                            path: None,
-                        },
-                    );
-                    true // no cancel from sync
-                },
-            )
-            .await
-        {
-            Ok(_) => {
-                uploaded_files += 1;
-                let percentage = if total_files > 0 {
-                    ((uploaded_files as f64 / total_files as f64) * 100.0) as u8
-                } else {
-                    100
-                };
-
-                // Emit file_complete event
-                let _ = app.emit(
-                    "transfer_event",
-                    TransferEvent {
-                        event_type: "file_complete".to_string(),
-                        transfer_id: file_transfer_id.clone(),
-                        filename: item.name.clone(),
-                        direction: "upload".to_string(),
-                        message: Some(format!("Uploaded: {} ({} bytes)", item.name, item.size)),
-                        progress: Some(TransferProgress {
-                            transfer_id: file_transfer_id,
-                            filename: item.name.clone(),
-                            transferred: item.size,
-                            total: item.size,
-                            percentage: 100,
-                            speed_bps: 0,
-                            eta_seconds: 0,
-                            direction: "upload".to_string(),
-                            total_files: None,
-                            path: None,
-                        }),
-                        path: Some(item.remote_path.clone()),
-                    },
-                );
-
-                // Emit folder progress event
-                let _ = app.emit(
-                    "transfer_event",
-                    TransferEvent {
-                        event_type: "progress".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "upload".to_string(),
-                        message: Some(format!("Uploaded {}/{} files", uploaded_files, total_files)),
-                        progress: Some(TransferProgress {
-                            transfer_id: transfer_id.clone(),
-                            filename: folder_name.clone(),
-                            transferred: uploaded_files,
-                            total: total_files as u64,
-                            percentage,
-                            speed_bps: 0,
-                            eta_seconds: 0,
-                            direction: "upload".to_string(),
-                            total_files: Some(total_files as u64),
-                            path: Some(remote_base_path.clone()),
-                        }),
-                        path: Some(remote_base_path.clone()),
-                    },
-                );
-            }
-            Err(e) => {
-                errors += 1;
-                warn!("Failed to upload file {}: {}", item.name, e);
-
-                // Emit file_error event
-                let _ = app.emit(
-                    "transfer_event",
-                    TransferEvent {
-                        event_type: "file_error".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: item.name.clone(),
-                        direction: "upload".to_string(),
-                        message: Some(format!("Failed to upload {}: {}", item.name, e)),
-                        progress: None,
-                        path: Some(item.remote_path.clone()),
-                    },
-                );
-            }
-        }
+    if let Err(e) = pool.close().await {
+        warn!("Failed to close FTP session pool cleanly after upload: {}", e);
     }
 
-    // Emit complete event
-    let result_message = if errors > 0 && skipped_files > 0 {
+    let files_uploaded = batch_result.completed;
+    let files_errored = batch_result.failed + prep_result.scan_errors;
+    let result_message = if batch_result.cancelled {
+        format!(
+            "Upload cancelled after {} files",
+            files_uploaded + prep_result.files_skipped + files_errored
+        )
+    } else {
         format!(
             "Uploaded {} files, {} skipped, {} errors",
-            uploaded_files, skipped_files, errors
+            files_uploaded, prep_result.files_skipped, files_errored
         )
-    } else if skipped_files > 0 {
-        format!(
-            "Uploaded {} files, {} skipped",
-            uploaded_files, skipped_files
-        )
-    } else if errors > 0 {
-        format!("Uploaded {} files ({} errors)", uploaded_files, errors)
-    } else {
-        format!("Uploaded {} files successfully", uploaded_files)
     };
 
     let _ = app.emit(
         "transfer_event",
         TransferEvent {
-            event_type: "complete".to_string(),
+            event_type: if batch_result.cancelled {
+                "cancelled".to_string()
+            } else {
+                "complete".to_string()
+            },
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
             direction: "upload".to_string(),
@@ -2902,10 +3245,7 @@ async fn cancel_transfer(
 ) -> Result<(), String> {
     // Set cancel flag on both FTP and provider states
     state.cancel_flag.store(true, Ordering::Relaxed);
-    {
-        let mut cancel = provider_state.cancel_flag.lock().await;
-        *cancel = true;
-    }
+    provider_state.cancel_flag.store(true, Ordering::Relaxed);
     info!("Transfer cancellation requested");
     Ok(())
 }
@@ -2916,10 +3256,7 @@ async fn reset_cancel_flag(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<(), String> {
     state.cancel_flag.store(false, Ordering::Relaxed);
-    {
-        let mut cancel = provider_state.cancel_flag.lock().await;
-        *cancel = false;
-    }
+    provider_state.cancel_flag.store(false, Ordering::Relaxed);
     Ok(())
 }
 
@@ -10270,6 +10607,8 @@ pub fn run() {
             change_directory,
             download_file,
             upload_file,
+            download_files_batch,
+            upload_files_batch,
             download_folder,
             upload_folder,
             cancel_transfer,
@@ -10506,6 +10845,7 @@ pub fn run() {
             provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_download_folder,
+            provider_commands::provider_upload_folder,
             provider_commands::provider_upload_file,
             provider_commands::provider_mkdir,
             provider_commands::provider_delete_file,

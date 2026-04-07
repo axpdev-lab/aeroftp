@@ -26,6 +26,7 @@ function truncatePath(path: string, maxLen = 36): string {
 
 // Transfer progress data structure
 export interface TransferProgress {
+    transfer_id?: string;
     filename: string;
     total: number;
     transferred: number;
@@ -35,6 +36,26 @@ export interface TransferProgress {
     direction: 'download' | 'upload';
     total_files?: number; // When set, transferred/total are file counts (folder transfer)
     path?: string;        // Full path for context
+}
+
+export interface TransferToastLane {
+    id: string;
+    filename: string;
+    total: number;
+    transferred: number;
+    percentage: number;
+    speed_bps: number;
+    eta_seconds: number;
+    direction: 'download' | 'upload';
+    path?: string;
+    state?: 'active' | 'completed' | 'error';
+}
+
+export interface TransferToastState {
+    summary: TransferProgress;
+    lanes?: TransferToastLane[];
+    reservedLaneSlots?: number;
+    maxChannels?: number;
 }
 
 // ============ Animated Bytes (Matrix-style for uploads) ============
@@ -80,7 +101,7 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
 
 // ============ Transfer Toast (floating notification) ============
 interface TransferToastProps {
-    transfer: TransferProgress;
+    transfer: TransferToastState;
     onCancel: () => void;
 }
 
@@ -89,31 +110,43 @@ function getToastStyles(theme: string) {
     switch (theme) {
         case 'cyber':
             return {
-                container: 'bg-[#0a0e17]/95 border-cyan-900/50 shadow-[0_0_30px_rgba(34,211,238,0.15)]',
+                container: 'bg-[#0a0e17] border-cyan-900/40 shadow-2xl',
+                panel: 'bg-cyan-950/30',
                 title: 'text-cyan-100',
-                subtitle: 'text-cyan-400/70',
-                cancel: 'text-cyan-700 hover:text-red-400 hover:bg-red-900/30',
+                subtitle: 'text-cyan-400/65',
+                badge: 'bg-cyan-950/40 text-cyan-300',
+                badgeMuted: 'bg-cyan-950/30 text-cyan-100/60',
+                cancel: 'text-cyan-700/70 hover:text-red-400 hover:bg-red-900/20',
             };
         case 'tokyo':
             return {
-                container: 'bg-[#1a1b2e]/95 border-purple-800/50 shadow-[0_0_30px_rgba(168,85,247,0.15)]',
+                container: 'bg-[#1a1b2e] border-purple-900/40 shadow-2xl',
+                panel: 'bg-purple-950/30',
                 title: 'text-purple-100',
-                subtitle: 'text-purple-300/70',
-                cancel: 'text-purple-600 hover:text-red-400 hover:bg-red-900/30',
+                subtitle: 'text-purple-300/65',
+                badge: 'bg-purple-950/40 text-purple-200',
+                badgeMuted: 'bg-purple-950/30 text-purple-100/60',
+                cancel: 'text-purple-600/70 hover:text-red-400 hover:bg-red-900/20',
             };
         case 'light':
             return {
-                container: 'bg-white/95 border-gray-200 shadow-2xl',
+                container: 'bg-white border-gray-200 shadow-2xl',
+                panel: 'bg-gray-50',
                 title: 'text-gray-900',
                 subtitle: 'text-gray-500',
+                badge: 'bg-gray-100 text-gray-700',
+                badgeMuted: 'bg-gray-100 text-gray-500',
                 cancel: 'text-gray-400 hover:text-red-500 hover:bg-red-50',
             };
         default: // dark
             return {
-                container: 'bg-gray-900/95 border-gray-700 shadow-2xl',
+                container: 'bg-gray-800 border-gray-700/50 shadow-2xl',
+                panel: 'bg-gray-900/50',
                 title: 'text-gray-100',
                 subtitle: 'text-gray-400',
-                cancel: 'text-gray-500 hover:text-red-400 hover:bg-red-900/30',
+                badge: 'bg-gray-700/50 text-gray-200',
+                badgeMuted: 'bg-gray-700/30 text-gray-400',
+                cancel: 'text-gray-500/70 hover:text-red-400 hover:bg-red-900/30',
             };
     }
 }
@@ -121,96 +154,180 @@ function getToastStyles(theme: string) {
 export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel }) => {
     const { theme, isDark } = useTheme();
     const effectiveTheme = getEffectiveTheme(theme, isDark);
-    const isUpload = transfer.direction === 'upload';
-    const isFolderTransfer = transfer.total_files != null && transfer.total_files > 0;
-    const isIndeterminate = isUpload && transfer.percentage < 5 && !isFolderTransfer;
+    const summary = transfer.summary;
+    const maxChannels = transfer.maxChannels ?? 5;
+    // Lanes arrive pre-sorted by channel index from the hook; cap to maxChannels
+    const lanes = (transfer.lanes ?? []).slice(0, maxChannels);
+    const isUpload = summary.direction === 'upload';
+    const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
+    const isIndeterminate = !isFolderTransfer && summary.total <= 0;
     const styles = getToastStyles(effectiveTheme);
+    // Hide channels section entirely for 1x (single sequential transfer)
+    const showChannels = isFolderTransfer && lanes.length > 0 && maxChannels > 1;
 
     // Display name: use truncated path if available, otherwise just filename
-    const displayName = transfer.path
-        ? truncatePath(transfer.path)
-        : transfer.filename;
+    const displayName = summary.path
+        ? truncatePath(summary.path)
+        : summary.filename;
+    const activeLaneCount = lanes.filter(l => l.state === 'active' || !l.state).length;
+    const completedFiles = isFolderTransfer ? Math.min(summary.transferred, summary.total) : 0;
+    const queuedFiles = isFolderTransfer ? Math.max(summary.total - completedFiles - activeLaneCount, 0) : 0;
+    const reservedLaneSlots = Math.min(Math.max(transfer.reservedLaneSlots ?? activeLaneCount, activeLaneCount), maxChannels);
+    const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
+    const transferStateLabel = isFolderTransfer
+        ? (activeLaneCount > 1 ? `PARALLEL ${activeLaneCount}x` : 'BATCH')
+        : (isIndeterminate ? 'STREAM' : 'LIVE');
 
     // Auto-dismiss safety: if stuck at 100% for 3 seconds, dismiss the toast
     useEffect(() => {
-        if (transfer.percentage >= 100) {
+        if (summary.percentage >= 100) {
             const timer = setTimeout(() => onCancel(), 3000);
             return () => clearTimeout(timer);
         }
-    }, [transfer.percentage, onCancel]);
+    }, [summary.percentage, onCancel]);
 
     return (
         <div
-            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 backdrop-blur-xl rounded-2xl border p-4 min-w-96 ${styles.container}`}
+            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-xl border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
-            <div className="flex items-center gap-4">
-                <div className={`text-2xl ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
+            <div className="flex items-start gap-3">
+                <div className={`mt-0.5 rounded-xl p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
                     {isFolderTransfer ? (
-                        <Folder size={24} className={isUpload ? 'text-green-500' : 'text-blue-500'} />
-                    ) : transfer.direction === 'download' ? (
-                        <Download size={24} className="text-blue-500" />
+                        <Folder size={18} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
+                    ) : summary.direction === 'download' ? (
+                        <Download size={18} className="text-orange-400" />
                     ) : (
-                        <Upload size={24} className="text-green-500" />
+                        <Upload size={18} className="text-cyan-400" />
                     )}
                 </div>
-                <div className="flex-1">
-                    <div className="flex justify-between items-center mb-2">
-                        <span
-                            className={`font-medium truncate max-w-64 ${styles.title}`}
-                            title={transfer.path || transfer.filename}
-                        >
-                            {displayName}
-                        </span>
-                        <span className={`text-sm ${styles.subtitle}`}>
-                            {isIndeterminate ? '...' : `${transfer.percentage}%`}
-                        </span>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div
+                                className={`font-semibold truncate ${styles.title}`}
+                                title={summary.path || summary.filename}
+                            >
+                                {displayName}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>
+                                    {transferModeLabel}
+                                </span>
+                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>
+                                    {transferStateLabel}
+                                </span>
+                                {isFolderTransfer && (
+                                    <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>
+                                        {activeLaneCount} active · {queuedFiles} queued · {completedFiles} done
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                            <div className={`text-base font-semibold tabular-nums ${styles.title}`}>
+                                {isIndeterminate ? '...' : `${summary.percentage}%`}
+                            </div>
+                        </div>
                     </div>
-                    <TransferProgressBar
-                        percentage={transfer.percentage}
-                        speedBps={transfer.speed_bps}
-                        etaSeconds={transfer.eta_seconds}
-                        transferredBytes={isFolderTransfer ? undefined : transfer.transferred}
-                        totalBytes={isFolderTransfer ? undefined : transfer.total}
-                        currentFile={isFolderTransfer ? transfer.transferred : undefined}
-                        totalFiles={isFolderTransfer ? transfer.total : undefined}
-                        size="lg"
-                        variant={isIndeterminate ? 'indeterminate' : 'gradient'}
-                        animated={!isIndeterminate}
-                    />
-                    <div className={`flex justify-between mt-1.5 text-xs ${styles.subtitle}`}>
-                        <span>
-                            {isFolderTransfer ? (
-                                <>{transfer.transferred} / {transfer.total} files</>
-                            ) : isIndeterminate ? (
-                                formatBytes(transfer.total)
-                            ) : (
-                                <>{formatBytes(transfer.transferred)} / {formatBytes(transfer.total)}</>
-                            )}
-                        </span>
-                        <span>
-                            {isFolderTransfer
-                                ? (transfer.transferred < transfer.total
-                                    ? (transfer.speed_bps > 0
-                                        ? `${formatSpeed(transfer.speed_bps)} \u2022 ${isUpload ? 'Uploading...' : 'Downloading...'}`
-                                        : (isUpload ? 'Uploading...' : 'Downloading...'))
-                                    : 'Complete'
-                                )
-                                : isIndeterminate
-                                    ? 'Streaming...'
-                                    : (transfer.speed_bps > 0
-                                        ? `${formatSpeed(transfer.speed_bps)} \u2022 ETA ${formatETA(transfer.eta_seconds)}`
-                                        : 'Transferring...'
+
+                    <div className="mt-2.5">
+                        <TransferProgressBar
+                            percentage={summary.percentage}
+                            speedBps={summary.speed_bps}
+                            etaSeconds={summary.eta_seconds}
+                            transferredBytes={isFolderTransfer ? undefined : summary.transferred}
+                            totalBytes={isFolderTransfer ? undefined : summary.total}
+                            currentFile={isFolderTransfer ? summary.transferred : undefined}
+                            totalFiles={isFolderTransfer ? summary.total : undefined}
+                            size="lg"
+                            variant={isIndeterminate ? 'indeterminate' : 'gradient'}
+                            animated={!isIndeterminate}
+                        />
+                        <div className={`mt-1.5 flex justify-between gap-3 text-[11px] ${styles.subtitle}`}>
+                            <span className="tabular-nums">
+                                {isFolderTransfer ? (
+                                    <>{summary.transferred} / {summary.total} files</>
+                                ) : isIndeterminate ? (
+                                    formatBytes(summary.total)
+                                ) : (
+                                    <>{formatBytes(summary.transferred)} / {formatBytes(summary.total)}</>
+                                )}
+                            </span>
+                            <span className="tabular-nums text-right">
+                                {isFolderTransfer
+                                    ? (summary.transferred < summary.total
+                                        ? (summary.speed_bps > 0
+                                            ? `${formatSpeed(summary.speed_bps)} - ${isUpload ? 'Uploading' : 'Downloading'}`
+                                            : (isUpload ? 'Uploading' : 'Downloading'))
+                                        : 'Complete'
                                     )
-                            }
-                        </span>
+                                    : isIndeterminate
+                                        ? 'Streaming...'
+                                        : (summary.speed_bps > 0
+                                            ? `${formatSpeed(summary.speed_bps)} - ETA ${formatETA(summary.eta_seconds)}`
+                                            : 'Transferring...'
+                                        )
+                                }
+                            </span>
+                        </div>
                     </div>
+
+                    {showChannels && (
+                        <div className="mt-2.5 space-y-1.5">
+                            <div className={`flex items-center justify-between text-[10px] font-medium ${styles.subtitle}`}>
+                                <span>Channels</span>
+                                <span className="tabular-nums">{activeLaneCount}/{maxChannels}</span>
+                            </div>
+                            <div className="grid gap-1.5">
+                                {lanes.map((lane, index) => (
+                                    <div key={lane.id} className={`rounded-lg px-2.5 py-1.5 ${styles.panel}`}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0 flex items-center gap-2">
+                                                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${styles.badge}`}>
+                                                    {`CH ${index + 1}`}
+                                                </span>
+                                                <span className={`truncate text-[11px] ${styles.title}`}>
+                                                    {lane.path ? truncatePath(lane.path, 34) : lane.filename}
+                                                </span>
+                                            </div>
+                                            <span className={`shrink-0 text-[11px] tabular-nums font-medium ${styles.title}`}>
+                                                {lane.percentage}%
+                                            </span>
+                                        </div>
+                                        <TransferProgressBar
+                                            percentage={lane.percentage}
+                                            transferredBytes={lane.transferred}
+                                            totalBytes={lane.total}
+                                            speedBps={lane.speed_bps}
+                                            etaSeconds={lane.eta_seconds}
+                                            size="sm"
+                                            variant="gradient"
+                                            animated
+                                            effectiveTheme={effectiveTheme}
+                                            tone={lane.state === 'completed' ? 'success' : lane.state === 'error' ? 'error' : 'default'}
+                                            className="mt-1.5"
+                                        />
+                                    </div>
+                                ))}
+                                {Array.from({ length: Math.max(reservedLaneSlots - lanes.length, 0) }).map((_, index) => (
+                                    <div
+                                        key={`placeholder-${index}`}
+                                        className="rounded-lg px-2.5 py-1.5 opacity-0 pointer-events-none"
+                                        aria-hidden="true"
+                                    >
+                                        <div className="h-[40px]" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <button
                     onClick={onCancel}
-                    className={`p-2 rounded-lg transition-colors ${styles.cancel}`}
+                    className={`shrink-0 p-1 rounded-full transition-colors ${styles.cancel}`}
                 >
-                    <X size={18} />
+                    <X size={16} />
                 </button>
             </div>
         </div>

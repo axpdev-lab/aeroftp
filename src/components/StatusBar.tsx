@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
@@ -30,6 +30,7 @@ interface StatusBarProps {
     cloudSyncing?: boolean;
     transferQueueActive?: boolean;
     transferQueueCount?: number;
+    transferToastActive?: boolean;
     showActivityLog?: boolean;
     activityLogCount?: number;
     updateAvailable?: UpdateInfo | null;
@@ -47,6 +48,7 @@ interface StatusBarProps {
     onToggleSync?: () => void;
     onToggleCloud?: () => void;
     onToggleTransferQueue?: () => void;
+    onReopenTransferToast?: () => void;
     onToggleActivityLog?: () => void;
     onShowUpdateToast?: () => void;
 }
@@ -65,6 +67,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     cloudSyncing = false,
     transferQueueActive = false,
     transferQueueCount = 0,
+    transferToastActive = false,
     showActivityLog = true,
     activityLogCount = 0,
     updateAvailable,
@@ -79,6 +82,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onToggleSync,
     onToggleCloud,
     onToggleTransferQueue,
+    onReopenTransferToast,
     onToggleActivityLog,
     onShowUpdateToast,
     connectionSecurity,
@@ -251,6 +255,17 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 {transferQueueCount}
                             </span>
                         )}
+                    </button>
+                )}
+
+                {onReopenTransferToast && transferToastActive && (
+                    <button
+                        onClick={onReopenTransferToast}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 transition-colors hover:bg-cyan-200 dark:hover:bg-cyan-900/60 shrink-0"
+                        title="Show transfer progress"
+                    >
+                        <Loader2 size={12} className="animate-spin" />
+                        <span className="text-[10px] font-medium">Progress</span>
                     </button>
                 )}
 

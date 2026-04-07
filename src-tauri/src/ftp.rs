@@ -44,12 +44,44 @@ pub struct RemoteFile {
     pub permissions: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FtpTimeoutConfig {
+    pub connect_timeout: Duration,
+    pub disconnect_timeout: Duration,
+    pub list_timeout: Duration,
+    pub command_timeout: Duration,
+    pub upload_timeout: Duration,
+}
+
+impl Default for FtpTimeoutConfig {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_secs(10),
+            disconnect_timeout: Duration::from_secs(5),
+            list_timeout: Duration::from_secs(30),
+            command_timeout: Duration::from_secs(10),
+            upload_timeout: Duration::from_secs(300),
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct FtpConnectionSpec {
+    pub server: String,
+    pub username: String,
+    pub password: SecretString,
+    pub initial_path: String,
+    pub timeouts: FtpTimeoutConfig,
+}
+
 pub struct FtpManager {
     stream: Option<AsyncFtpStream>,
     current_path: String,
     server: Option<String>,
     username: Option<String>,
     password: Option<SecretString>, // Stored for auto-reconnect, zeroized on drop
+    timeouts: FtpTimeoutConfig,
 }
 
 #[allow(dead_code)]
@@ -61,7 +93,45 @@ impl FtpManager {
             server: None,
             username: None,
             password: None,
+            timeouts: FtpTimeoutConfig::default(),
         }
+    }
+
+    /// Apply GUI transfer timeout to connection-oriented FTP operations.
+    pub fn apply_transfer_timeout(&mut self, timeout_seconds: u64) {
+        let timeout_seconds = timeout_seconds.clamp(10, 300);
+        let command_seconds = timeout_seconds.min(120);
+        self.timeouts.connect_timeout = Duration::from_secs(timeout_seconds);
+        self.timeouts.disconnect_timeout = Duration::from_secs(command_seconds.min(30));
+        self.timeouts.command_timeout = Duration::from_secs(command_seconds);
+        self.timeouts.list_timeout = Duration::from_secs(command_seconds.max(30));
+        self.timeouts.upload_timeout = Duration::from_secs(timeout_seconds.max(30) * 10);
+    }
+
+    pub fn set_timeout_config(&mut self, timeouts: FtpTimeoutConfig) {
+        self.timeouts = timeouts;
+    }
+
+    pub fn timeout_config(&self) -> FtpTimeoutConfig {
+        self.timeouts
+    }
+
+    pub fn connection_spec(&self) -> Result<FtpConnectionSpec> {
+        let server = self.server.clone().ok_or(FtpManagerError::NotConnected)?;
+        let username = self.username.clone().ok_or(FtpManagerError::NotConnected)?;
+        let password = self
+            .password
+            .as_ref()
+            .cloned()
+            .ok_or(FtpManagerError::NotConnected)?;
+
+        Ok(FtpConnectionSpec {
+            server,
+            username,
+            password,
+            initial_path: self.current_path.clone(),
+            timeouts: self.timeouts,
+        })
     }
 
     /// Get the currently connected server hostname (if any)
@@ -82,7 +152,7 @@ impl FtpManager {
 
         // Connect with timeout
         let stream = tokio::time::timeout(
-            Duration::from_secs(10),
+            self.timeouts.connect_timeout,
             AsyncFtpStream::connect(&server_addr),
         )
         .await
@@ -123,7 +193,7 @@ impl FtpManager {
             info!("Disconnecting from FTP server");
 
             // Send QUIT command with timeout
-            let result = tokio::time::timeout(Duration::from_secs(5), stream.quit()).await;
+            let result = tokio::time::timeout(self.timeouts.disconnect_timeout, stream.quit()).await;
 
             match result {
                 Ok(Ok(_)) => info!("Successfully disconnected"),
@@ -154,7 +224,7 @@ impl FtpManager {
         // Use LIST without explicit path argument — relies on CWD already being set.
         // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
         // to misinterpret paths containing #, spaces, or other special characters.
-        let files = tokio::time::timeout(Duration::from_secs(30), stream.list(None))
+        let files = tokio::time::timeout(self.timeouts.list_timeout, stream.list(None))
             .await
             .context("List operation timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -200,13 +270,13 @@ impl FtpManager {
 
         // If path is absolute, use it directly
         // If path is relative (like ".."), let the server handle it
-        tokio::time::timeout(Duration::from_secs(10), stream.cwd(path))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
             .await
             .context("Change directory timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
         // Get the actual current directory from the server using PWD
-        let pwd = tokio::time::timeout(Duration::from_secs(5), stream.pwd())
+        let pwd = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
             .await
             .context("PWD timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -229,7 +299,7 @@ impl FtpManager {
     pub async fn pwd(&mut self) -> Result<String> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
 
-        let path = tokio::time::timeout(Duration::from_secs(5), stream.pwd())
+        let path = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
             .await
             .context("PWD timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -452,7 +522,7 @@ impl FtpManager {
 
         // Upload with timeout
         tokio::time::timeout(
-            Duration::from_secs(300),
+            self.timeouts.upload_timeout,
             stream.put_file(remote_path, &mut cursor),
         )
         .await
@@ -555,7 +625,7 @@ impl FtpManager {
 
         info!("Creating directory: {}", path);
 
-        tokio::time::timeout(Duration::from_secs(10), stream.mkdir(path))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.mkdir(path))
             .await
             .context("MKDIR timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -569,7 +639,7 @@ impl FtpManager {
 
         info!("Removing: {}", path);
 
-        tokio::time::timeout(Duration::from_secs(10), stream.rm(path))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.rm(path))
             .await
             .context("Remove timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -583,7 +653,7 @@ impl FtpManager {
 
         info!("Removing directory: {}", path);
 
-        tokio::time::timeout(Duration::from_secs(10), stream.rmdir(path))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.rmdir(path))
             .await
             .context("Remove directory timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -669,7 +739,7 @@ impl FtpManager {
 
         info!("Renaming: {} -> {}", from, to);
 
-        tokio::time::timeout(Duration::from_secs(10), stream.rename(from, to))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.rename(from, to))
             .await
             .context("Rename timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
@@ -686,7 +756,7 @@ impl FtpManager {
         // Use SITE CHMOD command
         let args = format!("CHMOD {} {}", mode, path);
 
-        tokio::time::timeout(Duration::from_secs(10), stream.site(&args))
+        tokio::time::timeout(self.timeouts.command_timeout, stream.site(&args))
             .await
             .context("CHMOD timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;

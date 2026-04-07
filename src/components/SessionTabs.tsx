@@ -6,7 +6,7 @@ import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, PROVIDER_LOGOS } from './ProviderLogos';
+import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 
@@ -51,7 +51,7 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'immich'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -142,6 +142,8 @@ const ProviderIcon: React.FC<{
             return <span className={opacityClass}><GitHubLogo size={size} /></span>;
         case 'gitlab':
             return <span className={opacityClass}><GitLabLogo size={size} /></span>;
+        case 'immich':
+            return <span className={opacityClass}><ImmichLogo size={size} /></span>;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -176,6 +178,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'yandexdisk': return 'text-yellow-500';
         case 'github': return 'text-gray-400';
         case 'gitlab': return 'text-orange-500';
+        case 'immich': return 'text-indigo-500';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green

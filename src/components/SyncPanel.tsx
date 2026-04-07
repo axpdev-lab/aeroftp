@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
+import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
 import { Checkbox } from './ui/Checkbox';
 import {
     Loader2, Search, RefreshCw, Zap, X, FolderSync,
@@ -1002,25 +1003,27 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setFileResults(initialResults);
         speedHistoryRef.current = [];
 
-        // Listen for transfer progress events (throttled to prevent UI flood)
+        // Listen for bridged transfer progress events (throttled to prevent UI flood)
         let lastProgressUpdate = 0;
-        const unlisten = await listen<TransferEvent>('transfer_event', (event) => {
-            if (event.payload?.progress && event.payload.progress.percentage !== undefined) {
+        const onTransferEvent = (event: Event) => {
+            const payload = (event as CustomEvent<TransferEvent>).detail;
+            if (payload?.progress && payload.progress.percentage !== undefined) {
                 // Accumulate speed samples regardless of throttle
-                if (event.payload.progress.speed_bps > 0) {
+                if (payload.progress.speed_bps > 0) {
                     const history = speedHistoryRef.current;
-                    history.push(event.payload.progress.speed_bps);
+                    history.push(payload.progress.speed_bps);
                     if (history.length > 120) history.shift();
                 }
                 // Throttle React state updates to max ~5/sec (200ms)
                 const now = Date.now();
-                if (now - lastProgressUpdate > 200 || event.payload.progress.percentage >= 100) {
+                if (now - lastProgressUpdate > 200 || payload.progress.percentage >= 100) {
                     lastProgressUpdate = now;
-                    setCurrentFileProgress(event.payload.progress);
+                    setCurrentFileProgress(payload.progress);
                 }
             }
-        });
-        unlistenRef.current = unlisten;
+        };
+        window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+        unlistenRef.current = () => window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
         let completed = 0;
         let uploaded = 0;
         let downloaded = 0;
@@ -1477,8 +1480,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
 
         // Cleanup listener
-        unlisten();
-        unlistenRef.current = null;
+        if (unlistenRef.current) {
+            unlistenRef.current();
+            unlistenRef.current = null;
+        }
 
         setIsSyncing(false);
         setSyncProgress(null);

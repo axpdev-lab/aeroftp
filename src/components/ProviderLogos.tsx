@@ -248,6 +248,38 @@ export const GoogleDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
+// PixelUnion — PNG logo (scaled up 1.4x like other PNG logos)
+export const PixelUnionLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/pixelunion.png"
+        width={Math.round(size * 1.4)}
+        height={Math.round(size * 1.4)}
+        alt="PixelUnion"
+        style={{ objectFit: 'contain' }}
+    />
+);
+
+// Immich — multi-color star/pinwheel
+export const ImmichLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 512 512">
+        <path d="M238.8 155.5c33.5 29.7 60.5 61.5 77.9 91.5 29.9-53.4 49.8-116.9 50.1-157.3v-.8c0-59.8-59.7-83.1-111.1-83.1S144.6 29 144.6 88.8V92c28.7 12.8 62.6 35.6 94.2 63.5" fill="#fa2921" />
+        <path d="M55.9 318.6c21-23.3 53.1-48.6 89.4-69.9 38.6-22.7 77.2-38.6 111.1-45.8-41.6-44.9-95.8-83.5-134.1-96.2-.3-.1-.5-.2-.7-.2-57-18.7-97.6 30.9-113.5 79.8S-4.1 299.1 52.8 317.6c.8.2 1.8.6 3.1 1" fill="#ed79b5" />
+        <path d="M503.9 185.4C488 136.6 447.4 87 390.5 105.5c-.8.3-1.8.6-3.1 1-3.3 31.2-14.4 70.5-31.2 109.1-17.9 41.1-39.8 76.6-62.9 102.4 60 11.9 126.5 11.3 165.1-1 .3-.1.5-.2.7-.2 57-18.6 60.6-82.5 44.8-131.4" fill="#ffb400" />
+        <path d="M205 366.3c-9.7-43.7-12.8-85.3-9.3-119.8-55.5 25.7-109 65.3-133 97.8-.2.2-.3.4-.5.6-35.2 48.4-.6 102.3 41 132.5s103.5 46.4 138.7-1.9c.5-.7 1.1-1.5 1.9-2.6-15.6-27.1-29.7-65.5-38.8-106.6" fill="#1e83f7" />
+        <path d="M448.8 341.9c-30.7 6.5-71.5 8.1-113.4 4-44.6-4.3-85.1-14.2-116.8-28.2 7.2 60.8 28.4 123.8 51.9 156.7.2.2.3.4.5.6 35.2 48.4 97.1 32.2 138.7 1.9 41.6-30.2 76.2-84.1 41-132.5-.5-.6-1.1-1.4-1.9-2.5" fill="#18c249" />
+    </svg>
+);
+
+// Google Photos — four-color pinwheel
+export const GooglePhotosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <svg width={size} height={size} viewBox="0 0 48 48">
+        <path fill="#ffc107" d="M24,22.5C24,16.701,19.299,12,13.5,12S3,16.701,3,22.5c0,0,0,0.339,0,0.5c0,0.552,0.448,1,1,1 s20,0,20,0s0-0.448,0-1C24,22.839,24,22.5,24,22.5z" />
+        <path fill="#4caf50" d="M22.5,24C16.701,24,12,28.701,12,34.5S16.701,45,22.5,45c0,0,0.339,0,0.5,0c0.552,0,1-0.448,1-1 s0-20,0-20s-0.448,0-1,0C22.839,24,22.5,24,22.5,24z" />
+        <path fill="#1976d2" d="M24,25.5C24,31.299,28.701,36,34.5,36S45,31.299,45,25.5c0,0,0-0.339,0-0.5c0-0.552-0.448-1-1-1 s-20,0-20,0s0,0.448,0,1C24,25.161,24,25.5,24,25.5z" />
+        <path fill="#ff3d00" d="M25.5,24C31.299,24,36,19.299,36,13.5S31.299,3,25.5,3c0,0-0.339,0-0.5,0c-0.552,0-1,0.448-1,1 s0,20,0,20s0.448,0,1,0C25.161,24,25.5,24,25.5,24z" />
+    </svg>
+);
+
 // Dropbox — blue diamond shape
 export const DropboxLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 43 40" fill="#0061ff">
@@ -440,6 +472,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'tencent-cos': TencentCOSLogo,
     'google-cloud-storage': GoogleCloudStorageLogo,
     'googledrive': GoogleDriveLogo,
+    'googlephotos': GooglePhotosLogo,
     'dropbox': DropboxLogo,
     'onedrive': OneDriveLogo,
     'drivehq': DriveHQLogo,
@@ -467,4 +500,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'quotaless-webdav': QuotalessLogo,
     'hetzner-storage-box': HetznerLogo,
     'aspnix': ASPnixLogo,
+    'immich': ImmichLogo,
+    'pixelunion': PixelUnionLogo,
 };

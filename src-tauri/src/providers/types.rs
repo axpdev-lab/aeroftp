@@ -68,6 +68,10 @@ pub enum ProviderType {
     GitLab,
     /// OpenStack Swift Object Storage (Blomp, OVH, Rackspace)
     Swift,
+    /// Google Photos (OAuth2, Photos Library API v1)
+    GooglePhotos,
+    /// Immich (Self-hosted photo/video management, API key auth)
+    Immich,
 }
 
 impl fmt::Display for ProviderType {
@@ -100,6 +104,8 @@ impl fmt::Display for ProviderType {
             ProviderType::GitHub => write!(f, "GitHub"),
             ProviderType::GitLab => write!(f, "GitLab"),
             ProviderType::Swift => write!(f, "Swift"),
+            ProviderType::GooglePhotos => write!(f, "Google Photos"),
+            ProviderType::Immich => write!(f, "Immich"),
         }
     }
 }
@@ -135,6 +141,8 @@ impl ProviderType {
             ProviderType::GitHub => 443,
             ProviderType::GitLab => 443,
             ProviderType::Swift => 443,
+            ProviderType::GooglePhotos => 443,
+            ProviderType::Immich => 2283,
         }
     }
 
@@ -168,7 +176,9 @@ impl ProviderType {
             ProviderType::YandexDisk |
             ProviderType::GitHub |
             ProviderType::GitLab |
-            ProviderType::Swift
+            ProviderType::Swift |
+            ProviderType::GooglePhotos |
+            ProviderType::Immich
         )
     }
 
@@ -183,6 +193,7 @@ impl ProviderType {
                 | ProviderType::Box
                 | ProviderType::PCloud
                 | ProviderType::ZohoWorkdrive
+                | ProviderType::GooglePhotos
         )
     }
 

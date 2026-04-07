@@ -62,6 +62,7 @@ const SHARE_LINK_DETAILS: Record<string, string> = {
   opendrive: 'Expiring links (default 1 year)',
   yandexdisk: 'Publish/unpublish',
   github: 'Permanent URL',
+  immich: 'Shared album link',
   mega: 'Share link / Pre-signed URL (max 7 days for S4)',
   nextcloud: 'Password (auto-gen) + expiry',
   felicloud: 'Password (auto-gen) + expiry',
@@ -75,6 +76,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Google Drive', logoId: 'googledrive', section: 'OAuth / API',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: ['star', 'comments'] },
+  { name: 'Google Photos', logoId: 'googlephotos',
+    base: ['upload', 'download', 'mkdir'],
+    advanced: ['thumbnails'] },
   { name: 'Dropbox', logoId: 'dropbox',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: [] },
@@ -129,6 +133,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'GitLab', logoId: 'gitlab',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir'],
     advanced: ['devTools', 'checksum'] },
+  { name: 'Immich', logoId: 'immich',
+    base: ['upload', 'download', 'delete', 'mkdir', 'search', 'shareLink'],
+    advanced: ['checksum'] },
 
   // ── S3 Compatible ──
   { name: 'Amazon S3', logoId: 'amazon-s3', section: 'S3 Compatible',

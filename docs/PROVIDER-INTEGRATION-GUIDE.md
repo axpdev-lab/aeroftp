@@ -90,7 +90,9 @@ src-tauri/src/providers/
 ├── koofr.rs                # Koofr REST API
 ├── drime_cloud.rs          # Drime Cloud API
 ├── opendrive.rs            # OpenDrive REST API
-└── yandex_disk.rs          # Yandex Disk REST API
+├── yandex_disk.rs          # Yandex Disk REST API
+├── immich.rs               # Immich photo management API
+└── google_photos.rs        # Google Photos (standby - scope removed)
 ```
 
 ### Provider Registry
@@ -119,6 +121,8 @@ src-tauri/src/providers/
 | Drime Cloud | `drime_cloud.rs` | ~1,600 | Bearer Token | REST |
 | OpenDrive | `opendrive.rs` | ~1,211 | Session login (user/pass) | REST |
 | Yandex Disk | `yandex_disk.rs` | ~1,237 | OAuth2 token (`Authorization: OAuth`) | REST |
+| Immich | `immich.rs` | ~1,427 | API Key (`x-api-key`) | REST |
+| Google Photos | `google_photos.rs` | ~870 | OAuth2 PKCE | REST (standby) |
 
 ---
 

@@ -116,7 +116,8 @@ export function IntroHub(props: IntroHubProps) {
     // Create a form tab from Discover (provider selection)
     const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => {
         const id = generateTabId();
-        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (providerId || protocol.toUpperCase());
+        const PROVIDER_NAMES: Record<string, string> = { pixelunion: 'PixelUnion' };
+        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
         const newTab: FormTabState = {

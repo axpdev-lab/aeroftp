@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.4] - 2026-04-07
+
+### Immich provider, Media Services category, transfer infrastructure
+
+#### Added
+
+- **Immich provider**: Native integration with Immich self-hosted photo management via REST API (1427 lines). Browse albums, upload/download, delete (soft trash), create albums, search, share links, SHA-256 checksum. API key auth, zero OAuth required
+- **PixelUnion preset**: EU-hosted Immich cloud (16 GB free) with dedicated connection form, subdomain-based URL, featured in Discover Services
+- **Media Services category**: New Discover panel category with Camera icon for photo/video management services
+- **Immich CLI support**: Full `aeroftp-cli --profile` support for Immich protocol - connect, ls, put, get, find, mkdir, rm, stat, link, hashsum
+- **Immich UI protections**: Rename, batch rename, cut/move, and nested mkdir automatically disabled for Immich connections
+- **Transfer event bridge**: SyncPanel uses DOM CustomEvent bridge for transfer progress, decoupling from direct Tauri listener
+- **FTP timeout configuration**: Structured `FtpTimeoutConfig` with per-operation timeouts (connect, list, command, upload, disconnect)
+- **Connection settings**: Timeout, max concurrent transfers, and retry count exposed in settings panel
+- **Transfer orchestrator**: New `transfer_orchestrator.rs` module for parallel transfer coordination
+- **FTP session pool**: New `ftp_session_pool.rs` for connection pooling in parallel transfers
+
+#### Fixed
+
+- **Immich file sizes**: Use `fileSizeInByte` field from Immich EXIF data (was showing 0 bytes)
+- **Immich search**: Client-side filename filtering from `[All Assets]` (API metadata search is exact-match only)
+- **Immich upload in root**: Files uploaded to root now go to All Assets instead of failing with "Album not found"
+- **CLI download to directory**: `get` command with trailing `/` destination now appends remote filename instead of failing
+- **CLI Immich protocol**: Added `"immich"` to CLI protocol mapping
+
+#### Changed
+
+- **Provider registration audit**: Added `immich` to all provider lists across frontend and backend
+- **Documentation**: Updated README provider grid, PROTOCOL-FEATURES.md, PROVIDER-INTEGRATION-GUIDE.md, docs.aeroftp.app with 2 new provider guides and Photo & Media category
+- **i18n**: 10+ new keys translated across all 47 locales
+- **Dependencies**: Updated Tauri plugins, removed orphan russh-keys; bumped tokio, crossterm, react-virtuoso, libc, semver
+
 ## [3.4.3] - 2026-04-06
 
 ### AeroSync advanced controls, archive security, provider trash management

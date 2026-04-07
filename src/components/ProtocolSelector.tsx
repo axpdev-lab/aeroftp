@@ -25,7 +25,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, ImmichLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -36,6 +36,15 @@ const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size
         <path fill="#00832d" d="M43.65 25L57.4 1.2c-1.35-.8-2.9-1.2-4.5-1.2H34.35c-1.6 0-3.15.45-4.45 1.2L43.65 25z" />
         <path fill="#2684fc" d="M59.85 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2L59.85 53z" />
         <path fill="#ffba00" d="M73.4 26.5l-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.2 28h27.45c0-1.55-.4-3.1-1.2-4.5l-12.7-22z" />
+    </svg>
+);
+
+const GooglePhotosLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
+    <svg width={size} height={size} viewBox="0 0 48 48" className={className}>
+        <path fill="#ffc107" d="M24,22.5C24,16.701,19.299,12,13.5,12S3,16.701,3,22.5c0,0,0,0.339,0,0.5c0,0.552,0.448,1,1,1 s20,0,20,0s0-0.448,0-1C24,22.839,24,22.5,24,22.5z" />
+        <path fill="#4caf50" d="M22.5,24C16.701,24,12,28.701,12,34.5S16.701,45,22.5,45c0,0,0.339,0,0.5,0c0.552,0,1-0.448,1-1 s0-20,0-20s-0.448,0-1,0C22.839,24,22.5,24,22.5,24z" />
+        <path fill="#1976d2" d="M24,25.5C24,31.299,28.701,36,34.5,36S45,31.299,45,25.5c0,0,0-0.339,0-0.5c0-0.552-0.448-1-1-1 s-20,0-20,0s0,0.448,0,1C24,25.161,24,25.5,24,25.5z" />
+        <path fill="#ff3d00" d="M25.5,24C31.299,24,36,19.299,36,13.5S31.299,3,25.5,3c0,0-0.339,0-0.5,0c-0.552,0-1,0.448-1,1 s0,20,0,20s0.448,0,1,0C25.161,24,25.5,24,25.5,24z" />
     </svg>
 );
 
@@ -192,6 +201,17 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         isOAuth: true,
         isCloudStorage: true,
         tooltip: t('protocol.googledriveTooltip'),
+    },
+    {
+        type: 'googlephotos',
+        name: 'Google Photos',
+        icon: <GooglePhotosLogo size={18} />,
+        description: t('protocol.googlephotosDesc'),
+        defaultPort: 443,
+        badge: 'OAuth',
+        isOAuth: true,
+        isCloudStorage: true,
+        tooltip: t('protocol.googlephotosTooltip'),
     },
     {
         type: 'onedrive',
@@ -407,6 +427,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'sftp' as const, name: 'SourceForge', icon: <SourceForgeLogo size={18} />, description: 'SourceForge File Release System', defaultPort: 22, badge: 'SFTP', color: 'text-orange-500', tooltip: 'Upload releases to SourceForge via SFTP', providerId: 'sourceforge' },
     { type: 'aerocloud', name: 'AeroCloud', icon: <Cloud size={18} />, description: 'Personal cloud sync', defaultPort: 21, badge: 'Sync', color: 'text-sky-500', isCloudStorage: true, tooltip: 'Turn any server into your personal cloud' },
     { type: 'googledrive', name: 'Google Drive', icon: <GoogleDriveLogo size={18} />, description: 'Google Drive (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Drive OAuth2' },
+    { type: 'googlephotos', name: 'Google Photos', icon: <GooglePhotosLogo size={18} />, description: 'Google Photos (read + upload)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Photos Library API' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
     { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Dropbox (2 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
     { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
@@ -425,6 +446,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
+    { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich — Self-hosted photo/video management, API key auth' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -1328,6 +1350,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         s3: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
         aerocloud: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         googledrive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        googlephotos: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
         dropbox: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         onedrive: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
         mega: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
@@ -1348,6 +1371,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         github: 'bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300',
         gitlab: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
         swift: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+        immich: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300',
     };
 
     return (

@@ -34,7 +34,9 @@ pub mod ftp;
 pub mod github;
 pub mod gitlab;
 pub mod google_drive;
+pub mod google_photos;
 pub mod http_retry;
+pub mod immich;
 pub mod internxt;
 pub mod jottacloud;
 pub mod kdrive;
@@ -72,6 +74,8 @@ pub use ftp::FtpProvider;
 pub use github::GitHubProvider;
 pub use gitlab::GitLabProvider;
 pub use google_drive::GoogleDriveProvider;
+pub use google_photos::GooglePhotosProvider;
+pub use immich::ImmichProvider;
 #[allow(unused_imports)]
 pub use http_retry::{send_with_retry, HttpRetryConfig};
 pub use internxt::InternxtProvider;
@@ -632,6 +636,7 @@ impl ProviderFactory {
                 ))
             }
             ProviderType::GoogleDrive
+            | ProviderType::GooglePhotos
             | ProviderType::Dropbox
             | ProviderType::OneDrive
             | ProviderType::Box
@@ -711,6 +716,10 @@ impl ProviderFactory {
                 let swift_config = swift::SwiftConfig::from_provider_config(config)?;
                 Ok(Box::new(SwiftProvider::new(swift_config)))
             }
+            ProviderType::Immich => {
+                let immich_config = immich::ImmichConfig::from_provider_config(config)?;
+                Ok(Box::new(ImmichProvider::new(immich_config)))
+            }
         }
     }
 
@@ -745,6 +754,8 @@ impl ProviderFactory {
             ProviderType::GitHub,
             ProviderType::GitLab,
             ProviderType::Swift,
+            ProviderType::GooglePhotos,
+            ProviderType::Immich,
         ]
     }
 }

@@ -66,6 +66,9 @@ export interface AppSettings {
   visibleColumns: string[];
   sortFoldersFirst: boolean;
   showFileExtensions: boolean;
+  timeoutSeconds: number;
+  maxConcurrentTransfers: number;
+  retryCount: number;
   fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
   swapPanels: boolean;
   lastLocalPath?: string;
@@ -93,6 +96,9 @@ const DEFAULTS: AppSettings = {
   visibleColumns: ALL_COLUMNS,
   sortFoldersFirst: true,
   showFileExtensions: true,
+  timeoutSeconds: 30,
+  maxConcurrentTransfers: 5,
+  retryCount: 3,
   fileExistsAction: 'ask',
   swapPanels: false,
 };
@@ -116,6 +122,9 @@ export const useSettings = () => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULTS.visibleColumns);
   const [sortFoldersFirst, setSortFoldersFirst] = useState(DEFAULTS.sortFoldersFirst);
   const [showFileExtensions, setShowFileExtensions] = useState(DEFAULTS.showFileExtensions);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(DEFAULTS.timeoutSeconds);
+  const [maxConcurrentTransfers, setMaxConcurrentTransfers] = useState(DEFAULTS.maxConcurrentTransfers);
+  const [retryCount, setRetryCount] = useState(DEFAULTS.retryCount);
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -139,6 +148,9 @@ export const useSettings = () => {
     if (Array.isArray(parsed.visibleColumns)) setVisibleColumns(parsed.visibleColumns.filter((c: unknown) => typeof c === 'string' && ALL_COLUMNS.includes(c as string)));
     if (typeof parsed.sortFoldersFirst === 'boolean') setSortFoldersFirst(parsed.sortFoldersFirst);
     if (typeof parsed.showFileExtensions === 'boolean') setShowFileExtensions(parsed.showFileExtensions);
+    if (typeof parsed.timeoutSeconds === 'number') setTimeoutSeconds(parsed.timeoutSeconds);
+    if (typeof parsed.maxConcurrentTransfers === 'number') setMaxConcurrentTransfers(parsed.maxConcurrentTransfers);
+    if (typeof parsed.retryCount === 'number') setRetryCount(parsed.retryCount);
     if (
       typeof parsed.fileExistsAction === 'string' &&
       ['ask', 'overwrite', 'skip', 'rename', 'resume', 'overwrite_if_newer', 'overwrite_if_different', 'skip_if_identical'].includes(parsed.fileExistsAction)
@@ -224,6 +236,9 @@ export const useSettings = () => {
     visibleColumns,
     sortFoldersFirst,
     showFileExtensions,
+    timeoutSeconds,
+    maxConcurrentTransfers,
+    retryCount,
     fileExistsAction,
     swapPanels,
     showSettingsPanel,
@@ -247,6 +262,9 @@ export const useSettings = () => {
     setVisibleColumns,
     setSortFoldersFirst,
     setShowFileExtensions,
+    setTimeoutSeconds,
+    setMaxConcurrentTransfers,
+    setRetryCount,
     setFileExistsAction,
     setSwapPanels,
     setShowSettingsPanel,

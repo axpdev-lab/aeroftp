@@ -108,6 +108,7 @@ use super::ProviderError;
 #[serde(rename_all = "lowercase")]
 pub enum OAuthProvider {
     Google,
+    GooglePhotos,
     Dropbox,
     OneDrive,
     Box,
@@ -120,6 +121,7 @@ impl std::fmt::Display for OAuthProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OAuthProvider::Google => write!(f, "Google Drive"),
+            OAuthProvider::GooglePhotos => write!(f, "Google Photos"),
             OAuthProvider::Dropbox => write!(f, "Dropbox"),
             OAuthProvider::OneDrive => write!(f, "OneDrive"),
             OAuthProvider::YandexDisk => write!(f, "Yandex Disk"),
@@ -165,6 +167,28 @@ impl OAuthConfig {
     /// Create Google Drive OAuth config (default port for token refresh only)
     pub fn google(client_id: &str, client_secret: &str) -> Self {
         Self::google_with_port(client_id, client_secret, 0)
+    }
+
+    /// Create Google Photos OAuth config with dynamic callback port
+    pub fn google_photos_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
+        Self {
+            provider: OAuthProvider::GooglePhotos,
+            client_id: client_id.to_string(),
+            client_secret: Some(client_secret.to_string()),
+            auth_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+            token_url: "https://oauth2.googleapis.com/token".to_string(),
+            scopes: vec![
+                "https://www.googleapis.com/auth/photoslibrary.readonly".to_string(),
+                "https://www.googleapis.com/auth/photoslibrary.appendonly".to_string(),
+            ],
+            redirect_uri: format!("http://127.0.0.1:{}/callback", port),
+            extra_auth_params: vec![("access_type".to_string(), "offline".to_string())],
+        }
+    }
+
+    /// Create Google Photos OAuth config (default port for token refresh only)
+    pub fn google_photos(client_id: &str, client_secret: &str) -> Self {
+        Self::google_photos_with_port(client_id, client_secret, 0)
     }
 
     /// Create Dropbox OAuth config with dynamic callback port

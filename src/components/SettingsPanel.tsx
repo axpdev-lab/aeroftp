@@ -2125,7 +2125,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* AeroCloud moved to its own tab — see SettingsAeroCloudTab */}
 
-                                    {/* Google Drive */}
+                                    {/* Google API (Drive + Photos) */}
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
@@ -2133,8 +2133,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     {PROVIDER_LOGOS.googledrive ? <PROVIDER_LOGOS.googledrive size={18} /> : <Cloud size={16} />}
                                                 </div>
                                                 <div>
-                                                    <h4 className="font-medium">Google Drive</h4>
-                                                    <p className="text-xs text-gray-500">{t('settings.connectWithGoogle')}</p>
+                                                    <h4 className="font-medium">Google API</h4>
+                                                    <p className="text-xs text-gray-500">Google Drive, Google Photos</p>
                                                 </div>
                                             </div>
                                             <button

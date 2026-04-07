@@ -17,7 +17,7 @@ import { openUrl } from '../utils/openUrl';
 import { logger } from '../utils/logger';
 
 interface OAuthConnectProps {
-  provider: 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
+  provider: 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk';
   onConnected: (displayName: string, extraOptions?: { region?: string }) => void;
   disabled?: boolean;
   initialLocalPath?: string;
@@ -31,6 +31,7 @@ interface OAuthConnectProps {
 // Map our ProviderType to OAuthProvider
 const providerMap: Record<string, OAuthProvider> = {
   googledrive: 'google_drive',
+  googlephotos: 'googlephotos',
   dropbox: 'dropbox',
   onedrive: 'onedrive',
   box: 'box',
@@ -39,8 +40,15 @@ const providerMap: Record<string, OAuthProvider> = {
   yandexdisk: 'yandexdisk',
 };
 
+/** Providers that share OAuth credentials with another provider.
+ *  e.g., Google Photos reuses the same Client ID/Secret as Google Drive. */
+const credentialAlias: Record<string, string> = {
+  googlephotos: 'googledrive',
+};
+
 const providerNames: Record<string, string> = {
   googledrive: 'Google Drive',
+  googlephotos: 'Google Photos',
   dropbox: 'Dropbox',
   onedrive: 'OneDrive',
   box: 'Box',
@@ -51,6 +59,7 @@ const providerNames: Record<string, string> = {
 
 const providerColors: Record<string, string> = {
   googledrive: 'bg-red-500 hover:bg-red-600',
+  googlephotos: 'bg-amber-500 hover:bg-amber-600',
   dropbox: 'bg-blue-500 hover:bg-blue-600',
   onedrive: 'bg-sky-500 hover:bg-sky-600',
   box: 'bg-blue-600 hover:bg-blue-700',
@@ -74,6 +83,7 @@ const ZOHO_REGIONS = [
 // Redirect URIs that users must configure in their OAuth2 developer app dashboard
 const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
   googledrive: { uri: 'http://127.0.0.1', note: 'redirectUriNoteGoogle' },
+  googlephotos: { uri: 'http://127.0.0.1', note: 'redirectUriNoteGoogle' },
   dropbox: { uri: 'http://127.0.0.1:17548/callback' },
   onedrive: { uri: 'http://127.0.0.1:27154/callback' },
   box: { uri: 'http://127.0.0.1:9484/callback' },
@@ -193,7 +203,9 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
   const isZoho = provider === 'zohoworkdrive';
   const oauthProvider = providerMap[provider];
-  const oauthApp = OAUTH_APPS[oauthProvider];
+  // Google Photos shares OAuth app credentials with Google Drive
+  const oauthAppKey = (credentialAlias[provider] ? providerMap[credentialAlias[provider]] : oauthProvider) as keyof typeof OAUTH_APPS;
+  const oauthApp = OAUTH_APPS[oauthAppKey];
 
   // Browse for local folder
   const browseLocalFolder = async () => {
@@ -228,14 +240,16 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
     setShowCredentialsForm(false);
 
     const loadCredentials = async () => {
+      // Use credential alias if available (e.g., googlephotos → googledrive)
+      const credKey = credentialAlias[provider] || provider;
       try {
-        const savedId = await invoke<string>('get_credential', { account: `oauth_${provider}_client_id` });
+        const savedId = await invoke<string>('get_credential', { account: `oauth_${credKey}_client_id` });
         if (savedId) setClientId(savedId);
       } catch {
         // SEC: No localStorage fallback — credentials must be in vault.
       }
       try {
-        const savedSecret = await invoke<string>('get_credential', { account: `oauth_${provider}_client_secret` });
+        const savedSecret = await invoke<string>('get_credential', { account: `oauth_${credKey}_client_secret` });
         if (savedSecret) setClientSecret(savedSecret);
       } catch {
         // SEC: No localStorage fallback — credentials must be in vault.
@@ -259,9 +273,10 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
       return;
     }
 
-    // Save credentials to secure credential store
-    invoke('store_credential', { account: `oauth_${provider}_client_id`, password: clientId }).catch(console.error);
-    invoke('store_credential', { account: `oauth_${provider}_client_secret`, password: clientSecret }).catch(console.error);
+    // Save credentials to secure credential store (use alias key for shared OAuth apps)
+    const credKey = credentialAlias[provider] || provider;
+    invoke('store_credential', { account: `oauth_${credKey}_client_id`, password: clientId }).catch(console.error);
+    invoke('store_credential', { account: `oauth_${credKey}_client_secret`, password: clientSecret }).catch(console.error);
     // Save Zoho region to credential store
     if (isZoho) {
       invoke('store_credential', { account: `oauth_${provider}_region`, password: zohoRegion }).catch(console.error);
@@ -652,6 +667,15 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
               </>
             )}
           </button>
+
+          {/* API enablement hint for Google providers */}
+          {(provider === 'googledrive' || provider === 'googlephotos') && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2">
+              {provider === 'googlephotos'
+                ? t('connection.oauth.enablePhotosApi')
+                : t('connection.oauth.enableDriveApi')}
+            </p>
+          )}
         </div>
 
       {/* Back to existing account (if user changed mind) */}

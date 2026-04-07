@@ -166,6 +166,11 @@ export interface TranslationKeys {
         cancelled: string;
         progress: string;
         speed: string;
+        mode: string;
+        modeSafe: string;
+        modeBalanced: string;
+        modeMax: string;
+        modeUnavailable: string;
         remaining: string;
         elapsed: string;
         queue: string;

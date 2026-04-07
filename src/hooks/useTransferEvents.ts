@@ -5,9 +5,13 @@ import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
+import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
 import type { useTransferQueue } from '../components/TransferQueue';
+
+export const TRANSFER_EVENT_BRIDGE = 'aeroftp-transfer-event';
+export const TRANSFER_BATCH_FINISHED_EVENT = 'aeroftp-transfer-batch-finished';
 
 interface NotifyMethods {
   success: (title: string, message?: string) => string | null;
@@ -21,6 +25,13 @@ interface ScanningUpdate {
   folderName: string;
   message: string;
   operation: 'delete' | 'download' | 'upload';
+}
+
+interface TransferBatchStartedEvent {
+  batch_id: string;
+  display_name: string;
+  direction: 'download' | 'upload';
+  total: number;
 }
 
 interface UseTransferEventsOptions {
@@ -38,6 +49,8 @@ interface UseTransferEventsOptions {
   onTransferStart?: () => void;
   /** Called when scanning state changes (folder scan for delete/download/upload) */
   onScanningUpdate?: (update: ScanningUpdate) => void;
+  /** Max concurrent transfers (from speed preset: 1/3/5) — controls visible channel slots */
+  maxChannels?: number;
 }
 
 export function useTransferEvents(options: UseTransferEventsOptions) {
@@ -62,6 +75,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const clearToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks whether a streaming scan is still discovering directories (don't dismiss toast on file_start)
   const streamingScanActive = useRef(false);
+  const activeToastBatchId = useRef<string | null>(null);
+  const toastSummaryRef = useRef<TransferProgress | null>(null);
+  const toastLaneAssignments = useRef<Map<string, number>>(new Map());
+  const toastLanesRef = useRef<Map<string, TransferToastLane>>(new Map());
+  const toastLaneCleanupTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const toastReservedLaneSlots = useRef(0);
 
   useEffect(() => {
     const joinPath = (base: string, name: string): string => {
@@ -84,14 +103,130 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       return `${base.replace(/\/$/, '')}/${data.filename}`;
     };
 
+    const isGroupedToastTransfer = (transferId: string): boolean =>
+      transferId.includes('folder') || transferId.includes('files');
+
+    const tryResolveToastBatchId = (transferId: string): string | null => {
+      const batchId = activeToastBatchId.current;
+      if (!batchId) return null;
+      if (!isGroupedToastTransfer(batchId)) return null;
+      if (transferId === batchId) return batchId;
+      if (transferId.startsWith(`${batchId}-`)) return batchId;
+      return null;
+    };
+
+    const nextToastLaneIndex = (): number => {
+      const maxCh = optRef.current.maxChannels ?? 5;
+      const used = new Set(toastLaneAssignments.current.values());
+      for (let index = 0; index < maxCh; index++) {
+        if (!used.has(index)) return index;
+      }
+      return toastLaneAssignments.current.size;
+    };
+
+    /** Evict the oldest completed lane to free its slot for a new file_start */
+    const evictOldestCompletedLane = (): void => {
+      let oldestId: string | null = null;
+      let oldestIdx = Infinity;
+      for (const [id, lane] of toastLanesRef.current) {
+        if (lane.state === 'completed' || lane.state === 'error') {
+          const idx = toastLaneAssignments.current.get(id) ?? Infinity;
+          if (idx < oldestIdx) {
+            oldestIdx = idx;
+            oldestId = id;
+          }
+        }
+      }
+      if (oldestId) {
+        clearLaneCleanupTimer(oldestId);
+        toastLanesRef.current.delete(oldestId);
+        toastLaneAssignments.current.delete(oldestId);
+      }
+    };
+
+    const emitToastState = () => {
+      if (!toastSummaryRef.current) {
+        dispatchTransferToast(null);
+        return;
+      }
+
+      const lanes = Array.from(toastLanesRef.current.values())
+        .sort((a, b) => (toastLaneAssignments.current.get(a.id) ?? 0) - (toastLaneAssignments.current.get(b.id) ?? 0));
+
+      const toastState: TransferToastState = {
+        summary: toastSummaryRef.current,
+        lanes,
+        reservedLaneSlots: toastReservedLaneSlots.current,
+        maxChannels: optRef.current.maxChannels,
+      };
+      dispatchTransferToast(toastState);
+    };
+
+    const clearLaneCleanupTimer = (laneId: string) => {
+      const timer = toastLaneCleanupTimers.current.get(laneId);
+      if (timer) {
+        clearTimeout(timer);
+        toastLaneCleanupTimers.current.delete(laneId);
+      }
+    };
+
+    const scheduleLaneCleanup = (laneId: string) => {
+      clearLaneCleanupTimer(laneId);
+      const timer = setTimeout(() => {
+        toastLanesRef.current.delete(laneId);
+        toastLaneAssignments.current.delete(laneId);
+        toastLaneCleanupTimers.current.delete(laneId);
+        emitToastState();
+      }, 600);
+      toastLaneCleanupTimers.current.set(laneId, timer);
+    };
+
+    const unlistenBatchStarted = listen<TransferBatchStartedEvent>('transfer_batch_started', (event) => {
+      const data = event.payload;
+      if (!data?.batch_id || !data.batch_id.includes('files')) {
+        return;
+      }
+      if (clearToastTimer.current) {
+        clearTimeout(clearToastTimer.current);
+        clearToastTimer.current = null;
+      }
+      activeToastBatchId.current = data.batch_id;
+      const batchSummary: TransferProgress = {
+        transfer_id: data.batch_id,
+        filename: data.display_name,
+        transferred: 0,
+        total: data.total,
+        percentage: 0,
+        speed_bps: 0,
+        eta_seconds: 0,
+        direction: data.direction,
+        total_files: data.total,
+        path: transferIdToDisplayPath.current.get(data.batch_id),
+      };
+      toastSummaryRef.current = batchSummary;
+      toastLaneAssignments.current.clear();
+      toastLanesRef.current.clear();
+      toastReservedLaneSlots.current = 0;
+      for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+      toastLaneCleanupTimers.current.clear();
+      optRef.current.onTransferStart?.();
+      optRef.current.setActiveTransfer(batchSummary);
+      dispatchTransferToast({ summary: batchSummary });
+    });
+
     const unlisten = listen<TransferEvent>('transfer_event', (event) => {
       const { t, activityLog, humanLog, transferQueue, notify, setActiveTransfer } = optRef.current;
       const data = event.payload;
+      window.dispatchEvent(new CustomEvent<TransferEvent>(TRANSFER_EVENT_BRIDGE, { detail: data }));
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
         // Auto-open activity log on transfer start
         optRef.current.onTransferStart?.();
+        if (clearToastTimer.current) {
+          clearTimeout(clearToastTimer.current);
+          clearToastTimer.current = null;
+        }
         // Clean up completed set and reset speed tracking for this new transfer
         completedTransferIds.current.delete(data.transfer_id);
         lastFileSpeedRef.current = 0;
@@ -106,6 +241,32 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           logId = humanLog.logStart(data.direction === 'download' ? 'DOWNLOAD' : 'UPLOAD', { filename: displayName });
         }
         transferIdToLogId.current.set(data.transfer_id, logId);
+        activeToastBatchId.current = data.transfer_id;
+        toastSummaryRef.current = data.progress
+          ? { ...data.progress, path: data.progress.path || data.path }
+          : !isGroupedToastTransfer(data.transfer_id)
+            ? {
+              transfer_id: data.transfer_id,
+              filename: data.filename,
+              transferred: 0,
+              total: 0,
+              percentage: 0,
+              speed_bps: 0,
+              eta_seconds: 0,
+              direction: data.direction === 'upload' ? 'upload' : 'download',
+              path: displayName,
+            }
+          : null;
+        toastLaneAssignments.current.clear();
+        toastLanesRef.current.clear();
+        toastReservedLaneSlots.current = 0;
+        for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+        toastLaneCleanupTimers.current.clear();
+        if (toastSummaryRef.current) {
+          setActiveTransfer(toastSummaryRef.current);
+          dispatchTransferToast({ summary: toastSummaryRef.current });
+          emitToastState();
+        }
 
         const queueItem = transferQueue.items.find((i: { filename: string; status: string; id: string }) =>
           i.filename === data.filename && (i.status === 'pending' || i.status === 'transferring'));
@@ -153,9 +314,55 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Add individual file to transfer queue
         const fileDirection = data.direction === 'upload' ? 'upload' : 'download';
         const fileSize = data.progress?.total || 0;
-        const fileQueueId = transferQueue.addItem(data.filename, data.path || '', fileSize, fileDirection);
+        const queuePath = data.path || '';
+        const existingPendingItem = transferQueue.items.find((item: {
+          id: string;
+          filename: string;
+          path: string;
+          status: string;
+          type: string;
+        }) =>
+          item.status === 'pending'
+          && item.type === fileDirection
+          && item.filename === data.filename
+          && item.path === queuePath
+        );
+        const fileQueueId = existingPendingItem?.id
+          || transferQueue.addItem(data.filename, queuePath, fileSize, fileDirection);
         transferQueue.startTransfer(fileQueueId);
         transferIdToQueueId.current.set(fileKey, fileQueueId);
+        transferIdToQueueId.current.set(data.transfer_id, fileQueueId);
+        if (tryResolveToastBatchId(data.transfer_id)) {
+          const maxCh = optRef.current.maxChannels ?? 5;
+          clearLaneCleanupTimer(data.transfer_id);
+          if (!toastLaneAssignments.current.has(data.transfer_id)) {
+            // If all slots are full, evict the oldest completed lane to make room
+            if (toastLaneAssignments.current.size >= maxCh) {
+              evictOldestCompletedLane();
+            }
+            // Only assign a slot if one was freed (avoid phantom lanes beyond maxChannels)
+            if (toastLaneAssignments.current.size < maxCh) {
+              toastLaneAssignments.current.set(data.transfer_id, nextToastLaneIndex());
+            }
+          }
+          toastLanesRef.current.set(data.transfer_id, {
+            id: data.transfer_id,
+            filename: data.filename,
+            transferred: 0,
+            total: fileSize,
+            percentage: 0,
+            speed_bps: 0,
+            eta_seconds: 0,
+            direction: fileDirection,
+            path: data.path,
+            state: 'active',
+          });
+          toastReservedLaneSlots.current = Math.min(
+            Math.max(toastReservedLaneSlots.current, toastLanesRef.current.size),
+            maxCh,
+          );
+          emitToastState();
+        }
       } else if (data.event_type === 'file_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         // Use full path as key to match file_start (handles duplicate filenames across subdirs)
@@ -178,6 +385,20 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.completeTransfer(fileQueueId);
           transferIdToQueueId.current.delete(fileKey);
         }
+        transferIdToQueueId.current.delete(data.transfer_id);
+        const existingLane = toastLanesRef.current.get(data.transfer_id);
+        if (existingLane) {
+          toastLanesRef.current.set(data.transfer_id, {
+            ...existingLane,
+            transferred: existingLane.total,
+            percentage: 100,
+            speed_bps: 0,
+            eta_seconds: 0,
+            state: 'completed',
+          });
+          scheduleLaneCleanup(data.transfer_id);
+        }
+        emitToastState();
       } else if (data.event_type === 'file_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = data.path || data.filename;
@@ -191,6 +412,18 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.failTransfer(fileErrQueueId, data.message || 'Transfer failed');
           transferIdToQueueId.current.delete(fileErrorKey);
         }
+        transferIdToQueueId.current.delete(data.transfer_id);
+        const existingLane = toastLanesRef.current.get(data.transfer_id);
+        if (existingLane) {
+          toastLanesRef.current.set(data.transfer_id, {
+            ...existingLane,
+            speed_bps: 0,
+            eta_seconds: 0,
+            state: 'error',
+          });
+          scheduleLaneCleanup(data.transfer_id);
+        }
+        emitToastState();
       } else if (data.event_type === 'file_skip') {
         // File skipped due to file_exists_action setting (identical/not newer)
         const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
@@ -207,18 +440,56 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           clearToastTimer.current = null;
         }
         // Ignore late progress events for already-completed transfers (race condition fix)
-        if (!completedTransferIds.current.has(data.transfer_id)) {
-          // Track file-level speed regardless of throttle
-          if (!data.progress.total_files && data.progress.speed_bps > 0) {
-            lastFileSpeedRef.current = data.progress.speed_bps;
-          }
-          // Signal App that a transfer is active (boolean only — no frequent re-renders)
-          setActiveTransfer(data.progress);
+          if (!completedTransferIds.current.has(data.transfer_id)) {
+            // Track file-level speed regardless of throttle
+            if (!data.progress.total_files && data.progress.speed_bps > 0) {
+              lastFileSpeedRef.current = data.progress.speed_bps;
+            }
+            if (!data.progress.total_files) {
+              const fileQueueId = transferIdToQueueId.current.get(data.transfer_id);
+              if (fileQueueId) {
+                transferQueue.setProgress(fileQueueId, data.progress.percentage);
+              }
+            }
+            // Signal App that a transfer is active (boolean only — no frequent re-renders)
+            setActiveTransfer(data.progress);
           // Dispatch progress to isolated TransferToastContainer (no App re-render)
           if (data.progress.total_files) {
-            dispatchTransferToast({ ...data.progress, speed_bps: lastFileSpeedRef.current });
+            toastSummaryRef.current = { ...data.progress, speed_bps: lastFileSpeedRef.current };
+            emitToastState();
           } else {
-            dispatchTransferToast(data.progress);
+            const batchId = tryResolveToastBatchId(data.transfer_id);
+            if (batchId) {
+              const maxCh = optRef.current.maxChannels ?? 5;
+              clearLaneCleanupTimer(data.transfer_id);
+              if (!toastLaneAssignments.current.has(data.transfer_id)) {
+                if (toastLaneAssignments.current.size >= maxCh) {
+                  evictOldestCompletedLane();
+                }
+                if (toastLaneAssignments.current.size < maxCh) {
+                  toastLaneAssignments.current.set(data.transfer_id, nextToastLaneIndex());
+                }
+              }
+              toastLanesRef.current.set(data.transfer_id, {
+                id: data.transfer_id,
+                filename: data.progress.filename,
+                transferred: data.progress.transferred,
+                total: data.progress.total,
+                percentage: data.progress.percentage,
+                speed_bps: data.progress.speed_bps,
+                eta_seconds: data.progress.eta_seconds,
+                direction: data.progress.direction,
+                path: data.progress.path || data.path,
+                state: 'active',
+              });
+              toastReservedLaneSlots.current = Math.min(
+                Math.max(toastReservedLaneSlots.current, toastLanesRef.current.size),
+                maxCh,
+              );
+              emitToastState();
+            } else {
+              dispatchTransferToast({ summary: data.progress });
+            }
           }
         }
 
@@ -229,6 +500,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           }
         }
       } else if (data.event_type === 'complete') {
+        window.dispatchEvent(new CustomEvent(TRANSFER_BATCH_FINISHED_EVENT, { detail: data }));
         // Dismiss scanning toast when transfer completes and reset streaming scan state
         streamingScanActive.current = false;
         optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
@@ -249,6 +521,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         clearToastTimer.current = setTimeout(() => {
           setActiveTransfer(null);
           dispatchTransferToast(null);
+          activeToastBatchId.current = null;
+          toastSummaryRef.current = null;
+          toastLaneAssignments.current.clear();
+          toastLanesRef.current.clear();
+          toastReservedLaneSlots.current = 0;
+          for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+          toastLaneCleanupTimers.current.clear();
           clearToastTimer.current = null;
         }, 500);
 
@@ -293,6 +572,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
         dispatchTransferToast(null);
+        activeToastBatchId.current = null;
+        toastSummaryRef.current = null;
+        toastLaneAssignments.current.clear();
+        toastLanesRef.current.clear();
+        toastReservedLaneSlots.current = 0;
+        for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+        toastLaneCleanupTimers.current.clear();
 
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = transferIdToDisplayPath.current.get(data.transfer_id)
@@ -317,10 +603,18 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         notify.error(t('transfer.failed'), data.message);
       } else if (data.event_type === 'cancelled') {
+        window.dispatchEvent(new CustomEvent(TRANSFER_BATCH_FINISHED_EVENT, { detail: data }));
         streamingScanActive.current = false;
         optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
         setActiveTransfer(null);
         dispatchTransferToast(null);
+        activeToastBatchId.current = null;
+        toastSummaryRef.current = null;
+        toastLaneAssignments.current.clear();
+        toastLanesRef.current.clear();
+        toastReservedLaneSlots.current = 0;
+        for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+        toastLaneCleanupTimers.current.clear();
 
         const cancelledMsg = t('transfer.cancelledByUser');
 
@@ -455,7 +749,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       }
     });
-    return () => { unlisten.then(fn => fn()); };
+    return () => {
+      for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
+      toastLaneCleanupTimers.current.clear();
+      unlisten.then(fn => fn());
+      unlistenBatchStarted.then(fn => fn());
+    };
   // Subscribe once, never re-subscribe. All mutable values accessed via optRef.current.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -19,13 +19,33 @@ interface DownloadFolderParams {
   remote_path: string;
   local_path: string;
   file_exists_action?: string;
+  max_concurrent?: number;
+  retry_count?: number;
+  timeout_seconds?: number;
 }
 
 interface UploadFolderParams {
   local_path: string;
   remote_path: string;
   file_exists_action?: string;
+  max_concurrent?: number;
+  retry_count?: number;
+  timeout_seconds?: number;
 }
+
+type TransferSpeedPreset = 'base' | 'fast' | 'super';
+
+const TRANSFER_SPEED_PRESETS: Record<TransferSpeedPreset, { label: string; channels: number }> = {
+  base: { label: 'Safe', channels: 1 },
+  fast: { label: 'Balanced', channels: 3 },
+  super: { label: 'Max', channels: 5 },
+};
+
+const deriveTransferSpeedPreset = (channels: number): TransferSpeedPreset => {
+  if (channels <= 1) return 'base';
+  if (channels <= 3) return 'fast';
+  return 'super';
+};
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { ToastContainer, useToast } from './components/Toast';
@@ -136,7 +156,7 @@ import { useTranslation } from './i18n';
 
 // Components
 import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
-import { TransferToastContainer, dispatchTransferToast } from './components/Transfer/TransferToastContainer';
+import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
@@ -192,7 +212,8 @@ const App: React.FC = () => {
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
     showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
-    sortFoldersFirst, showFileExtensions, fileExistsAction, swapPanels,
+    sortFoldersFirst, showFileExtensions, timeoutSeconds, maxConcurrentTransfers, retryCount,
+    fileExistsAction, swapPanels,
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowActivityLog,
@@ -200,6 +221,9 @@ const App: React.FC = () => {
     setSwapPanels,
     SETTINGS_KEY,
   } = settings;
+  const [sessionTransferSpeedPreset, setSessionTransferSpeedPreset] = useState<TransferSpeedPreset>(
+    () => deriveTransferSpeedPreset(maxConcurrentTransfers)
+  );
 
   // Sync font CSS variables to <html> so Tailwind rem-based classes scale globally
   useEffect(() => {
@@ -1875,6 +1899,7 @@ interface UpdateVerificationInfo {
       if (!showActivityLog) setShowActivityLog(true);
     },
     onScanningUpdate: setScanningState,
+    maxChannels: TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels,
   });
 
   // AeroFile toggle — shared between StatusBar, IntroHub header, and View > AeroFile menu
@@ -2099,6 +2124,13 @@ interface UpdateVerificationInfo {
         port: params.port || 443,
       };
     }
+    if (protocol === 'immich') {
+      return {
+        ...params,
+        port: params.port || 443,
+        username: params.username || 'api-key',
+      };
+    }
     return params;
   };
 
@@ -2106,6 +2138,33 @@ interface UpdateVerificationInfo {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     return (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
   };
+
+  const activeTransferProtocol = getActiveProviderProtocol();
+  const supportsParallelTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
+  const transferPresetLabelMap: Record<TransferSpeedPreset, string> = {
+    base: t('transfer.modeSafe'),
+    fast: t('transfer.modeBalanced'),
+    super: t('transfer.modeMax'),
+  };
+  const effectiveTransferSpeedPreset: TransferSpeedPreset = supportsParallelTransferPresets
+    ? sessionTransferSpeedPreset
+    : 'base';
+  const effectiveMaxConcurrentTransfers = supportsParallelTransferPresets
+    ? TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels
+    : 1;
+  const effectiveTransferSpeedLabel = `${transferPresetLabelMap[effectiveTransferSpeedPreset]} ${TRANSFER_SPEED_PRESETS[effectiveTransferSpeedPreset].channels}x`;
+
+  const cycleTransferSpeedPreset = useCallback(() => {
+    if (!supportsParallelTransferPresets) {
+      return;
+    }
+
+    setSessionTransferSpeedPreset(current => {
+      if (current === 'base') return 'fast';
+      if (current === 'fast') return 'super';
+      return 'base';
+    });
+  }, [supportsParallelTransferPresets]);
 
   const buildProviderParams = async (params: ConnectionParams, initialPath: string | null) => {
     let effectiveParams = normalizeProviderConnectionParams(params);
@@ -2588,7 +2647,9 @@ interface UpdateVerificationInfo {
                     ? `Felicloud ${effectiveParams.username}`
                     : effectiveParams.providerId === 'infinicloud'
                       ? `InfiniCLOUD ${effectiveParams.username}`
-                      : effectiveParams.server.split(':')[0]);
+                      : protocol === 'immich'
+                        ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
+                        : effectiveParams.server.split(':')[0]);
       const protocolLabel = protocol.toUpperCase();
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
@@ -3694,9 +3755,23 @@ interface UpdateVerificationInfo {
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
           let folderResult: string;
           if (isProvider) {
-            folderResult = await invoke<string>('provider_download_folder', { remotePath: remoteFilePath, localPath: folderPath, fileExistsAction: folderAction || undefined });
+            folderResult = await invoke<string>('provider_download_folder', {
+              remotePath: remoteFilePath,
+              localPath: folderPath,
+              fileExistsAction: folderAction || undefined,
+              maxConcurrent: effectiveMaxConcurrentTransfers,
+              retryCount,
+              timeoutSeconds,
+            });
           } else {
-            const params: DownloadFolderParams = { remote_path: remoteFilePath, local_path: folderPath, file_exists_action: folderAction || undefined };
+            const params: DownloadFolderParams = {
+              remote_path: remoteFilePath,
+              local_path: folderPath,
+              file_exists_action: folderAction || undefined,
+              max_concurrent: effectiveMaxConcurrentTransfers,
+              retry_count: retryCount,
+              timeout_seconds: timeoutSeconds,
+            };
             folderResult = await invoke<string>('download_folder', { params });
           }
           // Don't log success if the transfer was cancelled
@@ -3740,7 +3815,6 @@ interface UpdateVerificationInfo {
             // Use provider command for file download
             await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath, modified: remoteModified });
           } else {
-            // Use FTP command
             const params: DownloadParams = { remote_path: remoteFilePath, local_path: localFilePath, modified: remoteModified };
             await invoke('download_file', { params });
           }
@@ -3776,40 +3850,18 @@ interface UpdateVerificationInfo {
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
         if (isProvider) {
           const remoteRootForFolder = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
-
-          // Recursive upload function
-          const processFolder = async (currentLocalPath: string, currentRemoteBase: string) => {
-            // Create the directory itself first
-            try {
-              await invoke('provider_mkdir', { path: currentRemoteBase, commitMessage: commitMessage || null });
-            } catch (e) {
-              // Ignore if already exists
-            }
-
-            // Use 'get_local_files' for local directory listing!
-            const entries = await invoke<LocalFile[]>('get_local_files', { path: currentLocalPath, showHidden: true });
-            for (const entry of entries) {
-              const newRemotePath = `${currentRemoteBase}/${entry.name}`;
-              if (entry.is_dir) {
-                await processFolder(entry.path, newRemotePath);
-              } else {
-                const fileQueueId = transferQueue.addItem(entry.name, entry.path, entry.size || 0, 'upload');
-                transferQueue.startTransfer(fileQueueId);
-                try {
-                  humanLog.updateEntry(logId, { message: `Uploading ${entry.name}...` });
-                  await invoke('provider_upload_file', { localPath: entry.path, remotePath: newRemotePath, commitMessage: commitMessage || null });
-                  transferQueue.completeTransfer(fileQueueId);
-                } catch (e) {
-                  console.error(`Failed to upload ${entry.name}:`, e);
-                  transferQueue.failTransfer(fileQueueId, String(e));
-                }
-              }
-            }
-          };
-
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
           try {
-            await processFolder(localFilePath, remoteRootForFolder);
+            const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
+            await invoke<string>('provider_upload_folder', {
+              localPath: localFilePath,
+              remotePath: remoteRootForFolder,
+              fileExistsAction: folderAction2 || null,
+              maxConcurrent: effectiveMaxConcurrentTransfers,
+              retryCount: retryCount,
+              timeoutSeconds: timeoutSeconds,
+              commitMessage: commitMessage || null,
+            });
           } finally {
             setScanningState(INITIAL_SCANNING_STATE);
           }
@@ -3824,7 +3876,14 @@ interface UpdateVerificationInfo {
         }
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
         const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
-        const params: UploadFolderParams = { local_path: localFilePath, remote_path: remotePath, file_exists_action: folderAction2 || undefined };
+        const params: UploadFolderParams = {
+          local_path: localFilePath,
+          remote_path: remotePath,
+          file_exists_action: folderAction2 || undefined,
+          max_concurrent: effectiveMaxConcurrentTransfers,
+          retry_count: retryCount,
+          timeout_seconds: timeoutSeconds,
+        };
         const uploadResult = await invoke<string>('upload_folder', { params });
         // Don't log success if the transfer was cancelled
         if (!uploadResult.toLowerCase().includes('cancelled')) {
@@ -4196,6 +4255,7 @@ interface UpdateVerificationInfo {
       if (filesToUpload.length > 0) {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const isProvider = usesProviderApi(protocol);
         const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
@@ -4244,6 +4304,99 @@ interface UpdateVerificationInfo {
           }
 
           batchCommitMessage = commitMessage;
+        }
+
+        const canUseNativeUploadBatch = !isProvider
+          && !isGitHubRepoMode
+          && filesToUpload.length > 1
+          && filesToUpload.every(({ file }) => !file.is_dir);
+
+        if (canUseNativeUploadBatch) {
+          batchCancelledRef.current = false;
+          cancelLevelRef.current = 0;
+          circuitBreaker.reset();
+          try { await invoke('reset_cancel_flag'); } catch { }
+
+          let skippedCount = 0;
+          const entries: Array<{
+            id: string;
+            display_name: string;
+            remote_path: string;
+            local_path: string;
+            size: number;
+            modified: string | null;
+          }> = [];
+
+          for (let i = 0; i < filesToUpload.length; i++) {
+            const { path: filePath, file } = filesToUpload[i];
+            const remainingInQueue = filesToUpload.length - i - 1;
+            const overwriteResult = await checkOverwrite(
+              file.name,
+              file.size || 0,
+              file.modified ? new Date(file.modified) : undefined,
+              false,
+              remainingInQueue
+            );
+
+            if (overwriteResult.action === 'cancel') {
+              resetOverwriteSettings();
+              folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+              return;
+            }
+
+            if (overwriteResult.action === 'skip') {
+              humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: file.name }, 'success');
+              skippedCount++;
+              continue;
+            }
+
+            const finalName = overwriteResult.newName || file.name;
+            entries.push({
+              id: '',
+              display_name: finalName,
+              remote_path: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${finalName}`,
+              local_path: filePath,
+              size: file.size || 0,
+              modified: null,
+            });
+          }
+
+          resetOverwriteSettings();
+          folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+
+          if (entries.length === 0) {
+            if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+            setSelectedLocalFiles(new Set());
+            return;
+          }
+
+          for (const entry of entries) {
+            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
+          }
+
+          try {
+            await invoke<string>('upload_files_batch', {
+              params: {
+                entries,
+                max_concurrent: effectiveMaxConcurrentTransfers,
+                retry_count: retryCount,
+                timeout_seconds: timeoutSeconds,
+              }
+            });
+          } catch (error) {
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.uploadFailed'), String(error));
+            }
+          } finally {
+            retryCallbacksRef.current.clear();
+          }
+
+          if (skippedCount > 0) {
+            notify.info(t('toast.fileSkipped', { count: skippedCount }));
+          }
+          setSelectedLocalFiles(new Set());
+          loadRemoteFiles();
+          return;
         }
 
         // Queue shows progress - no toast needed
@@ -4612,6 +4765,100 @@ interface UpdateVerificationInfo {
 
     const filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
     if (filesToDownload.length > 0) {
+      const activeSession = sessions.find(s => s.id === activeSessionId);
+      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+      const isProvider = usesProviderApi(protocol);
+
+      const canUseNativeDownloadBatch = !isProvider
+        && filesToDownload.length > 1
+        && filesToDownload.every(file => !file.is_dir);
+
+      if (canUseNativeDownloadBatch) {
+        batchCancelledRef.current = false;
+        cancelLevelRef.current = 0;
+        circuitBreaker.reset();
+        try { await invoke('reset_cancel_flag'); } catch { }
+
+        let skippedCount = 0;
+        const entries: Array<{
+          id: string;
+          display_name: string;
+          remote_path: string;
+          local_path: string;
+          size: number;
+          modified: string | null;
+        }> = [];
+
+        for (let i = 0; i < filesToDownload.length; i++) {
+          const file = filesToDownload[i];
+          const remainingInQueue = filesToDownload.length - i - 1;
+          const overwriteResult = await checkOverwrite(
+            file.name,
+            file.size || 0,
+            file.modified ? new Date(file.modified) : undefined,
+            true,
+            remainingInQueue
+          );
+
+          if (overwriteResult.action === 'cancel') {
+            resetOverwriteSettings();
+            return;
+          }
+
+          if (overwriteResult.action === 'skip') {
+            humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: file.name }, 'success');
+            skippedCount++;
+            continue;
+          }
+
+          const finalName = overwriteResult.newName || file.name;
+          entries.push({
+            id: '',
+            display_name: finalName,
+            remote_path: file.path,
+            local_path: `${currentLocalPath}/${finalName}`,
+            size: file.size || 0,
+            modified: file.modified || null,
+          });
+        }
+
+        resetOverwriteSettings();
+
+        if (entries.length === 0) {
+          if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+          setSelectedRemoteFiles(new Set());
+          return;
+        }
+
+        for (const entry of entries) {
+          transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
+        }
+
+        try {
+          await invoke<string>('download_files_batch', {
+            params: {
+              entries,
+              max_concurrent: effectiveMaxConcurrentTransfers,
+              retry_count: retryCount,
+              timeout_seconds: timeoutSeconds,
+            }
+          });
+        } catch (error) {
+          if (!batchCancelledRef.current) {
+            notify.error(t('toast.downloadFailed'), String(error));
+          }
+        } finally {
+          retryCallbacksRef.current.clear();
+        }
+
+        if (skippedCount > 0) {
+          notify.info(t('toast.fileSkipped', { count: skippedCount }));
+        }
+        setSelectedRemoteFiles(new Set());
+        await loadLocalFiles(currentLocalPath);
+        return;
+      }
+
       // Queue shows progress - no toast needed
 
       // Add all files to queue first
@@ -5139,6 +5386,7 @@ interface UpdateVerificationInfo {
   // Inline rename: start editing directly in the file list
   const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
+    if (isRemote && connectionParams.protocol === 'immich') return;
     setInlineRename({ path, name, isRemote });
     setInlineRenameValue(name);
     // Focus input after render
@@ -5351,8 +5599,8 @@ interface UpdateVerificationInfo {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 },
-      ...(count > 1 ? [{
+      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 || currentProtocol === 'immich' },
+      ...(count > 1 && currentProtocol !== 'immich' ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
         action: () => {
@@ -5569,7 +5817,8 @@ interface UpdateVerificationInfo {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
           const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
           clipboardCut(selectedFiles, true, currentRemotePath);
-        }
+        },
+        disabled: currentProtocol === 'immich',
       },
       ...(currentProtocol && SERVER_COPY_PROVIDERS.includes(currentProtocol) ? [{
         label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
@@ -6481,6 +6730,7 @@ interface UpdateVerificationInfo {
         label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(true),
         divider: currentProtocol !== 'zohoworkdrive',
+        disabled: currentProtocol === 'immich' && currentRemotePath !== '/',
       },
       ...(currentProtocol === 'zohoworkdrive' ? [
         {
@@ -6970,7 +7220,7 @@ interface UpdateVerificationInfo {
           onRetryAllFailed={retryAllFailedItems}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-        <TransferToastContainer onCancel={cancelTransfer} />
+        <TransferToastContainer />
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
@@ -7650,7 +7900,9 @@ interface UpdateVerificationInfo {
                           ? `Yandex Disk ${normalizedParams.username}`
                         : normalizedParams.protocol === 'mega' || normalizedParams.protocol === 'internxt' || normalizedParams.protocol === 'filen'
                           ? normalizedParams.username
-                          : normalizedParams.server.split(':')[0]);
+                          : normalizedParams.protocol === 'immich'
+                            ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
+                            : normalizedParams.server.split(':')[0]);
                   const protocolLabel = (normalizedParams.protocol || 'FTP').toUpperCase();
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
@@ -7967,6 +8219,25 @@ interface UpdateVerificationInfo {
                         title={t('statusBar.syncFiles')}
                       >
                         <FolderSync size={16} /> {t('statusBar.syncFiles')}
+                      </button>
+                      <button
+                        onClick={cycleTransferSpeedPreset}
+                        disabled={!supportsParallelTransferPresets}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
+                          supportsParallelTransferPresets
+                            ? effectiveTransferSpeedPreset === 'super'
+                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                              : effectiveTransferSpeedPreset === 'fast'
+                                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                            : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        }`}
+                        title={supportsParallelTransferPresets
+                          ? `${t('transfer.mode')}: ${effectiveTransferSpeedLabel}`
+                          : t('transfer.modeUnavailable')}
+                      >
+                        <Zap size={16} />
+                        {effectiveTransferSpeedLabel}
                       </button>
                     </>
                   )}
@@ -9010,6 +9281,8 @@ interface UpdateVerificationInfo {
             transferQueueActive={transferQueue.hasActiveTransfers}
             transferQueueCount={transferQueue.items.length}
             onToggleTransferQueue={transferQueue.toggle}
+            transferToastActive={hasActiveTransfer || transferQueue.hasActiveTransfers}
+            onReopenTransferToast={reopenTransferToast}
             showActivityLog={showActivityLog}
             activityLogCount={activityLog.entries.length}
             onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}

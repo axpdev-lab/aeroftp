@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
-    Server, Database, Globe, Cloud, Code,
+    Server, Database, Globe, Cloud, Code, Camera,
     ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
@@ -17,6 +17,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Database: <Database size={16} />,
     Globe: <Globe size={16} />,
     Cloud: <Cloud size={16} />,
+    Camera: <Camera size={16} />,
     Code: <Code size={16} />,
 };
 
@@ -25,6 +26,7 @@ const CATEGORY_COLORS: Record<CatalogCategoryId, string> = {
     'object-storage': 'text-orange-400',
     'webdav': 'text-emerald-400',
     'cloud-storage': 'text-sky-400',
+    'media-services': 'text-pink-400',
     'developer': 'text-gray-400',
 };
 
@@ -218,6 +220,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         'object-storage': 's3',
                         'webdav': 'webdav',
                         'cloud-storage': 'cloud',
+                        'media-services': 'media',
                         'developer': 'developer',
                     };
                     const key = infoKeyMap[activeCategory];

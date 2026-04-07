@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
@@ -17,6 +18,12 @@ use crate::providers::{
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission, StorageInfo,
     StorageProvider,
 };
+use crate::provider_transfer_executor::{ProviderDownloadExecutor, ProviderUploadExecutor};
+use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
+use crate::transfer_settings::{
+    resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
+};
 
 /// Global flag: when true, filesystem watcher should suppress sync triggers.
 /// Set during folder download/upload to prevent AeroCloud interference.
@@ -25,11 +32,11 @@ pub static TRANSFER_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 /// State for managing the active storage provider
 pub struct ProviderState {
     /// Currently active provider (if connected)
-    pub provider: Mutex<Option<Box<dyn StorageProvider>>>,
+    pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     /// Current provider configuration
-    pub config: Mutex<Option<ProviderConfig>>,
+    pub config: Arc<Mutex<Option<ProviderConfig>>>,
     /// Cancel flag for aborting folder transfers
-    pub cancel_flag: Mutex<bool>,
+    pub cancel_flag: Arc<AtomicBool>,
     /// Held GitHub App installation token — never crosses IPC.
     /// Set by `github_app_token_from_pem`/`_from_vault`, consumed by `provider_connect`.
     pub held_github_app_token: Mutex<Option<String>>,
@@ -38,9 +45,9 @@ pub struct ProviderState {
 impl ProviderState {
     pub fn new() -> Self {
         Self {
-            provider: Mutex::new(None),
-            config: Mutex::new(None),
-            cancel_flag: Mutex::new(false),
+            provider: Arc::new(Mutex::new(None)),
+            config: Arc::new(Mutex::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
             held_github_app_token: Mutex::new(None),
         }
     }
@@ -141,6 +148,8 @@ impl ProviderConnectionParams {
             "github" => ProviderType::GitHub,
             "gitlab" => ProviderType::GitLab,
             "swift" => ProviderType::Swift,
+            "googlephotos" | "google_photos" => ProviderType::GooglePhotos,
+            "immich" => ProviderType::Immich,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 
@@ -606,7 +615,7 @@ pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, Str
 /// Download a file from the remote server
 #[tauri::command]
 pub async fn provider_download_file(
-    _app: AppHandle,
+    app: AppHandle,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -623,9 +632,25 @@ pub async fn provider_download_file(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
 
+    let transfer_id = format!("pdl-{}", chrono::Utc::now().timestamp_millis());
+
     info!(
         "Downloading via provider: {} -> {}",
         remote_path, local_path
+    );
+
+    // Emit start event
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: filename.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Starting download: {}", filename)),
+            progress: None,
+            path: None,
+        },
     );
 
     // Create parent directory if needed
@@ -633,19 +658,86 @@ pub async fn provider_download_file(
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    provider
-        .download(&remote_path, &local_path, None)
-        .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+    let file_size = provider.size(&remote_path).await.unwrap_or(0);
+    let app_progress = app.clone();
+    let tid_progress = transfer_id.clone();
+    let fname_progress = filename.clone();
 
-    // Preserve remote mtime on the local file
-    crate::preserve_remote_mtime(&local_path, modified.as_deref());
+    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
+        Some(Box::new(move |transferred: u64, total: u64| {
+            let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let _ = app_progress.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: tid_progress.clone(),
+                    filename: fname_progress.clone(),
+                    direction: "download".to_string(),
+                    message: None,
+                    progress: Some(crate::TransferProgress {
+                        transfer_id: tid_progress.clone(),
+                        filename: fname_progress.clone(),
+                        direction: "download".to_string(),
+                        percentage: pct,
+                        transferred,
+                        total,
+                        speed_bps: 0,
+                        eta_seconds: 0,
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                },
+            );
+        }))
+    } else {
+        None
+    };
 
-    info!("Download completed: {}", filename);
-    Ok(format!("Downloaded: {}", filename))
+    let result = provider
+        .download(&remote_path, &local_path, progress_cb)
+        .await;
+
+    match &result {
+        Ok(()) => {
+            // Preserve remote mtime on the local file
+            crate::preserve_remote_mtime(&local_path, modified.as_deref());
+            let actual_size = tokio::fs::metadata(&local_path).await.map(|m| m.len()).unwrap_or(file_size);
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "complete".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("({} in 0s)", if actual_size > 1_048_576 { format!("{:.1} MB", actual_size as f64 / 1_048_576.0) } else { format!("{:.1} KB", actual_size as f64 / 1024.0) })),
+                    progress: None,
+                    path: None,
+                },
+            );
+            info!("Download completed: {}", filename);
+            Ok(format!("Downloaded: {}", filename))
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id,
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download failed: {}", e)),
+                    progress: None,
+                    path: None,
+                },
+            );
+            Err(format!("Download failed: {}", e))
+        }
+    }
 }
 
 /// Download a folder recursively from the remote server (OAuth providers)
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_download_folder(
     app: AppHandle,
@@ -653,12 +745,60 @@ pub async fn provider_download_folder(
     remote_path: String,
     local_path: String,
     #[allow(unused_variables)] file_exists_action: Option<String>,
+    max_concurrent: Option<u32>,
+    retry_count: Option<u32>,
+    timeout_seconds: Option<u64>,
 ) -> Result<String, String> {
+    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+        max_concurrent,
+        retry_count,
+        timeout_seconds,
+    });
+
     // Set transfer-in-progress flag to suppress filesystem watcher/AeroCloud
     TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
-    let result =
-        provider_download_folder_inner(&app, &state, &remote_path, &local_path, file_exists_action)
-            .await;
+    let result = provider_download_folder_inner(
+        &app,
+        &state,
+        &remote_path,
+        &local_path,
+        file_exists_action,
+        runtime_settings,
+    )
+    .await;
+    TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn provider_upload_folder(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    local_path: String,
+    remote_path: String,
+    #[allow(unused_variables)] file_exists_action: Option<String>,
+    max_concurrent: Option<u32>,
+    retry_count: Option<u32>,
+    timeout_seconds: Option<u64>,
+    commit_message: Option<String>,
+) -> Result<String, String> {
+    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+        max_concurrent,
+        retry_count,
+        timeout_seconds,
+    });
+
+    TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
+    let result = provider_upload_folder_inner(
+        &app,
+        &state,
+        &local_path,
+        &remote_path,
+        runtime_settings,
+        commit_message,
+    )
+    .await;
     TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
     result
 }
@@ -672,10 +812,14 @@ struct DownloadEntry {
     modified: Option<String>,
 }
 
+fn provider_transfer_cancelled(state: &State<'_, ProviderState>) -> bool {
+    state.cancel_flag.load(Ordering::Relaxed)
+}
+
 /// Sanitize a remote filename to prevent path traversal attacks.
 /// Strips path separators, `..` components, null bytes, and drive letters.
 /// Returns the sanitized filename, or an error if the name is empty or entirely unsafe.
-fn sanitize_remote_filename(name: &str) -> Result<String, String> {
+pub(crate) fn sanitize_remote_filename(name: &str) -> Result<String, String> {
     // Split on both Unix and Windows path separators, filter out dangerous components
     let sanitized: Vec<&str> = name
         .split(&['/', '\\'][..])
@@ -692,7 +836,10 @@ fn sanitize_remote_filename(name: &str) -> Result<String, String> {
     }
 
     // Take only the last component (the actual filename)
-    let filename = sanitized.last().unwrap().to_string();
+    let filename = sanitized
+        .last()
+        .ok_or_else(|| "Internal error: sanitized filename unexpectedly empty".to_string())?
+        .to_string();
 
     // Reject Windows drive letters (e.g. "C:")
     if filename.len() >= 2
@@ -709,7 +856,10 @@ fn sanitize_remote_filename(name: &str) -> Result<String, String> {
 }
 
 /// Verify that a resolved path is safely contained within the expected base directory.
-fn verify_path_containment(base: &std::path::Path, target: &std::path::Path) -> Result<(), String> {
+pub(crate) fn verify_path_containment(
+    base: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), String> {
     // Use canonicalize on the base (which must already exist)
     let canonical_base = base
         .canonicalize()
@@ -750,14 +900,12 @@ async fn provider_download_folder_inner(
     remote_path: &str,
     local_path: &str,
     file_exists_action: Option<String>,
+    runtime_settings: ResolvedTransferSettings,
 ) -> Result<String, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
 
     // Reset cancel flag
-    {
-        let mut cancel = state.cancel_flag.lock().await;
-        *cancel = false;
-    }
+    state.cancel_flag.store(false, Ordering::Relaxed);
 
     let folder_name = std::path::Path::new(remote_path)
         .file_name()
@@ -767,8 +915,12 @@ async fn provider_download_folder_inner(
     let transfer_id = format!("dl-folder-{}", chrono::Utc::now().timestamp_millis());
 
     info!(
-        "Downloading folder via provider: {} -> {}",
-        remote_path, local_path
+        "Downloading folder via provider: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        remote_path,
+        local_path,
+        runtime_settings.max_concurrent,
+        runtime_settings.retry_count,
+        runtime_settings.timeout_seconds
     );
 
     // Emit start event
@@ -806,44 +958,39 @@ async fn provider_download_folder_inner(
         vec![(remote_path.to_string(), local_path.to_string())];
     let mut files_downloaded = 0u32;
     let mut files_skipped = 0u32;
-    let mut files_errored = 0u32;
     let mut total_files_discovered = 0u32;
     let mut dirs_scanned = 0u32;
     let mut file_global_index = 0u32;
     let mut last_scan_emit = std::time::Instant::now();
-    let max_retries: u32 = 3;
-    let base_delay_ms: u64 = 500;
     let base_local = std::path::Path::new(local_path);
+    let mut transfer_entries: Vec<TransferEntry> = Vec::new();
 
     while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
         // ── Check cancel before scanning next directory ──
-        {
-            let cancel = state.cancel_flag.lock().await;
-            if *cancel {
-                info!(
-                    "Provider folder download cancelled by user after {} files",
-                    files_downloaded
-                );
-                let _ = app.emit(
-                    "transfer_event",
-                    crate::TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!(
-                            "Download cancelled after {} files",
-                            files_downloaded
-                        )),
-                        progress: None,
-                        path: None,
-                    },
-                );
-                return Ok(format!(
-                    "Download cancelled after {} files",
-                    files_downloaded
-                ));
-            }
+        if provider_transfer_cancelled(state) {
+            info!(
+                "Provider folder download cancelled by user after {} files",
+                files_downloaded
+            );
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!(
+                        "Download cancelled after {} files",
+                        files_downloaded
+                    )),
+                    progress: None,
+                    path: None,
+                },
+            );
+            return Ok(format!(
+                "Download cancelled after {} files",
+                files_downloaded
+            ));
         }
 
         // ── Scan this directory (acquire lock, list, release) ──
@@ -934,33 +1081,30 @@ async fn provider_download_folder_inner(
         // ── Transfer files from this directory immediately ──
         for entry in &dir_files {
             // Check cancel before each file
-            {
-                let cancel = state.cancel_flag.lock().await;
-                if *cancel {
-                    info!(
-                        "Provider folder download cancelled by user after {} files",
-                        files_downloaded
-                    );
-                    let _ = app.emit(
-                        "transfer_event",
-                        crate::TransferEvent {
-                            event_type: "cancelled".to_string(),
-                            transfer_id: transfer_id.clone(),
-                            filename: folder_name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!(
-                                "Download cancelled after {} files",
-                                files_downloaded
-                            )),
-                            progress: None,
-                            path: None,
-                        },
-                    );
-                    return Ok(format!(
-                        "Download cancelled after {} files",
-                        files_downloaded
-                    ));
-                }
+            if provider_transfer_cancelled(state) {
+                info!(
+                    "Provider folder download cancelled by user after {} files",
+                    files_downloaded
+                );
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "cancelled".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: folder_name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "Download cancelled after {} files",
+                            files_downloaded
+                        )),
+                        progress: None,
+                        path: None,
+                    },
+                );
+                return Ok(format!(
+                    "Download cancelled after {} files",
+                    files_downloaded
+                ));
             }
 
             file_global_index += 1;
@@ -1009,151 +1153,430 @@ async fn provider_download_folder_inner(
 
             let file_transfer_id = format!("{}-{}", transfer_id, file_global_index);
 
-            // Emit file_start — use total_files_discovered as denominator (grows as scan progresses)
-            let _ = app.emit(
-                "transfer_event",
-                crate::TransferEvent {
-                    event_type: "file_start".to_string(),
-                    transfer_id: file_transfer_id.clone(),
-                    filename: entry.name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Downloading ({}/{}+): {}",
-                        file_global_index, total_files_discovered, entry.remote_path
-                    )),
-                    progress: Some(crate::TransferProgress {
-                        transfer_id: file_transfer_id.clone(),
-                        filename: entry.name.clone(),
-                        transferred: 0,
-                        total: entry.size,
-                        percentage: 0,
-                        speed_bps: 0,
-                        eta_seconds: 0,
-                        direction: "download".to_string(),
-                        total_files: Some(total_files_discovered as u64),
-                        path: None,
-                    }),
-                    path: Some(entry.remote_path.clone()),
-                },
-            );
-
-            // Download with retry and per-file lock acquire/release
-            let mut downloaded = false;
-            let mut last_error = String::new();
-
-            for attempt in 0..=max_retries {
-                if attempt > 0 {
-                    let delay = base_delay_ms * 2u64.pow(attempt - 1);
-                    info!(
-                        "Retry {}/{} for {} after {}ms",
-                        attempt, max_retries, entry.name, delay
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-
-                let download_result: Result<(), String> = {
-                    let mut provider_lock = state.provider.lock().await;
-                    match provider_lock.as_mut() {
-                        Some(provider) => provider
-                            .download(&entry.remote_path, &entry.local_path, None)
-                            .await
-                            .map_err(|e| e.to_string()),
-                        None => Err("Provider disconnected".to_string()),
-                    }
-                };
-
-                match download_result {
-                    Ok(()) => {
-                        downloaded = true;
-                        break;
-                    }
-                    Err(e) => {
-                        last_error = e;
-                        warn!(
-                            "Download attempt {} failed for {}: {}",
-                            attempt + 1,
-                            entry.remote_path,
-                            last_error
-                        );
-                    }
-                }
-            }
-
-            if downloaded {
-                crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
-                files_downloaded += 1;
-                let _ = app.emit(
-                    "transfer_event",
-                    crate::TransferEvent {
-                        event_type: "file_complete".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: entry.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!(
-                            "Downloaded: {} ({}/{})",
-                            entry.name, files_downloaded, total_files_discovered
-                        )),
-                        progress: None,
-                        path: Some(entry.remote_path.clone()),
-                    },
-                );
-            } else {
-                files_errored += 1;
-                let _ = app.emit(
-                    "transfer_event",
-                    crate::TransferEvent {
-                        event_type: "file_error".to_string(),
-                        transfer_id: file_transfer_id,
-                        filename: entry.name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!(
-                            "Failed after {} retries: {}",
-                            max_retries, last_error
-                        )),
-                        progress: None,
-                        path: Some(entry.remote_path.clone()),
-                    },
-                );
-            }
+            transfer_entries.push(TransferEntry {
+                id: file_transfer_id,
+                display_name: entry.name.clone(),
+                remote_path: entry.remote_path.clone(),
+                local_path: entry.local_path.clone(),
+                size: entry.size,
+                modified: entry.modified.clone(),
+            });
         }
     }
 
+    let batch = TransferBatch {
+        id: transfer_id.clone(),
+        display_name: folder_name.clone(),
+        direction: TransferDirection::Download,
+        config: TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+        },
+        entries: transfer_entries,
+    };
+
+    let progress_app = app.clone();
+    let progress_transfer_id = transfer_id.clone();
+    let progress_folder_name = folder_name.clone();
+    let progress_remote_path = remote_path.to_string();
+    let total_files_for_progress = total_files_discovered;
+    let initial_skipped = files_skipped;
+    let progress_observer: ProgressObserver = Arc::new(move |snapshot| {
+        let processed = initial_skipped + snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
+
+        let _ = progress_app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!(
+                    "Downloaded {} / {} files ({} skipped, {} errors)",
+                    snapshot.completed, total_files_for_progress, initial_skipped, snapshot.failed
+                )),
+                progress: Some(crate::TransferProgress {
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_folder_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "download".to_string(),
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_remote_path.clone()),
+                }),
+                path: Some(progress_remote_path.clone()),
+            },
+        );
+    });
+
+    let executor = Arc::new(ProviderDownloadExecutor::new(
+        app.clone(),
+        state.provider.clone(),
+        runtime_settings,
+        state.cancel_flag.clone(),
+    ));
+
+    let batch_result = execute_batch(
+        app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    files_downloaded = batch_result.completed;
+    let files_errored = batch_result.failed;
+
     info!(
-        "Streaming folder download completed: {} ({} downloaded, {} skipped, {} errors)",
+        "Provider folder download completed via orchestrator: {} ({} downloaded, {} skipped, {} errors)",
         folder_name, files_downloaded, files_skipped, files_errored
     );
 
-    // Emit complete event
+    let event_type = if batch_result.cancelled {
+        "cancelled".to_string()
+    } else {
+        "complete".to_string()
+    };
+    let result_message = if batch_result.cancelled {
+        format!(
+            "Download cancelled after {} files",
+            files_downloaded + files_skipped + files_errored
+        )
+    } else {
+        format!(
+            "Downloaded {} files, {} skipped, {} errors",
+            files_downloaded, files_skipped, files_errored
+        )
+    };
+
     let _ = app.emit(
         "transfer_event",
         crate::TransferEvent {
-            event_type: "complete".to_string(),
+            event_type,
             transfer_id,
             filename: folder_name.clone(),
             direction: "download".to_string(),
-            message: Some(format!(
-                "Downloaded {} files, {} skipped, {} errors",
-                files_downloaded, files_skipped, files_errored
-            )),
+            message: Some(result_message.clone()),
             progress: None,
             path: None,
         },
     );
 
+    Ok(result_message)
+}
+
+async fn provider_upload_folder_inner(
+    app: &AppHandle,
+    state: &State<'_, ProviderState>,
+    local_path: &str,
+    remote_path: &str,
+    runtime_settings: ResolvedTransferSettings,
+    commit_message: Option<String>,
+) -> Result<String, String> {
+    state.cancel_flag.store(false, Ordering::Relaxed);
+
+    let folder_name = std::path::Path::new(local_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "folder".to_string());
+
+    let transfer_id = format!("ul-folder-{}", chrono::Utc::now().timestamp_millis());
+
     info!(
-        "Folder download completed: {} ({} downloaded, {} skipped, {} errors)",
-        folder_name, files_downloaded, files_skipped, files_errored
+        "Uploading folder via provider: {} -> {} (concurrency={}, retries={}, timeout={}s)",
+        local_path,
+        remote_path,
+        runtime_settings.max_concurrent,
+        runtime_settings.retry_count,
+        runtime_settings.timeout_seconds
     );
-    Ok(format!(
-        "Downloaded folder: {} ({} files)",
-        folder_name, files_downloaded
-    ))
+
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: folder_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Starting folder upload: {}", folder_name)),
+            progress: None,
+            path: Some(remote_path.to_string()),
+        },
+    );
+
+    let local_base = std::path::Path::new(local_path);
+    if !local_base.is_dir() {
+        return Err("Source is not a directory".to_string());
+    }
+
+    {
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+
+        if provider.provider_type() == ProviderType::GitHub {
+            let github = provider
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .create_directory(remote_path, commit_message.as_deref())
+                .await
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        } else {
+            provider
+                .mkdir(remote_path)
+                .await
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+    }
+
+    let mut dirs_to_scan: Vec<(std::path::PathBuf, String)> =
+        vec![(local_base.to_path_buf(), remote_path.to_string())];
+    let mut dirs_to_create: Vec<String> = Vec::new();
+    let mut transfer_entries: Vec<TransferEntry> = Vec::new();
+    let mut total_files_discovered = 0u32;
+    let mut dirs_scanned = 0u32;
+    let mut file_global_index = 0u32;
+    let mut last_scan_emit = std::time::Instant::now();
+
+    while let Some((current_local_dir, current_remote_dir)) = dirs_to_scan.pop() {
+        if provider_transfer_cancelled(state) {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "cancelled".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!(
+                        "Upload cancelled after {} files",
+                        transfer_entries.len()
+                    )),
+                    progress: None,
+                    path: Some(remote_path.to_string()),
+                },
+            );
+            return Ok(format!(
+                "Upload cancelled after {} files",
+                transfer_entries.len()
+            ));
+        }
+
+        let mut read_dir = tokio::fs::read_dir(&current_local_dir)
+            .await
+            .map_err(|e| format!("Failed to read directory {:?}: {}", current_local_dir, e))?;
+
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
+            let local_entry_path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let remote_entry_path = format!("{}/{}", current_remote_dir.trim_end_matches('/'), name);
+            let file_type = match entry.file_type().await {
+                Ok(file_type) => file_type,
+                Err(error) => {
+                    warn!("Failed to read provider upload entry type {:?}: {}", local_entry_path, error);
+                    continue;
+                }
+            };
+
+            if file_type.is_symlink() {
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "file_skip".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: name.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!("Skipped symlink: {}", name)),
+                        progress: None,
+                        path: Some(remote_entry_path.clone()),
+                    },
+                );
+                continue;
+            }
+
+            if file_type.is_dir() {
+                dirs_to_scan.push((local_entry_path.clone(), remote_entry_path.clone()));
+                dirs_to_create.push(remote_entry_path);
+            } else if file_type.is_file() {
+                let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
+                file_global_index += 1;
+                total_files_discovered += 1;
+                transfer_entries.push(TransferEntry {
+                    id: format!("{}-{}", transfer_id, file_global_index),
+                    display_name: name.clone(),
+                    remote_path: remote_entry_path,
+                    local_path: local_entry_path.to_string_lossy().to_string(),
+                    size,
+                    modified: None,
+                });
+            }
+        }
+
+        dirs_scanned += 1;
+        if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!(
+                        "Scanning... {} files found ({} dirs queued)",
+                        total_files_discovered,
+                        dirs_to_scan.len()
+                    )),
+                    progress: None,
+                    path: Some(remote_path.to_string()),
+                },
+            );
+            last_scan_emit = std::time::Instant::now();
+        }
+    }
+
+    dirs_to_create.sort_by_key(|a| a.matches('/').count());
+    for remote_dir in &dirs_to_create {
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+
+        let mkdir_result = if provider.provider_type() == ProviderType::GitHub {
+            let github = provider
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .create_directory(remote_dir, commit_message.as_deref())
+                .await
+                .map_err(|e| e.to_string())
+        } else {
+            provider.mkdir(remote_dir).await.map_err(|e| e.to_string())
+        };
+
+        if let Err(error) = mkdir_result {
+            let lowered = error.to_lowercase();
+            if !lowered.contains("exist") && !lowered.contains("409") {
+                warn!("Failed to create provider directory {}: {}", remote_dir, error);
+            }
+        }
+    }
+
+    let batch = TransferBatch {
+        id: transfer_id.clone(),
+        display_name: folder_name.clone(),
+        direction: TransferDirection::Upload,
+        config: TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+        },
+        entries: transfer_entries,
+    };
+
+    let progress_app = app.clone();
+    let progress_transfer_id = transfer_id.clone();
+    let progress_folder_name = folder_name.clone();
+    let progress_remote_path = remote_path.to_string();
+    let total_files_for_progress = total_files_discovered;
+    let progress_observer: ProgressObserver = Arc::new(move |snapshot| {
+        let processed = snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
+
+        let _ = progress_app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "progress".to_string(),
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_folder_name.clone(),
+                direction: "upload".to_string(),
+                message: Some(format!(
+                    "Uploaded {} / {} files ({} errors)",
+                    snapshot.completed, total_files_for_progress, snapshot.failed
+                )),
+                progress: Some(crate::TransferProgress {
+                    transfer_id: progress_transfer_id.clone(),
+                    filename: progress_folder_name.clone(),
+                    transferred: processed as u64,
+                    total: total_files_for_progress as u64,
+                    percentage,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "upload".to_string(),
+                    total_files: Some(total_files_for_progress as u64),
+                    path: Some(progress_remote_path.clone()),
+                }),
+                path: Some(progress_remote_path.clone()),
+            },
+        );
+    });
+
+    let executor = Arc::new(ProviderUploadExecutor::new(
+        app.clone(),
+        state.provider.clone(),
+        runtime_settings,
+        commit_message,
+        state.cancel_flag.clone(),
+    ));
+
+    let batch_result = execute_batch(
+        app,
+        batch,
+        executor,
+        state.cancel_flag.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    let files_uploaded = batch_result.completed;
+    let files_errored = batch_result.failed;
+    let event_type = if batch_result.cancelled {
+        "cancelled".to_string()
+    } else {
+        "complete".to_string()
+    };
+    let result_message = if batch_result.cancelled {
+        format!("Upload cancelled after {} files", files_uploaded + files_errored)
+    } else {
+        format!("Uploaded {} files, {} errors", files_uploaded, files_errored)
+    };
+
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type,
+            transfer_id,
+            filename: folder_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(result_message.clone()),
+            progress: None,
+            path: None,
+        },
+    );
+
+    Ok(result_message)
 }
 
 /// Upload a file to the remote server
 #[tauri::command]
 pub async fn provider_upload_file(
-    _app: AppHandle,
+    app: AppHandle,
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
@@ -1170,9 +1593,61 @@ pub async fn provider_upload_file(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
 
+    let transfer_id = format!("pul-{}", chrono::Utc::now().timestamp_millis());
+    let file_size = tokio::fs::metadata(&local_path).await.map(|m| m.len()).unwrap_or(0);
+
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
-    if provider.provider_type() == ProviderType::GitHub {
+    // Emit start event
+    let _ = app.emit(
+        "transfer_event",
+        crate::TransferEvent {
+            event_type: "start".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: filename.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Starting upload: {}", filename)),
+            progress: None,
+            path: None,
+        },
+    );
+
+    let app_progress = app.clone();
+    let tid_progress = transfer_id.clone();
+    let fname_progress = filename.clone();
+
+    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
+        Some(Box::new(move |transferred: u64, total: u64| {
+            let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let _ = app_progress.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: tid_progress.clone(),
+                    filename: fname_progress.clone(),
+                    direction: "upload".to_string(),
+                    message: None,
+                    progress: Some(crate::TransferProgress {
+                        transfer_id: tid_progress.clone(),
+                        filename: fname_progress.clone(),
+                        direction: "upload".to_string(),
+                        percentage: pct,
+                        transferred,
+                        total,
+                        speed_bps: 0,
+                        eta_seconds: 0,
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                },
+            );
+        }))
+    } else {
+        None
+    };
+
+    let result = if provider.provider_type() == ProviderType::GitHub {
         let github = provider
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
@@ -1180,16 +1655,47 @@ pub async fn provider_upload_file(
         github
             .upload_file(&local_path, &remote_path, commit_message.as_deref())
             .await
-            .map_err(|e| format!("Upload failed: {}", e))?;
+            .map_err(|e| format!("Upload failed: {}", e))
     } else {
         provider
-            .upload(&local_path, &remote_path, None)
+            .upload(&local_path, &remote_path, progress_cb)
             .await
-            .map_err(|e| format!("Upload failed: {}", e))?;
-    }
+            .map_err(|e| format!("Upload failed: {}", e))
+    };
 
-    info!("Upload completed: {}", filename);
-    Ok(format!("Uploaded: {}", filename))
+    match &result {
+        Ok(()) => {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "complete".to_string(),
+                    transfer_id,
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("({} in 0s)", if file_size > 1_048_576 { format!("{:.1} MB", file_size as f64 / 1_048_576.0) } else { format!("{:.1} KB", file_size as f64 / 1024.0) })),
+                    progress: None,
+                    path: None,
+                },
+            );
+            info!("Upload completed: {}", filename);
+            Ok(format!("Uploaded: {}", filename))
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id,
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(e.clone()),
+                    progress: None,
+                    path: None,
+                },
+            );
+            Err(e.clone())
+        }
+    }
 }
 
 /// Create a directory
@@ -1529,6 +2035,9 @@ pub async fn oauth2_start_auth(params: OAuthConnectionParams) -> Result<OAuthFlo
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google(&params.client_id, &params.client_secret)
         }
+        "googlephotos" | "google_photos" => {
+            OAuthConfig::google_photos(&params.client_id, &params.client_secret)
+        }
         "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
         "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
         "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
@@ -1571,6 +2080,9 @@ pub async fn oauth2_complete_auth(
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google(&params.client_id, &params.client_secret)
         }
+        "googlephotos" | "google_photos" => {
+            OAuthConfig::google_photos(&params.client_id, &params.client_secret)
+        }
         "dropbox" => OAuthConfig::dropbox(&params.client_id, &params.client_secret),
         "onedrive" | "microsoft" => OAuthConfig::onedrive(&params.client_id, &params.client_secret),
         "box" => OAuthConfig::box_cloud(&params.client_id, &params.client_secret),
@@ -1607,9 +2119,10 @@ pub async fn oauth2_connect(
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{
-        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
-        types::BoxConfig, types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider,
-        DropboxProvider, GoogleDriveProvider, OneDriveProvider, PCloudProvider,
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig,
+        google_photos::GooglePhotosConfig, onedrive::OneDriveConfig, types::BoxConfig,
+        types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider, DropboxProvider,
+        GoogleDriveProvider, GooglePhotosProvider, OneDriveProvider, PCloudProvider,
         ZohoWorkdriveProvider,
     };
 
@@ -1622,6 +2135,14 @@ pub async fn oauth2_connect(
             p.connect()
                 .await
                 .map_err(|e| format!("Google Drive connection failed: {}", e))?;
+            Box::new(p)
+        }
+        "googlephotos" | "google_photos" => {
+            let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
+            let mut p = GooglePhotosProvider::new(config);
+            p.connect()
+                .await
+                .map_err(|e| format!("Google Photos connection failed: {}", e))?;
             Box::new(p)
         }
         "dropbox" => {
@@ -1744,6 +2265,9 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
     let config = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
+        }
+        "googlephotos" | "google_photos" => {
+            OAuthConfig::google_photos_with_port(&params.client_id, &params.client_secret, port)
         }
         "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
         "onedrive" | "microsoft" => {
@@ -1957,6 +2481,7 @@ pub async fn oauth2_has_tokens(provider: String) -> Result<bool, String> {
 
     let oauth_provider = match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
+        "googlephotos" | "google_photos" => OAuthProvider::GooglePhotos,
         "dropbox" => OAuthProvider::Dropbox,
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
         "box" => OAuthProvider::Box,
@@ -1977,6 +2502,7 @@ pub async fn oauth2_logout(provider: String) -> Result<(), String> {
 
     let oauth_provider = match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
+        "googlephotos" | "google_photos" => OAuthProvider::GooglePhotos,
         "dropbox" => OAuthProvider::Dropbox,
         "onedrive" | "microsoft" => OAuthProvider::OneDrive,
         "box" => OAuthProvider::Box,

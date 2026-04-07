@@ -1,0 +1,475 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+
+//! Provider-backed transfer executor for the shared orchestrator.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex;
+use tracing::warn;
+
+use crate::providers::{ProviderType, StorageProvider};
+use crate::transfer_domain::{
+    transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
+    TransferFailure, TransferOutcome,
+};
+use crate::transfer_orchestrator::TransferExecutor;
+use crate::transfer_settings::ResolvedTransferSettings;
+
+pub struct ProviderDownloadExecutor {
+    app: AppHandle,
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    runtime_settings: ResolvedTransferSettings,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl ProviderDownloadExecutor {
+    pub fn new(
+        app: AppHandle,
+        provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+        runtime_settings: ResolvedTransferSettings,
+        cancel_flag: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            app,
+            provider,
+            runtime_settings,
+            cancel_flag,
+        }
+    }
+}
+
+pub struct ProviderUploadExecutor {
+    app: AppHandle,
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    runtime_settings: ResolvedTransferSettings,
+    commit_message: Option<String>,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl ProviderUploadExecutor {
+    pub fn new(
+        app: AppHandle,
+        provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+        runtime_settings: ResolvedTransferSettings,
+        commit_message: Option<String>,
+        cancel_flag: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            app,
+            provider,
+            runtime_settings,
+            commit_message,
+            cancel_flag,
+        }
+    }
+}
+
+#[async_trait]
+impl TransferExecutor for ProviderDownloadExecutor {
+    async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+        let file_transfer_id = entry.id.clone();
+
+        let _ = self.app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "file_start".to_string(),
+                transfer_id: file_transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "download".to_string(),
+                message: Some(format!("Downloading: {}", entry.remote_path)),
+                progress: Some(crate::TransferProgress {
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.display_name.clone(),
+                    transferred: 0,
+                    total: entry.size,
+                    percentage: 0,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "download".to_string(),
+                    total_files: None,
+                    path: None,
+                }),
+                path: Some(entry.remote_path.clone()),
+            },
+        );
+
+        let retry_policy = self.runtime_settings.retry_policy();
+        let mut last_error = String::new();
+
+        for attempt in 0..=retry_policy.max_retries {
+            if self.cancel_flag.load(Ordering::Relaxed) {
+                last_error = "Transfer cancelled by user".to_string();
+                break;
+            }
+
+            if attempt > 0 {
+                let delay = retry_policy.delay_for_attempt(attempt);
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+
+            let app = self.app.clone();
+            let transfer_id = file_transfer_id.clone();
+            let display_name = entry.display_name.clone();
+            let remote_path = entry.remote_path.clone();
+            let remote_path_for_progress = entry.remote_path.clone();
+            let local_path = entry.local_path.clone();
+            let file_size = entry.size;
+            let cancel_flag = self.cancel_flag.clone();
+            let result = {
+                let mut provider_lock = self.provider.lock().await;
+                if self.cancel_flag.load(Ordering::Relaxed) {
+                    last_error = "Transfer cancelled by user".to_string();
+                    break;
+                }
+
+                match provider_lock.as_mut() {
+                    Some(provider) => {
+                        match tokio::time::timeout(
+                            Duration::from_secs(self.runtime_settings.timeout_seconds),
+                            provider.download(
+                                &remote_path,
+                                &local_path,
+                                Some(Box::new(move |transferred, total| {
+                                    if cancel_flag.load(Ordering::Relaxed) {
+                                        return;
+                                    }
+
+                                    let percentage = if total > 0 {
+                                        ((transferred as f64 / total as f64) * 100.0) as u8
+                                    } else {
+                                        0
+                                    };
+
+                                    let _ = app.emit(
+                                        "transfer_event",
+                                        crate::TransferEvent {
+                                            event_type: "progress".to_string(),
+                                            transfer_id: transfer_id.clone(),
+                                            filename: display_name.clone(),
+                                            direction: "download".to_string(),
+                                            message: None,
+                                            progress: Some(crate::TransferProgress {
+                                                transfer_id: transfer_id.clone(),
+                                                filename: display_name.clone(),
+                                                transferred,
+                                                total: total.max(file_size),
+                                                percentage,
+                                                speed_bps: 0,
+                                                eta_seconds: 0,
+                                                direction: "download".to_string(),
+                                                total_files: None,
+                                                path: None,
+                                            }),
+                                            path: Some(remote_path_for_progress.clone()),
+                                        },
+                                    );
+                                })),
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(result) => result.map_err(|e| e.to_string()),
+                            Err(_) => Err(format!(
+                                "Download timed out after {} seconds",
+                                self.runtime_settings.timeout_seconds
+                            )),
+                        }
+                    }
+                    None => Err("Provider disconnected".to_string()),
+                }
+            };
+
+            match result {
+                Ok(()) => {
+                    crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                    let _ = self.app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "file_complete".to_string(),
+                            transfer_id: file_transfer_id.clone(),
+                            filename: entry.display_name.clone(),
+                            direction: "download".to_string(),
+                            message: Some(format!("Downloaded: {}", entry.display_name)),
+                            progress: None,
+                            path: Some(entry.remote_path.clone()),
+                        },
+                    );
+                    return TransferOutcome::Success;
+                }
+                Err(error) => {
+                    last_error = error;
+                    if self.cancel_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let err_info =
+                        crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
+                    if attempt >= retry_policy.max_retries || !err_info.retryable {
+                        break;
+                    }
+                    warn!(
+                        "Retrying provider download {} (attempt {}/{}): {}",
+                        entry.remote_path,
+                        attempt + 1,
+                        retry_policy.max_retries,
+                        err_info.message
+                    );
+                }
+            }
+        }
+
+        let failure = if self.cancel_flag.load(Ordering::Relaxed) || last_error.contains("cancelled") {
+            TransferFailure {
+                kind: crate::transfer_domain::TransferFailureKind::Cancelled,
+                message: "Transfer cancelled by user".to_string(),
+                retryable: false,
+            }
+        } else {
+            let error_info = crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
+            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
+            TransferFailure {
+                kind: failure_kind,
+                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
+                retryable: error_info.retryable,
+            }
+        };
+
+        let _ = self.app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "file_error".to_string(),
+                transfer_id: file_transfer_id,
+                filename: entry.display_name.clone(),
+                direction: "download".to_string(),
+                message: Some(failure.message.clone()),
+                progress: None,
+                path: Some(entry.remote_path.clone()),
+            },
+        );
+
+        TransferOutcome::Failed(failure)
+    }
+}
+
+#[async_trait]
+impl TransferExecutor for ProviderUploadExecutor {
+    async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+        let file_transfer_id = entry.id.clone();
+        let file_size = if entry.size > 0 {
+            entry.size
+        } else {
+            tokio::fs::metadata(&entry.local_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0)
+        };
+
+        let _ = self.app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "file_start".to_string(),
+                transfer_id: file_transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "upload".to_string(),
+                message: Some(format!("Uploading: {}", entry.remote_path)),
+                progress: Some(crate::TransferProgress {
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.display_name.clone(),
+                    transferred: 0,
+                    total: file_size,
+                    percentage: 0,
+                    speed_bps: 0,
+                    eta_seconds: 0,
+                    direction: "upload".to_string(),
+                    total_files: None,
+                    path: None,
+                }),
+                path: Some(entry.remote_path.clone()),
+            },
+        );
+
+        let retry_policy = self.runtime_settings.retry_policy();
+        let mut last_error = String::new();
+
+        for attempt in 0..=retry_policy.max_retries {
+            if self.cancel_flag.load(Ordering::Relaxed) {
+                last_error = "Transfer cancelled by user".to_string();
+                break;
+            }
+
+            if attempt > 0 {
+                let delay = retry_policy.delay_for_attempt(attempt);
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+
+            let app = self.app.clone();
+            let transfer_id = file_transfer_id.clone();
+            let display_name = entry.display_name.clone();
+            let remote_path = entry.remote_path.clone();
+            let remote_path_for_progress = entry.remote_path.clone();
+            let local_path = entry.local_path.clone();
+            let commit_message = self.commit_message.clone();
+            let cancel_flag = self.cancel_flag.clone();
+            let result = {
+                let mut provider_lock = self.provider.lock().await;
+                if self.cancel_flag.load(Ordering::Relaxed) {
+                    last_error = "Transfer cancelled by user".to_string();
+                    break;
+                }
+
+                match provider_lock.as_mut() {
+                    Some(provider) => {
+                        if provider.provider_type() == ProviderType::GitHub {
+                            let github = provider
+                                .as_any_mut()
+                                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                                .ok_or_else(|| "Failed to access GitHub provider".to_string());
+                            match github {
+                                Ok(github) => match tokio::time::timeout(
+                                    Duration::from_secs(self.runtime_settings.timeout_seconds),
+                                    github.upload_file(
+                                        &local_path,
+                                        &remote_path,
+                                        commit_message.as_deref(),
+                                    ),
+                                )
+                                .await
+                                {
+                                    Ok(result) => result.map_err(|e| e.to_string()),
+                                    Err(_) => Err(format!(
+                                        "Upload timed out after {} seconds",
+                                        self.runtime_settings.timeout_seconds
+                                    )),
+                                },
+                                Err(error) => Err(error),
+                            }
+                        } else {
+                            match tokio::time::timeout(
+                                Duration::from_secs(self.runtime_settings.timeout_seconds),
+                                provider.upload(
+                                    &local_path,
+                                    &remote_path,
+                                    Some(Box::new(move |transferred, total| {
+                                        if cancel_flag.load(Ordering::Relaxed) {
+                                            return;
+                                        }
+
+                                        let percentage = if total > 0 {
+                                            ((transferred as f64 / total as f64) * 100.0) as u8
+                                        } else {
+                                            0
+                                        };
+
+                                        let _ = app.emit(
+                                            "transfer_event",
+                                            crate::TransferEvent {
+                                                event_type: "progress".to_string(),
+                                                transfer_id: transfer_id.clone(),
+                                                filename: display_name.clone(),
+                                                direction: "upload".to_string(),
+                                                message: None,
+                                                progress: Some(crate::TransferProgress {
+                                                    transfer_id: transfer_id.clone(),
+                                                    filename: display_name.clone(),
+                                                    transferred,
+                                                    total: total.max(file_size),
+                                                    percentage,
+                                                    speed_bps: 0,
+                                                    eta_seconds: 0,
+                                                    direction: "upload".to_string(),
+                                                    total_files: None,
+                                                    path: None,
+                                                }),
+                                                path: Some(remote_path_for_progress.clone()),
+                                            },
+                                        );
+                                    })),
+                                ),
+                            )
+                            .await
+                            {
+                                Ok(result) => result.map_err(|e| e.to_string()),
+                                Err(_) => Err(format!(
+                                    "Upload timed out after {} seconds",
+                                    self.runtime_settings.timeout_seconds
+                                )),
+                            }
+                        }
+                    }
+                    None => Err("Provider disconnected".to_string()),
+                }
+            };
+
+            match result {
+                Ok(()) => {
+                    let _ = self.app.emit(
+                        "transfer_event",
+                        crate::TransferEvent {
+                            event_type: "file_complete".to_string(),
+                            transfer_id: file_transfer_id.clone(),
+                            filename: entry.display_name.clone(),
+                            direction: "upload".to_string(),
+                            message: Some(format!("Uploaded: {}", entry.display_name)),
+                            progress: None,
+                            path: Some(entry.remote_path.clone()),
+                        },
+                    );
+                    return TransferOutcome::Success;
+                }
+                Err(error) => {
+                    last_error = error;
+                    if self.cancel_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let err_info =
+                        crate::sync::classify_sync_error(&last_error, Some(&entry.local_path));
+                    if attempt >= retry_policy.max_retries || !err_info.retryable {
+                        break;
+                    }
+                    warn!(
+                        "Retrying provider upload {} (attempt {}/{}): {}",
+                        entry.local_path,
+                        attempt + 1,
+                        retry_policy.max_retries,
+                        err_info.message
+                    );
+                }
+            }
+        }
+
+        let failure = if self.cancel_flag.load(Ordering::Relaxed) || last_error.contains("cancelled") {
+            TransferFailure {
+                kind: crate::transfer_domain::TransferFailureKind::Cancelled,
+                message: "Transfer cancelled by user".to_string(),
+                retryable: false,
+            }
+        } else {
+            let error_info = crate::sync::classify_sync_error(&last_error, Some(&entry.local_path));
+            let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
+            TransferFailure {
+                kind: failure_kind,
+                message: user_facing_transfer_failure_message(&failure_kind).to_string(),
+                retryable: error_info.retryable,
+            }
+        };
+
+        let _ = self.app.emit(
+            "transfer_event",
+            crate::TransferEvent {
+                event_type: "file_error".to_string(),
+                transfer_id: file_transfer_id,
+                filename: entry.display_name.clone(),
+                direction: "upload".to_string(),
+                message: Some(failure.message.clone()),
+                progress: None,
+                path: Some(entry.remote_path.clone()),
+            },
+        );
+
+        TransferOutcome::Failed(failure)
+    }
+}

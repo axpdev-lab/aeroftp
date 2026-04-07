@@ -15,6 +15,7 @@ export type CatalogCategoryId =
     | 'object-storage'
     | 'webdav'
     | 'cloud-storage'
+    | 'media-services'
     | 'developer';
 
 export type MyServersViewMode = 'grid' | 'list';
@@ -92,6 +93,10 @@ export const PROTOCOL_CATEGORY_MAP: Record<string, CatalogCategoryId> = {
     github: 'developer',
     gitlab: 'developer',
     sourceforge: 'developer',
+
+    // Media Services
+    googlephotos: 'media-services',
+    immich: 'media-services',
 
     // Cloud (ex-Enterprise)
     zohoworkdrive: 'cloud-storage',
