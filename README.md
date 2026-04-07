@@ -90,64 +90,59 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 
 <table align="center">
   <tr>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/google-drive"><img src="public/icons/providers/grid/Google_Drive.png" width="36" /></a><br><sub>Google Drive</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/dropbox"><img src="public/icons/providers/grid/dropbox.png" width="36" /></a><br><sub>Dropbox</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/onedrive"><img src="public/icons/providers/grid/onedrive.png" width="36" /></a><br><sub>OneDrive</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/mega"><img src="public/icons/providers/grid/mega.png" width="36" /></a><br><sub>MEGA</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/box"><img src="public/icons/providers/grid/box.png" width="36" /></a><br><sub>Box</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/pcloud"><img src="public/icons/providers/grid/pcloud.png" width="36" /></a><br><sub>pCloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/filen"><img src="public/icons/providers/grid/filen.png" width="36" /></a><br><sub>Filen</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/internxt"><img src="public/icons/providers/grid/internxt.png" width="36" /></a><br><sub>Internxt</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/zoho"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /></a><br><sub>Zoho</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/koofr"><img src="public/icons/providers/grid/Koofr.png" width="36" /></a><br><sub>Koofr</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-drive"><img src="public/icons/providers/grid/Google_Drive.png" width="36" /></a><br><sub>Google Drive</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/dropbox"><img src="public/icons/providers/grid/dropbox.png" width="36" /></a><br><sub>Dropbox</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/onedrive"><img src="public/icons/providers/grid/onedrive.png" width="36" /></a><br><sub>OneDrive</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/mega"><img src="public/icons/providers/grid/mega.png" width="36" /></a><br><sub>MEGA</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/box"><img src="public/icons/providers/grid/box.png" width="36" /></a><br><sub>Box</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/pcloud"><img src="public/icons/providers/grid/pcloud.png" width="36" /></a><br><sub>pCloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/filen"><img src="public/icons/providers/grid/filen.png" width="36" /></a><br><sub>Filen</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/internxt"><img src="public/icons/providers/grid/internxt.png" width="36" /></a><br><sub>Internxt</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/zoho"><img src="public/icons/providers/grid/ZohoWorkDrive.png" width="36" /></a><br><sub>Zoho</sub></td>
   </tr>
   <tr>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/kdrive"><img src="public/icons/providers/grid/kdrive.png" width="36" /></a><br><sub>kDrive</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/jottacloud"><img src="public/icons/providers/grid/jottacloud.png" width="36" /></a><br><sub>Jottacloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/yandex"><img src="public/icons/providers/grid/YandexDisk.png" width="36" /></a><br><sub>Yandex Disk</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/4shared"><img src="public/icons/providers/grid/4shared.png" width="36" /></a><br><sub>4shared</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/filelu"><img src="public/icons/providers/grid/filelu.png" width="36" /></a><br><sub>FileLu</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/drime"><img src="public/icons/providers/grid/drime.png" width="36" /></a><br><sub>Drime</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/opendrive"><img src="public/icons/providers/grid/opendrive.png" width="36" /></a><br><sub>OpenDrive</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" /></a><br><sub>Nextcloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" /></a><br><sub>Felicloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/cloudme"><img src="public/icons/providers/grid/cloudme.png" width="36" /></a><br><sub>CloudMe</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/koofr"><img src="public/icons/providers/grid/Koofr.png" width="36" /></a><br><sub>Koofr</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/kdrive"><img src="public/icons/providers/grid/kdrive.png" width="36" /></a><br><sub>kDrive</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jottacloud"><img src="public/icons/providers/grid/jottacloud.png" width="36" /></a><br><sub>Jottacloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex"><img src="public/icons/providers/grid/YandexDisk.png" width="36" /></a><br><sub>Yandex Disk</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/4shared"><img src="public/icons/providers/grid/4shared.png" width="36" /></a><br><sub>4shared</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/filelu"><img src="public/icons/providers/grid/filelu.png" width="36" /></a><br><sub>FileLu</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drime"><img src="public/icons/providers/grid/drime.png" width="36" /></a><br><sub>Drime</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/opendrive"><img src="public/icons/providers/grid/opendrive.png" width="36" /></a><br><sub>OpenDrive</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/nextcloud"><img src="public/icons/providers/grid/nextcloud.png" width="36" /></a><br><sub>Nextcloud</sub></td>
   </tr>
   <tr>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /></a><br><sub>InfiniCLOUD</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/jianguoyun"><img src="public/icons/providers/grid/jianguoyun.png" width="36" /></a><br><sub>Jianguoyun</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" /></a><br><sub>Seafile</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" /></a><br><sub>DriveHQ</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/protocols/azure"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/wasabi"><img src="public/icons/providers/grid/wasabi.png" width="36" /></a><br><sub>Wasabi</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/cloudflare-r2"><img src="public/icons/providers/grid/cloudfare.png" width="36" /></a><br><sub>Cloudflare R2</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/felicloud"><img src="public/icons/providers/grid/felicloud.png" width="36" /></a><br><sub>Felicloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudme"><img src="public/icons/providers/grid/cloudme.png" width="36" /></a><br><sub>CloudMe</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/infinicloud"><img src="public/icons/providers/grid/infiniCloud.png" width="36" /></a><br><sub>InfiniCLOUD</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/jianguoyun"><img src="public/icons/providers/grid/jianguoyun.png" width="36" /></a><br><sub>Jianguoyun</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/seafile"><img src="public/icons/providers/grid/seafile.png" width="36" /></a><br><sub>Seafile</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/drivehq"><img src="public/icons/providers/grid/drivehq.png" width="36" /></a><br><sub>DriveHQ</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/aws-s3"><img src="public/icons/providers/grid/Amazon_Web_Services.png" width="36" /></a><br><sub>AWS S3</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/google-cloud-storage"><img src="public/icons/providers/grid/googlecloud.png" width="36" /></a><br><sub>Google Cloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/protocols/azure"><img src="public/icons/providers/grid/azure.png" width="36" /></a><br><sub>Azure</sub></td>
   </tr>
   <tr>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/digitalocean-spaces"><img src="public/icons/providers/grid/digitalocean.png" width="36" /></a><br><sub>DigitalOcean</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/tencent-cloud-cos"><img src="public/icons/providers/grid/tencent.png" width="36" /></a><br><sub>Tencent COS</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/alibaba-cloud-oss"><img src="public/icons/providers/grid/alibabacloud.png" width="36" /></a><br><sub>Alibaba OSS</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/oracle-cloud"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /></a><br><sub>Oracle</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/storj"><img src="public/icons/providers/grid/storj.png" width="36" /></a><br><sub>Storj</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/idrive-e2"><img src="public/icons/providers/grid/idrive_e2.png" width="36" /></a><br><sub>IDrive e2</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/minio"><img src="public/icons/providers/grid/minio.png" width="36" /></a><br><sub>MinIO</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" /></a><br><sub>Hetzner</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /></a><br><sub>Yandex Cloud</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" /></a><br><sub>Quotaless</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/backblaze-b2"><img src="public/icons/providers/grid/backblaze.png" width="36" /></a><br><sub>Backblaze</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/wasabi"><img src="public/icons/providers/grid/wasabi.png" width="36" /></a><br><sub>Wasabi</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/cloudflare-r2"><img src="public/icons/providers/grid/cloudfare.png" width="36" /></a><br><sub>Cloudflare R2</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/digitalocean-spaces"><img src="public/icons/providers/grid/digitalocean.png" width="36" /></a><br><sub>DigitalOcean</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/tencent-cloud-cos"><img src="public/icons/providers/grid/tencent.png" width="36" /></a><br><sub>Tencent COS</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/alibaba-cloud-oss"><img src="public/icons/providers/grid/alibabacloud.png" width="36" /></a><br><sub>Alibaba OSS</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/oracle-cloud"><img src="public/icons/providers/grid/oracle_cloud.png" width="36" /></a><br><sub>Oracle</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/storj"><img src="public/icons/providers/grid/storj.png" width="36" /></a><br><sub>Storj</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/idrive-e2"><img src="public/icons/providers/grid/idrive_e2.png" width="36" /></a><br><sub>IDrive e2</sub></td>
   </tr>
   <tr>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" /></a><br><sub>GitHub</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" /></a><br><sub>GitLab</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/sourceforge"><img src="public/icons/providers/grid/sourceforge.png" width="36" /></a><br><sub>SourceForge</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/immich"><img src="public/icons/providers/grid/immich.png" width="36" /></a><br><sub>Immich</sub></td>
-    <td align="center" width="72"><a href="https://docs.aeroftp.app/providers/pixelunion"><img src="public/icons/providers/grid/pixelunion.png" width="36" /></a><br><sub>PixelUnion</sub></td>
-    <td align="center" width="72"></td>
-    <td align="center" width="72"></td>
-    <td align="center" width="72"></td>
-    <td align="center" width="72"></td>
-    <td align="center" width="72"></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/minio"><img src="public/icons/providers/grid/minio.png" width="36" /></a><br><sub>MinIO</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/hetzner-storage-box"><img src="public/icons/providers/grid/hetzner.png" width="36" /></a><br><sub>Hetzner</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/yandex-object-storage"><img src="public/icons/providers/grid/yandexcloud.png" width="36" /></a><br><sub>Yandex Cloud</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/quotaless"><img src="public/icons/providers/grid/quotaless.png" width="36" /></a><br><sub>Quotaless</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/github"><img src="public/icons/providers/grid/github.png" width="36" /></a><br><sub>GitHub</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/gitlab"><img src="public/icons/providers/grid/gitlab.png" width="36" /></a><br><sub>GitLab</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/sourceforge"><img src="public/icons/providers/grid/sourceforge.png" width="36" /></a><br><sub>SourceForge</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/immich"><img src="public/icons/providers/grid/immich.png" width="36" /></a><br><sub>Immich</sub></td>
+    <td align="center" width="80"><a href="https://docs.aeroftp.app/providers/pixelunion"><img src="public/icons/providers/grid/pixelunion.png" width="36" /></a><br><sub>PixelUnion</sub></td>
   </tr>
 </table>
 
