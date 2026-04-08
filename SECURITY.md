@@ -118,6 +118,18 @@ For the complete privacy model, data storage locations, and deletion instruction
 
 Cumulative: 300+ findings identified across 9 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
 
+### Compliance Verification
+
+The March 2026 Aikido Security audit verified compliance against the following frameworks with 0 open issues:
+
+- **OWASP Top 10** - injection prevention, XSS mitigation, credential isolation, path validation
+- **ISO 27001** - encryption controls, access management, credential lifecycle
+- **CIS Benchmarks** - file permission hardening, transport security, supply chain controls
+- **NIS2 Directive** - incident response readiness, supply chain security, encryption at rest and in transit
+- **GDPR** - no telemetry, no analytics, no third-party data sharing, local-only storage, no cloud account required
+
+These are verified compliance checks, not formal certifications.
+
 ## Known Issues
 
 | ID | Severity | Status | Details |

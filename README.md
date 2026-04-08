@@ -308,6 +308,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 | **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
 | **Dependency Scanning** | 1,156 packages monitored (320 JS + 836 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
+| **Compliance** | Verified against OWASP Top 10, ISO 27001, CIS, NIS2, GDPR - 0 open issues ([March 2026 audit](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf)) |
 | **Security Audits** | 300+ findings resolved across [9 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |
 | **Security Audit** | [March 2026](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf) - [February 2026](docs/Security%20Audit%20Report%20axpnet%20-%20February%202026.pdf) (Aikido Security) |
 
