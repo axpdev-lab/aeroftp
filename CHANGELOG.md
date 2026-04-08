@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.5] - 2026-04-08
+
+### AppImage cross-distro fix, window resize, editor languages
+
+#### Fixed
+
+- **AppImage EGL crash on Arch/Fedora** (issue #90): Stripped all 166 bundled shared libraries from AppImage to resolve `EGL_BAD_PARAMETER` and cascading `undefined symbol` errors on rolling-release distros. The AppImage now uses system libraries at runtime, matching the .deb and AUR approach. Reduced AppImage size from 118 MB to 48 MB. Tested on EndeavourOS with KDE Wayland and Hyprland
+- **Window resize on Linux**: Added client-side resize handles (`WindowResizeEdges`) for undecorated windows on Wayland and X11. Uses pointer capture with `movementX`/`movementY` deltas for reliable vertical and diagonal resize. Linux-only - Windows and macOS use native resize zones
+- **Minimum window height**: Lowered from 800px to 600px to support 768p laptop screens
+- **Quotaless contact badge**: Removed incorrect `contactVerified` flag (no response received)
+
+#### Added
+
+- **80+ editor languages** (issue #91): Monaco editor now maps all built-in languages including Lua, Kotlin, Dart, Swift, Elixir, Scala, Clojure, C#, F#, PowerShell, HCL/Terraform, Protobuf, Solidity, SystemVerilog, Julia, Perl, R, and more. Any recognized file extension is also auto-previewable
+- **Koofr contact badge**: Added `contactVerified` for Koofr (active support relationship)
+- **Jottacloud contact badge**: Added to `contactProtocols` for OAuth provider disclaimer
+
 ## [3.4.4] - 2026-04-07
 
 ### Immich provider, Media Services category, transfer infrastructure

@@ -69,7 +69,7 @@
 
 | Platform | Status | Packages | Notes |
 |----------|--------|----------|-------|
-| **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | Native target, fully tested |
+| **Linux** | Stable | `.deb`, `.rpm`, `.snap`, `.AppImage`, AUR | GNOME, KDE Plasma, XFCE, Hyprland, Sway, i3 (X11 & Wayland) |
 | **Windows** | Stable | `.msi`, `.exe`, `.zip` portable, winget | Fully tested, not Microsoft Store signed |
 | **macOS (Apple Silicon)** | Beta | `.dmg` (aarch64) | Not code-signed, requires `xattr` workaround |
 | **macOS (Intel)** | Beta | `.dmg` (x86_64) | Not code-signed, requires `xattr` workaround |

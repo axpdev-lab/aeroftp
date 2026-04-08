@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.5" date="2026-04-08">
+      <description>
+        <p>AppImage cross-distro fix: stripped bundled libraries to resolve EGL_BAD_PARAMETER on Arch/Fedora/rolling distros (118 MB to 48 MB). Client-side window resize for undecorated windows on Linux Wayland and X11. Minimum height lowered to 600px for 768p screens. Monaco editor expanded to 80+ languages including Lua, Kotlin, Dart, Elixir, and Terraform. Corrected provider contact badges.</p>
+      </description>
+    </release>
     <release version="3.4.4" date="2026-04-07">
       <description>
         <p>Immich photo management provider: native REST API integration with albums, upload/download, delete, search, share links, and SHA-256 checksums. PixelUnion EU-hosted preset (16 GB free). New Media Services category in Discover. Full CLI support. Transfer infrastructure: FTP session pool, transfer orchestrator, event bridge.</p>
