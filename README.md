@@ -300,7 +300,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 
 ### Security Posture
 
-| | |
+| Area | Details |
 |---|---|
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
