@@ -840,7 +840,6 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Database',
         color: '#2563EB',
         stable: true,
-        contactVerified: true,
         fields: [
             {
                 ...COMMON_FIELDS.accessKeyId,
@@ -952,6 +951,7 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#00B4A0',
         stable: true,
+        contactVerified: true,
         fields: [
             { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'your@email.com' },
             {
@@ -1189,7 +1189,6 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Globe',
         color: '#2563EB',
         stable: true,
-        contactVerified: true,
         fields: [
             { ...COMMON_FIELDS.username, placeholder: 'Your Quotaless username' },
             { ...COMMON_FIELDS.password },

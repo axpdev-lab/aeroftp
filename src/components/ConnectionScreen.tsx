@@ -3993,7 +3993,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const providerName = disclaimerProvider?.name
                 || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
             if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;
-            const contactProtocols = new Set(['zohoworkdrive']);
+            const contactProtocols = new Set(['zohoworkdrive', 'koofr', 'jottacloud']);
             const isContact = disclaimerProvider?.contactVerified || contactProtocols.has(protocol || '');
             return (
                 <div className="mt-3 space-y-1">
