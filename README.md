@@ -326,18 +326,78 @@ Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3), CryptoLab (AES-256-GCM, ChaCh
 
 Quality-audited translations with native script integrity. Automatic browser language detection.
 
-| | | | | |
-|---|---|---|---|---|
-| :gb: English | :it: Italian | :de: German | :es: Spanish | :fr: French |
-| :portugal: Portuguese | :ru: Russian | :jp: Japanese | :kr: Korean | :cn: Chinese |
-| :india: Hindi | :bangladesh: Bengali | :tr: Turkey | :poland: Polish | :netherlands: Dutch |
-| :sweden: Swedish | :denmark: Danish | :norway: Norwegian | :finland: Finnish | :iceland: Icelandic |
-| :czech_republic: Czech | :hungary: Hungarian | :romania: Romanian | :ukraine: Ukrainian | :greece: Greek |
-| :thailand: Thai | :vietnam: Vietnamese | :indonesia: Indonesian | :malaysia: Malay | :philippines: Filipino |
-| :cambodia: Khmer | :georgia: Georgian | :armenia: Armenian | :bulgaria: Bulgarian | :croatia: Croatian |
-| :serbia: Serbian | :slovakia: Slovak | :slovenia: Slovenian | :macedonia: Macedonian | :estonia: Estonian |
-| :lithuania: Lithuanian | :latvia: Latvian | :wales: Welsh | Catalan | Galician |
-| Basque | :kenya: Swahili | | | |
+<table align="center">
+  <tr>
+    <td align="center">:gb: English</td>
+    <td align="center">:it: Italian</td>
+    <td align="center">:de: German</td>
+    <td align="center">:es: Spanish</td>
+    <td align="center">:fr: French</td>
+  </tr>
+  <tr>
+    <td align="center">:portugal: Portuguese</td>
+    <td align="center">:ru: Russian</td>
+    <td align="center">:jp: Japanese</td>
+    <td align="center">:kr: Korean</td>
+    <td align="center">:cn: Chinese</td>
+  </tr>
+  <tr>
+    <td align="center">:india: Hindi</td>
+    <td align="center">:bangladesh: Bengali</td>
+    <td align="center">:tr: Turkey</td>
+    <td align="center">:poland: Polish</td>
+    <td align="center">:netherlands: Dutch</td>
+  </tr>
+  <tr>
+    <td align="center">:sweden: Swedish</td>
+    <td align="center">:denmark: Danish</td>
+    <td align="center">:norway: Norwegian</td>
+    <td align="center">:finland: Finnish</td>
+    <td align="center">:iceland: Icelandic</td>
+  </tr>
+  <tr>
+    <td align="center">:czech_republic: Czech</td>
+    <td align="center">:hungary: Hungarian</td>
+    <td align="center">:romania: Romanian</td>
+    <td align="center">:ukraine: Ukrainian</td>
+    <td align="center">:greece: Greek</td>
+  </tr>
+  <tr>
+    <td align="center">:thailand: Thai</td>
+    <td align="center">:vietnam: Vietnamese</td>
+    <td align="center">:indonesia: Indonesian</td>
+    <td align="center">:malaysia: Malay</td>
+    <td align="center">:philippines: Filipino</td>
+  </tr>
+  <tr>
+    <td align="center">:cambodia: Khmer</td>
+    <td align="center">:georgia: Georgian</td>
+    <td align="center">:armenia: Armenian</td>
+    <td align="center">:bulgaria: Bulgarian</td>
+    <td align="center">:croatia: Croatian</td>
+  </tr>
+  <tr>
+    <td align="center">:serbia: Serbian</td>
+    <td align="center">:slovakia: Slovak</td>
+    <td align="center">:slovenia: Slovenian</td>
+    <td align="center">:macedonia: Macedonian</td>
+    <td align="center">:estonia: Estonian</td>
+  </tr>
+  <tr>
+    <td align="center">:lithuania: Lithuanian</td>
+    <td align="center">:latvia: Latvian</td>
+    <td align="center">:wales: Welsh</td>
+    <td align="center">Catalan</td>
+    <td align="center">Galician</td>
+  </tr>
+  <tr>
+    <td align="center">Basque</td>
+    <td align="center">:kenya: Swahili</td>
+    <td align="center"></td>
+    <td align="center"></td>
+    <td align="center"></td>
+  </tr>
+</table>
 
 ### Auto-Updater
 - In-app download with progress bar showing speed and ETA
