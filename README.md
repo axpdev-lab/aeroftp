@@ -470,10 +470,10 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 <table align="center">
   <tr>
     <td align="center">
-      <a href="https://openinventionnetwork.com/"><img src="docs/dev/img/png48/oin-2-0-stacked_80x80.png" alt="OIN 2.0 Community Member" height="80" /></a>
+      <a href="https://openinventionnetwork.com/"><img src="icons/oin-2-0-stacked_80x80.png" alt="OIN 2.0 Community Member" height="80" /></a>
     </td>
     <td align="center">
-      <a href="https://opensource.org"><img src="docs/dev/img/png48/Open_Source_Initiative_64x64.png" alt="Open Source Initiative Member" height="64" /></a>
+      <a href="https://opensource.org"><img src="icons/Open_Source_Initiative_64x64.png" alt="Open Source Initiative Member" height="64" /></a>
     </td>
     <td align="center">
       <a href="https://sigstore.dev"><img src="icons/sigstore-signed.png" alt="Sigstore Signed" height="60" /></a>
@@ -486,13 +486,13 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
   </tr>
   <tr>
     <td align="center">
-      <a href="https://aikido.dev"><img src="docs/dev/img/png48/aikido_security.png" alt="Aikido Security" height="48" /></a>
+      <a href="https://aikido.dev"><img src="icons/aikido_security.png" alt="Aikido Security" height="48" /></a>
     </td>
     <td align="center">
-      <a href="https://snyk.io"><img src="docs/dev/img/png48/snyk.png" alt="Snyk" height="48" /></a>
+      <a href="https://snyk.io"><img src="icons/snyk.png" alt="Snyk" height="48" /></a>
     </td>
     <td align="center">
-      <a href="https://socket.dev"><img src="docs/dev/img/png48/socket.png" alt="Socket.dev" height="48" /></a>
+      <a href="https://socket.dev"><img src="icons/socket.png" alt="Socket.dev" height="48" /></a>
     </td>
   </tr>
   <tr>
