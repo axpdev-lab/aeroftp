@@ -299,19 +299,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
     const language = file ? getFileLanguage(file.name) : 'text';
 
-    // Map our language names to Monaco's
-    const monacoLanguage = (lang: string): string => {
-        const map: Record<string, string> = {
-            'text': 'plaintext',
-            'js': 'javascript',
-            'ts': 'typescript',
-            'jsx': 'javascript',
-            'tsx': 'typescript',
-            'bash': 'shell',
-            'sh': 'shell',
-        };
-        return map[lang] || lang;
-    };
+    // Map fallback names to Monaco language IDs
+    const monacoLanguage = (lang: string): string => lang === 'text' ? 'plaintext' : lang;
 
     if (!file) {
         return (

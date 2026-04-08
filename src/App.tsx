@@ -63,6 +63,7 @@ import { TransferQueue, useTransferQueue } from './components/TransferQueue';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { CustomTitlebar } from './components/CustomTitlebar';
+import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
@@ -6922,6 +6923,9 @@ interface UpdateVerificationInfo {
             <div className="absolute inset-0 invert dark:invert-0 dark:opacity-50" style={{ backgroundImage: appBackgroundPattern.svg }} />
           </div>
         )}
+        {/* Resize edges for undecorated window (Wayland needs client-side resize zones) */}
+        <WindowResizeEdges />
+
         {/* Custom Titlebar — data-tauri-drag-region for Wayland compatibility */}
         <CustomTitlebar
           appTheme={getEffectiveTheme(theme, isDark)}
