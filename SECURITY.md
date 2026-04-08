@@ -81,6 +81,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 
 - **[Aikido Security](https://aikido.dev)**: SAST, SCA, secrets detection, IaC scanning - daily automated scans
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
+- **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
 
 For Sigstore verification commands and CI/CD security controls, see [Supply Chain Security](https://docs.aeroftp.app/security/supply-chain).
 

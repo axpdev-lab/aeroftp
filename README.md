@@ -305,6 +305,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
+| **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
 | **Dependency Scanning** | 1,156 packages monitored (320 JS + 836 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
 | **Security Audits** | 300+ findings resolved across [9 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |
@@ -469,10 +470,10 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
 <table align="center">
   <tr>
     <td align="center">
-      <a href="https://openinventionnetwork.com/"><img src="icons/oin-member-badge.png" alt="OIN 2.0 Community Member" height="60" /></a>
+      <a href="https://openinventionnetwork.com/"><img src="docs/dev/img/png48/oin-2-0-stacked_80x80.png" alt="OIN 2.0 Community Member" height="80" /></a>
     </td>
     <td align="center">
-      <a href="https://opensource.org"><img src="icons/osi-member.png" alt="Open Source Initiative Member" height="60" /></a>
+      <a href="https://opensource.org"><img src="docs/dev/img/png48/Open_Source_Initiative_64x64.png" alt="Open Source Initiative Member" height="64" /></a>
     </td>
     <td align="center">
       <a href="https://sigstore.dev"><img src="icons/sigstore-signed.png" alt="Sigstore Signed" height="60" /></a>
@@ -482,6 +483,22 @@ GPL-3.0 - See [LICENSE](LICENSE) for details.
     <td align="center"><sub>OIN 2.0 Community Member</sub></td>
     <td align="center"><sub>OSI Individual Member</sub></td>
     <td align="center"><sub>Sigstore Signed Releases</sub></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://aikido.dev"><img src="docs/dev/img/png48/aikido_security.png" alt="Aikido Security" height="48" /></a>
+    </td>
+    <td align="center">
+      <a href="https://snyk.io"><img src="docs/dev/img/png48/snyk.png" alt="Snyk" height="48" /></a>
+    </td>
+    <td align="center">
+      <a href="https://socket.dev"><img src="docs/dev/img/png48/socket.png" alt="Socket.dev" height="48" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Aikido Security</sub></td>
+    <td align="center"><sub>Snyk</sub></td>
+    <td align="center"><sub>Socket.dev</sub></td>
   </tr>
 </table>
 
