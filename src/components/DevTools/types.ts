@@ -149,9 +149,10 @@ export const isPdfFile = (filename: string): boolean => {
 export const isPreviewable = (filename: string): boolean => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const baseName = filename.split('/').pop()?.toLowerCase() || filename.toLowerCase();
-    // Any extension in the language map is previewable, plus images and misc
+    // If getFileLanguage recognizes it (returns anything other than 'text'), it's previewable
+    const hasLanguage = getFileLanguage(filename) !== 'text' || ext === 'txt' || ext === 'log';
+    if (hasLanguage) return true;
     const previewableExts = [
-        ...Object.keys(langMap),
         'example', 'sample', 'bak',
         // Images
         'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp',
