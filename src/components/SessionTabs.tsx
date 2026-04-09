@@ -344,7 +344,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         onDrop={(e) => handleTabDrop(e, idx)}
                         onDragEnd={handleTabDragEnd}
                         className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all min-w-0 max-w-[200px] ${isActive
-                            ? 'bg-white dark:bg-gray-700 shadow-sm cursor-default'
+                            ? 'bg-white dark:bg-gray-700 shadow-sm cursor-pointer'
                             : isLocked
                                 ? 'opacity-40 cursor-not-allowed'
                                 : 'hover:bg-gray-200 dark:hover:bg-gray-700/50 cursor-pointer'

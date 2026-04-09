@@ -129,6 +129,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
 
                 match provider_lock.as_mut() {
                     Some(provider) => {
+                        let dl_start = std::time::Instant::now();
                         match tokio::time::timeout(
                             Duration::from_secs(self.runtime_settings.timeout_seconds),
                             provider.download(
@@ -144,6 +145,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
                                     } else {
                                         0
                                     };
+                                    let elapsed = dl_start.elapsed().as_secs_f64();
+                                    let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                                    let remaining = total.max(file_size).saturating_sub(transferred);
+                                    let eta = if speed > 0 { (remaining as f64 / speed as f64) as u64 } else { 0 };
 
                                     let _ = app.emit(
                                         "transfer_event",
@@ -159,8 +164,8 @@ impl TransferExecutor for ProviderDownloadExecutor {
                                                 transferred,
                                                 total: total.max(file_size),
                                                 percentage,
-                                                speed_bps: 0,
-                                                eta_seconds: 0,
+                                                speed_bps: speed,
+                                                eta_seconds: eta as u32,
                                                 direction: "download".to_string(),
                                                 total_files: None,
                                                 path: None,
@@ -348,6 +353,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                                 Err(error) => Err(error),
                             }
                         } else {
+                            let ul_start = std::time::Instant::now();
                             match tokio::time::timeout(
                                 Duration::from_secs(self.runtime_settings.timeout_seconds),
                                 provider.upload(
@@ -363,6 +369,10 @@ impl TransferExecutor for ProviderUploadExecutor {
                                         } else {
                                             0
                                         };
+                                        let elapsed = ul_start.elapsed().as_secs_f64();
+                                        let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
+                                        let remaining = total.max(file_size).saturating_sub(transferred);
+                                        let eta = if speed > 0 { (remaining as f64 / speed as f64) as u64 } else { 0 };
 
                                         let _ = app.emit(
                                             "transfer_event",
@@ -378,8 +388,8 @@ impl TransferExecutor for ProviderUploadExecutor {
                                                     transferred,
                                                     total: total.max(file_size),
                                                     percentage,
-                                                    speed_bps: 0,
-                                                    eta_seconds: 0,
+                                                    speed_bps: speed,
+                                                    eta_seconds: eta as u32,
                                                     direction: "upload".to_string(),
                                                     total_files: None,
                                                     path: None,

@@ -2917,8 +2917,11 @@ interface UpdateVerificationInfo {
     const targetSession = sessions.find(s => s.id === sessionId);
     if (!targetSession) return;
 
-    // Don't switch if already on this session
-    if (activeSessionId === sessionId) return;
+    // If already on this session but in AeroFile mode, just restore remote panel
+    if (activeSessionId === sessionId) {
+      if (!showRemotePanel) setShowRemotePanel(true);
+      return;
+    }
 
     // Capture current state values before any async operations
     const capturedRemoteFiles = [...remoteFiles];

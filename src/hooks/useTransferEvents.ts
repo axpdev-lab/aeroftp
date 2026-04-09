@@ -455,7 +455,16 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             setActiveTransfer(data.progress);
           // Dispatch progress to isolated TransferToastContainer (no App re-render)
           if (data.progress.total_files) {
-            toastSummaryRef.current = { ...data.progress, speed_bps: lastFileSpeedRef.current };
+            // Aggregate speed from active lanes (more reliable than single-file lastFileSpeedRef)
+            let aggregatedSpeed = lastFileSpeedRef.current;
+            if (toastLanesRef.current.size > 0) {
+              let laneSpeedSum = 0;
+              for (const lane of toastLanesRef.current.values()) {
+                if (lane.state === 'active' || !lane.state) laneSpeedSum += lane.speed_bps;
+              }
+              if (laneSpeedSum > 0) aggregatedSpeed = laneSpeedSum;
+            }
+            toastSummaryRef.current = { ...data.progress, speed_bps: aggregatedSpeed };
             emitToastState();
           } else {
             const batchId = tryResolveToastBatchId(data.transfer_id);

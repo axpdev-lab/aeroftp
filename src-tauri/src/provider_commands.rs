@@ -663,9 +663,13 @@ pub async fn provider_download_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
+    let dl_start_time = std::time::Instant::now();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let elapsed = dl_start_time.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
+            let eta = if speed > 0 && transferred < total { ((total - transferred) as f64 / speed as f64) as u64 } else { 0 };
             let _ = app_progress.emit(
                 "transfer_event",
                 crate::TransferEvent {
@@ -681,8 +685,8 @@ pub async fn provider_download_file(
                         percentage: pct,
                         transferred,
                         total,
-                        speed_bps: 0,
-                        eta_seconds: 0,
+                        speed_bps: speed,
+                        eta_seconds: eta as u32,
                         total_files: None,
                         path: None,
                     }),
@@ -1330,15 +1334,20 @@ async fn provider_upload_folder_inner(
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-            github
+            if let Err(e) = github
                 .create_directory(remote_path, commit_message.as_deref())
                 .await
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
-        } else {
-            provider
-                .mkdir(remote_path)
-                .await
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            {
+                let err_str = e.to_string().to_lowercase();
+                if !err_str.contains("exist") && !err_str.contains("409") && !err_str.contains("already") {
+                    return Err(format!("Failed to create directory: {}", e));
+                }
+            }
+        } else if let Err(e) = provider.mkdir(remote_path).await {
+            let err_str = e.to_string().to_lowercase();
+            if !err_str.contains("exist") && !err_str.contains("409") && !err_str.contains("550") {
+                return Err(format!("Failed to create directory: {}", e));
+            }
         }
     }
 
@@ -1616,9 +1625,13 @@ pub async fn provider_upload_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
+    let ul_start_time = std::time::Instant::now();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let elapsed = ul_start_time.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
+            let eta = if speed > 0 && transferred < total { ((total - transferred) as f64 / speed as f64) as u64 } else { 0 };
             let _ = app_progress.emit(
                 "transfer_event",
                 crate::TransferEvent {
@@ -1634,8 +1647,8 @@ pub async fn provider_upload_file(
                         percentage: pct,
                         transferred,
                         total,
-                        speed_bps: 0,
-                        eta_seconds: 0,
+                        speed_bps: speed,
+                        eta_seconds: eta as u32,
                         total_files: None,
                         path: None,
                     }),
