@@ -137,6 +137,9 @@ Every new cloud provider integration is a milestone. Here's the full history:
 
 | # | Provider | Version | Protocol |
 |---|----------|---------|----------|
+| 24 | **Immich** | v3.4.4 | REST API (self-hosted) |
+| 23 | **Google Photos** | v3.4.3 | OAuth2 (read-only, Google restricted scope 2025) |
+| 22 | **GitLab** | v3.3.2 | REST API v4 |
 | 21 | **SourceForge** | v3.3.0 | SFTP |
 | 20 | **Felicloud** | v3.1.6 | WebDAV + OCS API |
 | 19 | **FileLu** | v2.7.0 | REST API |
@@ -227,7 +230,13 @@ Optional Total Commander-style dual local panel with unified tab bar, local-to-l
 | Provider | Protocol | Status |
 |----------|----------|--------|
 | **Blomp** | OpenStack Swift | Awaiting proxy fix (auth works, storage 403) |
+| **GitLab** (completion) | REST API v4 | Tier 1 shipped (v3.3.2). Remaining: Tier 2-3 features |
+| **Bitbucket** | REST 2.0 | Planned - Git forge Tier 1 |
+| **Gitea / Forgejo** | REST v1 | Planned - Git forge Tier 1 (~90% GitHub reuse) |
+| **ImageKit** | REST API | Planned - media CDN + storage |
 | **Nextcloud** (generic) | WebDAV + OCS | Planned (Felicloud paved the way) |
+
+**Already supported via presets:** Quotaless (S3 + WebDAV), PixelUnion/Immich (self-hosted), Hetzner Storage Box (WebDAV/SFTP)
 
 ---
 
