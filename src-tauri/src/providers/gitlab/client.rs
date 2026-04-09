@@ -14,7 +14,10 @@ use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
 
-use crate::providers::{sanitize_api_error, ProviderError};
+use crate::providers::{
+    http_retry::{send_with_retry, HttpRetryConfig},
+    sanitize_api_error, ProviderError,
+};
 
 /// User-Agent sent with every request.
 const USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
@@ -96,13 +99,19 @@ impl GitLabHttpClient {
 
     /// Send a request, update rate-limit, classify errors.
     async fn execute(&mut self, builder: RequestBuilder) -> Result<Response, ProviderError> {
-        let response = builder.send().await.map_err(|e| {
-            if e.is_timeout() {
-                ProviderError::Timeout
-            } else {
-                ProviderError::ConnectionFailed(format!("GitLab network error: {}", e))
-            }
+        let request = builder.build().map_err(|e| {
+            ProviderError::NetworkError(format!("Failed to build request: {}", e))
         })?;
+        let response =
+            send_with_retry(&self.client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| {
+                    if e.is_timeout() {
+                        ProviderError::Timeout
+                    } else {
+                        ProviderError::ConnectionFailed(format!("GitLab network error: {}", e))
+                    }
+                })?;
 
         self.rate_limit.update_from_headers(response.headers());
 

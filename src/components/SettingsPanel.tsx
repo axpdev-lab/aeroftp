@@ -29,7 +29,7 @@ import { Checkbox } from './ui/Checkbox';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
-import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode } from '../utils/providerConnectionMeta';
+import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
 import { DEFAULT_APP_FONT_FAMILY, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE, clampAppFontSize, normalizeAppFontFamily } from '../hooks/useSettings';
 
@@ -1102,7 +1102,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 username: '',
                                                 password: '',
                                                 options: newProtocol === 'mega'
-                                                    ? { mega_mode: 'megacmd', save_session: true, logout_on_disconnect: false }
+                                                    ? normalizeMegaOptions()
                                                     : {}
                                             });
                                         };
@@ -1934,6 +1934,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                                     const newServer = {
                                                                         ...editingServer,
+                                                                        host: editingServer.protocol === 'mega' ? (editingServer.host || 'mega.nz') : editingServer.host,
+                                                                        port: editingServer.protocol === 'mega' ? (editingServer.port || 443) : editingServer.port,
+                                                                        options: editingServer.protocol === 'mega'
+                                                                            ? normalizeMegaOptions(editingServer.options)
+                                                                            : editingServer.options,
                                                                         id: newId,
                                                                         name: finalName,
                                                                         password: undefined,
@@ -1977,6 +1982,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 // Update server profile with hasStoredCredential flag, without storing password in localStorage
                                                                 const serverToSave = {
                                                                     ...editingServer,
+                                                                    host: editingServer.protocol === 'mega' ? (editingServer.host || 'mega.nz') : editingServer.host,
+                                                                    port: editingServer.protocol === 'mega' ? (editingServer.port || 443) : editingServer.port,
+                                                                    options: editingServer.protocol === 'mega'
+                                                                        ? normalizeMegaOptions(editingServer.options)
+                                                                        : editingServer.options,
                                                                     password: undefined, // Don't store password in localStorage
                                                                     hasStoredCredential,
                                                                 };

@@ -35,6 +35,7 @@ mod cloud_provider_factory;
 mod cloud_service;
 mod context_intelligence;
 pub mod credential_store;
+mod cross_profile_transfer;
 mod crypto;
 mod cryptomator;
 mod cyber_tools;

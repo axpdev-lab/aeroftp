@@ -21,6 +21,7 @@ import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
+import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { Checkbox } from './ui/Checkbox';
 
@@ -488,7 +489,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         formOnly && connectionParams.providerId ? connectionParams.providerId : null
     );
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
-    const megaMode = connectionParams.options?.mega_mode === 'megacmd' ? 'megacmd' : 'native';
+    const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
 
     // Protocol selector open state (to hide form when selector is open)
@@ -691,7 +692,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 }
             : connectionParams;
 
-        const optionsToSave = { ...connectionParams.options };
+        const optionsToSave = protocol === 'mega'
+            ? normalizeMegaOptions(connectionParams.options)
+            : { ...connectionParams.options };
         // Persist default tlsMode for FTP/FTPS so saved servers show correct badge
         if ((protocol === 'ftp' || protocol === 'ftps') && !optionsToSave.tlsMode) {
             optionsToSave.tlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
@@ -889,7 +892,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ? { ...connectionParams, server: selectedProvider.defaults.server, port: connectionParams.port || selectedProvider.defaults.port || getDefaultPort(protocol) }
             : connectionParams;
 
-        const optionsToSave = { ...connectionParams.options };
+        const optionsToSave = protocol === 'mega'
+            ? normalizeMegaOptions(connectionParams.options)
+            : { ...connectionParams.options };
 
         const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
@@ -1083,7 +1088,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     protocol: newProtocol,
                     port: provider.defaults?.port || getDefaultPort(newProtocol),
                     providerId: provider.id,
-                    options: {},
+                    options: newProtocol === 'mega' ? normalizeMegaOptions() : {},
                 });
                 onQuickConnectDirsChange({
                     remoteDir: provider.defaults?.basePath || '',
@@ -1097,6 +1102,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             ? { server: 'filelu.com', username: 'api-key', port: 443 }
             : newProtocol === 'opendrive'
                 ? { server: 'dev.opendrive.com', port: 443 }
+            : newProtocol === 'mega'
+                ? { server: 'mega.nz', port: 443, options: normalizeMegaOptions() }
                 : {};
 
         // Reset ALL form fields (clear previous server's credentials)
@@ -1106,7 +1113,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             password: '',
             protocol: newProtocol,
             port: protocolDefaults.port || getDefaultPort(newProtocol),
-            options: {},
+            options: protocolDefaults.options || {},
         });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
     };

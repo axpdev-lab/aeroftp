@@ -62,6 +62,7 @@ import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
+import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
@@ -2083,6 +2084,14 @@ interface UpdateVerificationInfo {
 
   const normalizeProviderConnectionParams = (params: ConnectionParams): ConnectionParams => {
     const protocol = params.protocol;
+    if (protocol === 'mega') {
+      return {
+        ...params,
+        server: params.server || 'mega.nz',
+        port: params.port || 443,
+        options: normalizeMegaOptions(params.options),
+      };
+    }
     if (protocol === 'filelu') {
       return {
         ...params,

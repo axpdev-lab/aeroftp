@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use tracing::{debug, info};
 
 use super::{
+    http_retry::{send_with_retry, HttpRetryConfig},
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
     sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
@@ -1552,11 +1553,14 @@ impl ZohoWorkdriveProvider {
 
             info!("Zoho WorkDrive list: GET {}", url);
 
-            let resp = self
+            let request = self
                 .client
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
+                .build()
+                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
@@ -2244,7 +2248,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         let url = format!("{}/files", self.api_base());
-        let resp = self
+        let request = self
             .client
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -2253,7 +2257,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 HeaderValue::from_static("application/vnd.api+json"),
             )
             .body(body.to_string())
-            .send()
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
@@ -2300,7 +2307,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         });
 
         info!("Zoho WorkDrive move to trash: PATCH {} id={}", url, file.id);
-        let resp = self
+        let request = self
             .client
             .patch(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
@@ -2309,7 +2316,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 HeaderValue::from_static("application/vnd.api+json"),
             )
             .body(body.to_string())
-            .send()
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
@@ -2383,7 +2393,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             });
 
             let url = format!("{}/files/{}/move", self.api_base(), file.id);
-            let resp = self
+            let request = self
                 .client
                 .patch(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
@@ -2392,7 +2402,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
                     HeaderValue::from_static("application/vnd.api+json"),
                 )
                 .body(move_body.to_string())
-                .send()
+                .build()
+                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
@@ -2420,7 +2433,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             });
 
             let url = format!("{}/files/{}", self.api_base(), file.id);
-            let resp = self
+            let request = self
                 .client
                 .patch(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
@@ -2429,7 +2442,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
                     HeaderValue::from_static("application/vnd.api+json"),
                 )
                 .body(rename_body.to_string())
-                .send()
+                .build()
+                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+
+            let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 

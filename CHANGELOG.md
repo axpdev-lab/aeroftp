@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.8] - 2026-04-09
+
+### Zoho WorkDrive rate limit fix, provider retry hardening
+
+#### Fixed
+
+- **Zoho WorkDrive 429 rate limit**: Rapid uploads followed by directory navigation would trigger HTTP 429 (Too Many Requests) from Zoho API, causing all subsequent operations to fail. Added automatic retry with exponential backoff to list, mkdir, delete, and rename operations
+- **GitLab 429 handling**: GitLab API requests now retry automatically on rate limit (429) and server errors (5xx) instead of failing immediately
+- **Swift/Blomp retry**: OpenStack Swift requests now retry on 429/5xx before and after re-authentication
+
 ## [3.4.7] - 2026-04-09
 
 ### rclone import/export, MEGA default fix

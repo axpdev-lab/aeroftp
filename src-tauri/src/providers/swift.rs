@@ -13,7 +13,10 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use std::time::{Duration, Instant};
 
-use super::{ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider};
+use super::{
+    http_retry::{send_with_retry, HttpRetryConfig},
+    ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
+};
 
 // ─── Configuration ─────────────────────────────────────────────────
 
@@ -459,8 +462,10 @@ impl SwiftProvider {
             req = req.body(data.clone());
         }
 
-        let resp = req
-            .send()
+        let request = req
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
+        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
 
@@ -477,7 +482,10 @@ impl SwiftProvider {
             if let Some(data) = body {
                 req2 = req2.body(data);
             }
-            req2.send()
+            let request2 = req2
+                .build()
+                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
+            send_with_retry(&self.client, request2, &HttpRetryConfig::default())
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
         } else {

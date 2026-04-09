@@ -13,6 +13,15 @@ export const getMegaConnectionMode = (options?: ProviderOptions): 'native' | 'me
     return options?.mega_mode === 'megacmd' ? 'megacmd' : 'native';
 };
 
+export const normalizeMegaOptions = (options?: ProviderOptions): ProviderOptions => {
+    return {
+        ...options,
+        mega_mode: options?.mega_mode ?? 'native',
+        save_session: options?.save_session ?? true,
+        logout_on_disconnect: options?.logout_on_disconnect ?? false,
+    };
+};
+
 export const getMegaConnectionBadge = (options?: ProviderOptions): ProviderModeBadge => {
     const mode = getMegaConnectionMode(options);
     if (mode === 'native') {
