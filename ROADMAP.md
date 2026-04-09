@@ -168,45 +168,79 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 | Feature | Status | Description |
 |---------|--------|-------------|
 | **Blomp** (22nd provider) | Awaiting Blomp proxy fix | OpenStack Swift integration fully built. Keystone v2 auth works, storage proxy returns 403. Blomp support actively investigating. |
-| **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. |
-| **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. |
+| **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. 10 phases, 8 new files, async stdio, connection pool. |
+| **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. 17/19 tasks complete (89%). |
 
 ---
 
 ## Planned
 
+### Cross-Profile Transfer (cloud-to-cloud)
+
+Transfer files between any two saved profiles without exposing credentials. S3-to-S3, OAuth-to-S3, FTP-to-Cloud - any combination of the 27 supported protocols.
+
+| Component | Description |
+|-----------|-------------|
+| **Core engine** | Streaming pipeline (`open_read` -> `put_stream`), connection pooling, server-side copy detection |
+| **CLI** | `aeroftp-cli transfer -s "Google Drive" -d "AWS S3" /photos/ /backup/ -r` with copy/sync/move modes |
+| **Batch** | `CONNECT_SOURCE` / `CONNECT_DEST` / `TRANSFER` for scripted migrations |
+| **GUI** | Dual-panel mode with two file browsers, drag-and-drop between profiles, real-time progress |
+| **AI Agent** | `cross_profile_plan` and `cross_profile_transfer` tools with human approval |
+
+### AeroFile Dual Panel (local)
+
+Optional Total Commander-style dual local panel with unified tab bar, local-to-local drag-and-drop, and F5/F6 keyboard shortcuts.
+
+### Provider Capabilities
+
 | Feature | Description |
 |---------|-------------|
-| **Universal File Versioning** | Unified versions panel across 12+ providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud, OpenDrive, MEGA). |
-| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support. |
-| **CLI Parallel Transfers** | `--parallel N` worker pool for concurrent transfers. Segmented parallel downloads for large files. Server-to-server copy for cloud-to-cloud migration. |
-| **AeroCloud Selective Sync** | Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization. |
-| **Agent Orchestration** | JSON-RPC programmatic mode, mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync. |
-| **AeroVault v2 Enhancements** | Cross-platform migration, multi-device sync integration, key rotation. |
-| **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI. |
-| **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow. |
+| **Universal File Versioning** | Unified versions panel across 12+ providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud, OpenDrive, MEGA) |
+| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support |
+| **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI |
+| **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow |
+
+### CLI & Sync
+
+| Feature | Description |
+|---------|-------------|
+| **AeroCloud Selective Sync** | Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization |
+| **Streaming Scan Pipeline** | Producer-consumer architecture for immediate transfer start without full directory scan |
+| **Rclone Crypt Compatibility** | Transparent decryption of rclone-encrypted remotes (XSalsa20-Poly1305 content, EME filename encryption) |
+
+### Agent & Orchestration
+
+| Feature | Description |
+|---------|-------------|
+| **Agent Orchestration** | JSON-RPC programmatic mode, mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync |
+| **AeroVault v2 Enhancements** | Cross-platform migration, multi-device sync integration, key rotation |
+
+### Documentation & Distribution
+
+| Feature | Description |
+|---------|-------------|
+| **Provider Landing Pages** | SEO landing pages on docs.aeroftp.app for 30+ providers with connection guides and feature matrices |
+| **Auto-Update Trust UI** | Sigstore trust UI improvements, macOS DMG distribution |
 
 ### Provider Pipeline
 
-| Provider                | Protocol        | Status                                              |
-|-------------------------|-----------------|-----------------------------------------------------|
-| **Blomp**               | OpenStack Swift | Awaiting Blomp proxy fix (auth works, storage 403)  |
-| **Nextcloud** (generic) | WebDAV + OCS    | Planned (Felicloud paved the way)                   |
+| Provider | Protocol | Status |
+|----------|----------|--------|
+| **Blomp** | OpenStack Swift | Awaiting proxy fix (auth works, storage 403) |
+| **Nextcloud** (generic) | WebDAV + OCS | Planned (Felicloud paved the way) |
 
 ---
 
 ## Under Consideration
 
-These features are being evaluated based on community interest:
+These features are being evaluated based on community interest and NLnet grant outcome:
 
 | Feature | Description |
 |---------|-------------|
 | **IPFS / Web3 Storage** | Decentralized file storage integration (NLnet grant submitted) |
 | **Tor Support** | Anonymous file transfers via Tor hidden services (NLnet grant submitted) |
 | **Biometric Unlock** | Fingerprint/face unlock for the encrypted vault |
-| **CLI TUI Explorer** | ncdu-style interactive disk usage explorer for remote servers |
-| **CLI FUSE Mount** | Mount remote servers as local filesystem |
-| **CLI Serve Mode** | Expose remote storage as local HTTP/WebDAV server |
+| **Share Link Redesign** | Unified share experience with QR codes, link analytics, and team sharing |
 
 ---
 
@@ -227,4 +261,4 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 
 ---
 
-*Last updated: April 1, 2026*
+*Last updated: April 9, 2026*
