@@ -318,7 +318,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and architecture summary,
 
 ### rclone Import/Export
 
-Migrate from rclone in seconds. AeroFTP reads `rclone.conf` directly, maps 17 backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more), and upgrades passwords from rclone's reversible obfuscation to AES-256-GCM encrypted vault storage. Export back to `rclone.conf` anytime for full interoperability. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`).
+Migrate from rclone in seconds. AeroFTP reads `rclone.conf` directly, maps 17 backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more), and upgrades passwords from rclone's reversible obfuscation to AES-256-GCM encrypted vault storage. Export back to `rclone.conf` anytime for full interoperability. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`). See the **[rclone Integration Guide](https://docs.aeroftp.app/features/rclone)**.
 
 ### 4 Themes
 Light, Dark, Tokyo Night, and Cyber - with themed icons, terminal colors, Monaco editor syntax, and CSS custom properties throughout.

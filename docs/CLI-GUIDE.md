@@ -694,7 +694,7 @@ aeroftp-cli import rclone /path/to/rclone.conf
 aeroftp-cli import rclone --json
 ```
 
-Imports server profiles from rclone configuration files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and can be stored in the AES-256-GCM encrypted vault via the GUI import flow.
+Imports server profiles from rclone configuration files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and can be stored in the AES-256-GCM encrypted vault via the GUI import flow. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table and security comparison.
 
 ### completions — Generate Shell Completion Scripts
 
