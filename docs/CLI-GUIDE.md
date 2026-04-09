@@ -681,6 +681,21 @@ aeroftp-cli agent --mcp
 
 Runs AeroAgent through the shared Rust backend. It supports one-shot prompts, interactive runs, orchestration mode, and MCP server mode for external agent clients.
 
+### import rclone — Import rclone Configuration
+
+```bash
+# Auto-detect rclone.conf and list importable remotes
+aeroftp-cli import rclone
+
+# Specify config path explicitly
+aeroftp-cli import rclone /path/to/rclone.conf
+
+# JSON output for scripting
+aeroftp-cli import rclone --json
+```
+
+Imports server profiles from rclone configuration files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and can be stored in the AES-256-GCM encrypted vault via the GUI import flow.
+
 ### completions — Generate Shell Completion Scripts
 
 ```bash

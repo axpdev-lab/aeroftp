@@ -747,6 +747,23 @@ enum Commands {
         #[command(subcommand)]
         command: CryptCommands,
     },
+    /// Import server profiles from external sources
+    Import {
+        #[command(subcommand)]
+        command: ImportCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImportCommands {
+    /// Import remotes from rclone configuration file
+    Rclone {
+        /// Path to rclone.conf (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -8634,6 +8651,94 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
             );
             let _ = provider.disconnect().await;
             provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
+    use ftp_client_gui_lib::rclone_import;
+
+    let config_path = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => match rclone_import::default_rclone_config_path() {
+            Some(p) => p,
+            None => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"error": "rclone configuration not found. Specify path manually."})
+                    );
+                } else {
+                    eprintln!("Error: rclone configuration not found.");
+                    eprintln!("Specify the path manually: aeroftp import rclone /path/to/rclone.conf");
+                }
+                return 1;
+            }
+        },
+    };
+
+    if !config_path.exists() {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({"error": format!("File not found: {}", config_path.display())})
+            );
+        } else {
+            eprintln!("Error: file not found: {}", config_path.display());
+        }
+        return 1;
+    }
+
+    match rclone_import::import_rclone(&config_path) {
+        Ok(result) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+            } else {
+                println!(
+                    "Scanned {} remotes from {}",
+                    result.total_remotes,
+                    result.source_path
+                );
+                println!();
+
+                if !result.servers.is_empty() {
+                    println!("Importable ({}):", result.servers.len());
+                    for s in &result.servers {
+                        let proto = s.protocol.as_deref().unwrap_or("?");
+                        let cred = if s.credential.is_some() {
+                            " [credentials]"
+                        } else {
+                            ""
+                        };
+                        println!(
+                            "  {} - {}://{}@{}:{}{}",
+                            s.name, proto, s.username, s.host, s.port, cred
+                        );
+                    }
+                    println!();
+                }
+
+                if !result.skipped.is_empty() {
+                    println!("Skipped ({}):", result.skipped.len());
+                    for s in &result.skipped {
+                        println!("  {} - {} ({})", s.name, s.rclone_type, s.reason);
+                    }
+                    println!();
+                }
+
+                println!(
+                    "To import into the GUI, use Settings > Export/Import > Import from rclone"
+                );
+            }
+            0
+        }
+        Err(e) => {
+            if json {
+                println!("{}", serde_json::json!({"error": e}));
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            1
         }
     }
 }
@@ -18083,6 +18188,9 @@ async fn main() {
             JobCommands::List => cmd_jobs_list(format).await,
             JobCommands::Status { id } => cmd_jobs_status(id, format).await,
             JobCommands::Cancel { id } => cmd_jobs_cancel(id, format).await,
+        },
+        Commands::Import { command } => match command {
+            ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
         },
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),

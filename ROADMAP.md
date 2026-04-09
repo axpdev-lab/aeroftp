@@ -18,6 +18,15 @@
 
 ## Recently Shipped
 
+### v3.4.7 (April 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **rclone config import** | Import server profiles from rclone.conf files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords de-obfuscated from rclone's reversible AES-256-CTR and stored in AES-256-GCM encrypted vault. |
+| **rclone config export** | Export server profiles to rclone.conf format for full interoperability with rclone CLI. Passwords obfuscated using rclone's standard scheme. |
+| **CLI `import rclone`** | New subcommand `aeroftp import rclone [path] [--json]` for headless config migration. |
+| **MEGA default fix** | New MEGA profiles default to Native API instead of MEGAcmd. Existing profiles without explicit mode correctly labeled. |
+
 ### v3.3.0 (April 2026)
 
 | Feature | Description |

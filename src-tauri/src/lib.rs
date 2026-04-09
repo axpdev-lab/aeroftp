@@ -54,6 +54,7 @@ pub mod mcp;
 mod plugin_registry;
 mod plugins;
 mod profile_export;
+pub mod rclone_import;
 mod provider_transfer_executor;
 mod provider_commands;
 pub mod providers;
@@ -9900,6 +9901,126 @@ async fn read_export_metadata(file_path: String) -> Result<profile_export::Expor
     profile_export::read_metadata(std::path::Path::new(&file_path)).map_err(|e| e.to_string())
 }
 
+// ============ Rclone Config Import ============
+
+#[tauri::command]
+async fn detect_rclone_config() -> Result<Option<String>, String> {
+    Ok(rclone_import::default_rclone_config_path().map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, String> {
+    // Defense-in-depth: validate the file path to prevent arbitrary file reads
+    let path = std::path::Path::new(&file_path);
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if !(file_name.ends_with(".conf") || file_name == "rclone.conf" || file_name.ends_with(".cfg")) {
+        return Err("Invalid file type. Expected .conf or .cfg file.".to_string());
+    }
+    if !path.exists() {
+        return Err("File not found".to_string());
+    }
+
+    let result =
+        rclone_import::import_rclone(path).map_err(|e| e.to_string())?;
+
+    // Store credentials in secure store (upgrade from rclone obscure to AES-256-GCM vault)
+    let mut cred_errors: Vec<String> = Vec::new();
+    match credential_store::CredentialStore::from_cache() {
+        Some(store) => {
+            for server in &result.servers {
+                if let Some(ref cred) = server.credential {
+                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                        cred_errors.push(format!("{}: {}", server.id, e));
+                    }
+                }
+            }
+        }
+        None => {
+            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            if cred_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {} credentials not stored",
+                    cred_count
+                ));
+            }
+        }
+    }
+    if !cred_errors.is_empty() {
+        log::warn!("Rclone import credential issues: {:?}", cred_errors);
+    }
+
+    // Redact credentials before returning to renderer (same pattern as import_server_profiles)
+    let redacted_servers: Vec<serde_json::Value> = result
+        .servers
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "host": s.host,
+                "port": s.port,
+                "username": s.username,
+                "protocol": s.protocol,
+                "initialPath": s.initial_path,
+                "options": s.options,
+                "providerId": s.provider_id,
+                "hasStoredCredential": s.credential.is_some(),
+            })
+        })
+        .collect();
+
+    let response = serde_json::json!({
+        "servers": redacted_servers,
+        "skipped": result.skipped,
+        "sourcePath": result.source_path,
+        "totalRemotes": result.total_remotes,
+    });
+    Ok(response)
+}
+
+#[tauri::command]
+async fn export_rclone_config(
+    servers_json: String,
+    include_credentials: bool,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let servers: Vec<rclone_import::RcloneExportServer> =
+        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
+
+    // Fetch passwords from vault if requested
+    let mut passwords = std::collections::HashMap::new();
+    if include_credentials {
+        if let Some(store) = credential_store::CredentialStore::from_cache() {
+            // We need server IDs to look up credentials — pass them via a separate field
+            // But RcloneExportServer doesn't have id. We use server name as password key.
+            // Actually, we need a way to look up by ID. Let's parse the raw JSON to get IDs.
+            let raw: Vec<serde_json::Value> =
+                serde_json::from_str(&servers_json).unwrap_or_default();
+            for (i, server) in servers.iter().enumerate() {
+                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                    if let Ok(cred) = store.get(&format!("server_{}", id)) {
+                        passwords.insert(server.name.clone(), cred);
+                    }
+                }
+            }
+        }
+    }
+
+    let path = std::path::Path::new(&file_path);
+    let exported =
+        rclone_import::export_rclone(&servers, &passwords, path).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "exported": exported,
+        "total": servers.len(),
+        "filePath": file_path,
+        "includesCredentials": !passwords.is_empty(),
+    }))
+}
+
 // ============ Full Keystore Export/Import ============
 
 #[tauri::command]
@@ -10736,6 +10857,10 @@ pub fn run() {
             export_server_profiles,
             import_server_profiles,
             read_export_metadata,
+            // Rclone Config Import/Export
+            detect_rclone_config,
+            import_rclone_config,
+            export_rclone_config,
             // Full Keystore Export/Import
             export_keystore,
             import_keystore,

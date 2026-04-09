@@ -3769,8 +3769,7 @@ interface UpdateVerificationInfo {
               retryCount,
               timeoutSeconds,
             });
-            // Restore provider pwd (download_folder scans subdirs via cd)
-            await invoke('provider_change_dir', { path: currentRemotePath }).catch(() => {});
+            // pwd is restored by the backend (provider_download_folder saves/restores pwd)
           } else {
             const params: DownloadFolderParams = {
               remote_path: remoteFilePath,
@@ -3878,9 +3877,8 @@ interface UpdateVerificationInfo {
           const details = `(${elapsed}s)`;
           const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
           humanLog.updateEntry(logId, { message: msg });
-          // Navigate back to where the user was (upload may have changed provider pwd)
-          await invoke('provider_change_dir', { path: currentRemotePath }).catch(() => {});
-          loadRemoteFiles();
+          // pwd is restored by the backend (provider_upload_folder saves/restores pwd)
+          // loadRemoteFiles() is called by the transfer event handler on 'complete'
           return;
         }
         const remotePath = `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${fileName}`;
@@ -7065,15 +7063,23 @@ interface UpdateVerificationInfo {
               </div>
             )}
 
-            {/* State: Downloading */}
-            {updateDownload?.downloading && (
-              <TransferProgressBar
-                percentage={updateDownload.percentage}
-                speedBps={updateDownload.speed_bps}
-                etaSeconds={updateDownload.eta_seconds}
-                size="lg"
-                variant="gradient"
-              />
+            {/* State: Downloading or Verifying */}
+            {(updateDownload?.downloading || (updateDownload && !updateDownload.completedPath && !updateDownload.error && updateDownload.percentage > 0)) && (
+              <div>
+                <TransferProgressBar
+                  percentage={updateDownload.downloading ? updateDownload.percentage : 100}
+                  speedBps={updateDownload.downloading ? updateDownload.speed_bps : undefined}
+                  etaSeconds={updateDownload.downloading ? updateDownload.eta_seconds : undefined}
+                  size="lg"
+                  variant="gradient"
+                />
+                {!updateDownload.downloading && (
+                  <div className="mt-1.5 text-xs text-blue-200/70 flex items-center gap-1.5">
+                    <Loader2 size={11} className="animate-spin" />
+                    Verifying integrity...
+                  </div>
+                )}
+              </div>
             )}
 
             {/* State: Download complete — Install & Restart */}

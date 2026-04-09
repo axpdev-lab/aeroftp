@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.7" date="2026-04-09">
+      <description>
+        <p>Import and export rclone configurations: import server profiles from rclone.conf with automatic password upgrade to encrypted vault, export to rclone.conf for CLI use. Supports 17 rclone backend types including FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, and MEGA. New CLI subcommand: aeroftp import rclone. Fixed MEGA default mode to Native API.</p>
+      </description>
+    </release>
     <release version="3.4.5" date="2026-04-08">
       <description>
         <p>AppImage cross-distro fix: stripped bundled libraries to resolve EGL_BAD_PARAMETER on Arch/Fedora/rolling distros (118 MB to 48 MB). Client-side window resize for undecorated windows on Linux Wayland and X11. Minimum height lowered to 600px for 768p screens. Monaco editor expanded to 80+ languages including Lua, Kotlin, Dart, Elixir, and Terraform. Corrected provider contact badges.</p>

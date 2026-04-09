@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.7] - 2026-04-09
+
+### rclone import/export, MEGA default fix
+
+#### Added
+
+- **rclone config import**: Import server profiles directly from rclone.conf files. Auto-detects config path, supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and stored in AeroFTP's AES-256-GCM encrypted vault
+- **rclone config export**: Export server profiles to rclone.conf format for use with rclone CLI. Passwords are obfuscated using rclone's standard scheme for full compatibility
+- **CLI `import rclone` subcommand**: `aeroftp import rclone [path] [--json]` for headless rclone config scanning with structured JSON output
+- **rclone UI in Export/Import dialog**: New "rclone" section with Import and Export options, preview with server selection, OAuth re-auth notice, unsupported remotes listing
+
+#### Fixed
+
+- **MEGA default mode**: New MEGA profiles now default to Native API instead of MEGAcmd. Existing profiles without an explicit mode are treated as Native API in the UI and backend, preventing incorrect "MEGAcmd" labels on profiles that were never configured for it
+
 ## [3.4.6] - 2026-04-09
 
 ### Transfer toast redesign, folder overwrite fix, session tab fix

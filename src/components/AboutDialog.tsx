@@ -331,10 +331,10 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                             {/* Reviews */}
                             <div className="flex justify-center">
                                 <button
-                                    onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/')}
-                                    className="inline-flex items-center gap-1.5 text-xs text-blue-500 dark:text-cyan-500 hover:text-blue-400 dark:hover:text-cyan-400 transition-colors font-mono"
+                                    onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/reviews/new')}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-lg transition-colors text-sm text-green-600 dark:text-green-400 font-medium"
                                 >
-                                    <ExternalLink size={12} />
+                                    <SourceForge size={16} />
                                     {t('about.sourceforgeReviews')}
                                 </button>
                             </div>
