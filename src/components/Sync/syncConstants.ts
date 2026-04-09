@@ -41,7 +41,7 @@ export const SPEED_PRESETS: Record<SpeedMode, SpeedPreset> = {
 export const MANIAC_OVERRIDES: ManiacOverrides = {
     journalEnabled: false,
     verifyPolicy: 'none',
-    retryPolicy: { max_retries: 1, base_delay_ms: 0, max_delay_ms: 0, timeout_ms: 300_000, backoff_multiplier: 1 },
+    retryPolicy: { max_retries: 2, base_delay_ms: 250, max_delay_ms: 2_000, timeout_ms: 300_000, backoff_multiplier: 1.5 },
     progressThrottle: 'minimal',
     activityLogLevel: 'errors',
     bandwidthLimit: 0,

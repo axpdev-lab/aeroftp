@@ -155,27 +155,17 @@ export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel
     const { theme, isDark } = useTheme();
     const effectiveTheme = getEffectiveTheme(theme, isDark);
     const summary = transfer.summary;
-    const maxChannels = transfer.maxChannels ?? 5;
-    // Lanes arrive pre-sorted by channel index from the hook; cap to maxChannels
-    const lanes = (transfer.lanes ?? []).slice(0, maxChannels);
     const isUpload = summary.direction === 'upload';
     const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
     const isIndeterminate = !isFolderTransfer && summary.total <= 0;
     const styles = getToastStyles(effectiveTheme);
-    // Show channels section for parallel folder transfers (stable height — never hide mid-transfer)
-    const showChannels = isFolderTransfer && maxChannels > 1;
 
     // Display name: use truncated path if available, otherwise just filename
     const displayName = summary.path
         ? truncatePath(summary.path)
         : summary.filename;
-    const activeLaneCount = lanes.filter(l => l.state === 'active' || !l.state).length;
-    const completedFiles = isFolderTransfer ? Math.min(summary.transferred, summary.total) : 0;
-    const queuedFiles = isFolderTransfer ? Math.max(summary.total - completedFiles - activeLaneCount, 0) : 0;
     const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
-    const transferStateLabel = isFolderTransfer
-        ? (activeLaneCount > 1 ? `PARALLEL ${activeLaneCount}x` : 'BATCH')
-        : (isIndeterminate ? 'STREAM' : 'LIVE');
+    const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
 
     // Auto-dismiss safety: if stuck at 100% for 3 seconds, dismiss the toast
     useEffect(() => {
@@ -218,7 +208,7 @@ export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel
                                 </span>
                                 {isFolderTransfer && (
                                     <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>
-                                        {activeLaneCount} active · {queuedFiles} queued · {completedFiles} done
+                                        {summary.transferred}/{summary.total} files
                                     </span>
                                 )}
                             </div>
@@ -272,80 +262,6 @@ export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel
                         </div>
                     </div>
 
-                    {showChannels && (
-                        <div className="mt-2.5 space-y-1.5">
-                            <div className={`flex items-center justify-between text-[10px] font-medium ${styles.subtitle}`}>
-                                <span>Channels</span>
-                                <span className="tabular-nums">{activeLaneCount}/{maxChannels}</span>
-                            </div>
-                            <div className="grid gap-1.5">
-                                {Array.from({ length: maxChannels }).map((_, slotIndex) => {
-                                    const lane = lanes[slotIndex];
-                                    if (lane) {
-                                        return (
-                                            <div key={lane.id} className={`rounded-lg px-2.5 py-1.5 ${styles.panel}`}>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <div className="min-w-0 flex items-center gap-2">
-                                                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${styles.badge}`}>
-                                                            {`CH ${slotIndex + 1}`}
-                                                        </span>
-                                                        <span className={`truncate text-[11px] ${styles.title}`}>
-                                                            {lane.path ? truncatePath(lane.path, 34) : lane.filename}
-                                                        </span>
-                                                    </div>
-                                                    <span className={`shrink-0 text-[11px] tabular-nums font-medium ${styles.title}`}>
-                                                        {lane.percentage}%
-                                                    </span>
-                                                </div>
-                                                <TransferProgressBar
-                                                    percentage={lane.percentage}
-                                                    transferredBytes={lane.transferred}
-                                                    totalBytes={lane.total}
-                                                    speedBps={lane.speed_bps}
-                                                    etaSeconds={lane.eta_seconds}
-                                                    size="sm"
-                                                    variant="gradient"
-                                                    animated
-                                                    effectiveTheme={effectiveTheme}
-                                                    tone={lane.state === 'completed' ? 'success' : lane.state === 'error' ? 'error' : 'default'}
-                                                    className="mt-1.5"
-                                                />
-                                            </div>
-                                        );
-                                    }
-                                    return (
-                                        <div
-                                            key={`slot-${slotIndex}`}
-                                            className={`rounded-lg px-2.5 py-1.5 ${styles.panel} opacity-30`}
-                                        >
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="min-w-0 flex items-center gap-2">
-                                                    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium opacity-50 ${styles.badge}`}>
-                                                        {`CH ${slotIndex + 1}`}
-                                                    </span>
-                                                    <span className={`text-[11px] opacity-40 ${styles.subtitle}`}>Idle</span>
-                                                </div>
-                                                <span className={`shrink-0 text-[11px] tabular-nums font-medium opacity-40 ${styles.subtitle}`}>
-                                                    0%
-                                                </span>
-                                            </div>
-                                            <TransferProgressBar
-                                                percentage={0}
-                                                filename=" "
-                                                transferredBytes={0}
-                                                totalBytes={0}
-                                                size="sm"
-                                                variant="gradient"
-                                                animated={false}
-                                                effectiveTheme={effectiveTheme}
-                                                className="mt-1.5"
-                                            />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
                 </div>
                 <button
                     onClick={onCancel}

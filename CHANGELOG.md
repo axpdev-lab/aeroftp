@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.6] - 2026-04-09
+
+### Transfer toast redesign, folder overwrite fix, session tab fix
+
+#### Fixed
+
+- **Folder upload overwrite**: Uploading a folder to an existing remote directory no longer fails with error 550 "Can't create directory: File exists". The mkdir call now gracefully ignores "already exists" errors for all providers and FTP
+- **Session tab not clickable from AeroFile**: Clicking the active server tab while in AeroFile mode now correctly switches back to the remote file panel. Previously the tab appeared inactive (no pointer cursor) and clicks were ignored
+- **Transfer speed not displayed**: Provider transfers (S3, WebDAV, etc.) now show real-time speed (KB/s, MB/s) and ETA in the transfer toast. Previously all provider transfers showed "Transferring..." with no speed data
+- **Folder transfer changes remote directory**: After uploading or downloading a folder on providers, the view no longer navigates into the last subdirectory. The provider working directory is now saved before the operation and restored after completion
+
+#### Improved
+
+- **Unified transfer toast**: Removed the per-channel progress visualization in favor of a single, stable progress bar for all transfer types. The toast now shows the same clean layout (filename, speed, ETA, file count) regardless of protocol or concurrency level. No more layout jumps from channels appearing and disappearing
+- **Aggregated folder transfer speed**: The main progress bar during folder transfers now shows the combined speed from all active transfer lanes
+
 ## [3.4.5] - 2026-04-08
 
 ### AppImage cross-distro fix, window resize, editor languages

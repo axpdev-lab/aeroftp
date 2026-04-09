@@ -759,6 +759,16 @@ pub async fn provider_download_folder(
         timeout_seconds,
     });
 
+    // Capture current pwd so we can restore it after folder scan changes it
+    let original_pwd = {
+        let mut lock = state.provider.lock().await;
+        if let Some(p) = lock.as_mut() {
+            p.pwd().await.unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+
     // Set transfer-in-progress flag to suppress filesystem watcher/AeroCloud
     TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
     let result = provider_download_folder_inner(
@@ -771,6 +781,15 @@ pub async fn provider_download_folder(
     )
     .await;
     TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
+
+    // Restore provider pwd (folder scan traverses subdirectories via cd)
+    if !original_pwd.is_empty() {
+        let mut lock = state.provider.lock().await;
+        if let Some(p) = lock.as_mut() {
+            let _ = p.cd(&original_pwd).await;
+        }
+    }
+
     result
 }
 
@@ -793,6 +812,16 @@ pub async fn provider_upload_folder(
         timeout_seconds,
     });
 
+    // Capture current pwd so we can restore it after upload
+    let original_pwd = {
+        let mut lock = state.provider.lock().await;
+        if let Some(p) = lock.as_mut() {
+            p.pwd().await.unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+
     TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
     let result = provider_upload_folder_inner(
         &app,
@@ -804,6 +833,15 @@ pub async fn provider_upload_folder(
     )
     .await;
     TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
+
+    // Restore provider pwd (upload may change it via mkdir/cd)
+    if !original_pwd.is_empty() {
+        let mut lock = state.provider.lock().await;
+        if let Some(p) = lock.as_mut() {
+            let _ = p.cd(&original_pwd).await;
+        }
+    }
+
     result
 }
 

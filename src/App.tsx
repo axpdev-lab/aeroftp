@@ -1900,7 +1900,9 @@ interface UpdateVerificationInfo {
       if (!showActivityLog) setShowActivityLog(true);
     },
     onScanningUpdate: setScanningState,
-    maxChannels: TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels,
+    maxChannels: (connectionParams.protocol && isFtpProtocol(connectionParams.protocol as ProviderType))
+      ? TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels
+      : 1,
   });
 
   // AeroFile toggle — shared between StatusBar, IntroHub header, and View > AeroFile menu
@@ -3767,6 +3769,8 @@ interface UpdateVerificationInfo {
               retryCount,
               timeoutSeconds,
             });
+            // Restore provider pwd (download_folder scans subdirs via cd)
+            await invoke('provider_change_dir', { path: currentRemotePath }).catch(() => {});
           } else {
             const params: DownloadFolderParams = {
               remote_path: remoteFilePath,
@@ -3874,7 +3878,8 @@ interface UpdateVerificationInfo {
           const details = `(${elapsed}s)`;
           const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
           humanLog.updateEntry(logId, { message: msg });
-          // Refresh list
+          // Navigate back to where the user was (upload may have changed provider pwd)
+          await invoke('provider_change_dir', { path: currentRemotePath }).catch(() => {});
           loadRemoteFiles();
           return;
         }
