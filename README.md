@@ -84,12 +84,6 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ---
 
-## rclone Bridge
-
-AeroFTP and rclone work together. Import and export server profiles between the two tools freely - 17 backend types mapped (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more). Credentials are automatically upgraded to AES-256-GCM encrypted vault storage on import, and re-obfuscated on export for full rclone compatibility. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`). See the **[rclone Bridge Guide](https://docs.aeroftp.app/features/rclone)**.
-
----
-
 ## Integrations
 
 Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAuth2, Immich, and native APIs.
@@ -159,6 +153,10 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 </p>
 
 > See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+
+### rclone Bridge
+
+AeroFTP and rclone work together. Import and export server profiles between the two tools freely - 17 backend types mapped (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more). Credentials are automatically upgraded to AES-256-GCM encrypted vault storage on import, and re-obfuscated on export for full rclone compatibility. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`). See the **[rclone Bridge Guide](https://docs.aeroftp.app/features/rclone)**.
 
 ### Hosting Provider Integration
 
