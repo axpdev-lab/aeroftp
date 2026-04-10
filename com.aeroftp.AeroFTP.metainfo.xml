@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.8" date="2026-04-10">
+      <description>
+        <p>Cross-profile transfer with floating panel for server-to-server file copy. CLI doctor workflows (sync-doctor, transfer-doctor) and agent-bootstrap. Zoho/GitLab/Swift rate limit retry. UI polish: modal consistency, select field padding, provider icon badges.</p>
+      </description>
+    </release>
     <release version="3.4.7" date="2026-04-09">
       <description>
         <p>Import and export rclone configurations: import server profiles from rclone.conf with automatic password upgrade to encrypted vault, export to rclone.conf for CLI use. Supports 17 rclone backend types including FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, and MEGA. New CLI subcommand: aeroftp import rclone. Fixed MEGA default mode to Native API.</p>
