@@ -3496,6 +3496,7 @@ fn bootstrap_task_name(task: AgentBootstrapTask) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_agent_task_router(
     task: AgentBootstrapTask,
     path: Option<&str>,
@@ -15180,6 +15181,7 @@ async fn cmd_reconcile(
 
 // ── Cross-profile transfer ─────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_transfer_doctor(
     source_profile: &str,
     dest_profile: &str,
