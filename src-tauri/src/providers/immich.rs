@@ -349,15 +349,27 @@ impl ImmichProvider {
             }
         };
 
-        let asset = items
-            .into_iter()
-            .find(|a| {
-                a.original_file_name
-                    .as_deref()
-                    .map(|f| f == filename)
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| ProviderError::NotFound(format!("{}/{}", folder_name, filename)))?;
+        let asset = if let Some(asset) = items.into_iter().find(|a| {
+            a.original_file_name
+                .as_deref()
+                .map(|f| f == filename)
+                .unwrap_or(false)
+        }) {
+            asset
+        } else {
+            // Some Immich album responses expose a truncated embedded `assets` list.
+            // Fall back to an exact filename search so single-file operations still work.
+            self.search_metadata(Some(filename), None, 1000)
+                .await?
+                .into_iter()
+                .find(|a| {
+                    a.original_file_name
+                        .as_deref()
+                        .map(|f| f == filename)
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| ProviderError::NotFound(format!("{}/{}", folder_name, filename)))?
+        };
 
         Ok((album_id, asset))
     }

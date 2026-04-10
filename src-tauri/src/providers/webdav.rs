@@ -270,6 +270,37 @@ impl WebDavProvider {
         }
     }
 
+    async fn send_with_too_early_retry(
+        &mut self,
+        method: Method,
+        path: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        const MAX_ATTEMPTS: usize = 3;
+
+        for attempt in 1..=MAX_ATTEMPTS {
+            let response = self
+                .request(method.clone(), path)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            if response.status() != StatusCode::TOO_EARLY || attempt == MAX_ATTEMPTS {
+                return Ok(response);
+            }
+
+            tracing::debug!(
+                "[WEBDAV] {} {} returned 425 Too Early, retry {}/{}",
+                method.as_str(),
+                path,
+                attempt,
+                MAX_ATTEMPTS
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+
+        unreachable!("retry loop must return on final attempt")
+    }
+
     // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
 
     /// Detect if this WebDAV server is a Nextcloud instance (URL pattern match).
@@ -1353,11 +1384,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self
-            .request(Method::GET, remote_path)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let response = self.send_with_too_early_retry(Method::GET, remote_path).await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -1397,11 +1424,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self
-            .request(Method::GET, remote_path)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let response = self.send_with_too_early_retry(Method::GET, remote_path).await?;
 
         match response.status() {
             StatusCode::OK => {

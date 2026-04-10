@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { Server, Compass, Plus, Cloud, FolderOpen, Search, X } from 'lucide-react';
+import { Server, Compass, Plus, Cloud, FolderOpen, Search, X, ArrowRightLeft } from 'lucide-react';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { useTranslation } from '../../i18n';
@@ -28,6 +28,7 @@ interface IntroHubHeaderProps {
     onSkipToFileManager?: () => void;
     onAeroCloud?: () => void;
     onAeroFile?: () => void;
+    onCrossProfileTransfer?: () => void;
     isAeroCloudConnected?: boolean;
     isAeroCloudConfigured?: boolean;
     serverCount?: number;
@@ -59,6 +60,7 @@ export function IntroHubHeader({
     onSkipToFileManager,
     onAeroCloud,
     onAeroFile,
+    onCrossProfileTransfer,
     isAeroCloudConnected,
     isAeroCloudConfigured,
     serverCount = 0,
@@ -185,6 +187,16 @@ export function IntroHubHeader({
                         title="AeroFile"
                     >
                         <FolderOpen size={16} />
+                    </button>
+                )}
+
+                {onCrossProfileTransfer && serverCount > 1 && (
+                    <button
+                        onClick={onCrossProfileTransfer}
+                        className="flex items-center p-1.5 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-600 dark:text-indigo-400 rounded-lg transition-colors"
+                        title="Cross-Profile Transfer"
+                    >
+                        <ArrowRightLeft size={16} />
                     </button>
                 )}
             </div>

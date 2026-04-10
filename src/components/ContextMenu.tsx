@@ -136,9 +136,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     const pos = adjustedPosition();
     const activeChildren = activeSubmenu !== null ? items[activeSubmenu]?.children : null;
 
-    return (
+    return createPortal(
         <>
-            {/* Main menu */}
             <div
                 ref={menuRef}
                 className={`
@@ -192,7 +191,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                 ))}
             </div>
 
-            {/* Submenu - rendered as sibling via portal to avoid mouseLeave issues */}
             {activeChildren && activeChildren.length > 0 && createPortal(
                 <div
                     ref={submenuRef}
@@ -238,7 +236,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                 </div>,
                 document.body
             )}
-        </>
+        </>,
+        document.body
     );
 };
 

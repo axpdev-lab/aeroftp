@@ -524,6 +524,21 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    // Cross-profile transfer (server-to-server via vault profiles)
+    {
+        name: 'cross_profile_transfer',
+        description: 'Transfer files between two saved server profiles. Creates temporary connections to both source and destination, plans the transfer, then executes. Supports recursive directory transfer and skip-existing. Use server_list_saved first to discover available profiles. Use dry_run=true to preview the plan before executing.',
+        parameters: [
+            { name: 'source_server', type: 'string', description: 'Source server name or ID from server_list_saved', required: true },
+            { name: 'dest_server', type: 'string', description: 'Destination server name or ID from server_list_saved', required: true },
+            { name: 'source_path', type: 'string', description: 'Remote path on source server', required: true },
+            { name: 'dest_path', type: 'string', description: 'Remote path on destination server', required: true },
+            { name: 'recursive', type: 'boolean', description: 'Transfer directories recursively (default: false)', required: false },
+            { name: 'skip_existing', type: 'boolean', description: 'Skip files already present on destination with same size+mtime (default: false)', required: false },
+            { name: 'dry_run', type: 'boolean', description: 'Plan only, do not transfer (default: false)', required: false },
+        ],
+        dangerLevel: 'high',
+    },
 ];
 
 // Get tool by name (searches built-in AGENT_TOOLS only)

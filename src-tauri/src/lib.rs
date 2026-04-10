@@ -35,7 +35,8 @@ mod cloud_provider_factory;
 mod cloud_service;
 mod context_intelligence;
 pub mod credential_store;
-mod cross_profile_transfer;
+mod cross_profile_commands;
+pub mod cross_profile_transfer;
 mod crypto;
 mod cryptomator;
 mod cyber_tools;
@@ -55,6 +56,7 @@ pub mod mcp;
 mod plugin_registry;
 mod plugins;
 mod profile_export;
+mod rclone_crypt;
 pub mod rclone_import;
 mod provider_transfer_executor;
 mod provider_commands;
@@ -10710,6 +10712,8 @@ pub fn run() {
     // Add SSH shell state for remote shell sessions
     let builder = builder.manage(create_ssh_shell_state());
     let builder = builder.manage(cryptomator::CryptomatorState::new());
+    let builder = builder.manage(rclone_crypt::RcloneCryptState::new());
+    let builder = builder.manage(cross_profile_commands::CrossProfileState::new());
     // Master Password state for app-level security
     let builder = builder.manage(master_password::MasterPasswordState::new());
     let builder = builder.manage(totp::TotpState::default());
@@ -10953,6 +10957,16 @@ pub fn run() {
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
             cryptomator::cryptomator_create,
+            // Rclone crypt read-only support
+            rclone_crypt::rclone_crypt_unlock,
+            rclone_crypt::rclone_crypt_lock,
+            rclone_crypt::rclone_crypt_decrypt_name,
+            rclone_crypt::rclone_crypt_decrypt_file,
+            rclone_crypt::rclone_crypt_decrypt_file_path,
+            // Cross-profile transfer commands
+            cross_profile_commands::cross_profile_plan,
+            cross_profile_commands::cross_profile_execute,
+            cross_profile_commands::cross_profile_cancel,
             ai_stream::ai_chat_stream,
             ai_stream::ai_cancel_stream,
             ai::ollama_pull_model,

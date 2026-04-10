@@ -41,6 +41,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "crossterm 0.29.0",
+ "crypto_secretbox",
  "ctr",
  "ctrlc",
  "data-encoding",

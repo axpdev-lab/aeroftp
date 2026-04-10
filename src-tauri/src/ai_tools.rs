@@ -84,6 +84,7 @@ const ALLOWED_TOOLS: &[&str] = &[
     // Server management (cross-server operations via saved profiles)
     "server_list_saved",
     "server_exec",
+    "cross_profile_transfer",
 ];
 
 const AI_APPROVAL_REQUIRED_REASON: &str =
@@ -115,7 +116,7 @@ fn sync_control_requires_approval(args: &Value) -> bool {
 fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     match tool_name {
         "sync_control" => sync_control_requires_approval(args),
-        "server_exec" => true,
+        "server_exec" | "cross_profile_transfer" => true,
         _ => matches!(
             tool_name,
             "remote_upload"
@@ -147,7 +148,9 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
         return false;
     }
 
-    if tool_name == "server_exec" && server_exec_is_mutating(args) {
+    if (tool_name == "server_exec" && server_exec_is_mutating(args))
+        || tool_name == "cross_profile_transfer"
+    {
         return false;
     }
 
@@ -411,6 +414,22 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         }
     }
 
+    if tool_name == "cross_profile_transfer" {
+        for key in [
+            "source_server",
+            "dest_server",
+            "source_path",
+            "dest_path",
+            "recursive",
+            "skip_existing",
+            "dry_run",
+        ] {
+            if let Some(value) = args.get(key) {
+                details.push(format!("{}: {}", key, format_approval_value(value)));
+            }
+        }
+    }
+
     details
 }
 
@@ -435,6 +454,7 @@ fn human_tool_label(tool_name: &str) -> &str {
         "download_files" => "Download Multiple Files",
         "shell_execute" => "Execute Shell Command",
         "server_exec" => "Server Operation",
+        "cross_profile_transfer" => "Cross-Profile Transfer",
         "archive_compress" => "Create Archive",
         "archive_decompress" => "Extract Archive",
         "clipboard_write" => "Write to Clipboard",
@@ -515,7 +535,7 @@ fn has_matching_session_grant(
     grants: &HashMap<String, AiToolApprovalGrant>,
     session_key: &str,
     tool_name: &str,
-    _scope_key: &str,
+    scope_key: &str,
     now: u64,
 ) -> bool {
     grants.values().any(|grant| {
@@ -523,6 +543,7 @@ fn has_matching_session_grant(
             && grant.expires_at_ms > now
             && grant.session_key == session_key
             && grant.tool_name == tool_name
+            && grant.scope_key == scope_key
     })
 }
 
@@ -1354,22 +1375,22 @@ fn format_bytes_human(bytes: u64) -> String {
 // ── Server Exec helpers ──────────────────────────────────────────────
 
 /// Saved server info (credentials excluded — never exposed to AI)
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-struct SavedServerInfo {
-    id: String,
-    name: String,
-    host: String,
-    port: u16,
-    username: String,
-    protocol: String,
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub(crate) struct SavedServerInfo {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) username: String,
+    pub(crate) protocol: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    initial_path: Option<String>,
+    pub(crate) initial_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    provider_id: Option<String>,
+    pub(crate) provider_id: Option<String>,
 }
 
 /// Load saved server profiles from vault. Returns list WITHOUT credentials.
-fn load_saved_servers() -> Result<Vec<SavedServerInfo>, String> {
+pub(crate) fn load_saved_servers() -> Result<Vec<SavedServerInfo>, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
 
@@ -1514,7 +1535,7 @@ fn load_provider_extra_options(
 
 /// Create a temporary StorageProvider from a saved server profile.
 /// Credentials resolved internally from vault — never exposed to caller.
-async fn create_temp_provider(
+pub(crate) async fn create_temp_provider(
     server: &SavedServerInfo,
 ) -> Result<Box<dyn crate::providers::StorageProvider>, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
@@ -1638,40 +1659,11 @@ async fn create_temp_provider(
     let mut provider = crate::providers::ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
 
-    match provider.connect().await {
-        Ok(()) => {
-            provider_config.zeroize_password();
-            Ok(provider)
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            // Retry with verify_cert=false on TLS certificate errors (hostname mismatch, self-signed)
-            let is_tls_err = err_str.contains("certificate verify failed")
-                || err_str.contains("hostname mismatch")
-                || err_str.contains("InvalidCertificate");
-            if is_tls_err
-                && provider_config.extra.get("verify_cert").map(|v| v.as_str()) != Some("false")
-            {
-                provider_config
-                    .extra
-                    .insert("verify_cert".to_string(), "false".to_string());
-                let mut provider2 = crate::providers::ProviderFactory::create(&provider_config)
-                    .map_err(|e2| format!("Failed to create provider (retry): {}", e2))?;
-                provider_config.zeroize_password();
-                provider2
-                    .connect()
-                    .await
-                    .map_err(|e2| format!("Connection to '{}' failed: {}", server.name, e2))?;
-                Ok(provider2)
-            } else {
-                provider_config.zeroize_password();
-                Err(format!(
-                    "Connection to '{}' failed: {}",
-                    server.name, err_str
-                ))
-            }
-        }
-    }
+    let connect_result = provider.connect().await;
+    provider_config.zeroize_password();
+    connect_result
+        .map(|()| provider)
+        .map_err(|e| format!("Connection to '{}' failed: {}", server.name, e))
 }
 
 #[tauri::command]
@@ -4949,6 +4941,125 @@ pub async fn execute_ai_tool(
 
             let _ = provider.disconnect().await;
             Ok(result)
+        }
+
+        "cross_profile_transfer" => {
+            use crate::cross_profile_transfer::{
+                copy_one_file, plan_transfer, should_skip_existing,
+                CrossProfileTransferRequest,
+            };
+
+            let source_server_query = get_str(&args, "source_server")?;
+            let dest_server_query = get_str(&args, "dest_server")?;
+            let source_path = get_str(&args, "source_path")?;
+            let dest_path = get_str(&args, "dest_path")?;
+            let recursive = args.get("recursive").and_then(|v| v.as_bool()).unwrap_or(false);
+            let skip_existing = args.get("skip_existing").and_then(|v| v.as_bool()).unwrap_or(false);
+            let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            validate_remote_path(&source_path, "source_path")?;
+            validate_remote_path(&dest_path, "dest_path")?;
+
+            let servers = load_saved_servers()?;
+            let source_server = find_server_by_name_or_id(&servers, &source_server_query)?;
+            let dest_server = find_server_by_name_or_id(&servers, &dest_server_query)?;
+
+            if source_server.id == dest_server.id {
+                return Err("Source and destination must be different servers".to_string());
+            }
+
+            let mut source_provider = create_temp_provider(&source_server).await?;
+            let mut dest_provider = create_temp_provider(&dest_server).await?;
+
+            let request = CrossProfileTransferRequest {
+                source_profile: source_server.name.clone(),
+                dest_profile: dest_server.name.clone(),
+                source_path,
+                dest_path,
+                recursive,
+                dry_run,
+                skip_existing,
+            };
+
+            let plan_result = plan_transfer(source_provider.as_mut(), dest_provider.as_mut(), &request).await;
+            if let Err(err) = source_provider.disconnect().await {
+                eprintln!("ai_tools: failed to disconnect source provider after planning: {}", err);
+            }
+            if let Err(err) = dest_provider.disconnect().await {
+                eprintln!("ai_tools: failed to disconnect destination provider after planning: {}", err);
+            }
+            let plan = plan_result.map_err(|e| format!("Planning failed: {}", e))?;
+
+            if dry_run || plan.entries.is_empty() {
+                return Ok(json!({
+                    "dry_run": true,
+                    "source": source_server.name,
+                    "destination": dest_server.name,
+                    "total_files": plan.total_files,
+                    "total_bytes": plan.total_bytes,
+                    "entries": plan.entries.iter().map(|e| json!({
+                        "source": e.source_path,
+                        "dest": e.dest_path,
+                        "size": e.size,
+                    })).collect::<Vec<_>>(),
+                }));
+            }
+
+            // Execute
+            let mut transferred = 0u64;
+            let mut skipped = 0u64;
+            let mut failed = 0u64;
+            let mut errors: Vec<String> = Vec::new();
+
+            let mut source_provider = create_temp_provider(&source_server).await?;
+            let mut dest_provider = create_temp_provider(&dest_server).await?;
+
+            for entry in &plan.entries {
+                if skip_existing {
+                    if let Ok(true) =
+                        should_skip_existing(dest_provider.as_mut(), &entry.dest_path, entry).await
+                    {
+                        skipped += 1;
+                        continue;
+                    }
+                }
+                match copy_one_file(
+                    source_provider.as_mut(),
+                    dest_provider.as_mut(),
+                    &entry.source_path,
+                    &entry.dest_path,
+                    entry.modified.as_deref(),
+                )
+                .await
+                {
+                    Ok(()) => transferred += 1,
+                    Err(e) => {
+                        failed += 1;
+                        if errors.len() < 5 {
+                            errors.push(format!("{}: {}", entry.display_name, e));
+                        }
+                    }
+                }
+            }
+
+            if let Err(err) = source_provider.disconnect().await {
+                eprintln!("ai_tools: failed to disconnect source provider after execute: {}", err);
+            }
+            if let Err(err) = dest_provider.disconnect().await {
+                eprintln!(
+                    "ai_tools: failed to disconnect destination provider after execute: {}",
+                    err
+                );
+            }
+
+            Ok(json!({
+                "source": source_server.name,
+                "destination": dest_server.name,
+                "transferred": transferred,
+                "skipped": skipped,
+                "failed": failed,
+                "errors": errors,
+            }))
         }
 
         _ => Err(format!("Tool not implemented: {}", tool_name)),

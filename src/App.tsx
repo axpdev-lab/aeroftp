@@ -70,6 +70,8 @@ import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as
 import { SyncPanel } from './components/SyncPanel';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
+import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
+import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
 import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
@@ -126,7 +128,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft
 } from 'lucide-react';
 
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
@@ -390,6 +392,8 @@ const App: React.FC = () => {
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
+  const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
+  const [showCrossProfilePanel, setShowCrossProfilePanel] = useState(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
   const [showGDriveComment, setShowGDriveComment] = useState<{ path: string; name: string } | null>(null);
@@ -6606,6 +6610,16 @@ interface UpdateVerificationInfo {
         icon: <Lock size={14} className="text-emerald-500" />,
         action: () => setShowCryptomatorBrowser(true),
       });
+      items.push({
+        label: 'Decrypt as Rclone Crypt',
+        icon: <Shield size={14} className="text-blue-500" />,
+        action: () => setShowRcloneCryptUnlock(true),
+      });
+      items.push({
+        label: 'Cross-Profile Transfer',
+        icon: <ArrowRight size={14} className="text-indigo-500" />,
+        action: () => setShowCrossProfilePanel(true),
+      });
     }
 
     // Always show "Create AeroVault..." and "More" (except on vault/cryptomator files)
@@ -7584,6 +7598,8 @@ interface UpdateVerificationInfo {
         />
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} />}
         {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
+        {showRcloneCryptUnlock && <RcloneCryptUnlock onClose={() => setShowRcloneCryptUnlock(false)} />}
+        {showCrossProfilePanel && <CrossProfilePanel onClose={() => setShowCrossProfilePanel(false)} />}
         {archiveBrowserState && (
           <ArchiveBrowser
             archivePath={archiveBrowserState.path}
@@ -7863,6 +7879,7 @@ interface UpdateVerificationInfo {
               isAeroCloudConfigured={true}
               isAeroCloudConnected={isCloudActive}
               onAeroFile={handleToggleAeroFile}
+              onOpenCrossProfile={() => setShowCrossProfilePanel(true)}
               onSavedServerConnect={async (params, initialPath, localInitialPath) => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
@@ -8487,6 +8504,15 @@ interface UpdateVerificationInfo {
                         title={remoteSearchResults !== null ? 'Clear search' : 'Search files'}
                       >
                         {remoteSearching ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                      </button>
+                    )}
+                    {isConnected && (
+                      <button
+                        onClick={() => setShowCrossProfilePanel(true)}
+                        className="flex-shrink-0 p-1.5 rounded text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                        title="Cross-Profile Transfer"
+                      >
+                        <ArrowRightLeft size={13} />
                       </button>
                     )}
                     {debugMode && isConnected && (

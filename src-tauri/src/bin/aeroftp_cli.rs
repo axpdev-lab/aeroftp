@@ -1,4 +1,4 @@
-//! AeroFTP CLI — Production multi-protocol file transfer client
+//! AeroFTP CLI - Production multi-protocol file transfer client
 //!
 //! Usage:
 //!   aeroftp connect <url>                     Test connection
@@ -45,7 +45,7 @@
 //!   99 Unknown error
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet - AI-assisted (see AI-TRANSPARENCY.md)
 
 use axum::{
     body::{Body, Bytes},
@@ -86,10 +86,10 @@ use tokio::sync::Mutex as AsyncMutex;
 #[derive(Parser)]
 #[command(
     name = "aeroftp",
-    about = "AeroFTP CLI — Multi-protocol file transfer client",
+    about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
-    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-info --json' for structured capability discovery.",
-    after_help = "EXAMPLES (profiles — no credentials needed):\n  aeroftp-cli profiles                                    List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l        List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/    Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./       Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-info --json                            AI agent discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
+    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-bootstrap --json' for canonical task workflows and 'aeroftp agent-info --json' for full capability discovery.",
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
 )]
 struct Cli {
     /// Output format
@@ -266,6 +266,15 @@ enum HashAlgorithm {
     Sha256,
     Sha512,
     Blake3,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum AgentBootstrapTask {
+    Explore,
+    VerifyFile,
+    Transfer,
+    Backup,
+    Reconcile,
 }
 
 #[derive(Subcommand)]
@@ -490,6 +499,24 @@ enum Commands {
         #[arg(long)]
         one_way: bool,
     },
+    /// Reconcile local and remote trees with categorized diff output
+    Reconcile {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Local directory
+        #[arg(default_value = ".")]
+        local: String,
+        /// Remote directory
+        #[arg(default_value = "/")]
+        remote: String,
+        /// Use checksums instead of size-only comparison where available
+        #[arg(long)]
+        checksum: bool,
+        /// Only consider files present locally
+        #[arg(long)]
+        one_way: bool,
+    },
     /// Show file/directory metadata
     Stat {
         /// Server URL (omit when using --profile)
@@ -595,6 +622,39 @@ enum Commands {
         #[arg(long)]
         resync: bool,
     },
+    /// Preflight checks and risk summary before sync
+    SyncDoctor {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Local directory path
+        #[arg(default_value = ".")]
+        local: String,
+        /// Remote directory path
+        #[arg(default_value = "/")]
+        remote: String,
+        /// Sync direction: upload, download, both
+        #[arg(long, default_value = "both")]
+        direction: String,
+        /// Delete orphaned files on destination
+        #[arg(long)]
+        delete: bool,
+        /// Exclude patterns
+        #[arg(long, short)]
+        exclude: Vec<String>,
+        /// Detect renamed files by hash to avoid re-upload
+        #[arg(long)]
+        track_renames: bool,
+        /// Conflict resolution for --direction both
+        #[arg(long, default_value = "newer")]
+        conflict_mode: String,
+        /// Discard previous bisync snapshot and rebuild from scratch
+        #[arg(long)]
+        resync: bool,
+        /// Use checksums instead of size/mtime
+        #[arg(long)]
+        checksum: bool,
+    },
     /// Display remote directory tree
     Tree {
         /// Server URL (omit when using --profile)
@@ -642,6 +702,43 @@ enum Commands {
         #[arg(long)]
         read_only: bool,
     },
+    /// Transfer files between two saved profiles (cross-profile copy)
+    Transfer {
+        /// Source profile name (saved in vault)
+        source_profile: String,
+        /// Destination profile name (saved in vault)
+        dest_profile: String,
+        /// Remote path on source
+        source_path: String,
+        /// Remote path on destination
+        dest_path: String,
+        /// Recursive (copy directories)
+        #[arg(short, long)]
+        recursive: bool,
+        /// Plan without executing
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip files already present on destination (size+mtime match)
+        #[arg(long)]
+        skip_existing: bool,
+    },
+    /// Preflight checks and risk summary before cross-profile transfer
+    TransferDoctor {
+        /// Source profile name (saved in vault)
+        source_profile: String,
+        /// Destination profile name (saved in vault)
+        dest_profile: String,
+        /// Remote path on source
+        source_path: String,
+        /// Remote path on destination
+        dest_path: String,
+        /// Recursive (copy directories)
+        #[arg(short, long)]
+        recursive: bool,
+        /// Skip files already present on destination
+        #[arg(long)]
+        skip_existing: bool,
+    },
     /// Execute commands from a batch script (.aeroftp file)
     Batch {
         /// Path to .aeroftp script file
@@ -666,7 +763,7 @@ enum Commands {
         #[command(subcommand)]
         command: AliasCommands,
     },
-    /// AeroAgent — AI-powered interactive agent with tool execution
+    /// AeroAgent - AI-powered interactive agent with tool execution
     Agent {
         /// One-shot message (run and exit)
         #[arg(short, long)]
@@ -708,7 +805,7 @@ enum Commands {
         #[arg(long, short = 'y')]
         yes: bool,
 
-        /// Plan only — show execution plan without running
+        /// Plan only - show execution plan without running
         #[arg(long)]
         plan_only: bool,
 
@@ -730,6 +827,36 @@ enum Commands {
     Profiles,
     /// List configured AI providers and models from the encrypted vault
     AiModels,
+    /// Show the canonical task-oriented quick-start for AI agents
+    AgentBootstrap {
+        /// Optional task focus for tailored commands
+        #[arg(long, value_enum)]
+        task: Option<AgentBootstrapTask>,
+        /// Remote path or working path for the task
+        #[arg(long)]
+        path: Option<String>,
+        /// Optional filename or glob pattern
+        #[arg(long)]
+        pattern: Option<String>,
+        /// Source profile for transfer/backup flows
+        #[arg(long)]
+        source_profile: Option<String>,
+        /// Destination profile for transfer/backup flows
+        #[arg(long)]
+        dest_profile: Option<String>,
+        /// Source remote path for transfer/backup flows
+        #[arg(long)]
+        source_path: Option<String>,
+        /// Destination remote path for transfer/backup flows
+        #[arg(long)]
+        dest_path: Option<String>,
+        /// Local path for local-vs-remote verification flows
+        #[arg(long)]
+        local_path: Option<String>,
+        /// Remote path for local-vs-remote verification flows
+        #[arg(long)]
+        remote_path: Option<String>,
+    },
     /// Show CLI capabilities for AI agent discovery (always JSON)
     AgentInfo,
     /// Background daemon for persistent mounts, jobs, and watch
@@ -742,7 +869,7 @@ enum Commands {
         #[command(subcommand)]
         command: JobCommands,
     },
-    /// Encrypted overlay — zero-knowledge storage on any provider
+    /// Encrypted overlay - zero-knowledge storage on any provider
     Crypt {
         #[command(subcommand)]
         command: CryptCommands,
@@ -1100,6 +1227,7 @@ struct CliHashResult {
     size: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 struct CliCheckResult {
     status: &'static str,
@@ -1117,6 +1245,26 @@ struct CliCheckEntry {
     status: String,
     local_size: Option<u64>,
     remote_size: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct CliReconcileResult {
+    status: &'static str,
+    local_path: String,
+    remote_path: String,
+    summary: serde_json::Value,
+    groups: serde_json::Value,
+    suggested_next_command: String,
+}
+
+#[derive(Serialize)]
+struct CliDoctorResult {
+    status: &'static str,
+    doctor: String,
+    summary: serde_json::Value,
+    checks: Vec<serde_json::Value>,
+    risks: Vec<String>,
+    suggested_next_command: String,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -1704,7 +1852,7 @@ fn verify_path_within_root(path: &std::path::Path, root: &std::path::Path) -> Re
     Ok(())
 }
 
-/// Sanitize a filename for terminal display — strip ANSI escape sequences.
+/// Sanitize a filename for terminal display - strip ANSI escape sequences.
 fn sanitize_filename(name: &str) -> String {
     let mut result = String::with_capacity(name.len());
     let mut chars = name.chars();
@@ -1713,7 +1861,7 @@ fn sanitize_filename(name: &str) -> String {
             // Skip ESC [ ... (letter) sequence
             if let Some(next) = chars.next() {
                 if next == '[' {
-                    // CSI sequence — consume until a letter
+                    // CSI sequence - consume until a letter
                     for c in chars.by_ref() {
                         if c.is_ascii_alphabetic() {
                             break;
@@ -1953,7 +2101,7 @@ fn build_filter(cli: &Cli) -> FilterFn {
 }
 
 /// Resolve the current bandwidth limit from a time-based schedule.
-/// Format: "08:00,512k 12:00,10M 18:00,off" — space-separated entries.
+/// Format: "08:00,512k 12:00,10M 18:00,off" - space-separated entries.
 /// Returns the active rate in bytes/sec, or None if unlimited ("off").
 fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
     let now = {
@@ -2479,7 +2627,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
     let port = url_obj.port();
 
-    // For WebDAV/GitHub, the URL path is part of the host — initial_path is always /
+    // For WebDAV/GitHub, the URL path is part of the host - initial_path is always /
     let url_path = match provider_type {
         ProviderType::WebDav | ProviderType::GitHub | ProviderType::GitLab => "/".to_string(),
         _ => {
@@ -2639,7 +2787,7 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 );
             }
         }
-        Ok(_) => {} // Auto mode — already open
+        Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
     }
 
@@ -3141,7 +3289,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
 
     let info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
-        "description": "AeroFTP CLI — multi-protocol file transfer with encrypted vault profiles",
+        "description": "AeroFTP CLI - multi-protocol file transfer with encrypted vault profiles",
         "usage": "aeroftp-cli <command> --profile \"Server Name\" [args]",
         "credential_model": "Use --profile to connect via encrypted vault. Never pass passwords directly.",
         "profiles": {
@@ -3185,6 +3333,9 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
                 {"name": "touch", "syntax": "aeroftp-cli touch --profile NAME /path/file [--timestamp ISO8601]", "description": "Create file or update modified time"},
                 {"name": "hashsum", "syntax": "aeroftp-cli hashsum --algorithm ALGO --profile NAME /path/file", "description": "Compute remote checksum"},
                 {"name": "check", "syntax": "aeroftp-cli check --profile NAME ./local /remote", "description": "Compare local and remote trees"},
+                {"name": "reconcile", "syntax": "aeroftp-cli reconcile --profile NAME ./local /remote --json", "description": "Return categorized local-vs-remote diff for agents"},
+                {"name": "sync-doctor", "syntax": "aeroftp-cli sync-doctor --profile NAME ./local /remote --json", "description": "Preflight sync checks, risks, and next command"},
+                {"name": "transfer-doctor", "syntax": "aeroftp-cli transfer-doctor \"SRC\" \"DST\" /src /dst --json", "description": "Preflight cross-profile transfer checks, plan, and risks"},
                 {"name": "dedupe", "syntax": "aeroftp-cli dedupe --profile NAME /path [--mode MODE]", "description": "Resolve duplicate remote files"},
                 {"name": "ncdu", "syntax": "aeroftp-cli ncdu --profile NAME /path [--json|--export FILE]", "description": "Analyze remote disk usage"},
                 {"name": "mount", "syntax": "aeroftp-cli mount --profile NAME /mountpoint", "description": "Expose a remote as a local filesystem"},
@@ -3247,6 +3398,10 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "Confirm with user before rm, rm -rf, or sync --delete",
             "Remote metadata, remote preview and destructive tools are classified separately for agent approval",
             "Use --json for all programmatic parsing"
+        ],
+        "suggested_next_commands": [
+            "aeroftp-cli agent-bootstrap --json",
+            "aeroftp-cli profiles --json"
         ]
     });
 
@@ -3254,6 +3409,361 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         "{}",
         serde_json::to_string_pretty(&info).unwrap_or_default()
     );
+    0
+}
+
+fn shell_double_quote(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn profile_or_placeholder(cli: &Cli) -> String {
+    cli.profile
+        .as_deref()
+        .map(shell_double_quote)
+        .unwrap_or_else(|| "NAME".to_string())
+}
+
+fn suggest_ls_followup(cli: &Cli, path: &str) -> String {
+    format!(
+        "aeroftp-cli find --profile \"{}\" \"{}\" \"*.ext\" --json",
+        profile_or_placeholder(cli),
+        shell_double_quote(path)
+    )
+}
+
+fn suggest_find_followup(cli: &Cli, path: &str) -> String {
+    format!(
+        "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+        profile_or_placeholder(cli),
+        shell_double_quote(path)
+    )
+}
+
+fn suggest_stat_followup(cli: &Cli, path: &str) -> String {
+    format!(
+        "aeroftp-cli stat --profile \"{}\" \"{}\" --json",
+        profile_or_placeholder(cli),
+        shell_double_quote(path)
+    )
+}
+
+fn suggest_transfer_apply(source_profile: &str, dest_profile: &str, source_path: &str, dest_path: &str) -> String {
+    format!(
+        "aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --format json",
+        shell_double_quote(source_profile),
+        shell_double_quote(dest_profile),
+        shell_double_quote(source_path),
+        shell_double_quote(dest_path)
+    )
+}
+
+fn suggest_transfer_verify(dest_profile: &str, dest_path: &str, planned_files: u64) -> String {
+    if planned_files <= 1 {
+        format!(
+            "aeroftp-cli stat --profile \"{}\" \"{}\" --json",
+            shell_double_quote(dest_profile),
+            shell_double_quote(dest_path)
+        )
+    } else {
+        let parent = Path::new(dest_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "/".to_string());
+        format!(
+            "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+            shell_double_quote(dest_profile),
+            shell_double_quote(&parent)
+        )
+    }
+}
+
+fn parent_remote_path(path: &str) -> String {
+    Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "/".to_string())
+}
+
+fn bootstrap_task_name(task: AgentBootstrapTask) -> &'static str {
+    match task {
+        AgentBootstrapTask::Explore => "explore",
+        AgentBootstrapTask::VerifyFile => "verify-file",
+        AgentBootstrapTask::Transfer => "transfer",
+        AgentBootstrapTask::Backup => "backup",
+        AgentBootstrapTask::Reconcile => "reconcile",
+    }
+}
+
+fn build_agent_task_router(
+    task: AgentBootstrapTask,
+    path: Option<&str>,
+    pattern: Option<&str>,
+    source_profile: Option<&str>,
+    dest_profile: Option<&str>,
+    source_path: Option<&str>,
+    dest_path: Option<&str>,
+    local_path: Option<&str>,
+    remote_path: Option<&str>,
+) -> serde_json::Value {
+    let path = path.unwrap_or("/");
+    let pattern = pattern.unwrap_or("*.ext");
+    let source_profile = source_profile.unwrap_or("SRC");
+    let dest_profile = dest_profile.unwrap_or("DST");
+    let source_path = source_path.unwrap_or("/source/path");
+    let dest_path = dest_path.unwrap_or("/dest/path");
+    let local_path = local_path.unwrap_or("./local");
+    let remote_path = remote_path.unwrap_or("/remote/path");
+    let source_parent = parent_remote_path(source_path);
+
+    match task {
+        AgentBootstrapTask::Explore => serde_json::json!({
+            "task": bootstrap_task_name(task),
+            "goal": "Understand a remote quickly and safely",
+            "commands": [
+                "aeroftp-cli profiles --json",
+                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(path)),
+                format!("aeroftp-cli tree --profile \"{}\" \"{}\" -d 2 --json", shell_double_quote(source_profile), shell_double_quote(path)),
+                format!("aeroftp-cli find --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(path), shell_double_quote(pattern)),
+            ],
+            "rule": "Use ls for totals and find for subsets"
+        }),
+        AgentBootstrapTask::VerifyFile => serde_json::json!({
+            "task": bootstrap_task_name(task),
+            "goal": "Confirm exact existence and metadata for one remote path",
+            "commands": [
+                format!("aeroftp-cli stat --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
+                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(&source_parent)),
+            ],
+            "rule": "Use stat for exact existence; do not infer from filtered listings"
+        }),
+        AgentBootstrapTask::Transfer => serde_json::json!({
+            "task": bootstrap_task_name(task),
+            "goal": "Copy one file or tree between saved profiles with verification",
+            "commands": [
+                format!("aeroftp-cli stat --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
+                format!("aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --dry-run --format json", shell_double_quote(source_profile), shell_double_quote(dest_profile), shell_double_quote(source_path), shell_double_quote(dest_path)),
+                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+                suggest_transfer_verify(dest_profile, dest_path, 1),
+            ],
+            "rule": "Always dry-run before apply"
+        }),
+        AgentBootstrapTask::Backup => serde_json::json!({
+            "task": bootstrap_task_name(task),
+            "goal": "Plan and verify a backup-style copy with counts and exact destinations",
+            "commands": [
+                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path)),
+                format!("aeroftp-cli find --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(source_path), shell_double_quote(pattern)),
+                format!("aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --dry-run --format json", shell_double_quote(source_profile), shell_double_quote(dest_profile), shell_double_quote(source_path), shell_double_quote(dest_path)),
+                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+                suggest_transfer_verify(dest_profile, dest_path, 2),
+            ],
+            "rule": "Compare total ls count against any filtered match count before copying"
+        }),
+        AgentBootstrapTask::Reconcile => serde_json::json!({
+            "task": bootstrap_task_name(task),
+            "goal": "Compare local and remote state and prepare the next safe action",
+            "commands": [
+                format!("aeroftp-cli check --profile \"{}\" \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(local_path), shell_double_quote(remote_path)),
+                format!("aeroftp-cli ls --profile \"{}\" \"{}\" --json", shell_double_quote(source_profile), shell_double_quote(remote_path)),
+                format!("aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json", shell_double_quote(source_profile), shell_double_quote(local_path), shell_double_quote(remote_path)),
+            ],
+            "rule": "Use check to classify differences before sync"
+        }),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_agent_bootstrap(
+    _cli: &Cli,
+    format: OutputFormat,
+    task: Option<AgentBootstrapTask>,
+    path: Option<&str>,
+    pattern: Option<&str>,
+    source_profile: Option<&str>,
+    dest_profile: Option<&str>,
+    source_path: Option<&str>,
+    dest_path: Option<&str>,
+    local_path: Option<&str>,
+    remote_path: Option<&str>,
+) -> i32 {
+    let bootstrap = serde_json::json!({
+        "status": "ok",
+        "entrypoint": "aeroftp-cli agent-bootstrap --json",
+        "goal": "Give AI agents the shortest path to the correct AeroFTP command without repository-specific guesswork",
+        "first_steps": [
+            {
+                "step": 1,
+                "name": "discover_profiles",
+                "why": "Saved profiles are the safest and preferred credential model",
+                "command": "aeroftp-cli profiles --json",
+                "success_signal": "Returns profile names, protocols, and initial paths"
+            },
+            {
+                "step": 2,
+                "name": "inspect_remote",
+                "why": "Establish the real remote shape before filtering or modifying",
+                "command": "aeroftp-cli ls --profile \"NAME\" /path --json",
+                "success_signal": "summary.total matches visible entries"
+            },
+            {
+                "step": 3,
+                "name": "verify_specific_target",
+                "why": "Use stat for exact existence; do not infer from filtered listings",
+                "command": "aeroftp-cli stat --profile \"NAME\" /path/file --json",
+                "success_signal": "Returns exact path, size, and modified time"
+            }
+        ],
+        "task_playbooks": [
+            {
+                "task": "list-and-explore",
+                "when": "Need to understand a remote quickly",
+                "commands": [
+                    "aeroftp-cli profiles --json",
+                    "aeroftp-cli ls --profile \"NAME\" /path --json",
+                    "aeroftp-cli tree --profile \"NAME\" /path -d 2 --json",
+                    "aeroftp-cli find --profile \"NAME\" /path \"*.ext\" --json"
+                ],
+                "rule": "Always compare ls summary.total against any filtered subset"
+            },
+            {
+                "task": "single-file-transfer",
+                "when": "Need an exact one-file copy or verification",
+                "commands": [
+                    "aeroftp-cli stat --profile \"SRC\" /path/file --json",
+                    "aeroftp-cli transfer \"SRC\" \"DST\" /path/file /dest/file --dry-run --format json",
+                    "aeroftp-cli transfer \"SRC\" \"DST\" /path/file /dest/file --format json",
+                    "aeroftp-cli stat --profile \"DST\" /dest/file --json"
+                ],
+                "rule": "Stat the exact source file before transfer; do not rely only on find output"
+            },
+            {
+                "task": "backup-or-reconcile",
+                "when": "Need counts, missing files, renamed files, or backup verification",
+                "commands": [
+                    "aeroftp-cli ls --profile \"SRC\" /path --json",
+                    "aeroftp-cli find --profile \"SRC\" /path \"pattern*\" --json",
+                    "aeroftp-cli check --profile \"DST\" ./local /remote --json",
+                    "aeroftp-cli transfer \"SRC\" \"DST\" /src/path /dst/path --dry-run --format json"
+                ],
+                "rule": "Separate total remote count from pattern-matched count; if names can change, reconcile by basename and exact stat"
+            },
+            {
+                "task": "safe-modification",
+                "when": "Need to upload, rename, mkdir, or sync",
+                "commands": [
+                    "aeroftp-cli mkdir --profile \"NAME\" /remote/dir --json",
+                    "aeroftp-cli put --profile \"NAME\" ./local /remote/file --json",
+                    "aeroftp-cli mv --profile \"NAME\" /old /new --json",
+                    "aeroftp-cli sync --profile \"NAME\" ./local /remote --dry-run --json"
+                ],
+                "rule": "Use dry-run before sync and ask before destructive operations"
+            }
+        ],
+        "decision_rules": [
+            {
+                "if": "Need the exact existence of one path",
+                "use": "stat",
+                "avoid": "inferring from ls/find counts"
+            },
+            {
+                "if": "Need total count in a directory or album",
+                "use": "ls",
+                "avoid": "find with a prefix filter as the only source of truth"
+            },
+            {
+                "if": "Need pattern matches",
+                "use": "find",
+                "avoid": "assuming unmatched files are missing from the remote"
+            },
+            {
+                "if": "Need transfer planning",
+                "use": "transfer --dry-run",
+                "avoid": "manual destination guessing"
+            }
+        ],
+        "anti_patterns": [
+            "Do not treat filtered results as the total remote state",
+            "Do not assume upload preserved the requested filename unless verified",
+            "Do not start with destructive commands",
+            "Do not pass credentials in URLs when a saved profile exists"
+        ],
+        "suggested_next_commands": [
+            "aeroftp-cli profiles --json",
+            "aeroftp-cli agent-info --json"
+        ],
+        "task_router": task.map(|task| build_agent_task_router(
+            task,
+            path,
+            pattern,
+            source_profile,
+            dest_profile,
+            source_path,
+            dest_path,
+            local_path,
+            remote_path
+        ))
+    });
+
+    match format {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&bootstrap).unwrap_or_default()
+            );
+        }
+        OutputFormat::Text => {
+            println!("AeroFTP agent bootstrap");
+            println!();
+            println!("Start here:");
+            println!("  1. aeroftp-cli profiles --json");
+            println!("  2. aeroftp-cli ls --profile \"NAME\" /path --json");
+            println!("  3. aeroftp-cli stat --profile \"NAME\" /path/file --json");
+            println!();
+            println!("Task playbooks:");
+            println!("  - Explore remote: profiles -> ls -> tree/find");
+            println!("  - Exact file transfer: stat -> transfer --dry-run -> transfer -> stat");
+            println!("  - Backup/reconcile: ls total -> find filtered -> check/transfer");
+            println!("  - Safe modify: mkdir/put/mv, and sync only after --dry-run");
+            println!();
+            println!("Key rules:");
+            println!("  - Use ls for total counts and find for subsets.");
+            println!("  - Use stat for exact existence; never infer from filtered counts.");
+            println!("  - Verify the effective remote name after uploads when naming matters.");
+            println!("  - Prefer --profile and --json for all agent-driven flows.");
+            if let Some(task) = task {
+                let routed = build_agent_task_router(
+                    task,
+                    path,
+                    pattern,
+                    source_profile,
+                    dest_profile,
+                    source_path,
+                    dest_path,
+                    local_path,
+                    remote_path,
+                );
+                println!();
+                println!("Task router: {}", bootstrap_task_name(task));
+                if let Some(goal) = routed.get("goal").and_then(|v| v.as_str()) {
+                    println!("  Goal: {}", goal);
+                }
+                if let Some(commands) = routed.get("commands").and_then(|v| v.as_array()) {
+                    for command in commands {
+                        if let Some(command) = command.as_str() {
+                            println!("  {}", command);
+                        }
+                    }
+                }
+            }
+            println!();
+            println!("Next commands:");
+            println!("  aeroftp-cli profiles --json");
+            println!("  aeroftp-cli agent-info --json");
+        }
+    }
+
     0
 }
 
@@ -3318,6 +3828,249 @@ fn insert_profile_option(
         extra.insert(normalized_key, number_value.to_string());
     } else if let Some(number_value) = value.as_f64() {
         extra.insert(normalized_key, number_value.to_string());
+    }
+}
+
+fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "backblaze" => Some("auto"),
+        "cloudflare-r2" => Some("auto"),
+        "google-cloud-storage" => Some("auto"),
+        "idrive-e2" => Some("auto"),
+        "storj" => Some("global"),
+        "filelu-s3" => Some("global"),
+        "yandex-storage" => Some("ru-central1"),
+        "oracle-cloud" => Some("us-east-1"),
+        "minio" => Some("us-east-1"),
+        "quotaless-s3" => Some("us-east-1"),
+        _ => None,
+    }
+}
+
+fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
+    match provider_id {
+        "custom-s3" => Some(false),
+        "backblaze" => Some(true),
+        "mega-s4" => Some(false),
+        "cloudflare-r2" => Some(true),
+        "google-cloud-storage" => Some(true),
+        "idrive-e2" => Some(true),
+        "wasabi" => Some(false),
+        "storj" => Some(true),
+        "alibaba-oss" => Some(false),
+        "tencent-cos" => Some(false),
+        "filelu-s3" => Some(true),
+        "yandex-storage" => Some(false),
+        "digitalocean-spaces" => Some(false),
+        "oracle-cloud" => Some(true),
+        "minio" => Some(true),
+        "quotaless-s3" => Some(true),
+        _ => None,
+    }
+}
+
+fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "filelu-s3" => Some("s5lu.com"),
+        "yandex-storage" => Some("https://storage.yandexcloud.net"),
+        "quotaless-s3" => Some("https://io.quotaless.cloud:8000"),
+        _ => None,
+    }
+}
+
+const S3_PROVIDER_ID_META_KEY: &str = "_aeroftp_s3_provider_id";
+const S3_ENDPOINT_SOURCE_META_KEY: &str = "_aeroftp_s3_endpoint_source";
+const S3_REGION_SOURCE_META_KEY: &str = "_aeroftp_s3_region_source";
+const S3_PATH_STYLE_SOURCE_META_KEY: &str = "_aeroftp_s3_path_style_source";
+
+fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "mega-s4" => Some("s3.{region}.s4.mega.io"),
+        "cloudflare-r2" => Some("{accountId}.r2.cloudflarestorage.com"),
+        "google-cloud-storage" => Some("https://storage.googleapis.com"),
+        "wasabi" => Some("https://s3.{region}.wasabisys.com"),
+        "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
+        "tencent-cos" => Some("https://cos.{region}.myqcloud.com"),
+        "digitalocean-spaces" => Some("https://{region}.digitaloceanspaces.com"),
+        _ => None,
+    }
+}
+
+fn apply_s3_profile_defaults(
+    extra: &mut HashMap<String, String>,
+    provider_id: Option<&str>,
+) -> Option<String> {
+    let provider_id = provider_id?;
+    extra.insert(S3_PROVIDER_ID_META_KEY.to_string(), provider_id.to_string());
+
+    let region_from_profile = extra.contains_key("region");
+    if !region_from_profile {
+        if let Some(default_region) = s3_profile_default_region(provider_id) {
+            extra.insert("region".to_string(), default_region.to_string());
+        }
+    }
+    extra.insert(
+        S3_REGION_SOURCE_META_KEY.to_string(),
+        if region_from_profile { "profile" } else { "preset" }.to_string(),
+    );
+
+    let path_style_from_profile = extra.contains_key("path_style");
+    if !path_style_from_profile {
+        if let Some(path_style) = s3_profile_default_path_style(provider_id) {
+            extra.insert("path_style".to_string(), path_style.to_string());
+        }
+    }
+    extra.insert(
+        S3_PATH_STYLE_SOURCE_META_KEY.to_string(),
+        if path_style_from_profile {
+            "profile"
+        } else {
+            "preset"
+        }
+        .to_string(),
+    );
+
+    let endpoint_from_profile = extra
+        .get("endpoint")
+        .map(|endpoint| endpoint.trim())
+        .filter(|endpoint| !endpoint.is_empty())
+        .is_some();
+
+    if let Some(existing_endpoint) = extra
+        .get("endpoint")
+        .map(|endpoint| endpoint.trim())
+        .filter(|endpoint| !endpoint.is_empty())
+        .map(str::to_string)
+    {
+        extra.insert(
+            S3_ENDPOINT_SOURCE_META_KEY.to_string(),
+            "profile".to_string(),
+        );
+        return Some(existing_endpoint);
+    }
+
+    let resolved_endpoint = if let Some(endpoint) = s3_profile_static_endpoint(provider_id) {
+        Some(endpoint.to_string())
+    } else {
+        let template = s3_profile_endpoint_template(provider_id)?;
+        let mut endpoint = template.to_string();
+
+        if endpoint.contains("{region}") {
+            let region = extra.get("region").map(String::as_str)?;
+            endpoint = endpoint.replace("{region}", region);
+        }
+
+        if endpoint.contains("{accountId}") {
+            let account_id = extra
+                .get("accountId")
+                .or_else(|| extra.get("account_id"))
+                .map(String::as_str)?;
+            endpoint = endpoint.replace("{accountId}", account_id);
+        }
+
+        if endpoint.contains('{') {
+            None
+        } else {
+            Some(endpoint)
+        }
+    }?;
+
+    extra.insert("endpoint".to_string(), resolved_endpoint.clone());
+    extra.insert(
+        S3_ENDPOINT_SOURCE_META_KEY.to_string(),
+        if endpoint_from_profile {
+            "profile"
+        } else {
+            "preset"
+        }
+        .to_string(),
+    );
+    Some(resolved_endpoint)
+}
+
+fn push_s3_doctor_checks(
+    checks: &mut Vec<serde_json::Value>,
+    risks: &mut Vec<String>,
+    role: &str,
+    config: &ProviderConfig,
+) {
+    if config.provider_type != ProviderType::S3 {
+        return;
+    }
+
+    let provider_id = config
+        .extra
+        .get(S3_PROVIDER_ID_META_KEY)
+        .cloned()
+        .unwrap_or_else(|| "custom-s3".to_string());
+    let endpoint = config
+        .extra
+        .get("endpoint")
+        .cloned()
+        .unwrap_or_else(|| config.host.clone());
+    let region = config.extra.get("region").cloned().unwrap_or_default();
+    let path_style = config
+        .extra
+        .get("path_style")
+        .map(|value| value == "true" || value == "1")
+        .unwrap_or(false);
+    let endpoint_source = config
+        .extra
+        .get(S3_ENDPOINT_SOURCE_META_KEY)
+        .cloned()
+        .unwrap_or_else(|| {
+            if endpoint.is_empty() {
+                "missing".to_string()
+            } else {
+                "profile".to_string()
+            }
+        });
+    let region_source = config
+        .extra
+        .get(S3_REGION_SOURCE_META_KEY)
+        .cloned()
+        .unwrap_or_else(|| {
+            if region.is_empty() {
+                "missing".to_string()
+            } else {
+                "profile".to_string()
+            }
+        });
+    let path_style_source = config
+        .extra
+        .get(S3_PATH_STYLE_SOURCE_META_KEY)
+        .cloned()
+        .unwrap_or_else(|| "profile".to_string());
+
+    checks.push(serde_json::json!({
+        "name": format!("{}_s3_resolution", role),
+        "ok": !endpoint.is_empty(),
+        "provider_id": provider_id,
+        "endpoint": endpoint,
+        "endpoint_source": endpoint_source,
+        "region": region,
+        "region_source": region_source,
+        "path_style": path_style,
+        "path_style_source": path_style_source,
+    }));
+
+    if endpoint_source == "preset" {
+        risks.push(format!(
+            "{} S3 endpoint is being derived from provider preset defaults",
+            role
+        ));
+    }
+    if region_source == "preset" {
+        risks.push(format!(
+            "{} S3 region is coming from provider preset defaults",
+            role
+        ));
+    }
+    if path_style_source == "preset" {
+        risks.push(format!(
+            "{} S3 path-style setting is coming from provider preset defaults",
+            role
+        ));
     }
 }
 
@@ -3417,7 +4170,7 @@ fn profile_to_provider_config(
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("unnamed");
-    let host = profile
+    let mut host = profile
         .get("host")
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -3462,7 +4215,7 @@ fn profile_to_provider_config(
                             .to_string();
                         (if u.is_empty() { username.clone() } else { u }, p)
                     } else {
-                        // JSON but not an object — treat as raw password string
+                        // JSON but not an object - treat as raw password string
                         let raw = password_str.trim_matches('"').to_string();
                         (username.clone(), raw)
                     }
@@ -3555,6 +4308,15 @@ fn profile_to_provider_config(
     if provider_type == ProviderType::Azure && !extra.contains_key("container") {
         if let Some(bucket) = extra.remove("bucket") {
             extra.insert("container".to_string(), bucket);
+        }
+    }
+
+    if provider_type == ProviderType::S3 {
+        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id) {
+            if host.trim().is_empty() {
+                host = resolved_endpoint;
+            }
         }
     }
 
@@ -3664,7 +4426,7 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
             .map_err(|e| format!("Callback error: {}", e))?;
 
     if state != expected_state {
-        return Err("OAuth state mismatch — possible CSRF attack".to_string());
+        return Err("OAuth state mismatch - possible CSRF attack".to_string());
     }
 
     // Exchange code for tokens
@@ -3739,7 +4501,7 @@ fn create_oauth_provider_by_protocol(
                 fourshared::FourSharedProvider, types::FourSharedConfig,
             };
 
-            // Read consumer key/secret — try individual keys first (GUI format), then legacy JSON
+            // Read consumer key/secret - try individual keys first (GUI format), then legacy JSON
             let (ck, cs) = if let (Ok(k), Ok(s)) = (
                 store.get("oauth_fourshared_client_id"),
                 store.get("oauth_fourshared_client_secret"),
@@ -3891,7 +4653,7 @@ async fn try_create_oauth_provider(
             )
         }
         "fourshared" => {
-            // 4shared uses OAuth1 — handle separately from the OAuth2 flow
+            // 4shared uses OAuth1 - handle separately from the OAuth2 flow
             use ftp_client_gui_lib::providers::{
                 fourshared::FourSharedProvider, types::FourSharedConfig,
             };
@@ -3959,7 +4721,7 @@ async fn try_create_oauth_provider(
         _ => return None,
     };
 
-    // Check if tokens exist — if not, offer browser authorization
+    // Check if tokens exist - if not, offer browser authorization
     let manager = OAuth2Manager::new();
     let needs_auth = !manager.has_tokens(oauth_provider);
 
@@ -3998,7 +4760,7 @@ async fn try_create_oauth_provider(
         );
     }
 
-    // Connect — if token expired, offer re-authorization
+    // Connect - if token expired, offer re-authorization
     if let Err(e) = provider.connect().await {
         if !std::io::stdin().is_terminal() {
             eprintln!(
@@ -4012,7 +4774,7 @@ async fn try_create_oauth_provider(
             Ok(()) => {
                 eprintln!("Re-authorization successful! Reconnecting...");
                 // Recreate provider with fresh tokens
-                // We need to recreate since create_fn was consumed — rebuild inline
+                // We need to recreate since create_fn was consumed - rebuild inline
                 let mut retry_provider = match create_oauth_provider_by_protocol(protocol, store) {
                     Ok(p) => p,
                     Err(e) => {
@@ -4080,7 +4842,7 @@ async fn create_and_connect(
     cli: &Cli,
     format: OutputFormat,
 ) -> Result<(Box<dyn StorageProvider>, String), i32> {
-    // Check if --profile points to an OAuth provider — handle separately
+    // Check if --profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(ref profile_name) = cli.profile {
         if let Ok(store) = open_vault(cli) {
@@ -4121,7 +4883,7 @@ async fn create_and_connect(
                                     .collect();
                                 match matches.len() {
                                     1 => Some(matches[0].clone()),
-                                    _ => None, // 0 or ambiguous — let profile_to_provider_config handle the error
+                                    _ => None, // 0 or ambiguous - let profile_to_provider_config handle the error
                                 }
                             }
                         }
@@ -5500,7 +6262,7 @@ async fn cmd_serve_webdav(
     }
 }
 
-// ── Serve FTP — libunftp StorageBackend adapter ─────────────────
+// ── Serve FTP - libunftp StorageBackend adapter ─────────────────
 
 mod serve_ftp_backend {
     use super::*;
@@ -5856,7 +6618,7 @@ async fn cmd_serve_ftp(
 
     let server = builder
         .passive_ports(passive_range)
-        .greeting("AeroFTP serve — connected");
+        .greeting("AeroFTP serve - connected");
 
     let server = match server.build() {
         Ok(s) => s,
@@ -5905,7 +6667,7 @@ async fn cmd_serve_ftp(
     0
 }
 
-// ── Serve SFTP — SSH File Transfer Protocol Server ──────────────
+// ── Serve SFTP - SSH File Transfer Protocol Server ──────────────
 
 mod serve_sftp {
     use super::*;
@@ -6259,7 +7021,7 @@ mod serve_sftp {
                     let _handle = read_string(data, &mut pos);
                     let _offset = read_u64(data, &mut pos);
                     let _data_len = read_u32(data, &mut pos);
-                    // Write support: simplified — upload on close
+                    // Write support: simplified - upload on close
                     make_status(id, SSH_FX_OK, "")
                 }
                 SSH_FXP_CLOSE => {
@@ -6820,12 +7582,13 @@ async fn cmd_ls(
 
             if !cli.quiet {
                 eprintln!(
-                    "\n{} items ({} directories, {} files) — {} total",
+                    "\n{} items ({} directories, {} files) - {} total",
                     entries.len(),
                     dir_count,
                     file_count,
                     format_size(total_bytes)
                 );
+                eprintln!("Next: {}", suggest_ls_followup(cli, effective_path));
             }
         }
         OutputFormat::Json => {
@@ -6842,7 +7605,8 @@ async fn cmd_ls(
                     "files": file_count,
                     "dirs": dir_count,
                     "total_bytes": total_bytes,
-                }
+                },
+                "suggested_next_command": suggest_ls_followup(cli, effective_path),
             }));
         }
     }
@@ -7863,17 +8627,19 @@ async fn cmd_put(
                             format_speed(speed),
                             elapsed.as_secs_f64()
                         );
+                        eprintln!("Next: {}", suggest_stat_followup(cli, remote_path));
                     }
                 }
                 OutputFormat::Json => {
-                    print_json(&CliTransferResult {
-                        status: "ok",
-                        operation: "upload".to_string(),
-                        path: remote_path.to_string(),
-                        bytes: file_size,
-                        elapsed_secs: elapsed.as_secs_f64(),
-                        speed_bps: speed,
-                    });
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "operation": "upload",
+                        "path": remote_path,
+                        "bytes": file_size,
+                        "elapsed_secs": elapsed.as_secs_f64(),
+                        "speed_bps": speed,
+                        "suggested_next_command": suggest_stat_followup(cli, remote_path),
+                    }));
                 }
             }
 
@@ -8889,11 +9655,42 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                             println!("  Link target: {}", t);
                         }
                     }
+                    if !cli.quiet {
+                        eprintln!(
+                            "Next: {}",
+                            if entry.is_dir {
+                                format!(
+                                    "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                    profile_or_placeholder(cli),
+                                    shell_double_quote(&entry.path)
+                                )
+                            } else {
+                                format!(
+                                    "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                    profile_or_placeholder(cli),
+                                    shell_double_quote(&parent_remote_path(&entry.path))
+                                )
+                            }
+                        );
+                    }
                 }
                 OutputFormat::Json => {
                     print_json(&serde_json::json!({
                         "status": "ok",
                         "entry": remote_entry_to_filtered_json(&entry, cli),
+                        "suggested_next_command": if entry.is_dir {
+                            format!(
+                                "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                profile_or_placeholder(cli),
+                                shell_double_quote(&entry.path)
+                            )
+                        } else {
+                            format!(
+                                "aeroftp-cli ls --profile \"{}\" \"{}\" --json",
+                                profile_or_placeholder(cli),
+                                shell_double_quote(&parent_remote_path(&entry.path))
+                            )
+                        },
                     }));
                 }
             }
@@ -8981,6 +9778,7 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
             }
             if !cli.quiet {
                 eprintln!("\n{} matches", results.len());
+                eprintln!("Next: {}", suggest_find_followup(cli, path));
             }
         }
         OutputFormat::Json => {
@@ -9000,7 +9798,8 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
                     "files": file_count,
                     "dirs": dir_count,
                     "total_bytes": total_bytes,
-                }
+                },
+                "suggested_next_command": suggest_find_followup(cli, path),
             }));
         }
     }
@@ -9444,7 +10243,7 @@ async fn cmd_dedupe(
                 }
                 eprintln!("\nDeleted {} duplicate file(s).", deleted);
             } else if dry_run {
-                eprintln!("\n(dry run — no files deleted)");
+                eprintln!("\n(dry run - no files deleted)");
             }
         }
         OutputFormat::Json => {
@@ -9499,7 +10298,7 @@ fn save_bisync_snapshot(
     remote_entries: &[(String, u64, Option<String>)],
 ) {
     let mut files = HashMap::new();
-    // Merge both sides — after a successful sync they should be equal
+    // Merge both sides - after a successful sync they should be equal
     for (path, size, mtime) in local_entries.iter().chain(remote_entries.iter()) {
         files
             .entry(path.clone())
@@ -9563,7 +10362,7 @@ fn resolve_conflict(
             std::cmp::Ordering::Greater => "upload",
             std::cmp::Ordering::Less => "download",
             std::cmp::Ordering::Equal => {
-                // mtime equal but size differs — fallback to larger wins
+                // mtime equal but size differs - fallback to larger wins
                 if local_size > remote_size {
                     "upload"
                 } else if remote_size > local_size {
@@ -9944,7 +10743,7 @@ async fn cmd_sync(
             to_delete_remote.retain(|p| !matched_deletes.contains(*p));
             if !quiet {
                 eprintln!(
-                    "  {} rename(s) detected — will rename instead of delete+upload",
+                    "  {} rename(s) detected - will rename instead of delete+upload",
                     renames.len()
                 );
             }
@@ -10007,7 +10806,7 @@ async fn cmd_sync(
                 for p in &to_delete_local {
                     println!("  DELETE (local)  {}", p);
                 }
-                println!("\n(dry run — no changes made)");
+                println!("\n(dry run - no changes made)");
             }
             OutputFormat::Json => {
                 print_json(&CliSyncResult {
@@ -10563,7 +11362,7 @@ async fn cmd_tree(url: &str, path: &str, max_depth: usize, cli: &Cli, format: Ou
     0
 }
 
-// ── NCDU — Interactive Disk Usage Explorer ────────────────────────
+// ── NCDU - Interactive Disk Usage Explorer ────────────────────────
 
 /// A node in the disk usage tree.
 #[derive(Debug, Serialize)]
@@ -10769,7 +11568,7 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
 
             // Header
             let header_text = format!(
-                " ncdu — {} ({})  [{} items]",
+                " ncdu - {} ({})  [{} items]",
                 state.current.path,
                 format_size(state.current.agg_size),
                 state.current.children.len()
@@ -11332,7 +12131,7 @@ mod fuse_mount {
                 return;
             }
 
-            // Cache miss — fetch from provider
+            // Cache miss - fetch from provider
             let Some(path) = self.get_path(ino) else {
                 reply.error(libc::ENOENT);
                 return;
@@ -11378,7 +12177,7 @@ mod fuse_mount {
                 }
             }
 
-            // Still not found — try direct stat
+            // Still not found - try direct stat
             if let Some(cached) = self.fetch_stat(child_ino, &child_path) {
                 reply.entry(&ttl, &cached.attr, 0);
             } else {
@@ -11575,7 +12374,7 @@ mod fuse_mount {
 
             let buffers = self.write_buffers.lock().unwrap();
             let Some(tmp_path) = buffers.get(&ino).cloned() else {
-                // No write buffer — this file wasn't opened for writing via create
+                // No write buffer - this file wasn't opened for writing via create
                 // Try to create one on-the-fly for existing files
                 drop(buffers);
                 let Some(path) = self.get_path(ino) else {
@@ -11594,7 +12393,7 @@ mod fuse_mount {
                     p.download(&path, &tmp.to_string_lossy(), None).await
                 });
                 if download_result.is_err() {
-                    // New file or download failed — start empty
+                    // New file or download failed - start empty
                     let _ = std::fs::write(&tmp, b"");
                 }
                 self.write_buffers.lock().unwrap().insert(ino, tmp.clone());
@@ -11658,7 +12457,7 @@ mod fuse_mount {
                 self.flush_ok.lock().unwrap().insert(ino);
                 reply.ok();
             } else {
-                // Do NOT mark as flushed — release will keep the tempfile
+                // Do NOT mark as flushed - release will keep the tempfile
                 reply.error(libc::EIO);
             }
         }
@@ -11675,10 +12474,10 @@ mod fuse_mount {
         ) {
             if let Some(tmp_path) = self.write_buffers.lock().unwrap().remove(&ino) {
                 if self.flush_ok.lock().unwrap().remove(&ino) {
-                    // Flush succeeded — safe to delete tempfile
+                    // Flush succeeded - safe to delete tempfile
                     let _ = std::fs::remove_file(tmp_path);
                 } else {
-                    // Flush failed — keep tempfile for recovery
+                    // Flush failed - keep tempfile for recovery
                     eprintln!(
                         "aeroftp-fuse: keeping tempfile {} (flush failed, data preserved)",
                         tmp_path.display()
@@ -11839,7 +12638,7 @@ mod fuse_mount {
                     if newparent != parent {
                         self.invalidate_dir(newparent);
                     }
-                    // Update inode mappings — including all descendants for directory renames
+                    // Update inode mappings - including all descendants for directory renames
                     let mut pi = self.path_inode.lock().unwrap();
                     let mut ip = self.inode_path.lock().unwrap();
                     let mut cache = self.cache.lock().unwrap();
@@ -12075,7 +12874,7 @@ mod fuse_mount {
 #[cfg(target_os = "linux")]
 use fuse_mount::cmd_mount;
 
-/// Windows mount: WebDAV bridge — starts a local WebDAV server and maps it as a drive letter.
+/// Windows mount: WebDAV bridge - starts a local WebDAV server and maps it as a drive letter.
 #[cfg(windows)]
 async fn cmd_mount_windows(
     url: &str,
@@ -12130,7 +12929,7 @@ async fn cmd_mount_windows(
         );
     }
 
-    // Start the WebDAV server directly — it runs until Ctrl+C
+    // Start the WebDAV server directly - it runs until Ctrl+C
     // We run it concurrently with the drive mapping using tokio::select
     if !quiet {
         eprintln!("Starting WebDAV server on {}...", addr);
@@ -12153,7 +12952,7 @@ async fn cmd_mount_windows(
         provider: Arc::new(AsyncMutex::new(provider)),
         provider_label,
         base_path,
-        auth_token: None, // local-only WebDAV bridge for Windows mount — no auth needed
+        auth_token: None, // local-only WebDAV bridge for Windows mount - no auth needed
     };
 
     let app = Router::new()
@@ -12594,7 +13393,7 @@ async fn cmd_daemon_start(
     let generated_auth_token = auth_token.is_none();
     let daemon_token = normalize_optional_token(auth_token).unwrap_or_else(generate_auth_token);
 
-    // In foreground mode (for now — proper daemonization would use fork)
+    // In foreground mode (for now - proper daemonization would use fork)
     // Write PID file and addr
     let pid = std::process::id();
     let _ = std::fs::write(daemon_pid_path(), pid.to_string());
@@ -12906,7 +13705,7 @@ async fn cmd_jobs_cancel(id: &str, format: OutputFormat) -> i32 {
     }
 }
 
-// ── Crypt Overlay — Transparent Encryption Layer ─────────────────
+// ── Crypt Overlay - Transparent Encryption Layer ─────────────────
 
 mod crypt_overlay {
     use aes_gcm::aead::{Aead, KeyInit};
@@ -13588,6 +14387,216 @@ async fn cmd_put_glob(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn cmd_sync_doctor(
+    url: &str,
+    local: &str,
+    remote: &str,
+    direction: &str,
+    delete: bool,
+    exclude: &[String],
+    track_renames: bool,
+    conflict_mode: &str,
+    resync: bool,
+    checksum: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let doctor_cfg = if let Some(profile_name) = cli.profile.as_deref() {
+        match profile_to_provider_config(profile_name, cli, format) {
+            Ok((cfg, _)) => Some(cfg),
+            Err(code) => return code,
+        }
+    } else {
+        None
+    };
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let local_dir = Path::new(local);
+    if !local_dir.is_dir() {
+        print_error(
+            format,
+            &format!("Local path is not a directory: {}", local),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    let mut local_files = 0usize;
+    let mut local_bytes = 0u64;
+    for entry in walkdir::WalkDir::new(local).follow_links(false).max_depth(100) {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(local)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        let fname = entry.file_name().to_string_lossy();
+        let fname_ref: &str = fname.as_ref();
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
+        {
+            continue;
+        }
+        local_files += 1;
+        local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+
+    let remote_root_ok = provider.list(remote).await.is_ok();
+    let mut remote_files = 0usize;
+    let mut remote_bytes = 0u64;
+    if remote_root_ok {
+        let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
+        while let Some((dir, depth)) = queue.pop() {
+            if depth >= MAX_SCAN_DEPTH || remote_files >= MAX_SCAN_ENTRIES {
+                break;
+            }
+            if let Ok(entries) = provider.list(&dir).await {
+                for e in entries {
+                    if e.is_dir {
+                        queue.push((e.path.clone(), depth + 1));
+                    } else {
+                        let relative = e
+                            .path
+                            .strip_prefix(remote)
+                            .unwrap_or(&e.path)
+                            .trim_start_matches('/')
+                            .to_string();
+                        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                            continue;
+                        }
+                        if exclude_matchers
+                            .iter()
+                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                        {
+                            continue;
+                        }
+                        remote_files += 1;
+                        remote_bytes += e.size;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut checks = vec![
+        serde_json::json!({"name": "local_path_exists", "ok": true, "path": local}),
+        serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
+    ];
+    if !exclude.is_empty() {
+        checks.push(serde_json::json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}));
+    }
+
+    let mut risks = Vec::new();
+    if let Some(cfg) = doctor_cfg.as_ref() {
+        push_s3_doctor_checks(&mut checks, &mut risks, "remote", cfg);
+    }
+    if delete {
+        risks.push("delete is enabled; sync may remove orphaned files".to_string());
+    }
+    if direction == "both" {
+        risks.push(format!(
+            "bidirectional sync can resolve conflicts automatically using conflict_mode={}",
+            conflict_mode
+        ));
+    }
+    if resync {
+        risks.push("resync is enabled; previous bisync snapshot will be ignored".to_string());
+    }
+    if !track_renames && direction == "both" {
+        risks.push("track-renames is disabled; moved files may be recopied".to_string());
+    }
+    if checksum {
+        risks.push("checksum is enabled; later verification may be slower but stricter".to_string());
+    }
+    if !remote_root_ok {
+        risks.push("remote path could not be listed".to_string());
+    }
+
+    let suggested_next_command = format!(
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
+        profile_or_placeholder(cli),
+        shell_double_quote(local),
+        shell_double_quote(remote),
+        shell_double_quote(direction),
+        if delete { " --delete" } else { "" },
+        if track_renames { " --track-renames" } else { "" },
+        if resync { " --resync" } else { "" },
+        if checksum { " --checksum" } else { "" },
+        if exclude.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " {}",
+                exclude
+                    .iter()
+                    .map(|pattern| format!("--exclude \"{}\"", shell_double_quote(pattern)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        }
+    );
+
+    let result = CliDoctorResult {
+        status: if remote_root_ok { "ok" } else { "attention" },
+        doctor: "sync".to_string(),
+        summary: serde_json::json!({
+            "direction": direction,
+            "local_files": local_files,
+            "local_bytes": local_bytes,
+            "remote_files": remote_files,
+            "remote_bytes": remote_bytes,
+            "delete": delete,
+            "track_renames": track_renames,
+            "conflict_mode": conflict_mode,
+            "resync": resync,
+        }),
+        checks,
+        risks,
+        suggested_next_command,
+    };
+
+    match format {
+        OutputFormat::Json => print_json(&result),
+        OutputFormat::Text => {
+            println!("Sync doctor");
+            println!("  Local:  {} file(s), {}", local_files, format_size(local_bytes));
+            println!("  Remote: {} file(s), {}", remote_files, format_size(remote_bytes));
+            println!("  Direction: {}", direction);
+            if !result.risks.is_empty() {
+                println!("  Risks:");
+                for risk in &result.risks {
+                    println!("    - {}", risk);
+                }
+            }
+            if !cli.quiet {
+                eprintln!("Next: {}", result.suggested_next_command);
+            }
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    if remote_root_ok { 0 } else { 4 }
+}
+
 // ── Head / Tail / Touch / Hashsum / Check ─────────────────────────
 
 async fn cmd_head(url: &str, path: &str, lines: usize, cli: &Cli, format: OutputFormat) -> i32 {
@@ -13682,7 +14691,7 @@ async fn cmd_touch(
     // Check if file exists
     match provider.stat(path).await {
         Ok(_) => {
-            // File exists — touch is a no-op for most providers (mtime update not widely supported)
+            // File exists - touch is a no-op for most providers (mtime update not widely supported)
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({"status": "ok", "path": path, "action": "exists"}));
             } else {
@@ -13692,7 +14701,7 @@ async fn cmd_touch(
             0
         }
         Err(_) => {
-            // File doesn't exist — create empty file
+            // File doesn't exist - create empty file
             let tmp = std::env::temp_dir().join(format!("aeroftp_touch_{}", uuid::Uuid::new_v4()));
             if let Err(e) = std::fs::write(&tmp, b"") {
                 print_error(format, &format!("Failed to create temp file: {}", e), 4);
@@ -13939,23 +14948,35 @@ async fn cmd_check(
     let elapsed = start.elapsed().as_secs_f64();
 
     if matches!(format, OutputFormat::Json) {
-        print_json(&CliCheckResult {
-            status: if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
+        print_json(&serde_json::json!({
+            "status": if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
                 "ok"
             } else {
                 "differences_found"
             },
-            match_count,
-            differ_count,
-            missing_local,
-            missing_remote,
-            elapsed_secs: elapsed,
-            details,
-        });
+            "match_count": match_count,
+            "differ_count": differ_count,
+            "missing_local": missing_local,
+            "missing_remote": missing_remote,
+            "elapsed_secs": elapsed,
+            "details": details,
+            "suggested_next_command": format!(
+                "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+                profile_or_placeholder(cli),
+                shell_double_quote(local_path),
+                shell_double_quote(remote_path)
+            ),
+        }));
     } else {
         eprintln!(
             "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
             match_count, differ_count, missing_local, missing_remote, elapsed
+        );
+        eprintln!(
+            "Next: aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+            profile_or_placeholder(cli),
+            shell_double_quote(local_path),
+            shell_double_quote(remote_path)
         );
         for d in &details {
             let icon = match d.status.as_str() {
@@ -13974,6 +14995,748 @@ async fn cmd_check(
     } else {
         0
     }
+}
+
+async fn cmd_reconcile(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    checksum: bool,
+    one_way: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let start = Instant::now();
+    let local_dir = Path::new(local_path);
+    if !local_dir.is_dir() {
+        print_error(
+            format,
+            &format!("Local path is not a directory: {}", local_path),
+            5,
+        );
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    let mut local_files: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    for entry in walkdir::WalkDir::new(local_dir)
+        .max_depth(MAX_SCAN_DEPTH)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            if let Ok(rel) = entry.path().strip_prefix(local_dir) {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                let hash = if checksum {
+                    use sha2::Digest;
+                    match std::fs::read(entry.path()) {
+                        Ok(data) => Some(format!("{:x}", sha2::Sha256::digest(&data))),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+                local_files.insert(rel_str, (size, hash));
+            }
+        }
+    }
+
+    let mut remote_files: HashMap<String, u64> = HashMap::new();
+    let mut dirs_to_scan = vec![remote_path.to_string()];
+    let remote_prefix = if remote_path.ends_with('/') {
+        remote_path.to_string()
+    } else {
+        format!("{}/", remote_path)
+    };
+    while let Some(dir) = dirs_to_scan.pop() {
+        match provider.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    let rel = entry
+                        .path
+                        .strip_prefix(&remote_prefix)
+                        .unwrap_or(&entry.path)
+                        .to_string();
+                    if entry.is_dir {
+                        dirs_to_scan.push(entry.path.clone());
+                    } else {
+                        remote_files.insert(rel, entry.size);
+                    }
+                }
+            }
+            Err(e) => {
+                if !matches!(format, OutputFormat::Json) {
+                    eprintln!("Warning: failed to scan {}: {}", dir, e);
+                }
+            }
+        }
+    }
+
+    let mut matches_group: Vec<serde_json::Value> = Vec::new();
+    let mut differ_group: Vec<serde_json::Value> = Vec::new();
+    let mut missing_remote_group: Vec<serde_json::Value> = Vec::new();
+    let mut missing_local_group: Vec<serde_json::Value> = Vec::new();
+
+    for (rel, (local_size, _local_hash)) in &local_files {
+        match remote_files.get(rel) {
+            Some(&remote_size) if *local_size == remote_size => {
+                matches_group.push(serde_json::json!({
+                    "path": rel,
+                    "local_size": local_size,
+                    "remote_size": remote_size,
+                }));
+            }
+            Some(&remote_size) => {
+                differ_group.push(serde_json::json!({
+                    "path": rel,
+                    "local_size": local_size,
+                    "remote_size": remote_size,
+                }));
+            }
+            None => {
+                missing_remote_group.push(serde_json::json!({
+                    "path": rel,
+                    "local_size": local_size,
+                }));
+            }
+        }
+    }
+
+    if !one_way {
+        for (rel, &remote_size) in &remote_files {
+            if !local_files.contains_key(rel) {
+                missing_local_group.push(serde_json::json!({
+                    "path": rel,
+                    "remote_size": remote_size,
+                }));
+            }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64();
+    let suggested_next_command = format!(
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --dry-run --json",
+        profile_or_placeholder(cli),
+        shell_double_quote(local_path),
+        shell_double_quote(remote_path)
+    );
+
+    let result = CliReconcileResult {
+        status: if differ_group.is_empty()
+            && missing_remote_group.is_empty()
+            && missing_local_group.is_empty()
+        {
+            "ok"
+        } else {
+            "differences_found"
+        },
+        local_path: local_path.to_string(),
+        remote_path: remote_path.to_string(),
+        summary: serde_json::json!({
+            "match_count": matches_group.len(),
+            "differ_count": differ_group.len(),
+            "missing_remote_count": missing_remote_group.len(),
+            "missing_local_count": missing_local_group.len(),
+            "elapsed_secs": elapsed,
+        }),
+        groups: serde_json::json!({
+            "match": matches_group,
+            "differ": differ_group,
+            "missing_remote": missing_remote_group,
+            "missing_local": missing_local_group,
+        }),
+        suggested_next_command,
+    };
+
+    match format {
+        OutputFormat::Json => print_json(&result),
+        OutputFormat::Text => {
+            println!("Reconcile summary:");
+            println!("  Match: {}", result.summary["match_count"]);
+            println!("  Differ: {}", result.summary["differ_count"]);
+            println!(
+                "  Missing remote: {}",
+                result.summary["missing_remote_count"]
+            );
+            println!(
+                "  Missing local: {}",
+                result.summary["missing_local_count"]
+            );
+            if !cli.quiet {
+                eprintln!("Next: {}", result.suggested_next_command);
+            }
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    if result.status == "ok" { 0 } else { 4 }
+}
+
+// ── Cross-profile transfer ─────────────────────────────────────────────────
+
+async fn cmd_transfer_doctor(
+    source_profile: &str,
+    dest_profile: &str,
+    source_path: &str,
+    dest_path: &str,
+    recursive: bool,
+    skip_existing: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::cross_profile_transfer::{plan_transfer, CrossProfileTransferRequest};
+
+    let src_cfg = match profile_to_provider_config(source_profile, cli, format) {
+        Ok((cfg, _)) => cfg,
+        Err(code) => return code,
+    };
+    let dst_cfg = match profile_to_provider_config(dest_profile, cli, format) {
+        Ok((cfg, _)) => cfg,
+        Err(code) => return code,
+    };
+
+    let mut source = match ProviderFactory::create(&src_cfg) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to create source provider: {}", e), provider_error_to_exit_code(&e));
+            return provider_error_to_exit_code(&e);
+        }
+    };
+    let mut dest = match ProviderFactory::create(&dst_cfg) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to create dest provider: {}", e), provider_error_to_exit_code(&e));
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    if let Err(e) = source.connect().await {
+        print_error(format, &format!("Source connection failed: {}", e), provider_error_to_exit_code(&e));
+        return provider_error_to_exit_code(&e);
+    }
+    if let Err(e) = dest.connect().await {
+        print_error(format, &format!("Dest connection failed: {}", e), provider_error_to_exit_code(&e));
+        let _ = source.disconnect().await;
+        return provider_error_to_exit_code(&e);
+    }
+
+    let request = CrossProfileTransferRequest {
+        source_profile: source_profile.to_string(),
+        dest_profile: dest_profile.to_string(),
+        source_path: source_path.to_string(),
+        dest_path: dest_path.to_string(),
+        recursive,
+        dry_run: true,
+        skip_existing,
+    };
+
+    let plan = match plan_transfer(source.as_mut(), dest.as_mut(), &request).await {
+        Ok(plan) => plan,
+        Err(e) => {
+            print_error(format, &format!("Transfer doctor failed: {}", e), provider_error_to_exit_code(&e));
+            let _ = source.disconnect().await;
+            let _ = dest.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    let mut existing_dest_paths = 0u64;
+    for entry in &plan.entries {
+        if dest.stat(&entry.dest_path).await.is_ok() {
+            existing_dest_paths += 1;
+        }
+    }
+
+    let mut checks = vec![
+        serde_json::json!({"name": "source_connected", "ok": true, "profile": source_profile}),
+        serde_json::json!({"name": "dest_connected", "ok": true, "profile": dest_profile}),
+        serde_json::json!({"name": "plan_created", "ok": true, "planned_files": plan.total_files}),
+    ];
+    if let Some(first) = plan.entries.first() {
+        checks.push(serde_json::json!({
+            "name": "sample_mapping",
+            "ok": true,
+            "source_path": first.source_path,
+            "dest_path": first.dest_path
+        }));
+    }
+
+    let mut risks = Vec::new();
+    push_s3_doctor_checks(&mut checks, &mut risks, "source", &src_cfg);
+    push_s3_doctor_checks(&mut checks, &mut risks, "destination", &dst_cfg);
+    if recursive {
+        risks.push("recursive transfer enabled; entire trees may be copied".to_string());
+    }
+    if existing_dest_paths > 0 && !skip_existing {
+        risks.push(format!(
+            "{} planned destination path(s) already exist and may be overwritten",
+            existing_dest_paths
+        ));
+    }
+    if skip_existing {
+        risks.push("skip-existing enabled; matching destination files will be skipped".to_string());
+    }
+    if plan.total_files == 0 {
+        risks.push("plan contains zero files".to_string());
+    }
+
+    let result = CliDoctorResult {
+        status: if plan.total_files > 0 { "ok" } else { "attention" },
+        doctor: "transfer".to_string(),
+        summary: serde_json::json!({
+            "source_profile": source_profile,
+            "dest_profile": dest_profile,
+            "source_path": source_path,
+            "dest_path": dest_path,
+            "recursive": recursive,
+            "skip_existing": skip_existing,
+            "planned_files": plan.total_files,
+            "total_bytes": plan.total_bytes,
+            "existing_dest_paths": existing_dest_paths,
+            "sample_entries": plan.entries.iter().take(5).map(|entry| serde_json::json!({
+                "source_path": entry.source_path,
+                "dest_path": entry.dest_path,
+                "size": entry.size,
+            })).collect::<Vec<_>>(),
+        }),
+        checks,
+        risks,
+        suggested_next_command: suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+    };
+
+    match format {
+        OutputFormat::Json => print_json(&result),
+        OutputFormat::Text => {
+            println!("Transfer doctor");
+            println!("  Planned files: {}", plan.total_files);
+            println!("  Total bytes: {}", format_size(plan.total_bytes));
+            println!("  Existing destination paths: {}", existing_dest_paths);
+            if !result.risks.is_empty() {
+                println!("  Risks:");
+                for risk in &result.risks {
+                    println!("    - {}", risk);
+                }
+            }
+            if !cli.quiet {
+                eprintln!("Next: {}", result.suggested_next_command);
+            }
+        }
+    }
+
+    let _ = source.disconnect().await;
+    let _ = dest.disconnect().await;
+    if plan.total_files > 0 { 0 } else { 4 }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_transfer_profiles(
+    source_profile: &str,
+    dest_profile: &str,
+    source_path: &str,
+    dest_path: &str,
+    recursive: bool,
+    dry_run: bool,
+    skip_existing: bool,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    use ftp_client_gui_lib::cross_profile_transfer::{
+        plan_transfer, CrossProfileTransferRequest,
+    };
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    // Resolve source profile
+    let src_cfg = match profile_to_provider_config(source_profile, cli, format) {
+        Ok((cfg, _)) => cfg,
+        Err(code) => return code,
+    };
+    // Resolve destination profile
+    let dst_cfg = match profile_to_provider_config(dest_profile, cli, format) {
+        Ok((cfg, _)) => cfg,
+        Err(code) => return code,
+    };
+
+    // Create providers
+    let mut source = match ProviderFactory::create(&src_cfg) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("Failed to create source provider: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            return provider_error_to_exit_code(&e);
+        }
+    };
+    let mut dest = match ProviderFactory::create(&dst_cfg) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("Failed to create dest provider: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    // Connect source
+    if !quiet {
+        eprintln!("Connecting to source profile '{}'...", source_profile);
+    }
+    if let Err(e) = source.connect().await {
+        print_error(
+            format,
+            &format!("Source connection failed: {}", e),
+            provider_error_to_exit_code(&e),
+        );
+        return provider_error_to_exit_code(&e);
+    }
+
+    // Connect destination
+    if !quiet {
+        eprintln!("Connecting to dest profile '{}'...", dest_profile);
+    }
+    if let Err(e) = dest.connect().await {
+        print_error(
+            format,
+            &format!("Dest connection failed: {}", e),
+            provider_error_to_exit_code(&e),
+        );
+        let _ = source.disconnect().await;
+        return provider_error_to_exit_code(&e);
+    }
+
+    // Build request
+    let request = CrossProfileTransferRequest {
+        source_profile: source_profile.to_string(),
+        dest_profile: dest_profile.to_string(),
+        source_path: source_path.to_string(),
+        dest_path: dest_path.to_string(),
+        recursive,
+        dry_run,
+        skip_existing,
+    };
+
+    // Plan
+    if !quiet {
+        eprintln!("Planning transfer...");
+    }
+    let plan = match plan_transfer(source.as_mut(), dest.as_mut(), &request).await {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("Planning failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = source.disconnect().await;
+            let _ = dest.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    };
+
+    if plan.entries.is_empty() {
+        if !quiet {
+            eprintln!("Nothing to transfer.");
+            eprintln!(
+                "Next: {}",
+                suggest_transfer_verify(dest_profile, dest_path, 0)
+            );
+        }
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({
+                "source_profile": source_profile,
+                "dest_profile": dest_profile,
+                "planned_files": 0,
+                "transferred_files": 0,
+                "skipped_files": 0,
+                "failed_files": 0,
+                "total_bytes": 0,
+                "duration_ms": 0,
+                "dry_run": dry_run,
+                "suggested_next_command": suggest_transfer_verify(dest_profile, dest_path, 0),
+            }));
+        }
+        let _ = source.disconnect().await;
+        let _ = dest.disconnect().await;
+        return 0;
+    }
+
+    // Dry-run: print plan and exit
+    if dry_run {
+        if !quiet {
+            eprintln!(
+                "DRY RUN: {} file(s), {} total",
+                plan.total_files,
+                format_size(plan.total_bytes)
+            );
+            for entry in &plan.entries {
+                eprintln!("  {} -> {} ({})", entry.source_path, entry.dest_path, format_size(entry.size));
+            }
+            eprintln!(
+                "Next: {}",
+                suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path)
+            );
+        }
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({
+                "plan": plan,
+                "suggested_next_command": suggest_transfer_apply(
+                    source_profile,
+                    dest_profile,
+                    source_path,
+                    dest_path
+                ),
+            }));
+        }
+        let _ = source.disconnect().await;
+        let _ = dest.disconnect().await;
+        return 0;
+    }
+
+    let summary = execute_cross_profile_plan(
+        source.as_mut(),
+        dest.as_mut(),
+        &plan,
+        skip_existing,
+        cli,
+        quiet,
+        cancelled,
+    )
+    .await;
+
+    if !quiet {
+        eprintln!(
+            "Done: {} transferred, {} skipped, {} failed ({}, {:.1}s)",
+            summary.transferred_files,
+            summary.skipped_files,
+            summary.failed_files,
+            format_size(summary.total_bytes),
+            summary.duration_ms as f64 / 1000.0
+        );
+        eprintln!(
+            "Next: {}",
+            suggest_transfer_verify(dest_profile, dest_path, summary.planned_files)
+        );
+    }
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "source_profile": summary.source_profile,
+            "dest_profile": summary.dest_profile,
+            "planned_files": summary.planned_files,
+            "transferred_files": summary.transferred_files,
+            "skipped_files": summary.skipped_files,
+            "failed_files": summary.failed_files,
+            "total_bytes": summary.total_bytes,
+            "duration_ms": summary.duration_ms,
+            "dry_run": summary.dry_run,
+            "suggested_next_command": suggest_transfer_verify(
+                dest_profile,
+                dest_path,
+                summary.planned_files
+            ),
+        }));
+    }
+
+    let _ = source.disconnect().await;
+    let _ = dest.disconnect().await;
+
+    if summary.failed_files > 0 {
+        4
+    } else {
+        0
+    }
+}
+
+#[derive(Serialize)]
+struct TransferCliSummary {
+    source_profile: String,
+    dest_profile: String,
+    planned_files: u64,
+    transferred_files: u64,
+    skipped_files: u64,
+    failed_files: u64,
+    total_bytes: u64,
+    duration_ms: u64,
+    dry_run: bool,
+}
+
+async fn execute_cross_profile_plan(
+    source: &mut dyn StorageProvider,
+    dest: &mut dyn StorageProvider,
+    plan: &ftp_client_gui_lib::cross_profile_transfer::CrossProfileTransferPlan,
+    skip_existing: bool,
+    cli: &Cli,
+    quiet: bool,
+    cancelled: Arc<AtomicBool>,
+) -> TransferCliSummary {
+    use ftp_client_gui_lib::cross_profile_transfer::{copy_one_file, should_skip_existing};
+
+    let total = plan.entries.len();
+    let max_attempts = cli.retries.max(1);
+    let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+    let start = std::time::Instant::now();
+    let mut transferred: u64 = 0;
+    let mut skipped: u64 = 0;
+    let mut failed: u64 = 0;
+    let mut bytes_transferred: u64 = 0;
+
+    if !quiet {
+        eprintln!(
+            "Transferring {} file(s), {} total...",
+            total,
+            format_size(plan.total_bytes)
+        );
+    }
+
+    for (idx, entry) in plan.entries.iter().enumerate() {
+        if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            if !quiet {
+                eprintln!("Transfer cancelled.");
+            }
+            break;
+        }
+
+        if skip_existing {
+            match should_skip_existing(dest, &entry.dest_path, entry).await {
+                Ok(true) => {
+                    skipped += 1;
+                    if !quiet {
+                        eprintln!(
+                            "  [{}/{}] {} ... SKIPPED (exists)",
+                            idx + 1,
+                            total,
+                            entry.display_name
+                        );
+                    }
+                    continue;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    if !quiet {
+                        eprintln!(
+                            "  [{}/{}] {} skip-existing check failed: {}, transferring anyway",
+                            idx + 1,
+                            total,
+                            entry.display_name,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        if !quiet {
+            eprint!(
+                "  [{}/{}] {} ({}) ... ",
+                idx + 1,
+                total,
+                entry.display_name,
+                format_size(entry.size)
+            );
+        }
+
+        let mut file_ok = false;
+        for attempt in 1..=max_attempts {
+            match copy_one_file(
+                source,
+                dest,
+                &entry.source_path,
+                &entry.dest_path,
+                entry.modified.as_deref(),
+            )
+            .await
+            {
+                Ok(()) => {
+                    file_ok = true;
+                    break;
+                }
+                Err(e) => {
+                    let code = provider_error_to_exit_code(&e);
+                    if !is_retryable_exit(code) || attempt == max_attempts {
+                        if !quiet {
+                            eprintln!("FAILED: {}", e);
+                        }
+                        break;
+                    }
+                    if !quiet {
+                        eprintln!(
+                            "attempt {}/{} failed ({}), retrying in {:?}...",
+                            attempt, max_attempts, e, sleep_dur
+                        );
+                        eprint!(
+                            "  [{}/{}] {} ({}) ... ",
+                            idx + 1,
+                            total,
+                            entry.display_name,
+                            format_size(entry.size)
+                        );
+                    }
+                    if !sleep_dur.is_zero() {
+                        tokio::time::sleep(sleep_dur).await;
+                    }
+                }
+            }
+        }
+
+        if file_ok {
+            transferred += 1;
+            bytes_transferred += entry.size;
+            if !quiet {
+                eprintln!("OK");
+            }
+        } else {
+            failed += 1;
+        }
+    }
+
+    TransferCliSummary {
+        source_profile: plan.source_profile.clone(),
+        dest_profile: plan.dest_profile.clone(),
+        planned_files: total as u64,
+        transferred_files: transferred,
+        skipped_files: skipped,
+        failed_files: failed,
+        total_bytes: bytes_transferred,
+        duration_ms: start.elapsed().as_millis() as u64,
+        dry_run: false,
+    }
+}
+
+/// Resolve a profile name, create a provider, and connect it.
+/// Used by batch CONNECT_SOURCE_PROFILE / CONNECT_DEST_PROFILE.
+async fn batch_connect_profile(
+    profile_name: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, i32> {
+    let (cfg, _) = profile_to_provider_config(profile_name, cli, format)?;
+    let mut provider = ProviderFactory::create(&cfg).map_err(|e| {
+        print_error(
+            format,
+            &format!("Failed to create provider for '{}': {}", profile_name, e),
+            provider_error_to_exit_code(&e),
+        );
+        provider_error_to_exit_code(&e)
+    })?;
+    provider.connect().await.map_err(|e| {
+        print_error(
+            format,
+            &format!("Connection failed for '{}': {}", profile_name, e),
+            provider_error_to_exit_code(&e),
+        );
+        provider_error_to_exit_code(&e)
+    })?;
+    Ok(provider)
 }
 
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
@@ -14014,6 +15777,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
     let mut on_error_continue = false;
     let mut total_commands: u32 = 0;
     let mut failed_commands: u32 = 0;
+
+    // Cross-profile transfer state (CONNECT_SOURCE_PROFILE / CONNECT_DEST_PROFILE / TRANSFER)
+    let mut cross_source: Option<(Box<dyn StorageProvider>, String)> = None; // (provider, profile_name)
+    let mut cross_dest: Option<(Box<dyn StorageProvider>, String)> = None;
 
     /// Check exit code and handle ON_ERROR policy.
     /// Returns Some(exit_code) if batch should abort, None to continue.
@@ -14215,7 +15982,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 }
             }
             "ECHO" => {
-                // ECHO <message> — print to stderr for logging
+                // ECHO <message> - print to stderr for logging
                 let msg = if expanded.len() > 4 {
                     expanded[4..].trim()
                 } else {
@@ -14543,10 +16310,143 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     return code;
                 }
             }
+            "CONNECT_SOURCE_PROFILE" => {
+                if parts.len() < 2 {
+                    eprintln!("Line {}: CONNECT_SOURCE_PROFILE requires a profile name", line_num + 1);
+                    return 5;
+                }
+                let profile_name = parts[1..].join(" ");
+                // Disconnect previous source if any
+                if let Some((mut old, _)) = cross_source.take() {
+                    let _ = old.disconnect().await;
+                }
+                match batch_connect_profile(&profile_name, cli, format).await {
+                    Ok(provider) => {
+                        eprintln!("Source profile '{}' connected", profile_name);
+                        cross_source = Some((provider, profile_name));
+                    }
+                    Err(code) => {
+                        if let Some(c) = check_exit(code, line_num, "CONNECT_SOURCE_PROFILE", on_error_continue, &mut failed_commands) {
+                            return c;
+                        }
+                    }
+                }
+            }
+            "CONNECT_DEST_PROFILE" => {
+                if parts.len() < 2 {
+                    eprintln!("Line {}: CONNECT_DEST_PROFILE requires a profile name", line_num + 1);
+                    return 5;
+                }
+                let profile_name = parts[1..].join(" ");
+                if let Some((mut old, _)) = cross_dest.take() {
+                    let _ = old.disconnect().await;
+                }
+                match batch_connect_profile(&profile_name, cli, format).await {
+                    Ok(provider) => {
+                        eprintln!("Dest profile '{}' connected", profile_name);
+                        cross_dest = Some((provider, profile_name));
+                    }
+                    Err(code) => {
+                        if let Some(c) = check_exit(code, line_num, "CONNECT_DEST_PROFILE", on_error_continue, &mut failed_commands) {
+                            return c;
+                        }
+                    }
+                }
+            }
+            "TRANSFER" => {
+                use ftp_client_gui_lib::cross_profile_transfer::{
+                    plan_transfer, CrossProfileTransferRequest,
+                };
+
+                let (src_provider, src_name) = match &mut cross_source {
+                    Some((p, n)) => (p.as_mut(), n.clone()),
+                    None => {
+                        eprintln!("Line {}: No source profile. Use CONNECT_SOURCE_PROFILE first.", line_num + 1);
+                        if !on_error_continue { return 5; }
+                        failed_commands += 1;
+                        continue;
+                    }
+                };
+                let (dest_provider, dest_name) = match &mut cross_dest {
+                    Some((p, n)) => (p.as_mut(), n.clone()),
+                    None => {
+                        eprintln!("Line {}: No dest profile. Use CONNECT_DEST_PROFILE first.", line_num + 1);
+                        if !on_error_continue { return 5; }
+                        failed_commands += 1;
+                        continue;
+                    }
+                };
+
+                if parts.len() < 3 {
+                    eprintln!("Line {}: TRANSFER requires <source_path> <dest_path> [-r] [--skip-existing]", line_num + 1);
+                    return 5;
+                }
+                let source_path = parts[1];
+                let dest_path = parts[2];
+                let recursive = parts.contains(&"-r") || parts.contains(&"--recursive");
+                let skip_existing = parts.contains(&"--skip-existing");
+                let dry_run = parts.contains(&"--dry-run");
+
+                let request = CrossProfileTransferRequest {
+                    source_profile: src_name.clone(),
+                    dest_profile: dest_name.clone(),
+                    source_path: source_path.to_string(),
+                    dest_path: dest_path.to_string(),
+                    recursive,
+                    dry_run,
+                    skip_existing,
+                };
+
+                exit_code = 0;
+                match plan_transfer(src_provider, dest_provider, &request).await {
+                    Ok(plan) => {
+                        if plan.entries.is_empty() {
+                            eprintln!("  Nothing to transfer.");
+                        } else if dry_run {
+                            eprintln!("  DRY RUN: {} file(s), {}", plan.total_files, format_size(plan.total_bytes));
+                            for entry in &plan.entries {
+                                eprintln!("    {} -> {}", entry.source_path, entry.dest_path);
+                            }
+                        } else {
+                            let src_p = cross_source.as_mut().unwrap().0.as_mut();
+                            let dst_p = cross_dest.as_mut().unwrap().0.as_mut();
+                            let summary = execute_cross_profile_plan(
+                                src_p,
+                                dst_p,
+                                &plan,
+                                skip_existing,
+                                cli,
+                                cli.quiet,
+                                cancelled.clone(),
+                            )
+                            .await;
+                            eprintln!(
+                                "  Transfer done: {} ok, {} skipped, {} failed",
+                                summary.transferred_files,
+                                summary.skipped_files,
+                                summary.failed_files
+                            );
+                            if summary.failed_files > 0 {
+                                exit_code = 4;
+                            }
+                        }
+                        if let Some(code) = check_exit(exit_code, line_num, "TRANSFER", on_error_continue, &mut failed_commands) {
+                            return code;
+                        }
+                    }
+                    Err(e) => {
+                        let code = provider_error_to_exit_code(&e);
+                        eprintln!("  Planning failed: {}", e);
+                        if let Some(c) = check_exit(code, line_num, "TRANSFER", on_error_continue, &mut failed_commands) {
+                            return c;
+                        }
+                    }
+                }
+            }
             _ => {
                 print_error(
                     format,
-                    &format!("Line {}: Unknown command '{}'. Supported: SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC", line_num + 1, cmd),
+                    &format!("Line {}: Unknown command '{}'. Supported: SET, ECHO, ON_ERROR, CONNECT, DISCONNECT, GET, PUT, RM, MV, LS, CAT, STAT, FIND, DF, MKDIR, TREE, SYNC, CONNECT_SOURCE_PROFILE, CONNECT_DEST_PROFILE, TRANSFER", line_num + 1, cmd),
                     5,
                 );
                 if !on_error_continue {
@@ -14555,6 +16455,14 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 failed_commands += 1;
             }
         }
+    }
+
+    // Cleanup cross-profile providers
+    if let Some((mut p, _)) = cross_source.take() {
+        let _ = p.disconnect().await;
+    }
+    if let Some((mut p, _)) = cross_dest.take() {
+        let _ = p.disconnect().await;
     }
 
     if failed_commands > 0 {
@@ -14728,7 +16636,7 @@ fn build_agent_system_prompt(custom_system: &Option<String>) -> String {
          You have access to tools for local file management, shell execution, archive \
          handling, code search, and more. Use them to perform actions directly.\n\n\
          Rules:\n\
-         1. Use tools to perform actions — don't just describe what to do.\n\
+         1. Use tools to perform actions - don't just describe what to do.\n\
          2. Be concise and direct. Explain briefly what you did after executing tools.\n\
          3. For destructive operations (delete, overwrite), confirm with the user first.\n\
          4. Resolve relative paths against the working directory."
@@ -15094,7 +17002,7 @@ async fn execute_cli_tool(
             .map(|s| s.to_string())
     };
 
-    // Validate local path — deny sensitive paths (mirrors ai_tools.rs::validate_path)
+    // Validate local path - deny sensitive paths (mirrors ai_tools.rs::validate_path)
     let validate_path = |path: &str, param: &str| -> Result<(), String> {
         if path.len() > 4096 {
             return Err(format!("{}: path exceeds 4096 characters", param));
@@ -15989,7 +17897,7 @@ async fn execute_cli_tool(
         }
 
         "archive_compress" => {
-            // Safe: spawn tools directly with .arg() — no shell interpolation
+            // Safe: spawn tools directly with .arg() - no shell interpolation
             let paths: Vec<String> = args
                 .get("paths")
                 .and_then(|v| v.as_array())
@@ -16693,7 +18601,7 @@ async fn agent_tool_loop(
 
         match tool_calls {
             None => {
-                // No tool calls — return the text response
+                // No tool calls - return the text response
                 return Ok(response.content);
             }
             Some(calls) => {
@@ -16997,7 +18905,7 @@ async fn cmd_agent(
     cmd_agent_repl(&cfg).await
 }
 
-/// Shared agent configuration — avoids passing too many arguments
+/// Shared agent configuration - avoids passing too many arguments
 #[allow(dead_code)]
 struct AgentConfig {
     provider_name: String,
@@ -17152,7 +19060,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                              _ => "\x1b[1;31mHIGH\x1b[0m",
                          };
                          eprintln!(
-                             "  [{}] \x1b[1m{}\x1b[0m — {} ({}, egress: {})",
+                             "  [{}] \x1b[1m{}\x1b[0m - {} ({}, egress: {})",
                              label,
                              t.name,
                              t.description,
@@ -17248,7 +19156,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
     0
 }
 
-/// Orchestration mode — JSON-RPC 2.0 over stdin/stdout
+/// Orchestration mode - JSON-RPC 2.0 over stdin/stdout
 async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
     use ftp_client_gui_lib::ai::ChatMessage;
     use std::io::BufRead;
@@ -17480,30 +19388,38 @@ async fn main() {
     if show_help {
         if use_color() {
             eprintln!(
-                "\x1b[38;2;0;255;255m  ___    __________  ____  __________ ______  ______\x1b[0m"
+                "\x1b[1;38;2;0;255;255m     _                 _____ _____ \x1b[0m"
             );
             eprintln!(
-                "\x1b[38;2;0;220;255m /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/\x1b[0m"
+                "\x1b[1;38;2;0;220;255m    / \\   ___ _ __ ___|  ___|_   _|_ __ \x1b[0m"
             );
             eprintln!(
-                "\x1b[38;2;80;180;255m/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    \x1b[0m"
+                "\x1b[1;38;2;80;180;255m   / _ \\ / _ \\ '__/ _ \\ |_    | | | '_ \\\x1b[0m"
             );
-            eprintln!("\x1b[38;2;180;120;255m/ ___ |/ /___/ _, _/ /_/ / __/ / ____/ / /   / /___  \x1b[0m");
-            eprintln!("\x1b[38;2;255;80;220m/_/  |_/_____/_/ |_|\\____/_/   /_/     /_/    \\____/  \x1b[0m");
             eprintln!(
-                "\x1b[38;2;120;255;180m  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles\x1b[0m",
+                "\x1b[1;38;2;180;120;255m  / ___ \\  __/ | | |  __/  _|   | | | |_) |\x1b[0m"
+            );
+            eprintln!(
+                "\x1b[1;38;2;255;80;220m /_/   \\_\\___|_|  \\___|_|     |_| | .__/\x1b[0m"
+            );
+            eprintln!(
+                "\x1b[1;38;2;255;210;90m                                         |_|\x1b[0m"
+            );
+            eprintln!(
+                "\x1b[1;38;2;255;255;255m  AeroFTP\x1b[0m  \x1b[38;2;120;255;180mv{}\x1b[0m  \x1b[38;2;120;255;180m|  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles\x1b[0m",
                 env!("CARGO_PKG_VERSION")
             );
             eprintln!("\x1b[38;2;170;170;190m  transfer engine for operators, shell users, and terminal obsessives\x1b[0m");
         } else {
             eprintln!();
-            eprintln!("  ___    __________  ____  __________ ______  ______");
-            eprintln!(" /   |  / ____/ __ \\/ __ \\/ ____/ __ /_  __/ / ____/");
-            eprintln!("/ /| | / __/ / /_/ / / / / /_  / /_/ / / /   / /    ");
-            eprintln!("/ ___ |/ /___/ _, _/ /_/ / __/ / ____/ / /   / /___  ");
-            eprintln!("/_/  |_/_____/_/ |_|\\____/_/   /_/     /_/    \\____/  ");
+            eprintln!("     _                 _____ _____ ");
+            eprintln!("    / \\   ___ _ __ ___|  ___|_   _|_ __ ");
+            eprintln!("   / _ \\ / _ \\ '__/ _ \\ |_    | | | '_ \\");
+            eprintln!("  / ___ \\  __/ | | |  __/  _|   | | | |_) |");
+            eprintln!(" /_/   \\_\\___|_|  \\___|_|     |_| | .__/");
+            eprintln!("                                         |_|");
             eprintln!(
-                "  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles",
+                "  AeroFTP  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles",
                 env!("CARGO_PKG_VERSION")
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
@@ -17540,10 +19456,10 @@ async fn main() {
     let cancelled_clone = cancelled.clone();
     let _ = ctrlc::set_handler(move || {
         if cancelled_clone.load(Ordering::Relaxed) {
-            // Second Ctrl+C — force exit immediately
+            // Second Ctrl+C - force exit immediately
             std::process::exit(130);
         }
-        eprintln!("\nInterrupted (Ctrl+C) — press again to force quit");
+        eprintln!("\nInterrupted (Ctrl+C) - press again to force quit");
         cancelled_clone.store(true, Ordering::Relaxed);
     });
 
@@ -17895,6 +19811,20 @@ async fn main() {
             };
             cmd_check(u, l, r, *checksum, *one_way, &cli, format).await
         }
+        Commands::Reconcile {
+            url,
+            local,
+            remote,
+            checksum,
+            one_way,
+        } => {
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), local.as_str())
+            } else {
+                (url.as_str(), local.as_str(), remote.as_str())
+            };
+            cmd_reconcile(u, l, r, *checksum, *one_way, &cli, format).await
+        }
         Commands::Stat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -18037,6 +19967,39 @@ async fn main() {
             }
             last_code
         }
+        Commands::SyncDoctor {
+            url,
+            local,
+            remote,
+            direction,
+            delete,
+            exclude,
+            track_renames,
+            conflict_mode,
+            resync,
+            checksum,
+        } => {
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), local.as_str())
+            } else {
+                (url.as_str(), local.as_str(), remote.as_str())
+            };
+            cmd_sync_doctor(
+                u,
+                l,
+                r,
+                direction,
+                *delete,
+                exclude,
+                *track_renames,
+                conflict_mode,
+                *resync,
+                *checksum,
+                &cli,
+                format,
+            )
+            .await
+        }
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 "_"
@@ -18097,6 +20060,29 @@ async fn main() {
         }
         Commands::Profiles => list_vault_profiles(&cli, format),
         Commands::AiModels => list_ai_models(&cli, format),
+        Commands::AgentBootstrap {
+            task,
+            path,
+            pattern,
+            source_profile,
+            dest_profile,
+            source_path,
+            dest_path,
+            local_path,
+            remote_path,
+        } => cmd_agent_bootstrap(
+            &cli,
+            format,
+            *task,
+            path.as_deref(),
+            pattern.as_deref(),
+            source_profile.as_deref(),
+            dest_profile.as_deref(),
+            source_path.as_deref(),
+            dest_path.as_deref(),
+            local_path.as_deref(),
+            remote_path.as_deref(),
+        ),
         Commands::AgentInfo => cmd_agent_info(&cli),
         Commands::Crypt { command } => {
             let resolve_crypt_password = |p: &Option<String>| -> Option<String> {
@@ -18192,6 +20178,49 @@ async fn main() {
         Commands::Import { command } => match command {
             ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
         },
+        Commands::Transfer {
+            source_profile,
+            dest_profile,
+            source_path,
+            dest_path,
+            recursive,
+            dry_run,
+            skip_existing,
+        } => {
+            cmd_transfer_profiles(
+                source_profile,
+                dest_profile,
+                source_path,
+                dest_path,
+                *recursive,
+                *dry_run,
+                *skip_existing,
+                &cli,
+                format,
+                cancelled,
+            )
+            .await
+        }
+        Commands::TransferDoctor {
+            source_profile,
+            dest_profile,
+            source_path,
+            dest_path,
+            recursive,
+            skip_existing,
+        } => {
+            cmd_transfer_doctor(
+                source_profile,
+                dest_profile,
+                source_path,
+                dest_path,
+                *recursive,
+                *skip_existing,
+                &cli,
+                format,
+            )
+            .await
+        }
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),
         Commands::Agent {
@@ -18461,6 +20490,64 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_s3_profile_defaults_resolves_google_preset() {
+        let mut extra = HashMap::new();
+
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("google-cloud-storage"));
+
+        assert_eq!(endpoint.as_deref(), Some("https://storage.googleapis.com"));
+        assert_eq!(extra.get("endpoint").map(|s| s.as_str()), Some("https://storage.googleapis.com"));
+        assert_eq!(extra.get("region").map(|s| s.as_str()), Some("auto"));
+        assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("true"));
+        assert_eq!(
+            extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(|s| s.as_str()),
+            Some("preset")
+        );
+        assert_eq!(
+            extra.get(S3_REGION_SOURCE_META_KEY).map(|s| s.as_str()),
+            Some("preset")
+        );
+        assert_eq!(
+            extra.get(S3_PATH_STYLE_SOURCE_META_KEY).map(|s| s.as_str()),
+            Some("preset")
+        );
+    }
+
+    #[test]
+    fn test_apply_s3_profile_defaults_resolves_wasabi_template() {
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-central-1".to_string());
+
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"));
+
+        assert_eq!(endpoint.as_deref(), Some("https://s3.eu-central-1.wasabisys.com"));
+        assert_eq!(
+            extra.get("endpoint").map(|s| s.as_str()),
+            Some("https://s3.eu-central-1.wasabisys.com")
+        );
+        assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("false"));
+    }
+
+    #[test]
+    fn test_apply_s3_profile_defaults_preserves_existing_endpoint() {
+        let mut extra = HashMap::new();
+        extra.insert(
+            "endpoint".to_string(),
+            "https://gateway.storjshare.io".to_string(),
+        );
+
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("storj"));
+
+        assert_eq!(endpoint.as_deref(), Some("https://gateway.storjshare.io"));
+        assert_eq!(
+            extra.get("endpoint").map(|s| s.as_str()),
+            Some("https://gateway.storjshare.io")
+        );
+        assert_eq!(extra.get("region").map(|s| s.as_str()), Some("global"));
+        assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("true"));
+    }
+
+    #[test]
     fn test_display_port_for_provider_parses_server_info() {
         let port =
             display_port_for_provider(&ProviderType::Ftp, Some("FTP Server: ftp.axpdev.it:21"));
@@ -18702,7 +20789,7 @@ mod tests {
 
     #[test]
     fn test_pget_plan_reduces_segments_for_small_files() {
-        // 3 MB file with 16 segments requested — each chunk would be < PGET_MIN_CHUNK_SIZE (1 MB)
+        // 3 MB file with 16 segments requested - each chunk would be < PGET_MIN_CHUNK_SIZE (1 MB)
         let chunks = plan_pget_chunks(3 * 1024 * 1024, 16);
         assert_eq!(chunks.len(), 3); // reduced to 3 segments
         let total: u64 = chunks.iter().map(|c| c.length).sum();
@@ -18733,7 +20820,7 @@ mod tests {
 
     #[test]
     fn test_pget_plan_tiny_file() {
-        // File smaller than PGET_MIN_CHUNK_SIZE — should get 1 segment
+        // File smaller than PGET_MIN_CHUNK_SIZE - should get 1 segment
         let chunks = plan_pget_chunks(500_000, 8);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].length, 500_000);

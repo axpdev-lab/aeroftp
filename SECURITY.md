@@ -35,10 +35,23 @@ AeroFTP uses encryption at multiple layers:
 | ----- | --------- | ------- |
 | AeroVault v2 containers | AES-256-GCM-SIV (RFC 8452) + Argon2id + HMAC-SHA512 | Encrypted file containers with nonce misuse resistance |
 | Archive encryption | AES-256 (ZIP, 7z) | Password-protected archives |
+| rclone crypt interoperability | XSalsa20-Poly1305 content + EME filename decryption | Compatible access to existing rclone crypt remotes |
 | Credential storage | AES-256-GCM + HKDF-SHA256 | Per-entry vault encryption |
 | Transport | TLS 1.2/1.3, SSH | Wire encryption for all protocols |
 
 Key derivation parameters exceed OWASP 2024 minimums (128 MiB vs 47 MiB, 4 iterations vs 1). AeroVault v2 is available as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io.
+
+### rclone crypt interoperability
+
+AeroFTP also documents compatibility workflows for existing `rclone crypt` remotes. This is separate from AeroVault because the format and threat model are defined by rclone, not by AeroFTP.
+
+- AeroVault and the AeroFTP crypt overlay are AeroFTP-native encryption layers
+- `rclone crypt` support is about browsing and decrypting already encrypted rclone-backed storage
+
+See the public docs for details:
+
+- [rclone Bridge](https://docs.aeroftp.app/features/rclone)
+- [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt)
 
 For the full encryption architecture, cipher comparison tables, and AeroVault v2 format specification, see [Encryption](https://docs.aeroftp.app/security/encryption).
 

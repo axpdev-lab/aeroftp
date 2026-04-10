@@ -7,7 +7,7 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers sync, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, sync, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -503,6 +503,23 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --backup-dir /tmp
 
 Bisync saves a `.aeroftp-bisync.json` snapshot after each successful sync. This enables delta detection: files deleted on one side are propagated to the other with `--delete`.
 
+### transfer — Cross-Profile Transfer
+
+Copy files directly between two saved profiles without exposing credentials in the shell.
+
+```bash
+# Preview plan, checks, and risks
+aeroftp-cli transfer-doctor "FTP Aruba" "AWS S3" /www.site.it /backup/site --json
+
+# Execute a recursive copy
+aeroftp-cli transfer "FTP Aruba" "AWS S3" /www.site.it /backup/site --recursive
+
+# Skip files that already exist on destination
+aeroftp-cli transfer "Cloudflare R2" "Wasabi" /logs /archive/logs --recursive --skip-existing
+```
+
+`transfer` uses two vault-backed profiles, one for the source and one for the destination. `transfer-doctor` is the recommended preflight for automation and agent workflows because it returns the planned copy, risk summary, and suggested next command.
+
 ### mount — FUSE Virtual Filesystem
 
 Mount any remote as a local directory. Any application can then access remote files with standard tools.
@@ -615,16 +632,16 @@ Jobs are persisted in SQLite (`~/.config/aeroftp/jobs.db`).
 
 ```bash
 # Initialize encrypted overlay on a remote directory
-aeroftp-cli --profile "S3" crypt init _ /encrypted --password "MySecret"
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt init _ /encrypted
 
 # Upload with encryption (content + filename encrypted)
-aeroftp-cli --profile "S3" crypt put ./secret.pdf _ /encrypted --password "MySecret"
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt put ./secret.pdf _ /encrypted
 
 # List (shows decrypted names)
-aeroftp-cli --profile "S3" crypt ls _ /encrypted --password "MySecret"
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
 
 # Download with decryption
-aeroftp-cli --profile "S3" crypt get secret.pdf _ /encrypted ./decrypted.pdf --password "MySecret"
+AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get secret.pdf _ /encrypted ./decrypted.pdf
 
 # Password via environment variable
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
@@ -695,6 +712,8 @@ aeroftp-cli import rclone --json
 ```
 
 Imports server profiles from rclone configuration files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and can be stored in the AES-256-GCM encrypted vault via the GUI import flow. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table and security comparison.
+
+For compatibility guidance on existing `rclone crypt` remotes, see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
 
 ### completions — Generate Shell Completion Scripts
 

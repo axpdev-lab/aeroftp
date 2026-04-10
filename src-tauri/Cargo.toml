@@ -87,6 +87,7 @@ aes-gcm = "0.10"
 aes = "0.8"                                                            # AES block cipher (Internxt)
 cbc = "0.1"                                                            # AES-CBC mode (Internxt mnemonic decryption)
 ctr = "0.9"                                                            # AES-CTR mode (Internxt file encryption)
+crypto_secretbox = "0.1"                                               # XSalsa20-Poly1305 NaCl secretbox (rclone crypt)
 
 # MEGA Integration (Quick Connect Beta v0.5.0)
 secrecy = "0.10"

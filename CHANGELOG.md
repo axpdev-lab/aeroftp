@@ -5,15 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.4.8] - 2026-04-09
+## [3.4.8] - 2026-04-10
 
-### Zoho WorkDrive rate limit fix, provider retry hardening
+### Cross-profile transfer hardening, CLI doctor workflows, public docs alignment
+
+#### Added
+
+- **CLI `reconcile` command**: New `aeroftp-cli reconcile --profile NAME ./local /remote --json` returns categorized local-vs-remote diffs for automation and agent workflows, including missing-local, missing-remote, and mismatch groups
+- **CLI doctor workflows**: Added `sync-doctor` and `transfer-doctor` preflight commands with structured checks, risk summaries, and `suggested_next_command` output so agents and scripts can move from inspection to execution without guesswork
+- **CLI `transfer` command**: Cross-profile copy between two saved vault-backed profiles is now available from the CLI, including dry-run planning, recursive copy, and `--skip-existing` support for backup-style flows
+- **CLI `agent-bootstrap`**: New task-oriented bootstrap entrypoint for AI agents with canonical workflows for explore, verify-file, transfer, backup, and reconcile scenarios
+- **Cross-profile transfer launcher in the GUI**: Added a dedicated toolbar button near AeroCloud and AeroFile, opening the new profile-to-profile transfer panel without relying on hidden entry points
 
 #### Fixed
 
 - **Zoho WorkDrive 429 rate limit**: Rapid uploads followed by directory navigation would trigger HTTP 429 (Too Many Requests) from Zoho API, causing all subsequent operations to fail. Added automatic retry with exponential backoff to list, mkdir, delete, and rename operations
 - **GitLab 429 handling**: GitLab API requests now retry automatically on rate limit (429) and server errors (5xx) instead of failing immediately
 - **Swift/Blomp retry**: OpenStack Swift requests now retry on 429/5xx before and after re-authentication
+- **Cross-profile FTP default directory**: Profile-backed FTP transfers now honor the saved remote root automatically, preventing copy plans from starting in the account root on hosting setups where the writable site folder lives under a preset directory such as `www.domain.tld`
+- **Cross-profile queue never completing**: Fixed a root-cause event contract bug where `file_start` and `file_complete` used different paths for the same file, leaving queue entries stuck in transferring state and keeping the streaming UI alive after a completed transfer
+- **Cross-profile queue cleanup hardening**: Added defensive frontend cleanup for orphan queue rows and pending file logs on `complete`, `error`, and `cancelled`, so late or mismatched events no longer leave the desktop under unnecessary load
+
+#### Improved
+
+- **Cross-profile modal redesign**: Replaced the blocking overlay-style dialog with a floating, taller, narrower panel so the queue, activity log, and progress bars remain visible while a transfer is running
+- **Profile selection UX**: Profile rails now use the same icon style as Saved Servers with favicon, custom icon, and protocol gradient support, plus protocol badges matching the rest of the app
+- **Transfer execution state**: The running state now uses a themed animated bar spinner and clearer plan/execute/done transitions, making long-running cloud-to-cloud transfers easier to monitor
+- **Cross-profile event typing**: The frontend transfer event contract now explicitly includes `cross-profile`, improving consistency between backend events, queue state, and TypeScript surfaces
+- **Select field padding**: Fixed clipped text in Location and Region dropdowns across protocol configuration forms
+- **Modal corner consistency**: Health Check and Cross-Profile modals now use `rounded-lg` matching the Settings panel style
+
+#### Changed
+
+- **Cross-profile panel i18n**: Moved the new panel's static text to English source keys and translated all 28 keys across 46 locales through the batch translation workflow
+- **rclone appendix closure**: Updated the internal appendix and backlog documents to reflect the real implementation state, marking cross-profile post-MVP work as substantially closed and moving optional Tier 3 items back to general backlog
+- **Public documentation refresh**: Updated `README.md`, `docs/CLI-GUIDE.md`, `AGENTS.md`, and `SECURITY.md`, plus the public docs site pages for CLI commands, encryption, and rclone integration
+- **New public `rclone crypt` page**: Added dedicated documentation for read-only `rclone crypt` interoperability, linked from both Features and Security so the supported scope and security boundaries are now clear to users
 
 ## [3.4.7] - 2026-04-09
 

@@ -763,7 +763,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.key_passphrase || ''}
                                     onChange={(e) => onChange({ ...options, key_passphrase: e.target.value })}
                                     disabled={disabled}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                     placeholder={t('protocol.keyPassphraseHelp')}
                                 />
                             </div>
@@ -862,7 +862,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                         placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
                         required
                     />
@@ -908,7 +908,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                 placeholder={endpointPlaceholder}
                             />
                         ) : (
@@ -948,7 +948,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.region || ''}
                                     onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                 >
                                     <option value="">{t('protocol.selectRegion')}</option>
                                     {regionField.options!.map(opt => (
@@ -961,7 +961,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     value={options.region || ''}
                                     onChange={(e) => handleRegionChange(e.target.value)}
                                     disabled={disabled}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                     placeholder={providerConfig?.defaults?.region || t('protocol.regionPlaceholder')}
                                 />
                             )}
@@ -980,7 +980,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                         disabled={disabled}
-                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                     >
                                         <option value="">{t('protocol.selectRegion')}</option>
                                         {endpointField.options.map(opt => (
@@ -993,7 +993,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         value={options.endpoint || ''}
                                         onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                         disabled={disabled}
-                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                         placeholder={endpointPlaceholder}
                                     />
                                 )}
@@ -1018,7 +1018,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                             >
                                 <option value="">{t('protocol.selectRegion')}</option>
                                 {endpointField.options.map(opt => (
@@ -1031,7 +1031,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 value={options.endpoint || ''}
                                 onChange={(e) => onChange({ ...options, endpoint: e.target.value })}
                                 disabled={disabled}
-                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                 placeholder={endpointPlaceholder}
                             />
                         )}
@@ -1165,7 +1165,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={options.bucket || ''}
                         onChange={(e) => onChange({ ...options, bucket: e.target.value })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                         placeholder={t('protocol.azureContainerPlaceholder')}
                         required
                     />
@@ -1229,7 +1229,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         value={currentTlsMode}
                         onChange={(e) => onChange({ ...options, tlsMode: e.target.value as FtpTlsMode })}
                         disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm h-[42px]"
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                     >
                         {protocol === 'ftp' && (
                             <option value="explicit_if_available">{t('protocol.encryptionExplicitIfAvailable')}</option>

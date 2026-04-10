@@ -347,7 +347,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm animate-fade-in"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
+            <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">

@@ -103,6 +103,52 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       return `${base.replace(/\/$/, '')}/${data.filename}`;
     };
 
+    const findTrackedEntry = <T,>(map: Map<string, T>, transferId: string, path?: string, filename?: string): { key: string; value: T } | null => {
+      const exactKey = `${transferId}:${path || filename || ''}`;
+      const exactValue = map.get(exactKey);
+      if (exactValue !== undefined) {
+        return { key: exactKey, value: exactValue };
+      }
+
+      const prefix = `${transferId}:`;
+      for (const [key, value] of map.entries()) {
+        if (key.startsWith(prefix)) {
+          return { key, value };
+        }
+      }
+
+      return null;
+    };
+
+    const cleanupTrackedTransferEntries = (
+      transferId: string,
+      markQueueItem?: (queueId: string) => void,
+      updatePendingFileLog?: (logId: string) => void,
+    ): void => {
+      const queueIds = new Set<string>();
+      for (const [key, queueId] of transferIdToQueueId.current.entries()) {
+        if (key === transferId || key.startsWith(`${transferId}:`)) {
+          queueIds.add(queueId);
+          transferIdToQueueId.current.delete(key);
+        }
+      }
+
+      if (markQueueItem) {
+        for (const queueId of queueIds) {
+          markQueueItem(queueId);
+        }
+      }
+
+      if (updatePendingFileLog) {
+        for (const [key, logId] of pendingFileLogIds.current.entries()) {
+          if (key.startsWith(`${transferId}:`)) {
+            updatePendingFileLog(logId);
+            pendingFileLogIds.current.delete(key);
+          }
+        }
+      }
+    };
+
     const isGroupedToastTransfer = (transferId: string): boolean =>
       transferId.includes('folder') || transferId.includes('files');
 
@@ -365,25 +411,22 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       } else if (data.event_type === 'file_complete') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
-        // Use full path as key to match file_start (handles duplicate filenames across subdirs)
-        const fileKey = `${data.transfer_id}:${data.path || data.filename}`;
-        const existingId = pendingFileLogIds.current.get(fileKey);
+        const trackedLog = findTrackedEntry(pendingFileLogIds.current, data.transfer_id, data.path, data.filename);
         const displayName = data.path || data.filename;
         const successKey = data.direction === 'upload' ? 'activity.upload_success' : 'activity.download_success';
         const msg = t(successKey, { filename: displayName, location: loc, details: '' }).trim();
-        if (existingId) {
-          activityLog.updateEntry(existingId, { status: 'success', message: msg });
-          pendingFileLogIds.current.delete(fileKey);
+        if (trackedLog) {
+          activityLog.updateEntry(trackedLog.value, { status: 'success', message: msg });
+          pendingFileLogIds.current.delete(trackedLog.key);
         } else {
           humanLog.logRaw(successKey, data.direction === 'upload' ? 'UPLOAD' : 'DOWNLOAD',
             { filename: displayName, location: loc, details: '' }, 'success');
         }
 
-        // Complete individual file queue item (key matches file_start)
-        const fileQueueId = transferIdToQueueId.current.get(fileKey);
-        if (fileQueueId) {
-          transferQueue.completeTransfer(fileQueueId);
-          transferIdToQueueId.current.delete(fileKey);
+        const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
+        if (trackedQueue) {
+          transferQueue.completeTransfer(trackedQueue.value);
+          transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
         const existingLane = toastLanesRef.current.get(data.transfer_id);
@@ -405,12 +448,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
           'ERROR', { filename: displayName, location: loc }, 'error');
 
-        // Fail individual file queue item (key matches file_start)
-        const fileErrorKey = `${data.transfer_id}:${data.path || data.filename}`;
-        const fileErrQueueId = transferIdToQueueId.current.get(fileErrorKey);
-        if (fileErrQueueId) {
-          transferQueue.failTransfer(fileErrQueueId, data.message || 'Transfer failed');
-          transferIdToQueueId.current.delete(fileErrorKey);
+        const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
+        if (trackedQueue) {
+          transferQueue.failTransfer(trackedQueue.value, data.message || 'Transfer failed');
+          transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
         const existingLane = toastLanesRef.current.get(data.transfer_id);
@@ -575,6 +616,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.completeTransfer(queueId);
           transferIdToQueueId.current.delete(data.transfer_id);
         }
+        cleanupTrackedTransferEntries(
+          data.transfer_id,
+          (orphanQueueId) => transferQueue.completeTransfer(orphanQueueId),
+          (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'success', message: formattedMessage })
+        );
 
         if (data.direction === 'upload') optRef.current.loadRemoteFiles();
         else if (data.direction === 'download') optRef.current.loadLocalFiles(optRef.current.currentLocalPath);
@@ -608,6 +654,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferQueue.failTransfer(queueId, data.message || 'Transfer failed');
           transferIdToQueueId.current.delete(data.transfer_id);
         }
+        cleanupTrackedTransferEntries(
+          data.transfer_id,
+          (orphanQueueId) => transferQueue.failTransfer(orphanQueueId, data.message || 'Transfer failed'),
+          (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'error', message: data.message || formattedMessage })
+        );
         transferIdToDisplayPath.current.delete(data.transfer_id);
 
         notify.error(t('transfer.failed'), data.message);
@@ -642,23 +693,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
         transferIdToDisplayPath.current.delete(data.transfer_id);
 
-        // Clean up any in-progress file log entries that belong to this folder transfer.
-        // Keys in pendingFileLogIds are like "dl-folder-123-5:/path/to/file" where
-        // the prefix before ":" contains the folder's transfer_id.
-        const cancelPrefix = data.transfer_id;
-        for (const [fileKey, fileLogId] of pendingFileLogIds.current.entries()) {
-          if (fileKey.startsWith(cancelPrefix)) {
-            activityLog.updateEntry(fileLogId, { status: 'error', message: cancelledMsg });
-            pendingFileLogIds.current.delete(fileKey);
-          }
-        }
-        // Also clean up file-level queue items
-        for (const [fileKey, fileQueueId] of transferIdToQueueId.current.entries()) {
-          if (fileKey.startsWith(cancelPrefix) && fileKey.includes(':')) {
-            transferQueue.failTransfer(fileQueueId, cancelledMsg);
-            transferIdToQueueId.current.delete(fileKey);
-          }
-        }
+        cleanupTrackedTransferEntries(
+          data.transfer_id,
+          (orphanQueueId) => transferQueue.failTransfer(orphanQueueId, cancelledMsg),
+          (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'error', message: cancelledMsg })
+        );
 
         notify.warning(t('transfer.cancelled'), data.message);
       }

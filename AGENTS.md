@@ -1,7 +1,7 @@
 # AeroFTP CLI — Agent Integration Guide
 
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
-> It describes how to use AeroFTP CLI for file transfer operations without credentials.
+> It describes how to use AeroFTP CLI for remote operations without credentials.
 
 ## Quick Start
 
@@ -20,6 +20,9 @@ aeroftp-cli get --profile "Server Name" /remote/file.txt ./local-file.txt
 
 # 5. Sync a directory
 aeroftp-cli sync --profile "Server Name" ./local-dir/ /remote-dir/ --dry-run
+
+# 6. Cross-profile copy between two saved servers
+aeroftp-cli transfer "Source Server" "Destination Server" /src/path /dst/path --recursive
 ```
 
 ## How Credentials Work
@@ -92,6 +95,8 @@ The `profiles --json` output:
 | `put glob` | `aeroftp-cli put --profile NAME "./*.json" /remote/` | Upload matching files |
 | `sync` | `aeroftp-cli sync --profile NAME ./local/ /remote/` | Bidirectional sync |
 | `sync --dry-run` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
+| `transfer` | `aeroftp-cli transfer "SRC" "DST" /src /dst --recursive` | Cross-profile transfer between saved servers |
+| `transfer-doctor` | `aeroftp-cli transfer-doctor "SRC" "DST" /src /dst --json` | Preflight plan and risk summary |
 
 ### Advanced Operations
 
@@ -106,10 +111,10 @@ The `profiles --json` output:
 | `daemon start` | `aeroftp-cli daemon start` | Start background service |
 | `jobs add` | `aeroftp-cli jobs add get --profile NAME /file` | Queue background transfer |
 | `jobs list` | `aeroftp-cli jobs list` | List queued/running jobs |
-| `crypt init` | `aeroftp-cli --profile NAME crypt init _ /dir --password P` | Init encrypted overlay |
-| `crypt put` | `aeroftp-cli --profile NAME crypt put ./file _ /dir --password P` | Upload encrypted |
-| `crypt get` | `aeroftp-cli --profile NAME crypt get filename _ /dir ./out --password P` | Download + decrypt |
-| `crypt ls` | `aeroftp-cli --profile NAME crypt ls _ /dir --password P` | List decrypted names |
+| `crypt init` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt init _ /dir` | Init encrypted overlay |
+| `crypt put` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt put ./file _ /dir` | Upload encrypted |
+| `crypt get` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt get filename _ /dir ./out` | Download + decrypt |
+| `crypt ls` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt ls _ /dir` | List decrypted names |
 
 ### Info Operations
 
@@ -165,7 +170,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 - `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`
 
 ### Operations that modify remote state (inform user before executing)
-- `put`, `mkdir`, `mv`, `sync`
+- `put`, `mkdir`, `mv`, `sync`, `transfer`, `crypt put`, `crypt init`
 
 ### Destructive operations (always confirm with user first)
 - `rm`, `rm -rf`, `sync --delete`
@@ -173,6 +178,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 ### Never do
 - Do not ask the user for passwords — use `--profile`
 - Do not pass credentials in URLs
+- Do not pass crypt passwords directly on the command line when `AEROFTP_CRYPT_PASSWORD` can be used
 - Do not read the vault files directly
 - Do not use `--insecure` unless the user explicitly requests it
 
