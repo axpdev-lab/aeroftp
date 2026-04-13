@@ -52,7 +52,7 @@ reqwest = { version = "0.13", features = ["json", "stream", "multipart"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
 notify = { version = "8", default-features = true }                          # Filesystem watcher (v8 required by debouncer-full 0.6)
 notify-debouncer-full = "0.6"                                               # Debouncer with rename tracking, event dedup, quiet-period batching
-tauri-plugin-single-instance = "2.3.6"
+tauri-plugin-single-instance = "2.4.1"
 tauri-plugin-autostart = "2"                                               # Launch on system startup
 tauri-plugin-window-state = "2"
 
