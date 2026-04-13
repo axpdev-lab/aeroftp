@@ -52,7 +52,8 @@ interface RcloneImportResult {
 
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | 'winscp' | 'winscp-export' | null>(null);
+    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | 'winscp' | 'winscp-export' | 'filezilla' | 'filezilla-export' | 'bridge-import' | 'bridge-export' | null>(null);
+    const [bridgeApp, setBridgeApp] = useState<'rclone' | 'winscp' | 'filezilla'>('rclone');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -71,6 +72,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [winscpDetectedPath, setWinscpDetectedPath] = useState<string | null>(null);
     const [winscpResult, setWinscpResult] = useState<RcloneImportResult | null>(null);
     const [winscpSelectedIds, setWinscpSelectedIds] = useState<Set<string>>(new Set());
+
+    // FileZilla-specific state
+    const [filezillaDetectedPath, setFilezillaDetectedPath] = useState<string | null>(null);
+    const [filezillaResult, setFilezillaResult] = useState<RcloneImportResult | null>(null);
+    const [filezillaSelectedIds, setFilezillaSelectedIds] = useState<Set<string>>(new Set());
 
     const allSelected = selectedServerIds.size === servers.length;
     const noneSelected = selectedServerIds.size === 0;
@@ -108,6 +114,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             }).catch(() => setWinscpDetectedPath(''));
         }
     }, [mode, winscpDetectedPath]);
+
+    // Auto-detect FileZilla config when entering filezilla mode
+    useEffect(() => {
+        if ((mode === 'filezilla' || (mode === 'bridge-import' && bridgeApp === 'filezilla')) && filezillaDetectedPath === null) {
+            invoke<string | null>('detect_filezilla_config').then(path => {
+                setFilezillaDetectedPath(path || '');
+            }).catch(() => setFilezillaDetectedPath(''));
+        }
+    }, [mode, bridgeApp, filezillaDetectedPath]);
 
     const toggleServer = (id: string) => {
         setSelectedServerIds(prev => {
@@ -450,6 +465,121 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
+    // ---- FileZilla import handlers ----
+
+    const handleFilezillaScan = async (customPath?: string) => {
+        const filePath = customPath || filezillaDetectedPath;
+        if (!filePath) return;
+        setLoading(true);
+        setError(null);
+        setFilezillaResult(null);
+        try {
+            const result = await invoke<RcloneImportResult>('import_filezilla_config', { filePath });
+            setFilezillaResult(result);
+            setFilezillaSelectedIds(new Set(result.servers.map(s => s.id)));
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFilezillaBrowse = async () => {
+        const filePath = await open({
+            title: t('settings.filezillaSelectConfig'),
+            filters: [
+                { name: 'FileZilla config', extensions: ['xml'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
+            multiple: false,
+        });
+        if (!filePath) return;
+        setFilezillaDetectedPath(filePath);
+        await handleFilezillaScan(filePath);
+    };
+
+    const handleFilezillaConfirm = () => {
+        if (!filezillaResult) return;
+        const selected: ServerProfile[] = filezillaResult.servers
+            .filter(s => filezillaSelectedIds.has(s.id))
+            .map(s => ({
+                id: s.id, name: s.name, host: s.host, port: s.port, username: s.username,
+                protocol: s.protocol as ServerProfile['protocol'],
+                initialPath: s.initialPath,
+                options: s.options as ServerProfile['options'],
+                providerId: s.providerId,
+                hasStoredCredential: s.hasStoredCredential || false,
+            }));
+        const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+        const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+        const backup = localStorage.getItem('aeroftp-saved-servers');
+        if (updated.length > 0) {
+            try {
+                const stored = backup;
+                if (stored) {
+                    const current: ServerProfile[] = JSON.parse(stored);
+                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
+                }
+            } catch { /* fallback */ }
+        }
+        try {
+            onImport([...updated, ...added]);
+        } catch {
+            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            setError('Import failed. No changes were made.');
+            return;
+        }
+        const parts: string[] = [];
+        if (added.length > 0) parts.push(t('settings.importSuccess').replace('{count}', String(added.length)));
+        if (updated.length > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(updated.length)));
+        setSuccess(parts.join(', '));
+        setTimeout(() => onClose(), 2500);
+    };
+
+    const toggleFilezillaServer = (id: string) => {
+        setFilezillaSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAllFilezilla = () => {
+        if (!filezillaResult) return;
+        if (filezillaSelectedIds.size === filezillaResult.servers.length) {
+            setFilezillaSelectedIds(new Set());
+        } else {
+            setFilezillaSelectedIds(new Set(filezillaResult.servers.map(s => s.id)));
+        }
+    };
+
+    const handleFilezillaExport = async () => {
+        if (noneSelected) return;
+        const filePath = await save({
+            title: t('settings.filezillaExportTitle'),
+            filters: [{ name: 'FileZilla config', extensions: ['xml'] }],
+            defaultPath: 'sitemanager.xml',
+        });
+        if (!filePath) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const serversJson = JSON.stringify(selectedServers);
+            const result = await invoke<{ exported: number }>('export_filezilla_config', {
+                serversJson, includeCredentials, filePath,
+            });
+            setSuccess(t('settings.filezillaExportSuccess').replace('{count}', String(result.exported)));
+            setTimeout(() => onClose(), 2000);
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // ---- WinSCP export handler ----
 
     const handleWinscpExport = async () => {
@@ -518,6 +648,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setRcloneSelectedIds(new Set());
         setWinscpResult(null);
         setWinscpSelectedIds(new Set());
+        setFilezillaResult(null);
+        setFilezillaSelectedIds(new Set());
     };
 
     // Protocol display helper
@@ -530,7 +662,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                         <Shield size={20} className="text-blue-500" />
-                        {t('settings.exportImport')}
+                        {mode === 'rclone' ? t('settings.rcloneImport')
+                            : mode === 'winscp' ? t('settings.winscpImport')
+                            : mode === 'filezilla' ? t('settings.filezillaImport')
+                            : mode === 'rclone-export' ? t('settings.rcloneExport')
+                            : mode === 'winscp-export' ? t('settings.winscpExport')
+                            : mode === 'filezilla-export' ? t('settings.filezillaExport')
+                            : mode === 'bridge-import' ? t('settings.bridgeImport')
+                            : mode === 'bridge-export' ? t('settings.bridgeExport')
+                            : t('settings.exportImport')}
                     </h3>
                     <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
                         <X size={18} />
@@ -570,71 +710,93 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     </div>
                                 </div>
                             </button>
-                            {/* rclone section */}
+                            {/* Bridge section - unified import/export for third-party clients */}
                             <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-3">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">rclone</div>
+                                <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">{t('settings.bridgeTitle')}</div>
                                 <button
-                                    onClick={() => setMode('rclone')}
-                                    className="w-full p-4 border border-orange-200 dark:border-orange-800/50 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center gap-3 transition-colors"
+                                    onClick={() => setMode('bridge-import')}
+                                    className="w-full p-4 border border-cyan-200 dark:border-cyan-800/50 rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-900/20 flex items-center gap-3 transition-colors"
                                 >
-                                    <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                                        <FolderInput size={20} className="text-orange-600 dark:text-orange-400" />
+                                    <div className="w-10 h-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                                        <FolderInput size={20} className="text-cyan-600 dark:text-cyan-400" />
                                     </div>
                                     <div className="text-left">
-                                        <div className="font-medium">{t('settings.rcloneImport')}</div>
+                                        <div className="font-medium">{t('settings.bridgeImport')}</div>
                                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                                            {t('settings.rcloneImportDesc')}
+                                            {t('settings.bridgeImportDesc')}
                                         </div>
                                     </div>
                                 </button>
                                 <button
-                                    onClick={() => setMode('rclone-export')}
+                                    onClick={() => setMode('bridge-export')}
                                     disabled={servers.length === 0}
-                                    className="w-full p-4 border border-orange-200 dark:border-orange-800/50 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                    className="w-full p-4 border border-cyan-200 dark:border-cyan-800/50 rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-900/20 flex items-center gap-3 transition-colors disabled:opacity-50"
                                 >
-                                    <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                                        <Download size={20} className="text-orange-600 dark:text-orange-400" />
+                                    <div className="w-10 h-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                                        <Download size={20} className="text-cyan-600 dark:text-cyan-400" />
                                     </div>
                                     <div className="text-left">
-                                        <div className="font-medium">{t('settings.rcloneExport')}</div>
+                                        <div className="font-medium">{t('settings.bridgeExport')}</div>
                                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                                            {t('settings.rcloneExportDesc')}
+                                            {t('settings.bridgeExportDesc')}
                                         </div>
                                     </div>
                                 </button>
                             </div>
-                            {/* WinSCP section */}
-                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-3">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">WinSCP</div>
+                        </div>
+                    ) : mode === 'bridge-import' ? (
+                        /* ---- Bridge Import: select source app ---- */
+                        <div className="space-y-4">
+                            <div className="text-sm text-gray-600 dark:text-gray-300">{t('settings.bridgeSelectSource')}</div>
+                            {([
+                                { id: 'rclone' as const, label: 'rclone', desc: t('settings.rcloneImportDesc'), iconColor: 'text-orange-500', iconBg: 'bg-orange-100 dark:bg-orange-900/30' },
+                                { id: 'winscp' as const, label: 'WinSCP', desc: t('settings.winscpImportDesc'), iconColor: 'text-purple-500', iconBg: 'bg-purple-100 dark:bg-purple-900/30' },
+                                { id: 'filezilla' as const, label: 'FileZilla', desc: t('settings.filezillaImportDesc'), iconColor: 'text-emerald-500', iconBg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+                            ]).map(app => (
                                 <button
-                                    onClick={() => setMode('winscp')}
-                                    className="w-full p-4 border border-purple-200 dark:border-purple-800/50 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 flex items-center gap-3 transition-colors"
+                                    key={app.id}
+                                    onClick={() => setMode(app.id)}
+                                    className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors"
                                 >
-                                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                                        <FolderInput size={20} className="text-purple-600 dark:text-purple-400" />
+                                    <div className={`w-10 h-10 rounded-lg ${app.iconBg} flex items-center justify-center`}>
+                                        <FolderInput size={20} className={app.iconColor} />
                                     </div>
                                     <div className="text-left">
-                                        <div className="font-medium">{t('settings.winscpImport')}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                                            {t('settings.winscpImportDesc')}
-                                        </div>
+                                        <div className="font-medium">{app.label}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">{app.desc}</div>
                                     </div>
                                 </button>
+                            ))}
+                            <div className="flex gap-2">
+                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
+                            </div>
+                        </div>
+                    ) : mode === 'bridge-export' ? (
+                        /* ---- Bridge Export: select target app ---- */
+                        <div className="space-y-4">
+                            <div className="text-sm text-gray-600 dark:text-gray-300">{t('settings.bridgeSelectTarget')}</div>
+                            {([
+                                { id: 'rclone-export' as const, label: 'rclone', desc: t('settings.rcloneExportDesc'), iconColor: 'text-orange-500', iconBg: 'bg-orange-100 dark:bg-orange-900/30' },
+                                { id: 'winscp-export' as const, label: 'WinSCP', desc: t('settings.winscpExportDesc'), iconColor: 'text-purple-500', iconBg: 'bg-purple-100 dark:bg-purple-900/30' },
+                                { id: 'filezilla-export' as const, label: 'FileZilla', desc: t('settings.filezillaExportDesc'), iconColor: 'text-emerald-500', iconBg: 'bg-emerald-100 dark:bg-emerald-900/30' },
+                            ]).map(app => (
                                 <button
-                                    onClick={() => setMode('winscp-export')}
+                                    key={app.id}
+                                    onClick={() => setMode(app.id)}
                                     disabled={servers.length === 0}
-                                    className="w-full p-4 border border-purple-200 dark:border-purple-800/50 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                    className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
                                 >
-                                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                                        <Download size={20} className="text-purple-600 dark:text-purple-400" />
+                                    <div className={`w-10 h-10 rounded-lg ${app.iconBg} flex items-center justify-center`}>
+                                        <Download size={20} className={app.iconColor} />
                                     </div>
                                     <div className="text-left">
-                                        <div className="font-medium">{t('settings.winscpExport')}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                                            {t('settings.winscpExportDesc')}
-                                        </div>
+                                        <div className="font-medium">{app.label}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">{app.desc}</div>
                                     </div>
                                 </button>
+                            ))}
+                            <div className="flex gap-2">
+                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
                             </div>
                         </div>
                     ) : mode === 'export' ? (
@@ -1289,7 +1451,151 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 </button>
                             </div>
                         </div>
-                    ) : (
+                    ) : mode === 'filezilla' ? (
+                        /* ---- FileZilla Import Mode ---- */
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                                <Shield size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-green-700 dark:text-green-300">
+                                    {t('settings.filezillaSecurityUpgrade')}
+                                </div>
+                            </div>
+
+                            {!filezillaResult ? (
+                                <>
+                                    {filezillaDetectedPath === null ? (
+                                        <div className="flex items-center justify-center py-6">
+                                            <RefreshCw size={20} className="animate-spin text-gray-400" />
+                                            <span className="ml-2 text-sm text-gray-500">{t('settings.filezillaDetecting')}</span>
+                                        </div>
+                                    ) : filezillaDetectedPath ? (
+                                        <div className="space-y-3">
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.filezillaConfigFound')}</div>
+                                                <div className="text-sm font-mono truncate" title={filezillaDetectedPath}>{filezillaDetectedPath}</div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleFilezillaScan()} disabled={loading} className="flex-1 px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                                                    {loading ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <FolderInput size={16} />}
+                                                    {loading ? t('settings.filezillaScanning') : t('settings.filezillaScanConfig')}
+                                                </button>
+                                                <button onClick={handleFilezillaBrowse} disabled={loading} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('settings.filezillaBrowse')}</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                                <div className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2"><AlertCircle size={14} />{t('settings.filezillaNotFound')}</div>
+                                                <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">{t('settings.filezillaNotFoundHint')}</div>
+                                            </div>
+                                            <button onClick={handleFilezillaBrowse} disabled={loading} className="w-full px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                                                <FolderInput size={16} />{t('settings.filezillaBrowse')}
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                                        {t('settings.filezillaFound').replace('{total}', String(filezillaResult.totalRemotes)).replace('{supported}', String(filezillaResult.servers.length))}
+                                    </div>
+                                    {filezillaResult.servers.length > 0 && (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.filezillaSelectSites')}</span>
+                                                <button onClick={toggleAllFilezilla} className="text-xs text-blue-500 hover:text-blue-600 font-medium">
+                                                    {filezillaSelectedIds.size === filezillaResult.servers.length ? t('settings.deselectAll') : t('settings.selectAll')}
+                                                </button>
+                                            </div>
+                                            <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
+                                                {filezillaResult.servers.map((server) => (
+                                                    <div key={server.id} className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) ? 'opacity-50' : ''}`} onClick={() => toggleFilezillaServer(server.id)}>
+                                                        <Checkbox checked={filezillaSelectedIds.has(server.id)} onChange={() => toggleFilezillaServer(server.id)} />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                                                                {server.name}
+                                                                {existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium whitespace-nowrap">{t('settings.alreadyExists')}</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                                {server.host}{server.port !== 443 ? `:${server.port}` : ''}{server.username ? ` - ${server.username}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                            {server.hasStoredCredential && <Lock size={12} className="text-green-500" />}
+                                                            <span className="text-[10px] text-gray-400 uppercase">{protocolLabel(server.protocol)}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{filezillaSelectedIds.size} / {filezillaResult.servers.length} {t('settings.selected')}</div>
+                                        </div>
+                                    )}
+                                    {filezillaResult.skipped.length > 0 && (
+                                        <div>
+                                            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('settings.filezillaSkipped')} ({filezillaResult.skipped.length})</div>
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+                                                {filezillaResult.skipped.map((s, i) => (
+                                                    <div key={i} className="truncate"><span className="font-medium">{s.name}</span><span className="mx-1">-</span><span>Protocol {s.rcloneType}</span></div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                            {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+                            {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+                            <div className="flex gap-2">
+                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
+                                {filezillaResult && filezillaResult.servers.length > 0 && (
+                                    <button onClick={handleFilezillaConfirm} disabled={filezillaSelectedIds.size === 0} className="flex-1 px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                                        <Upload size={16} />{t('settings.filezillaImportSelected').replace('{count}', String(filezillaSelectedIds.size))}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : mode === 'filezilla-export' ? (
+                        /* ---- FileZilla Export Mode ---- */
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                                <FolderInput size={16} className="text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-emerald-700 dark:text-emerald-300">{t('settings.filezillaExportNotice')}</div>
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.selectServersToExport')}</span>
+                                    <button onClick={toggleAll} className="text-xs text-blue-500 hover:text-blue-600 font-medium">{allSelected ? t('settings.deselectAll') : t('settings.selectAll')}</button>
+                                </div>
+                                <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
+                                    {servers.map((server) => (
+                                        <div key={server.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0" onClick={() => toggleServer(server.id)}>
+                                            <Checkbox checked={selectedServerIds.has(server.id)} onChange={() => toggleServer(server.id)} />
+                                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: server.color || '#6B7280' }} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-medium truncate">{server.name}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{server.host}:{server.port} - {server.username}</div>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">{server.protocol || 'ftp'}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{selectedServerIds.size} / {servers.length} {t('settings.selected')}</div>
+                            </div>
+                            <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                                <Checkbox checked={includeCredentials} onChange={setIncludeCredentials} label={<div><div className="text-sm font-medium flex items-center gap-1"><Lock size={14} />{t('settings.includeCredentials')}</div><div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.filezillaExportCredHint')}</div></div>} />
+                            </div>
+                            {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+                            {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+                            <div className="flex gap-2">
+                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
+                                <button onClick={handleFilezillaExport} disabled={loading || noneSelected} className="flex-1 px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                                    {loading ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" /> : <Download size={16} />}
+                                    {loading ? t('settings.exporting') : t('settings.filezillaExportButton').replace('{count}', String(selectedServerIds.size))}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (mode === 'rclone-export') ? (
                         /* ---- Rclone Export Mode ---- */
                         <div className="space-y-4">
                             {/* Info notice */}
@@ -1390,7 +1696,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 </button>
                             </div>
                         </div>
-                    )}
+                    ) : null}
                 </div>
             </div>
         </div>

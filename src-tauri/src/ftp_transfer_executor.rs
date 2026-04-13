@@ -127,7 +127,10 @@ impl TransferExecutor for FtpDownloadExecutor {
                         async move {
                             let manager = manager.ok_or("FTP session lease is no longer valid".to_string())?;
                             let mut ftp = manager.lock().await;
-                            ftp.apply_transfer_timeout(self.runtime_settings.timeout_seconds);
+                            // Scale timeout based on file size: at least 2s per MB, minimum from settings
+                            let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
+                            let effective_timeout = self.runtime_settings.timeout_seconds.max(size_based_timeout);
+                            ftp.apply_transfer_timeout(effective_timeout);
 
                             let (parent_dir, remote_name) = split_remote_path(&remote_path);
                             ftp.change_dir(&parent_dir)
@@ -343,7 +346,10 @@ impl TransferExecutor for FtpUploadExecutor {
                             let manager =
                                 manager.ok_or("FTP session lease is no longer valid".to_string())?;
                             let mut ftp = manager.lock().await;
-                            ftp.apply_transfer_timeout(self.runtime_settings.timeout_seconds);
+                            // Scale timeout based on file size: at least 1s per MB, minimum from settings
+                            let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
+                            let effective_timeout = self.runtime_settings.timeout_seconds.max(size_based_timeout);
+                            ftp.apply_transfer_timeout(effective_timeout);
                             let (parent_dir, remote_name) = split_remote_path(&remote_path);
                             ftp.change_dir(&parent_dir)
                                 .await

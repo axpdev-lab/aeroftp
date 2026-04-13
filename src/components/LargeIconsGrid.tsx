@@ -172,7 +172,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
       data-file-card
       className={cardClasses}
       title={tooltip}
-      draggable={file.name !== '..'}
+      draggable={file.name !== '..' && !isRenaming}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
@@ -257,7 +257,7 @@ export function LargeIconsGrid({
       className={`flex flex-col items-center p-3 rounded-lg cursor-pointer transition-colors select-none ${
         isAtRoot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700/30'
       }`}
-      onClick={handleNavigateUp}
+      onDoubleClick={handleNavigateUp}
       title="Go up"
     >
       <div className="flex items-center justify-center w-16 h-16">

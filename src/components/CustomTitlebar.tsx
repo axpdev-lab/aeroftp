@@ -334,7 +334,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
             {/* Write a Review (SourceForge) */}
             <button
                 onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/reviews/new')}
-                className="h-6 flex items-center gap-1 px-2 rounded bg-green-600/80 hover:bg-green-600 text-white text-[10px] font-medium transition-colors cursor-pointer"
+                className="h-6 flex items-center gap-1 px-2 rounded bg-green-600/80 hover:bg-green-600 text-white text-xs font-medium transition-colors cursor-pointer"
                 title={t('about.sourceforgeReviews')}
             >
                 <SourceForgeLogo size={10} />
@@ -403,7 +403,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 {isConnected ? (
                     <button
                         onClick={onDisconnect}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
                         title={t('common.disconnect')}
                     >
                         <LogOut size={11} />
@@ -412,7 +412,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 ) : !showConnectionScreen && (
                     <button
                         onClick={onShowConnectionScreen}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-[11px] rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
+                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
                         title={t('common.connect')}
                     >
                         <Cloud size={11} />

@@ -1180,9 +1180,46 @@ impl StorageProvider for WebDavProvider {
             )),
             StatusCode::METHOD_NOT_ALLOWED => {
                 tracing::debug!(
-                    "[WebDAV] PROPFIND / returned 405, retrying with OPTIONS for capability check"
+                    "[WebDAV] PROPFIND / returned 405, trying well-known WebDAV paths"
                 );
 
+                // Try well-known Nextcloud/ownCloud WebDAV paths before falling back to OPTIONS
+                let username = &self.config.username;
+                let well_known_paths: Vec<String> = if !username.is_empty() {
+                    vec![
+                        format!("/remote.php/dav/files/{}/", username),
+                        "/remote.php/webdav/".to_string(),
+                    ]
+                } else {
+                    vec!["/remote.php/webdav/".to_string()]
+                };
+
+                for wk_path in &well_known_paths {
+                    tracing::debug!("[WebDAV] Trying well-known path: {}", wk_path);
+                    let wk_response = self
+                        .request(webdav_methods::propfind(), wk_path)
+                        .header("Depth", "0")
+                        .header("Content-Type", "application/xml")
+                        .body(propfind_body)
+                        .send()
+                        .await;
+
+                    if let Ok(resp) = wk_response {
+                        let st = resp.status();
+                        if st == StatusCode::OK || st == StatusCode::MULTI_STATUS {
+                            tracing::info!(
+                                "[WebDAV] Auto-detected WebDAV path: {} ({})",
+                                wk_path, st
+                            );
+                            self.connected = true;
+                            self.current_path = wk_path.clone();
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // No well-known path worked, fall back to OPTIONS on root
+                tracing::debug!("[WebDAV] No well-known path worked, trying OPTIONS /");
                 let options_response = self
                     .request(Method::OPTIONS, "/")
                     .send()

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-04-13
+
+### Profile Bridge hub, FileZilla import/export, Nextcloud auto-detect, transfer engine fixes
+
+#### Added
+
+- **FileZilla import/export bridge**: Import sites from FileZilla `sitemanager.xml` and export back. Supports FTP, SFTP, FTPS (implicit and explicit), and S3. Passwords decoded from base64 and upgraded to AES-256-GCM encrypted vault. GUI and CLI (`aeroftp import filezilla`)
+- **Unified Bridge interface**: Single "Bridge" section in Export/Import with app selector (rclone, WinSCP, FileZilla) instead of separate sections per tool. Contextual modal titles ("Import from rclone", "Export to FileZilla")
+- **FileZilla Bridge documentation**: New page at [docs.aeroftp.app/features/filezilla](https://docs.aeroftp.app/features/filezilla)
+
+#### Fixed
+
+- **Nextcloud WebDAV auto-detection**: When connecting to a Nextcloud/ownCloud server without specifying the WebDAV path, AeroFTP now automatically discovers `/remote.php/dav/files/{username}/` or `/remote.php/webdav/` instead of failing with 405 on root. No manual path configuration needed. Follow-up to [#95](https://github.com/axpdev-lab/aeroftp/issues/95)
+- **Large files in folder transfers timing out**: Transfer timeout was fixed at 30 seconds regardless of file size. A 70MB file at 1MB/s would always timeout and restart from zero. Timeout now scales with file size (2s per MB + 30s base). Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **"Skip if identical" skipping all files**: The folder merge dialog sent `merge_skip_identical` but the backend only recognized `skip_if_identical`. Backend now accepts both naming conventions. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Retry queue stuck in pending**: Clicking "Retry All Failed" did nothing because retry callbacks were cleared when the batch completed. Callbacks are now preserved for failed items. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **AeroSync crash on compare with differences**: An unexpected comparison status caused an undefined property access. Added fallback for unknown status values. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Hover animation shifting files right**: Removed `translateX(2px)` on table row hover that caused distracting rightward shift. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Drag and drop interfering with rename**: Dragging is now disabled while a rename input is active, allowing normal text selection. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Parent folder single-click inconsistency**: The ".." parent folder entry now requires double-click, consistent with regular folders. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Font size not scaling on titlebar buttons**: Disconnect, Write a Review, and Connect buttons used hardcoded pixel sizes. Now use scalable `text-xs` that respects the font size setting. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+- **Ukrainian and Russian "Write a Review" button**: Fixed Latin transliteration to proper Cyrillic text. Reported in [#73](https://github.com/axpdev-lab/aeroftp/issues/73)
+
+#### Improved
+
+- **README Bridge section**: Unified comparison table for all three bridge tools (rclone, WinSCP, FileZilla) with protocol count, password handling, and docs links
+
 ## [3.4.9] - 2026-04-13
 
 ### WinSCP bridge, macOS quit fix, security hardening, dependency updates

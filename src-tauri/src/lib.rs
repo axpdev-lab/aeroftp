@@ -59,6 +59,7 @@ mod profile_export;
 mod rclone_crypt;
 pub mod rclone_import;
 pub mod winscp_import;
+pub mod filezilla_import;
 mod provider_transfer_executor;
 mod provider_commands;
 pub mod providers;
@@ -2279,14 +2280,14 @@ pub fn should_skip_file_download(
 
     match action {
         "skip" => true,
-        "overwrite_if_newer" => {
+        "overwrite_if_newer" | "merge_overwrite_newer" => {
             // Skip if source is NOT newer than destination
             match (source_modified, dest_modified) {
                 (Some(src), Some(dst)) => src.timestamp() <= dst.timestamp() + TOLERANCE_SECS,
                 _ => false, // If unknown dates, don't skip (overwrite)
             }
         }
-        "overwrite_if_different" | "skip_if_identical" => {
+        "overwrite_if_different" | "skip_if_identical" | "merge_skip_identical" => {
             // Skip if date AND size are the same
             let size_same = source_size == dest_size;
             let date_same = match (source_modified, dest_modified) {
@@ -2319,14 +2320,14 @@ fn should_skip_file_upload(
 
     match action {
         "skip" => true,
-        "overwrite_if_newer" => {
+        "overwrite_if_newer" | "merge_overwrite_newer" => {
             // Skip if local (source) is NOT newer than remote (dest)
             match (local_modified, remote_modified) {
                 (Some(src), Some(dst)) => src.timestamp() <= dst.timestamp() + TOLERANCE_SECS,
                 _ => false,
             }
         }
-        "overwrite_if_different" | "skip_if_identical" => {
+        "overwrite_if_different" | "skip_if_identical" | "merge_skip_identical" => {
             let size_same = local_size == remote_size;
             let date_same = match (local_modified, remote_modified) {
                 (Some(src), Some(dst)) => {
@@ -10221,6 +10222,145 @@ async fn export_winscp_config(
     }))
 }
 
+// ============ FileZilla Config Import/Export ============
+
+#[tauri::command]
+async fn detect_filezilla_config() -> Result<Option<String>, String> {
+    Ok(filezilla_import::default_filezilla_config_path().map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+async fn import_filezilla_config(file_path: String) -> Result<serde_json::Value, String> {
+    let path = std::path::Path::new(&file_path);
+
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if !(file_name.ends_with(".xml") || file_name.to_lowercase().contains("sitemanager")) {
+        return Err("Invalid file type. Expected .xml file or sitemanager configuration.".to_string());
+    }
+
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "File not found or inaccessible".to_string())?;
+
+    let metadata = std::fs::metadata(&canonical)
+        .map_err(|_| "Cannot read file metadata".to_string())?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err("File too large (max 10 MB)".to_string());
+    }
+
+    let result = filezilla_import::import_filezilla(&canonical).map_err(|e| e.to_string())?;
+
+    let mut cred_errors: Vec<String> = Vec::new();
+    match credential_store::CredentialStore::from_cache() {
+        Some(store) => {
+            for server in &result.servers {
+                if let Some(ref cred) = server.credential {
+                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                        cred_errors.push(format!("{}: {}", server.id, e));
+                    }
+                }
+            }
+        }
+        None => {
+            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            if cred_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {} credentials not stored",
+                    cred_count
+                ));
+            }
+        }
+    }
+    if !cred_errors.is_empty() {
+        log::warn!("FileZilla import credential issues: {:?}", cred_errors);
+    }
+
+    let redacted_servers: Vec<serde_json::Value> = result
+        .servers
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "host": s.host,
+                "port": s.port,
+                "username": s.username,
+                "protocol": s.protocol,
+                "initialPath": s.initial_path,
+                "options": s.options,
+                "providerId": s.provider_id,
+                "hasStoredCredential": s.credential.is_some(),
+            })
+        })
+        .collect();
+
+    let response = serde_json::json!({
+        "servers": redacted_servers,
+        "skipped": result.skipped,
+        "sourcePath": result.source_path,
+        "totalServers": result.total_servers,
+    });
+    Ok(response)
+}
+
+#[tauri::command]
+async fn export_filezilla_config(
+    servers_json: String,
+    include_credentials: bool,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let servers: Vec<filezilla_import::FileZillaExportServer> =
+        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
+
+    let mut passwords = std::collections::HashMap::new();
+    if include_credentials {
+        if let Some(store) = credential_store::CredentialStore::from_cache() {
+            let raw: Vec<serde_json::Value> =
+                serde_json::from_str(&servers_json).unwrap_or_default();
+            for (i, server) in servers.iter().enumerate() {
+                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                    if let Ok(cred) = store.get(&format!("server_{}", id)) {
+                        passwords.insert(server.name.clone(), cred);
+                    }
+                }
+            }
+        }
+    }
+
+    let path = std::path::Path::new(&file_path);
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "xml" {
+        return Err("Invalid file extension. Expected .xml".to_string());
+    }
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err("Destination directory does not exist".to_string());
+        }
+    }
+
+    let exported =
+        filezilla_import::export_filezilla(&servers, &passwords, path).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "exported": exported,
+        "total": servers.len(),
+        "filePath": file_path,
+        "includesCredentials": !passwords.is_empty(),
+    }))
+}
+
 // ============ Full Keystore Export/Import ============
 
 #[tauri::command]
@@ -11071,6 +11211,10 @@ pub fn run() {
             detect_winscp_config,
             import_winscp_config,
             export_winscp_config,
+            // FileZilla Config Import/Export
+            detect_filezilla_config,
+            import_filezilla_config,
+            export_filezilla_config,
             // Full Keystore Export/Import
             export_keystore,
             import_keystore,

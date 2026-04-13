@@ -2197,7 +2197,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                             const isOrphanDelete = isDeleteOrphan(comparison.status, comparison);
                                             const statusCfg = isOrphanDelete
                                                 ? { Icon: Trash2, color: '#ef4444' }
-                                                : STATUS_ICONS[comparison.status];
+                                                : (STATUS_ICONS[comparison.status] || { Icon: AlertTriangle, color: '#9ca3af' });
                                             const StatusIcon = statusCfg.Icon;
                                             const resultIcon = getFileResultIcon(comparison.relative_path);
                                             const result = fileResults.get(comparison.relative_path);

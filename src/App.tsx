@@ -4407,8 +4407,6 @@ interface UpdateVerificationInfo {
             if (!batchCancelledRef.current) {
               notify.error(t('toast.uploadFailed'), String(error));
             }
-          } finally {
-            retryCallbacksRef.current.clear();
           }
 
           if (skippedCount > 0) {
@@ -4618,7 +4616,7 @@ interface UpdateVerificationInfo {
         // Reset apply-to-all and cleanup after batch completes
         resetOverwriteSettings();
         folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
-        retryCallbacksRef.current.clear();
+        // Don't clear retry callbacks here — failed items need their callbacks for "Retry All Failed"
 
         // Queue shows completion - no toast needed
         if (skippedCount > 0) {
@@ -4767,7 +4765,7 @@ interface UpdateVerificationInfo {
       }
 
       resetOverwriteSettings();
-      retryCallbacksRef.current.clear();
+      // Don't clear retry callbacks — failed items need their callbacks for "Retry All Failed"
       if (skippedCount > 0) {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
@@ -4867,8 +4865,6 @@ interface UpdateVerificationInfo {
           if (!batchCancelledRef.current) {
             notify.error(t('toast.downloadFailed'), String(error));
           }
-        } finally {
-          retryCallbacksRef.current.clear();
         }
 
         if (skippedCount > 0) {
@@ -5026,7 +5022,7 @@ interface UpdateVerificationInfo {
 
       // Reset apply-to-all and cleanup after batch completes
       resetOverwriteSettings();
-      retryCallbacksRef.current.clear();
+      // Don't clear retry callbacks — failed items need their callbacks for "Retry All Failed"
 
       // Queue shows completion - no toast needed
       if (skippedCount > 0) {

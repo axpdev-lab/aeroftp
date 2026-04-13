@@ -463,11 +463,10 @@ thead {
 
 /* Table row transitions */
 tbody tr {
-  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 tbody tr:hover {
-  transform: translateX(2px);
   box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.2);
 }
 

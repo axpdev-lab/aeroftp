@@ -899,6 +899,14 @@ enum ImportCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Import sites from FileZilla configuration file
+    Filezilla {
+        /// Path to sitemanager.xml (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9626,6 +9634,111 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
 
                 println!(
                     "To import into the GUI, use Settings > Export/Import > Import from WinSCP"
+                );
+            }
+            0
+        }
+        Err(e) => {
+            if json {
+                println!("{}", serde_json::json!({"error": e}));
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            1
+        }
+    }
+}
+
+async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
+    use ftp_client_gui_lib::filezilla_import;
+
+    let config_path = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => match filezilla_import::default_filezilla_config_path() {
+            Some(p) => p,
+            None => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"error": "FileZilla configuration not found. Specify path manually."})
+                    );
+                } else {
+                    eprintln!("Error: FileZilla configuration not found.");
+                    eprintln!(
+                        "Specify the path manually: aeroftp import filezilla /path/to/sitemanager.xml"
+                    );
+                }
+                return 1;
+            }
+        },
+    };
+
+    if !config_path.exists() {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({"error": format!("File not found: {}", config_path.display())})
+            );
+        } else {
+            eprintln!("Error: file not found: {}", config_path.display());
+        }
+        return 1;
+    }
+
+    match filezilla_import::import_filezilla(&config_path) {
+        Ok(result) => {
+            if json {
+                let redacted: serde_json::Value = serde_json::json!({
+                    "servers": result.servers.iter().map(|s| serde_json::json!({
+                        "id": s.id,
+                        "name": s.name,
+                        "host": s.host,
+                        "port": s.port,
+                        "username": s.username,
+                        "protocol": s.protocol,
+                        "initialPath": s.initial_path,
+                        "options": s.options,
+                        "hasCredential": s.credential.is_some(),
+                    })).collect::<Vec<_>>(),
+                    "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "sourcePath": result.source_path,
+                    "totalServers": result.total_servers,
+                });
+                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
+            } else {
+                println!(
+                    "Scanned {} sites from {}",
+                    result.total_servers, result.source_path
+                );
+                println!();
+
+                if !result.servers.is_empty() {
+                    println!("Importable ({}):", result.servers.len());
+                    for s in &result.servers {
+                        let proto = s.protocol.as_deref().unwrap_or("?");
+                        let cred = if s.credential.is_some() {
+                            " [credentials]"
+                        } else {
+                            ""
+                        };
+                        println!(
+                            "  {} - {}://{}@{}:{}{}",
+                            s.name, proto, s.username, s.host, s.port, cred
+                        );
+                    }
+                    println!();
+                }
+
+                if !result.skipped.is_empty() {
+                    println!("Skipped ({}):", result.skipped.len());
+                    for s in &result.skipped {
+                        println!("  {} - Protocol {} ({})", s.name, s.protocol, s.reason);
+                    }
+                    println!();
+                }
+
+                println!(
+                    "To import into the GUI, use Settings > Export/Import > Import from FileZilla"
                 );
             }
             0
@@ -20304,6 +20417,7 @@ async fn main() {
         Commands::Import { command } => match command {
             ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
             ImportCommands::Winscp { path, json } => cmd_import_winscp(path.clone(), *json).await,
+            ImportCommands::Filezilla { path, json } => cmd_import_filezilla(path.clone(), *json).await,
         },
         Commands::Transfer {
             source_profile,

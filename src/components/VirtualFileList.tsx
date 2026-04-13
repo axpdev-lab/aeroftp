@@ -100,7 +100,7 @@ function VirtualRow({ index, style, files, listProps }: RowComponentProps<RowExt
                 style={style}
                 role="row"
                 className={`flex items-center ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer'} border-b border-gray-100 dark:border-gray-700`}
-                onClick={() => !disabled && listProps.onNavigateUp()}
+                onDoubleClick={() => !disabled && listProps.onNavigateUp()}
             >
                 <div className="flex-1 min-w-0 px-4 py-1 flex items-center gap-2 text-gray-500">
                     {listProps.renderGoUpIcon()}
