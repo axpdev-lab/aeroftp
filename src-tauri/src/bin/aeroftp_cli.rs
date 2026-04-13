@@ -891,6 +891,14 @@ enum ImportCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Import sessions from WinSCP configuration file
+    Winscp {
+        /// Path to WinSCP.ini (auto-detected on Windows if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -9459,7 +9467,24 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
     match rclone_import::import_rclone(&config_path) {
         Ok(result) => {
             if json {
-                println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+                // Redact credentials — never output plaintext passwords to stdout
+                let redacted: serde_json::Value = serde_json::json!({
+                    "servers": result.servers.iter().map(|s| serde_json::json!({
+                        "id": s.id,
+                        "name": s.name,
+                        "host": s.host,
+                        "port": s.port,
+                        "username": s.username,
+                        "protocol": s.protocol,
+                        "initialPath": s.initial_path,
+                        "options": s.options,
+                        "hasCredential": s.credential.is_some(),
+                    })).collect::<Vec<_>>(),
+                    "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "sourcePath": result.source_path,
+                    "totalRemotes": result.total_remotes,
+                });
+                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
             } else {
                 println!(
                     "Scanned {} remotes from {}",
@@ -9495,6 +9520,112 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
 
                 println!(
                     "To import into the GUI, use Settings > Export/Import > Import from rclone"
+                );
+            }
+            0
+        }
+        Err(e) => {
+            if json {
+                println!("{}", serde_json::json!({"error": e}));
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            1
+        }
+    }
+}
+
+async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
+    use ftp_client_gui_lib::winscp_import;
+
+    let config_path = match path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => match winscp_import::default_winscp_config_path() {
+            Some(p) => p,
+            None => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"error": "WinSCP configuration not found. Specify path manually."})
+                    );
+                } else {
+                    eprintln!("Error: WinSCP configuration not found.");
+                    eprintln!(
+                        "Specify the path manually: aeroftp import winscp /path/to/WinSCP.ini"
+                    );
+                }
+                return 1;
+            }
+        },
+    };
+
+    if !config_path.exists() {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({"error": format!("File not found: {}", config_path.display())})
+            );
+        } else {
+            eprintln!("Error: file not found: {}", config_path.display());
+        }
+        return 1;
+    }
+
+    match winscp_import::import_winscp(&config_path) {
+        Ok(result) => {
+            if json {
+                // Redact credentials — never output plaintext passwords to stdout
+                let redacted: serde_json::Value = serde_json::json!({
+                    "servers": result.servers.iter().map(|s| serde_json::json!({
+                        "id": s.id,
+                        "name": s.name,
+                        "host": s.host,
+                        "port": s.port,
+                        "username": s.username,
+                        "protocol": s.protocol,
+                        "initialPath": s.initial_path,
+                        "options": s.options,
+                        "hasCredential": s.credential.is_some(),
+                    })).collect::<Vec<_>>(),
+                    "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "sourcePath": result.source_path,
+                    "totalSessions": result.total_sessions,
+                });
+                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
+            } else {
+                println!(
+                    "Scanned {} sessions from {}",
+                    result.total_sessions, result.source_path
+                );
+                println!();
+
+                if !result.servers.is_empty() {
+                    println!("Importable ({}):", result.servers.len());
+                    for s in &result.servers {
+                        let proto = s.protocol.as_deref().unwrap_or("?");
+                        let cred = if s.credential.is_some() {
+                            " [credentials]"
+                        } else {
+                            ""
+                        };
+                        println!(
+                            "  {} - {}://{}@{}:{}{}",
+                            s.name, proto, s.username, s.host, s.port, cred
+                        );
+                    }
+                    println!();
+                }
+
+                if !result.skipped.is_empty() {
+                    println!("Skipped ({}):", result.skipped.len());
+                    for s in &result.skipped {
+                        println!("  {} - FSProtocol {} ({})", s.name, s.fs_protocol, s.reason);
+                    }
+                    println!();
+                }
+
+                println!(
+                    "To import into the GUI, use Settings > Export/Import > Import from WinSCP"
                 );
             }
             0
@@ -19388,45 +19519,38 @@ async fn main() {
             .iter()
             .any(|a| a == "--help" || a == "-h" || a == "help");
     if show_help {
+        // Green (#00d26a) for "Aero", Blue (#0095ff) for "FTP"
         if use_color() {
+            let g = "\x1b[1;38;2;0;210;106m"; // green
+            let b = "\x1b[1;38;2;0;149;255m"; // blue
+            let r = "\x1b[0m";
+            eprintln!();
+            eprintln!("  {g}    _                  {b} _____ _____ ____  {r}");
+            eprintln!("  {g}   / \\   ___ _ __ ___  {b}|  ___|_   _|  _ \\ {r}");
+            eprintln!("  {g}  / _ \\ / _ \\ '__/ _ \\ {b}| |_    | | | |_) |{r}");
+            eprintln!("  {g} / ___ \\  __/ | | (_) |{b}|  _|   | | |  __/ {r}");
+            eprintln!("  {g}/_/ _ \\_\\___|_|  \\___/ {b}|_|     |_| |_|    {r}");
+            eprintln!();
             eprintln!(
-                "\x1b[1;38;2;0;255;255m     _                 _____ _____ \x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;0;220;255m    / \\   ___ _ __ ___|  ___|_   _|_ __ \x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;80;180;255m   / _ \\ / _ \\ '__/ _ \\ |_    | | | '_ \\\x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;180;120;255m  / ___ \\  __/ | | |  __/  _|   | | | |_) |\x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;255;80;220m /_/   \\_\\___|_|  \\___|_|     |_| | .__/\x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;255;210;90m                                         |_|\x1b[0m"
-            );
-            eprintln!(
-                "\x1b[1;38;2;255;255;255m  AeroFTP\x1b[0m  \x1b[38;2;120;255;180mv{}\x1b[0m  \x1b[38;2;120;255;180m|  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles\x1b[0m",
+                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  23 protocols  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
                 env!("CARGO_PKG_VERSION")
             );
-            eprintln!("\x1b[38;2;170;170;190m  transfer engine for operators, shell users, and terminal obsessives\x1b[0m");
+            eprintln!("\x1b[38;2;140;140;160m  transfer engine for operators, shell users, and terminal obsessives{r}");
         } else {
             eprintln!();
-            eprintln!("     _                 _____ _____ ");
-            eprintln!("    / \\   ___ _ __ ___|  ___|_   _|_ __ ");
-            eprintln!("   / _ \\ / _ \\ '__/ _ \\ |_    | | | '_ \\");
-            eprintln!("  / ___ \\  __/ | | |  __/  _|   | | | |_) |");
-            eprintln!(" /_/   \\_\\___|_|  \\___|_|     |_| | .__/");
-            eprintln!("                                         |_|");
+            eprintln!("      _                   _____ _____ ____  ");
+            eprintln!("     / \\   ___ _ __ ___  |  ___|_   _|  _ \\ ");
+            eprintln!("    / _ \\ / _ \\ '__/ _ \\ | |_    | | | |_) |");
+            eprintln!("   / ___ \\  __/ | | (_) ||  _|   | | |  __/ ");
+            eprintln!("  /_/   \\_\\___|_|  \\___/ |_|     |_| |_|    ");
+            eprintln!();
             eprintln!(
                 "  AeroFTP  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles",
                 env!("CARGO_PKG_VERSION")
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
-            eprintln!();
         }
+        eprintln!();
     }
 
     let args = match prepare_cli_args(raw_args) {
@@ -20179,6 +20303,7 @@ async fn main() {
         },
         Commands::Import { command } => match command {
             ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
+            ImportCommands::Winscp { path, json } => cmd_import_winscp(path.clone(), *json).await,
         },
         Commands::Transfer {
             source_profile,

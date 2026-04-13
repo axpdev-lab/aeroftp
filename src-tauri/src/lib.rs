@@ -58,6 +58,7 @@ mod plugins;
 mod profile_export;
 mod rclone_crypt;
 pub mod rclone_import;
+pub mod winscp_import;
 mod provider_transfer_executor;
 mod provider_commands;
 pub mod providers;
@@ -154,6 +155,27 @@ impl SpeedLimits {
             upload_bps: std::sync::atomic::AtomicU64::new(0),
         }
     }
+}
+
+/// Guard to ensure exit cleanup runs at most once.
+static EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Gracefully exit the application, performing cleanup before terminating.
+/// Used by both the app menu Quit and the tray Quit so that an explicit quit
+/// always exits even when AeroCloud's hide-to-tray is active.
+/// Safe to call multiple times — cleanup runs only on the first invocation.
+fn exit_app(app: &tauri::AppHandle) {
+    if EXITING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return; // Already exiting
+    }
+    info!("exit_app: explicit quit requested, shutting down");
+    #[cfg(windows)]
+    {
+        if let Err(e) = crate::cloud_filter_badge::cleanup_all_roots() {
+            warn!("Cloud Filter cleanup on exit: {}", e);
+        }
+    }
+    app.exit(0);
 }
 
 /// Apply rate limiting by sleeping after transferring a chunk.
@@ -9915,6 +9937,13 @@ async fn detect_rclone_config() -> Result<Option<String>, String> {
 async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, String> {
     // Defense-in-depth: validate the file path to prevent arbitrary file reads
     let path = std::path::Path::new(&file_path);
+
+    // Reject path traversal
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -9922,12 +9951,21 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
     if !(file_name.ends_with(".conf") || file_name == "rclone.conf" || file_name.ends_with(".cfg")) {
         return Err("Invalid file type. Expected .conf or .cfg file.".to_string());
     }
-    if !path.exists() {
-        return Err("File not found".to_string());
+
+    // Resolve symlinks and verify canonical path
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "File not found or inaccessible".to_string())?;
+
+    // Restrict max file size (10 MB)
+    let metadata = std::fs::metadata(&canonical)
+        .map_err(|_| "Cannot read file metadata".to_string())?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err("File too large (max 10 MB)".to_string());
     }
 
     let result =
-        rclone_import::import_rclone(path).map_err(|e| e.to_string())?;
+        rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
 
     // Store credentials in secure store (upgrade from rclone obscure to AES-256-GCM vault)
     let mut cred_errors: Vec<String> = Vec::new();
@@ -10013,8 +10051,167 @@ async fn export_rclone_config(
     }
 
     let path = std::path::Path::new(&file_path);
+
+    // Defense-in-depth: validate export path
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err("Destination directory does not exist".to_string());
+        }
+    }
+
     let exported =
         rclone_import::export_rclone(&servers, &passwords, path).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "exported": exported,
+        "total": servers.len(),
+        "filePath": file_path,
+        "includesCredentials": !passwords.is_empty(),
+    }))
+}
+
+// ============ WinSCP Config Import ============
+
+#[tauri::command]
+async fn detect_winscp_config() -> Result<Option<String>, String> {
+    Ok(winscp_import::default_winscp_config_path().map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+async fn import_winscp_config(file_path: String) -> Result<serde_json::Value, String> {
+    let path = std::path::Path::new(&file_path);
+
+    // Defense-in-depth: reject path traversal components
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if !(file_name.ends_with(".ini") || file_name.to_lowercase().starts_with("winscp")) {
+        return Err("Invalid file type. Expected .ini file or WinSCP configuration.".to_string());
+    }
+
+    // Resolve symlinks and verify the canonical path exists
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "File not found or inaccessible".to_string())?;
+
+    // Restrict to reasonable max file size (10 MB) to prevent DoS
+    let metadata = std::fs::metadata(&canonical)
+        .map_err(|_| "Cannot read file metadata".to_string())?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err("File too large (max 10 MB)".to_string());
+    }
+
+    let result = winscp_import::import_winscp(&canonical).map_err(|e| e.to_string())?;
+
+    // Store credentials in secure store (upgrade from WinSCP XOR to AES-256-GCM vault)
+    let mut cred_errors: Vec<String> = Vec::new();
+    match credential_store::CredentialStore::from_cache() {
+        Some(store) => {
+            for server in &result.servers {
+                if let Some(ref cred) = server.credential {
+                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                        cred_errors.push(format!("{}: {}", server.id, e));
+                    }
+                }
+            }
+        }
+        None => {
+            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            if cred_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {} credentials not stored",
+                    cred_count
+                ));
+            }
+        }
+    }
+    if !cred_errors.is_empty() {
+        log::warn!("WinSCP import credential issues: {:?}", cred_errors);
+    }
+
+    // Redact credentials before returning to renderer
+    let redacted_servers: Vec<serde_json::Value> = result
+        .servers
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "host": s.host,
+                "port": s.port,
+                "username": s.username,
+                "protocol": s.protocol,
+                "initialPath": s.initial_path,
+                "options": s.options,
+                "providerId": s.provider_id,
+                "hasStoredCredential": s.credential.is_some(),
+            })
+        })
+        .collect();
+
+    let response = serde_json::json!({
+        "servers": redacted_servers,
+        "skipped": result.skipped,
+        "sourcePath": result.source_path,
+        "totalSessions": result.total_sessions,
+    });
+    Ok(response)
+}
+
+#[tauri::command]
+async fn export_winscp_config(
+    servers_json: String,
+    include_credentials: bool,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
+    let servers: Vec<winscp_import::WinScpExportServer> =
+        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
+
+    let mut passwords = std::collections::HashMap::new();
+    if include_credentials {
+        if let Some(store) = credential_store::CredentialStore::from_cache() {
+            let raw: Vec<serde_json::Value> =
+                serde_json::from_str(&servers_json).unwrap_or_default();
+            for (i, server) in servers.iter().enumerate() {
+                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                    if let Ok(cred) = store.get(&format!("server_{}", id)) {
+                        passwords.insert(server.name.clone(), cred);
+                    }
+                }
+            }
+        }
+    }
+
+    let path = std::path::Path::new(&file_path);
+
+    // Defense-in-depth: validate export path
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if ext != "ini" {
+        return Err("Invalid file extension. Expected .ini".to_string());
+    }
+    // Verify parent directory exists and is writable
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err("Destination directory does not exist".to_string());
+        }
+    }
+
+    let exported =
+        winscp_import::export_winscp(&servers, &passwords, path).map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "exported": exported,
@@ -10627,7 +10824,7 @@ pub fn run() {
                             }
                         }
                         "tray_quit" => {
-                            std::process::exit(0);
+                            exit_app(app);
                         }
                         _ => {}
                     }
@@ -10676,6 +10873,10 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             info!("Menu event: {}", id);
+            if id == "quit" {
+                exit_app(app);
+                return;
+            }
             // Emit event to frontend
             let _ = app.emit("menu-event", id);
         })
@@ -10866,6 +11067,10 @@ pub fn run() {
             detect_rclone_config,
             import_rclone_config,
             export_rclone_config,
+            // WinSCP Config Import
+            detect_winscp_config,
+            import_winscp_config,
+            export_winscp_config,
             // Full Keystore Export/Import
             export_keystore,
             import_keystore,

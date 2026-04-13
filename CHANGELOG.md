@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.9] - 2026-04-13
+
+### WinSCP bridge, macOS quit fix, security hardening, dependency updates
+
+#### Added
+
+- **WinSCP import/export bridge**: Import saved sessions from WinSCP configuration files (`.ini` or exported sessions). Supports SFTP, SCP, FTP, FTPS (implicit and explicit TLS), WebDAV (HTTP/HTTPS), and S3. Passwords are decoded from WinSCP's XOR obfuscation and upgraded to AES-256-GCM encrypted vault. Export to WinSCP.ini also available with compatible password obfuscation. GUI (Settings > Export/Import) and CLI (`aeroftp import winscp`). Closes [#96](https://github.com/axpdev-lab/aeroftp/issues/96)
+- **CLI `import winscp` subcommand**: Scan and preview WinSCP sessions from the command line with `--json` support for automation
+- **Duplicate detection in import preview**: rclone and WinSCP import screens now show an "Already exists" badge on servers that match existing profiles, with option to update credentials on re-import instead of silently skipping
+- **Server deletion confirmation**: Deleting a saved server now shows a confirmation prompt to prevent accidental removal
+- **Media filter tab**: New "Media" filter in My Servers for Immich, Google Photos, and future media-oriented providers
+- **WinSCP import guide**: New documentation page at [docs.aeroftp.app/features/winscp](https://docs.aeroftp.app/features/winscp) with protocol mapping, security comparison, and usage instructions
+
+#### Fixed
+
+- **macOS menu bar Quit not working**: "Quit AeroFTP" from the macOS menu bar and Cmd+Q now exit the application correctly even when AeroCloud hide-to-tray is active. Previously, the explicit quit was intercepted by the `CloseRequested` handler and only hid the window. Fixes [#98](https://github.com/axpdev-lab/aeroftp/issues/98)
+- **WebDAV 405 on root PROPFIND**: Merged community fix from @saschabuehrle - servers returning 405 for `PROPFIND /` now fall back to `OPTIONS`, allowing valid WebDAV endpoints to connect. Fixes [#95](https://github.com/axpdev-lab/aeroftp/issues/95), merged via [#97](https://github.com/axpdev-lab/aeroftp/pull/97)
+- **My Servers counter not updating on delete**: The server count badge in the "My Servers" tab now refreshes immediately when a server is removed
+- **Tray quit cleanup**: Tray "Quit" now uses Tauri's `app.exit()` for graceful shutdown instead of `std::process::exit(0)`, ensuring Cloud Filter cleanup on Windows runs before termination
+
+#### Security
+
+- **CLI credential redaction**: `aeroftp import rclone --json` and `aeroftp import winscp --json` now return `hasCredential: true/false` instead of plaintext passwords. Text mode already showed `[credentials]` only
+- **Import path hardening**: Both rclone and WinSCP import commands now reject path traversal (`..`), resolve symlinks via `canonicalize()`, and enforce a 10 MB file size cap
+- **Export path hardening**: rclone and WinSCP export commands now validate destination paths (no traversal, extension check, parent directory existence)
+- **Import duplicate rollback**: localStorage mutations during import are now wrapped with backup/rollback - if `onImport` fails, original data is restored
+- **WinSCP password decoder hardening**: Error messages no longer leak decoded password bytes, shift loop handles truncated input, v2 16-bit length format used for passwords exceeding 255 bytes
+- **INI injection prevention**: Export to WinSCP.ini sanitizes all field values (strips newlines and bracket characters) to prevent INI section injection
+- **UUID generation**: Removed entropy-reducing timestamp XOR from credential ID generation, using pure CSPRNG output
+- **Exit guard**: `exit_app()` uses `AtomicBool` to ensure cleanup runs at most once even on rapid double-click
+- **URL decode UTF-8**: WinSCP session name decoder now correctly handles multi-byte UTF-8 percent-encoded sequences
+
+#### Improved
+
+- **CLI banner redesign**: New two-color ASCII art banner with "Aero" in green and "FTP" in blue, improved readability and alignment
+- **Windows uninstaller prompts**: Three separate cleanup dialogs during uninstall let users choose what to remove (servers/credentials, AI history, cache) independently
+
+#### Dependencies
+
+- `similar` 2.7.0 to 3.1.0 ([#100](https://github.com/axpdev-lab/aeroftp/pull/100))
+- `postcss` 8.5.8 to 8.5.9 ([#103](https://github.com/axpdev-lab/aeroftp/pull/103))
+- `country-flag-icons` 1.6.15 to 1.6.16 ([#104](https://github.com/axpdev-lab/aeroftp/pull/104))
+- `toml` 0.9.12 to 1.1.0 ([#105](https://github.com/axpdev-lab/aeroftp/pull/105))
+- `rustls` 0.23.37 to 0.23.38 ([#106](https://github.com/axpdev-lab/aeroftp/pull/106))
+- `tauri-plugin-single-instance` 2.4.0 to 2.4.1 ([#107](https://github.com/axpdev-lab/aeroftp/pull/107))
+- Closed incompatible: `react-dom` 19 ([#99](https://github.com/axpdev-lab/aeroftp/pull/99)), `react` 19 ([#101](https://github.com/axpdev-lab/aeroftp/pull/101)), `cbc` 0.2 ([#102](https://github.com/axpdev-lab/aeroftp/pull/102))
+
 ## [3.4.8] - 2026-04-10
 
 ### Cross-profile transfer hardening, CLI doctor workflows, public docs alignment

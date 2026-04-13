@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.4.9" date="2026-04-13">
+      <description>
+        <p>WinSCP import/export bridge with password decoding and vault upgrade. macOS menu bar Quit fix. WebDAV 405 fallback (community contribution). Security hardening: CLI credential redaction, import/export path validation, INI injection prevention. Delete confirmation for saved servers. Media filter tab. CLI banner redesign. Six dependency updates.</p>
+      </description>
+    </release>
     <release version="3.4.8" date="2026-04-10">
       <description>
         <p>Cross-profile transfer with floating panel for server-to-server file copy. CLI doctor workflows (sync-doctor, transfer-doctor) and agent-bootstrap. Zoho/GitLab/Swift rate limit retry. UI polish: modal consistency, select field padding, provider icon badges.</p>

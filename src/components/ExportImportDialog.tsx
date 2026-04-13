@@ -52,7 +52,7 @@ interface RcloneImportResult {
 
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | null>(null);
+    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | 'winscp' | 'winscp-export' | null>(null);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -67,6 +67,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [rcloneResult, setRcloneResult] = useState<RcloneImportResult | null>(null);
     const [rcloneSelectedIds, setRcloneSelectedIds] = useState<Set<string>>(new Set());
 
+    // WinSCP-specific state (reuses RcloneImportResult shape — same servers/skipped structure)
+    const [winscpDetectedPath, setWinscpDetectedPath] = useState<string | null>(null);
+    const [winscpResult, setWinscpResult] = useState<RcloneImportResult | null>(null);
+    const [winscpSelectedIds, setWinscpSelectedIds] = useState<Set<string>>(new Set());
+
     const allSelected = selectedServerIds.size === servers.length;
     const noneSelected = selectedServerIds.size === 0;
 
@@ -74,6 +79,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         () => servers.filter(s => selectedServerIds.has(s.id)),
         [servers, selectedServerIds]
     );
+
+    // Pre-compute existing server keys for duplicate detection in import previews
+    const existingServerKeys = useMemo(() => {
+        let currentServers: ServerProfile[] = [];
+        try {
+            const stored = localStorage.getItem('aeroftp-saved-servers');
+            if (stored) currentServers = JSON.parse(stored);
+        } catch { /* fallback */ }
+        if (currentServers.length === 0) currentServers = servers;
+        return new Set(currentServers.map(s => `${s.host}:${s.port}:${s.username}`));
+    }, [servers]);
 
     // Auto-detect rclone config when entering rclone mode
     useEffect(() => {
@@ -83,6 +99,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             }).catch(() => setRcloneDetectedPath(''));
         }
     }, [mode, rcloneDetectedPath]);
+
+    // Auto-detect WinSCP config when entering winscp mode
+    useEffect(() => {
+        if (mode === 'winscp' && winscpDetectedPath === null) {
+            invoke<string | null>('detect_winscp_config').then(path => {
+                setWinscpDetectedPath(path || '');
+            }).catch(() => setWinscpDetectedPath(''));
+        }
+    }, [mode, winscpDetectedPath]);
 
     const toggleServer = (id: string) => {
         setSelectedServerIds(prev => {
@@ -256,21 +281,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const handleRcloneConfirm = () => {
         if (!rcloneResult) return;
 
-        // Read current servers from localStorage
-        let currentServers: ServerProfile[] = [];
-        try {
-            const stored = localStorage.getItem('aeroftp-saved-servers');
-            if (stored) currentServers = JSON.parse(stored);
-        } catch { /* fallback */ }
-        if (currentServers.length === 0) currentServers = servers;
-
-        const existingKeys = new Set(
-            currentServers.map(s => `${s.host}:${s.port}:${s.username}`)
-        );
-
-        const newServers: ServerProfile[] = rcloneResult.servers
+        const selected: ServerProfile[] = rcloneResult.servers
             .filter(s => rcloneSelectedIds.has(s.id))
-            .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`))
             .map(s => ({
                 id: s.id,
                 name: s.name,
@@ -284,13 +296,38 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 hasStoredCredential: s.hasStoredCredential || false,
             }));
 
-        const totalSelected = rcloneResult.servers.filter(s => rcloneSelectedIds.has(s.id)).length;
-        const skipped = totalSelected - newServers.length;
-        onImport(newServers);
-        setSuccess(
-            t('settings.importSuccess').replace('{count}', String(newServers.length)) +
-            (skipped > 0 ? ` (${skipped} ${t('settings.duplicatesSkipped')})` : '')
-        );
+        // Separate new vs. existing (by host:port:username)
+        const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+        const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+
+        // For updated servers: replace in localStorage so credentials and options are refreshed
+        // Save backup for rollback in case onImport fails
+        const backup = localStorage.getItem('aeroftp-saved-servers');
+        if (updated.length > 0) {
+            try {
+                const stored = backup;
+                if (stored) {
+                    const current: ServerProfile[] = JSON.parse(stored);
+                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
+                }
+            } catch { /* fallback */ }
+        }
+
+        try {
+            onImport([...updated, ...added]);
+        } catch {
+            // Rollback localStorage on failure
+            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            setError('Import failed. No changes were made.');
+            return;
+        }
+
+        const parts: string[] = [];
+        if (added.length > 0) parts.push(t('settings.importSuccess').replace('{count}', String(added.length)));
+        if (updated.length > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(updated.length)));
+        setSuccess(parts.join(', '));
         setTimeout(() => onClose(), 2500);
     };
 
@@ -309,6 +346,137 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             setRcloneSelectedIds(new Set());
         } else {
             setRcloneSelectedIds(new Set(rcloneResult.servers.map(s => s.id)));
+        }
+    };
+
+    // ---- WinSCP import handlers ----
+
+    const handleWinscpScan = async (customPath?: string) => {
+        const filePath = customPath || winscpDetectedPath;
+        if (!filePath) return;
+
+        setLoading(true);
+        setError(null);
+        setWinscpResult(null);
+        try {
+            const result = await invoke<RcloneImportResult>('import_winscp_config', { filePath });
+            setWinscpResult(result);
+            setWinscpSelectedIds(new Set(result.servers.map(s => s.id)));
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleWinscpBrowse = async () => {
+        const filePath = await open({
+            title: t('settings.winscpSelectConfig'),
+            filters: [
+                { name: 'WinSCP config', extensions: ['ini'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
+            multiple: false,
+        });
+        if (!filePath) return;
+        setWinscpDetectedPath(filePath);
+        await handleWinscpScan(filePath);
+    };
+
+    const handleWinscpConfirm = () => {
+        if (!winscpResult) return;
+
+        const selected: ServerProfile[] = winscpResult.servers
+            .filter(s => winscpSelectedIds.has(s.id))
+            .map(s => ({
+                id: s.id,
+                name: s.name,
+                host: s.host,
+                port: s.port,
+                username: s.username,
+                protocol: s.protocol as ServerProfile['protocol'],
+                initialPath: s.initialPath,
+                options: s.options as ServerProfile['options'],
+                providerId: s.providerId,
+                hasStoredCredential: s.hasStoredCredential || false,
+            }));
+
+        const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+        const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
+
+        const backup = localStorage.getItem('aeroftp-saved-servers');
+        if (updated.length > 0) {
+            try {
+                const stored = backup;
+                if (stored) {
+                    const current: ServerProfile[] = JSON.parse(stored);
+                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
+                }
+            } catch { /* fallback */ }
+        }
+
+        try {
+            onImport([...updated, ...added]);
+        } catch {
+            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            setError('Import failed. No changes were made.');
+            return;
+        }
+
+        const parts: string[] = [];
+        if (added.length > 0) parts.push(t('settings.importSuccess').replace('{count}', String(added.length)));
+        if (updated.length > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(updated.length)));
+        setSuccess(parts.join(', '));
+        setTimeout(() => onClose(), 2500);
+    };
+
+    const toggleWinscpServer = (id: string) => {
+        setWinscpSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAllWinscp = () => {
+        if (!winscpResult) return;
+        if (winscpSelectedIds.size === winscpResult.servers.length) {
+            setWinscpSelectedIds(new Set());
+        } else {
+            setWinscpSelectedIds(new Set(winscpResult.servers.map(s => s.id)));
+        }
+    };
+
+    // ---- WinSCP export handler ----
+
+    const handleWinscpExport = async () => {
+        if (noneSelected) return;
+
+        const filePath = await save({
+            title: t('settings.winscpExportTitle'),
+            filters: [{ name: 'WinSCP config', extensions: ['ini'] }],
+            defaultPath: 'WinSCP.ini',
+        });
+        if (!filePath) return;
+
+        setLoading(true);
+        setError(null);
+        try {
+            const serversJson = JSON.stringify(selectedServers);
+            const result = await invoke<{ exported: number }>('export_winscp_config', {
+                serversJson,
+                includeCredentials,
+                filePath,
+            });
+            setSuccess(t('settings.winscpExportSuccess').replace('{count}', String(result.exported)));
+            setTimeout(() => onClose(), 2000);
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -348,6 +516,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setConfirmPassword('');
         setRcloneResult(null);
         setRcloneSelectedIds(new Set());
+        setWinscpResult(null);
+        setWinscpSelectedIds(new Set());
     };
 
     // Protocol display helper
@@ -429,6 +599,39 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         <div className="font-medium">{t('settings.rcloneExport')}</div>
                                         <div className="text-xs text-gray-500 dark:text-gray-400">
                                             {t('settings.rcloneExportDesc')}
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                            {/* WinSCP section */}
+                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                                <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">WinSCP</div>
+                                <button
+                                    onClick={() => setMode('winscp')}
+                                    className="w-full p-4 border border-purple-200 dark:border-purple-800/50 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 flex items-center gap-3 transition-colors"
+                                >
+                                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                                        <FolderInput size={20} className="text-purple-600 dark:text-purple-400" />
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="font-medium">{t('settings.winscpImport')}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {t('settings.winscpImportDesc')}
+                                        </div>
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setMode('winscp-export')}
+                                    disabled={servers.length === 0}
+                                    className="w-full p-4 border border-purple-200 dark:border-purple-800/50 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                >
+                                    <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                                        <Download size={20} className="text-purple-600 dark:text-purple-400" />
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="font-medium">{t('settings.winscpExport')}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            {t('settings.winscpExportDesc')}
                                         </div>
                                     </div>
                                 </button>
@@ -706,7 +909,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                                 {rcloneResult.servers.map((server) => (
                                                     <div
                                                         key={server.id}
-                                                        className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                                                        className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) ? 'opacity-50' : ''}`}
                                                         onClick={() => toggleRcloneServer(server.id)}
                                                     >
                                                         <Checkbox
@@ -714,7 +917,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                                             onChange={() => toggleRcloneServer(server.id)}
                                                         />
                                                         <div className="min-w-0 flex-1">
-                                                            <div className="text-sm font-medium truncate">{server.name}</div>
+                                                            <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                                                                {server.name}
+                                                                {existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium whitespace-nowrap">{t('settings.alreadyExists')}</span>
+                                                                )}
+                                                            </div>
                                                             <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                                                 {server.host}{server.port !== 443 ? `:${server.port}` : ''}{server.username ? ` - ${server.username}` : ''}
                                                             </div>
@@ -793,6 +1001,292 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         {t('settings.rcloneImportSelected').replace('{count}', String(rcloneSelectedIds.size))}
                                     </button>
                                 )}
+                            </div>
+                        </div>
+                    ) : mode === 'winscp' ? (
+                        /* ---- WinSCP Import Mode ---- */
+                        <div className="space-y-4">
+                            {/* Security upgrade notice */}
+                            <div className="flex items-start gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                                <Shield size={16} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-green-700 dark:text-green-300">
+                                    {t('settings.winscpSecurityUpgrade')}
+                                </div>
+                            </div>
+
+                            {!winscpResult ? (
+                                /* Step 1: Detect/select config file */
+                                <>
+                                    {winscpDetectedPath === null ? (
+                                        <div className="flex items-center justify-center py-6">
+                                            <RefreshCw size={20} className="animate-spin text-gray-400" />
+                                            <span className="ml-2 text-sm text-gray-500">{t('settings.winscpDetecting')}</span>
+                                        </div>
+                                    ) : winscpDetectedPath ? (
+                                        <div className="space-y-3">
+                                            <div className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg">
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.winscpConfigFound')}</div>
+                                                <div className="text-sm font-mono truncate" title={winscpDetectedPath}>
+                                                    {winscpDetectedPath}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleWinscpScan()}
+                                                    disabled={loading}
+                                                    className="flex-1 px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {loading ? (
+                                                        <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                                    ) : (
+                                                        <FolderInput size={16} />
+                                                    )}
+                                                    {loading ? t('settings.winscpScanning') : t('settings.winscpScanConfig')}
+                                                </button>
+                                                <button
+                                                    onClick={handleWinscpBrowse}
+                                                    disabled={loading}
+                                                    className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                >
+                                                    {t('settings.winscpBrowse')}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                                <div className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                                                    <AlertCircle size={14} />
+                                                    {t('settings.winscpNotFound')}
+                                                </div>
+                                                <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                    {t('settings.winscpNotFoundHint')}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={handleWinscpBrowse}
+                                                disabled={loading}
+                                                className="w-full px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                                            >
+                                                <FolderInput size={16} />
+                                                {t('settings.winscpBrowse')}
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                /* Step 2: Preview and select sessions */
+                                <>
+                                    {/* Summary */}
+                                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                                        {t('settings.winscpFound')
+                                            .replace('{total}', String(winscpResult.totalRemotes))
+                                            .replace('{supported}', String(winscpResult.servers.length))}
+                                    </div>
+
+                                    {/* Importable servers */}
+                                    {winscpResult.servers.length > 0 && (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                    {t('settings.winscpSelectSessions')}
+                                                </span>
+                                                <button
+                                                    onClick={toggleAllWinscp}
+                                                    className="text-xs text-blue-500 hover:text-blue-600 font-medium"
+                                                >
+                                                    {winscpSelectedIds.size === winscpResult.servers.length
+                                                        ? t('settings.deselectAll')
+                                                        : t('settings.selectAll')}
+                                                </button>
+                                            </div>
+                                            <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
+                                                {winscpResult.servers.map((server) => (
+                                                    <div
+                                                        key={server.id}
+                                                        className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) ? 'opacity-50' : ''}`}
+                                                        onClick={() => toggleWinscpServer(server.id)}
+                                                    >
+                                                        <Checkbox
+                                                            checked={winscpSelectedIds.has(server.id)}
+                                                            onChange={() => toggleWinscpServer(server.id)}
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                                                                {server.name}
+                                                                {existingServerKeys.has(`${server.host}:${server.port}:${server.username}`) && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium whitespace-nowrap">{t('settings.alreadyExists')}</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                                {server.host}{server.port !== 443 ? `:${server.port}` : ''}{server.username ? ` - ${server.username}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                            {server.hasStoredCredential && (
+                                                                <Lock size={12} className="text-green-500" />
+                                                            )}
+                                                            <span className="text-[10px] text-gray-400 uppercase">
+                                                                {protocolLabel(server.protocol)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                {winscpSelectedIds.size} / {winscpResult.servers.length} {t('settings.selected')}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* SCP notice */}
+                                    {winscpResult.servers.some(s => s.protocol === 'sftp') && (
+                                        <div className="flex items-start gap-2 p-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                            <AlertCircle size={14} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                                            <div className="text-xs text-blue-700 dark:text-blue-300">
+                                                {t('settings.winscpScpNotice')}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Skipped sessions */}
+                                    {winscpResult.skipped.length > 0 && (
+                                        <div>
+                                            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                {t('settings.winscpSkipped')} ({winscpResult.skipped.length})
+                                            </div>
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+                                                {winscpResult.skipped.map((s, i) => (
+                                                    <div key={i} className="truncate">
+                                                        <span className="font-medium">{s.name}</span>
+                                                        <span className="mx-1">-</span>
+                                                        <span>FSProtocol {s.rcloneType}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Error/Success */}
+                            {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+                            {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+
+                            {/* Actions */}
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={resetMode}
+                                    className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                    {t('common.back')}
+                                </button>
+                                {winscpResult && winscpResult.servers.length > 0 && (
+                                    <button
+                                        onClick={handleWinscpConfirm}
+                                        disabled={winscpSelectedIds.size === 0}
+                                        className="flex-1 px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        <Upload size={16} />
+                                        {t('settings.winscpImportSelected').replace('{count}', String(winscpSelectedIds.size))}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : mode === 'winscp-export' ? (
+                        /* ---- WinSCP Export Mode ---- */
+                        <div className="space-y-4">
+                            <div className="flex items-start gap-2 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                                <FolderInput size={16} className="text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                                <div className="text-xs text-purple-700 dark:text-purple-300">
+                                    {t('settings.winscpExportNotice')}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        {t('settings.selectServersToExport')}
+                                    </span>
+                                    <button
+                                        onClick={toggleAll}
+                                        className="text-xs text-blue-500 hover:text-blue-600 font-medium"
+                                    >
+                                        {allSelected ? t('settings.deselectAll') : t('settings.selectAll')}
+                                    </button>
+                                </div>
+                                <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
+                                    {servers.map((server) => (
+                                        <div
+                                            key={server.id}
+                                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                                            onClick={() => toggleServer(server.id)}
+                                        >
+                                            <Checkbox
+                                                checked={selectedServerIds.has(server.id)}
+                                                onChange={() => toggleServer(server.id)}
+                                            />
+                                            <div
+                                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                                style={{ backgroundColor: server.color || '#6B7280' }}
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-medium truncate">{server.name}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                    {server.host}:{server.port} - {server.username}
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">
+                                                {server.protocol || 'ftp'}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {selectedServerIds.size} / {servers.length} {t('settings.selected')}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                                <Checkbox
+                                    checked={includeCredentials}
+                                    onChange={setIncludeCredentials}
+                                    label={
+                                        <div>
+                                            <div className="text-sm font-medium flex items-center gap-1">
+                                                <Lock size={14} />
+                                                {t('settings.includeCredentials')}
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                {t('settings.winscpExportCredHint')}
+                                            </div>
+                                        </div>
+                                    }
+                                />
+                            </div>
+
+                            {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+                            {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={resetMode}
+                                    className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                    {t('common.back')}
+                                </button>
+                                <button
+                                    onClick={handleWinscpExport}
+                                    disabled={loading || noneSelected}
+                                    className="flex-1 px-4 py-2 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {loading ? (
+                                        <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                    ) : (
+                                        <Download size={16} />
+                                    )}
+                                    {loading ? t('settings.exporting') : t('settings.winscpExportButton').replace('{count}', String(selectedServerIds.size))}
+                                </button>
                             </div>
                         </div>
                     ) : (

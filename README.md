@@ -158,6 +158,10 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 
 AeroFTP and rclone work together. Import and export server profiles between the two tools freely - 17 backend types mapped (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more). Credentials are automatically upgraded to AES-256-GCM encrypted vault storage on import, and re-obfuscated on export for full rclone compatibility. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`). AeroFTP also documents compatibility workflows for existing `rclone crypt` remotes. See the **[rclone Bridge Guide](https://docs.aeroftp.app/features/rclone)** and **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
+### WinSCP Import
+
+Switching from WinSCP? AeroFTP imports your saved sessions directly from `WinSCP.ini` or exported session files. Protocol mapping covers SFTP, SCP, FTP, FTPS (implicit and explicit TLS), WebDAV, and S3. Passwords are decoded from WinSCP's obfuscation format and stored in the AES-256-GCM encrypted vault. Folder hierarchies in session names are preserved as display names. Available in the GUI (Settings > Export/Import > Import from WinSCP) and CLI (`aeroftp import winscp`).
+
 ### Hosting Provider Integration
 
 Web hosting providers can generate encrypted `.aeroftp` connection profiles from their control panels, so customers can import pre-configured FTP/SFTP connections with a single click - no manual setup, no credentials in plaintext emails.

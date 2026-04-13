@@ -46,4 +46,39 @@
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
+
+    ; --- Selective user data cleanup on uninstall ---
+    ; Three separate prompts let the user choose exactly what to remove.
+
+    ; 1) Saved servers, credentials, and vaults
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+        "Remove saved servers, credentials, and vaults?$\n$\n\
+This deletes all connection profiles, stored passwords,$\n\
+and AeroVault containers.$\n$\n\
+Select 'No' to keep them for a future reinstall." \
+        IDYES _rm_servers IDNO _skip_servers
+    _rm_servers:
+        RMDir /r "$APPDATA\aeroftp"
+    _skip_servers:
+
+    ; 2) AI chat history and agent memory
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+        "Remove AI chat history and agent memory?$\n$\n\
+This deletes AeroAgent conversations, tool history,$\n\
+and learned context." \
+        IDYES _rm_ai IDNO _skip_ai
+    _rm_ai:
+        ; Tauri app data — AI chat DB, ai_history.json, agent_memory.db
+        RMDir /r "$APPDATA\com.aeroftp.AeroFTP"
+    _skip_ai:
+
+    ; 3) Cache and temporary files
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+        "Remove cache and temporary files?$\n$\n\
+This deletes WebView cache, logs, and temp data.$\n\
+Safe to remove, frees disk space." \
+        IDYES _rm_cache IDNO _skip_cache
+    _rm_cache:
+        RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
+    _skip_cache:
 !macroend

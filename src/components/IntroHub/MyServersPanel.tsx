@@ -93,6 +93,7 @@ interface MyServersPanelProps {
     onQuickConnect: () => void;
     lastUpdate?: number;
     onOpenExportImport?: () => void;
+    onServersChange?: (count: number) => void;
 }
 
 export function MyServersPanel({
@@ -101,6 +102,7 @@ export function MyServersPanel({
     onQuickConnect,
     lastUpdate,
     onOpenExportImport,
+    onServersChange,
 }: MyServersPanelProps) {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -228,7 +230,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, dev: 0, favorites: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, favorites: 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
@@ -392,12 +394,16 @@ export function MyServersPanel({
     }, [servers]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
+        if (!window.confirm(t('introHub.confirmDeleteServer').replace('{name}', server.name))) {
+            return;
+        }
         const updated = servers.filter(s => s.id !== server.id);
         setServers(updated);
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
         // Clean up orphaned vault credential
         invoke('delete_credential', { account: `server_${server.id}` }).catch(() => {});
-    }, [servers]);
+        onServersChange?.(updated.length);
+    }, [servers, t, onServersChange]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {
         const isFav = favorites.has(server.id);

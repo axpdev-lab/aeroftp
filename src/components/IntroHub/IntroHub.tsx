@@ -280,6 +280,13 @@ export function IntroHub(props: IntroHubProps) {
                         onQuickConnect={handleNewConnection}
                         lastUpdate={serversRefreshKey}
                         onOpenExportImport={() => setShowExportImport(true)}
+                        onServersChange={() => {
+                            try {
+                                const stored = localStorage.getItem('aeroftp-saved-servers');
+                                if (stored) setPaletteServers(JSON.parse(stored));
+                                else setPaletteServers([]);
+                            } catch { setPaletteServers([]); }
+                        }}
                     />
                 )}
 
