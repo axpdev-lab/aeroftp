@@ -133,7 +133,7 @@ hkdf = "0.12"                                                          # HKDF ke
 
 # Security Toolkit - Cyber Tools (v2.1.0)
 blake3 = "1"                                                           # BLAKE3 hash (Hash Forge)
-similar = "2"                                                          # Unified diff for local_diff tool
+similar = "3"                                                          # Unified diff for local_diff tool
 
 # TOTP 2FA for AeroVault (v2.3.0)
 totp-rs = { version = "5", features = ["qr"] }                        # RFC 6238 TOTP with otpauth URI
