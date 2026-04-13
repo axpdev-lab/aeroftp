@@ -1178,6 +1178,33 @@ impl StorageProvider for WebDavProvider {
             StatusCode::FORBIDDEN => Err(ProviderError::AuthenticationFailed(
                 "Invalid credentials".to_string(),
             )),
+            StatusCode::METHOD_NOT_ALLOWED => {
+                tracing::debug!(
+                    "[WebDAV] PROPFIND / returned 405, retrying with OPTIONS for capability check"
+                );
+
+                let options_response = self
+                    .request(Method::OPTIONS, "/")
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+                let options_status = options_response.status();
+                if options_status.is_success() {
+                    self.connected = true;
+                    if let Some(ref initial_path) = self.config.initial_path {
+                        if !initial_path.is_empty() {
+                            self.current_path = initial_path.clone();
+                        }
+                    }
+                    Ok(())
+                } else {
+                    Err(ProviderError::ConnectionFailed(format!(
+                        "Server returned status: {}",
+                        options_status
+                    )))
+                }
+            }
             status => Err(ProviderError::ConnectionFailed(format!(
                 "Server returned status: {}",
                 status
