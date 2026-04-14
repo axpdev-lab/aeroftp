@@ -18,6 +18,33 @@
 
 ## Recently Shipped
 
+### v3.5.0 (April 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **FileZilla import/export bridge** | Import sites from FileZilla `sitemanager.xml` and export back. Supports FTP, SFTP, FTPS (implicit and explicit), and S3. Passwords decoded from base64 and upgraded to AES-256-GCM encrypted vault. GUI and CLI (`aeroftp import filezilla`). |
+| **Unified Bridge hub** | Single "Bridge" section with app selector (rclone, WinSCP, FileZilla) replaces separate import/export sections. Three bridge tools, one interface. |
+| **Nextcloud WebDAV auto-detection** | Connecting to a Nextcloud/ownCloud server without specifying the WebDAV path now auto-discovers `/remote.php/dav/files/{username}/`. No manual path configuration needed. |
+| **Transfer engine hardening** | Timeout scales with file size (2s/MB + 30s base). "Skip if identical" works reliably. Retry queue preserved after batch completion. |
+
+### v3.4.9 (April 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **WinSCP import/export bridge** | Import saved sessions from WinSCP configuration files. Supports SFTP, SCP, FTP, FTPS, WebDAV, and S3. Passwords decoded from WinSCP's XOR obfuscation and upgraded to AES-256-GCM vault. Export back to WinSCP.ini also available. GUI and CLI (`aeroftp import winscp`). |
+| **Duplicate detection in import** | rclone and WinSCP import screens show an "Already exists" badge on matching profiles, with option to update credentials on re-import. |
+| **macOS Quit fix** | Cmd+Q and menu bar Quit now exit correctly even when AeroCloud hide-to-tray is active. |
+| **Import/export security hardening** | Path traversal rejection, symlink resolution, 10 MB size cap, credential redaction in JSON output, INI injection prevention. |
+
+### v3.4.8 (April 2026)
+
+| Feature | Description |
+|---------|-------------|
+| **Cross-profile transfer panel** | Dedicated toolbar button for cloud-to-cloud transfers. Floating panel with real-time queue, progress bars, and plan/execute/done transitions. |
+| **CLI `transfer` command** | Cross-profile copy between two vault-backed profiles with dry-run, recursive mode, and `--skip-existing` for backup flows. |
+| **CLI doctor workflows** | `sync-doctor` and `transfer-doctor` preflight commands with structured checks, risk summaries, and `suggested_next_command` for agent automation. |
+| **Rate limit resilience** | Automatic retry with exponential backoff on 429/5xx for Zoho WorkDrive, GitLab, and Swift/Blomp. |
+
 ### v3.4.7 (April 2026)
 
 | Feature | Description |
@@ -173,31 +200,21 @@ Every new cloud provider integration is a milestone. Here's the full history:
 
 Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 
+**Bridge interoperability** (v3.4.7-v3.5.0): Import/export profiles with **rclone** (17 backends), **WinSCP** (6 protocols), and **FileZilla** (4 protocols). Credentials decoded from each tool's obfuscation format and upgraded to AES-256-GCM vault.
+
 ---
 
 ## In Progress
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Blomp** (22nd provider) | Awaiting Blomp proxy fix | OpenStack Swift integration fully built. Keystone v2 auth works, storage proxy returns 403. Blomp support actively investigating. |
+| **InfiniCLOUD REST API** | Beta | Dual connector (WebDAV / REST API) with Muramasa API. Auto-discovery of user node server and real-time storage quota. Available for developer and beta testing. |
 | **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. 10 phases, 8 new files, async stdio, connection pool. |
 | **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. 17/19 tasks complete (89%). |
 
 ---
 
 ## Planned
-
-### Cross-Profile Transfer (cloud-to-cloud)
-
-Transfer files between any two saved profiles without exposing credentials. S3-to-S3, OAuth-to-S3, FTP-to-Cloud - any combination of the 27 supported protocols.
-
-| Component | Description |
-|-----------|-------------|
-| **Core engine** | Streaming pipeline (`open_read` -> `put_stream`), connection pooling, server-side copy detection |
-| **CLI** | `aeroftp-cli transfer -s "Google Drive" -d "AWS S3" /photos/ /backup/ -r` with copy/sync/move modes |
-| **Batch** | `CONNECT_SOURCE` / `CONNECT_DEST` / `TRANSFER` for scripted migrations |
-| **GUI** | Dual-panel mode with two file browsers, drag-and-drop between profiles, real-time progress |
-| **AI Agent** | `cross_profile_plan` and `cross_profile_transfer` tools with human approval |
 
 ### AeroFile Dual Panel (local)
 
@@ -212,13 +229,26 @@ Optional Total Commander-style dual local panel with unified tab bar, local-to-l
 | **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI |
 | **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow |
 
-### CLI & Sync
+### CLI Advanced (already shipped, CLI-only)
+
+These features are production-ready in the CLI. GUI integration is planned for future releases.
+
+| Feature | CLI Status | GUI Planned |
+| ------- | ---------- | ----------- |
+| **FUSE Mount** | Shipped (v3.4.2) - Linux + macOS read-write, Windows WebDAV bridge. `aeroftp mount <profile>:<path> <mountpoint>` | Mount manager panel with mount/unmount, status indicators, auto-mount on startup |
+| **Daemon & Job Queue** | Shipped (v3.4.2) - `aeroftp daemon start/stop/status`, HTTP RC API, persistent SQLite job queue, `jobs add/list/status/cancel` | Background daemon control in system tray, job queue viewer with pause/cancel/priority |
+| **Serve HTTP/WebDAV/FTP/SFTP** | Shipped (v3.3.5-v3.4.2) - Expose any remote as local HTTP (range 206), WebDAV (r/w, 8 methods), FTP (`libunftp`), SFTP (`russh`) | Quick Share panel: one-click serve a folder with QR code and local URL |
+| **Bisync** | Shipped (v3.4.2) - True bidirectional sync with snapshot, delta mtime, `--conflict-mode`, `--resync`, `--backup-dir` | Already partially in AeroSync GUI. Full conflict visualization planned |
+| **NCdu Explorer** | Shipped (v3.4.2) - ratatui TUI with recursive scan, keyboard navigation, JSON export | Disk usage treemap already in GUI. Remote NCdu-style drill-down planned |
+| **Crypt Overlay** | Shipped (v3.4.2) - AES-256-GCM content + AES-256-SIV filenames + Argon2id KDF. `crypt init/ls/put/get` | Transparent crypt layer in file browser, encrypt-on-upload toggle per profile |
+
+### Sync & Transfer
 
 | Feature | Description |
 |---------|-------------|
 | **AeroCloud Selective Sync** | Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization |
 | **Streaming Scan Pipeline** | Producer-consumer architecture for immediate transfer start without full directory scan |
-| **Rclone Crypt Compatibility** | Transparent decryption of rclone-encrypted remotes (XSalsa20-Poly1305 content, EME filename encryption) |
+| **Rclone Crypt Read Compatibility** | Transparent read-only decryption of existing rclone-encrypted remotes (XSalsa20-Poly1305 content, EME filename encryption) |
 
 ### Agent & Orchestration
 
@@ -238,14 +268,14 @@ Optional Total Commander-style dual local panel with unified tab bar, local-to-l
 
 | Provider | Protocol | Status |
 |----------|----------|--------|
-| **Blomp** | OpenStack Swift | Awaiting proxy fix (auth works, storage 403) |
+| **InfiniCLOUD** (REST API) | REST + WebDAV | Beta - dual connector with Muramasa API for auto-discovery and quota |
+| **Blomp** | OpenStack Swift | Awaiting Blomp proxy fix (auth works, storage 403) |
 | **GitLab** (completion) | REST API v4 | Tier 1 shipped (v3.3.2). Remaining: Tier 2-3 features |
 | **Bitbucket** | REST 2.0 | Planned - Git forge Tier 1 |
 | **Gitea / Forgejo** | REST v1 | Planned - Git forge Tier 1 (~90% GitHub reuse) |
 | **ImageKit** | REST API | Planned - media CDN + storage |
-| **Nextcloud** (generic) | WebDAV + OCS | Planned (Felicloud paved the way) |
 
-**Already supported via presets:** Quotaless (S3 + WebDAV), PixelUnion/Immich (self-hosted), Hetzner Storage Box (WebDAV/SFTP)
+**Already supported via presets:** Quotaless (S3 + WebDAV), PixelUnion/Immich (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud/ownCloud (WebDAV auto-detect since v3.5.0)
 
 ---
 
@@ -255,6 +285,7 @@ These features are being evaluated based on community interest and NLnet grant o
 
 | Feature | Description |
 |---------|-------------|
+| **Content-aware file intelligence** | What if your file manager understood what's inside your files, not just where they are? Cross-server awareness, smarter transfers, and a new way to think about files scattered across 40+ cloud services |
 | **IPFS / Web3 Storage** | Decentralized file storage integration (NLnet grant submitted) |
 | **Tor Support** | Anonymous file transfers via Tor hidden services (NLnet grant submitted) |
 | **Biometric Unlock** | Fingerprint/face unlock for the encrypted vault |
@@ -279,4 +310,4 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 
 ---
 
-*Last updated: April 9, 2026*
+*Last updated: April 14, 2026*
