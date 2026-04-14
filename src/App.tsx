@@ -434,6 +434,7 @@ const App: React.FC = () => {
   const [showGitHubActions, setShowGitHubActions] = useState(false);
   const [hasGitHubPages, setHasGitHubPages] = useState(false);
   const [hasActiveGitHubActions, setHasActiveGitHubActions] = useState(false);
+  const gitHubContextVersionRef = useRef(0);
   const [showFilenNotes, setShowFilenNotes] = useState(false);
   const [gitHubSyncWarning, setGitHubSyncWarning] = useState<{
     unpushedCount: number;
@@ -2336,8 +2337,13 @@ interface UpdateVerificationInfo {
     if (!isConnected || !isGitForge) {
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
+      setHasGitHubPages(false);
+      setHasActiveGitHubActions(false);
       return;
     }
+
+    // Bump version so stale async responses from previous sessions are ignored
+    const version = ++gitHubContextVersionRef.current;
 
     try {
       // Use protocol-specific commands but same state shape
@@ -2351,17 +2357,18 @@ interface UpdateVerificationInfo {
         workingBranch: string | null;
         repoPrivate: boolean;
       }>(infoCommand);
+      if (gitHubContextVersionRef.current !== version) return;
       setGitHubRepoInfo(info);
 
       // GitHub-only: Pages and Actions checks
       if (protocol === 'github') {
         invoke<unknown>('github_get_pages')
-          .then(result => setHasGitHubPages(result !== null))
-          .catch(() => setHasGitHubPages(false));
+          .then(result => { if (gitHubContextVersionRef.current === version) setHasGitHubPages(result !== null); })
+          .catch(() => { if (gitHubContextVersionRef.current === version) setHasGitHubPages(false); });
 
         invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
-          .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
-          .catch(() => setHasActiveGitHubActions(false));
+          .then(runs => { if (gitHubContextVersionRef.current === version) setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')); })
+          .catch(() => { if (gitHubContextVersionRef.current === version) setHasActiveGitHubActions(false); });
       } else {
         setHasGitHubPages(false);
         setHasActiveGitHubActions(false);
@@ -2370,9 +2377,11 @@ interface UpdateVerificationInfo {
       if (refreshBranches) {
         const branchCommand = protocol === 'gitlab' ? 'gitlab_list_branches' : 'github_list_branches';
         const branches = await invoke<Array<{ name: string; protected: boolean }>>(branchCommand);
+        if (gitHubContextVersionRef.current !== version) return;
         setGitHubBranches(branches);
       }
     } catch (error) {
+      if (gitHubContextVersionRef.current !== version) return;
       console.warn(`Failed to refresh ${protocol} context:`, error);
       setGitHubRepoInfo(null);
       setGitHubBranches([]);
@@ -2385,12 +2394,13 @@ interface UpdateVerificationInfo {
   // Poll GitHub Actions status every 60s when connected to GitHub
   useEffect(() => {
     if (!isConnected || getActiveProviderProtocol() !== 'github') return;
+    let cancelled = false;
     const interval = setInterval(() => {
       invoke<Array<{ status: string }>>('github_list_actions_runs', { perPage: 5 })
-        .then(runs => setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')))
+        .then(runs => { if (!cancelled) setHasActiveGitHubActions(runs.some(r => r.status === 'in_progress' || r.status === 'queued')); })
         .catch(() => {});
     }, 60_000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [isConnected, getActiveProviderProtocol]);
 
   const switchGitHubBranch = useCallback(async (branch: string) => {
