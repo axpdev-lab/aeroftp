@@ -222,11 +222,21 @@ export function IntroHub(props: IntroHubProps) {
         }));
     }, []);
 
-    // Update form tab label when user types a connection name (highest priority)
+    // Update form tab label when user types a connection name (highest priority).
+    // Empty name clears the override — label falls back to server hostname or default.
     const updateFormTabLabel = useCallback((tabId: string, name: string) => {
-        setFormTabs(prev => prev.map(ft =>
-            ft.id === tabId ? { ...ft, label: name, userLabel: name } : ft
-        ));
+        setFormTabs(prev => prev.map(ft => {
+            if (ft.id !== tabId) return ft;
+            if (!name) {
+                // Clear user override — derive from current server or default
+                const raw = ft.connectionParams.server?.trim() || '';
+                const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+                const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
+                const isDefault = !cleaned || cleaned === provider?.defaults?.server;
+                return { ...ft, label: isDefault ? ft.defaultLabel : cleaned, userLabel: undefined };
+            }
+            return { ...ft, label: name, userLabel: name };
+        }));
     }, []);
 
     // Update form tab's quickConnectDirs

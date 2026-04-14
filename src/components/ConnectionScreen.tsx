@@ -473,9 +473,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Save connection state
     const [saveConnection, setSaveConnection] = useState(false);
     const [connectionName, setConnectionName] = useState('');
-    // Notify IntroHub when the user types a connection name
+    // Notify IntroHub when the user types a connection name (or clears it)
     useEffect(() => {
-        if (onTabLabelChange && connectionName.trim()) {
+        if (onTabLabelChange) {
             onTabLabelChange(connectionName.trim());
         }
     }, [connectionName, onTabLabelChange]);
