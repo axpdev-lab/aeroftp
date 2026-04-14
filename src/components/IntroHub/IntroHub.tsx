@@ -206,19 +206,26 @@ export function IntroHub(props: IntroHubProps) {
         setActiveTab('my-servers');
     }, []);
 
-    // Update form tab's connectionParams + derive dynamic tab label from server field
+    // Update form tab's connectionParams + derive dynamic tab label from server field.
+    // When protocol changes (FTP↔SFTP switch), also update editingProfile so the
+    // remounted ConnectionScreen initializes with the correct protocol.
     const updateFormTabParams = useCallback((tabId: string, params: ConnectionParams) => {
         setFormTabs(prev => prev.map(ft => {
             if (ft.id !== tabId) return ft;
+            // Sync editingProfile.protocol when protocol switches
+            let updatedProfile = ft.editingProfile;
+            if (updatedProfile && params.protocol && params.protocol !== updatedProfile.protocol) {
+                updatedProfile = { ...updatedProfile, protocol: params.protocol, port: params.port || updatedProfile.port };
+            }
             // Only derive label from server if user hasn't set a connection name
-            if (ft.userLabel) return { ...ft, connectionParams: params };
+            if (ft.userLabel) return { ...ft, connectionParams: params, editingProfile: updatedProfile };
             // Derive label from server field: strip protocol prefix, take hostname only
             const raw = params.server?.trim() || '';
             const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
             const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
             const isDefault = !cleaned || cleaned === provider?.defaults?.server;
             const label = isDefault ? ft.defaultLabel : cleaned;
-            return { ...ft, connectionParams: params, label };
+            return { ...ft, connectionParams: params, editingProfile: updatedProfile, label };
         }));
     }, []);
 
@@ -337,7 +344,7 @@ export function IntroHub(props: IntroHubProps) {
                 {activeFormTab && (
                     <div className="flex-1 flex flex-col">
                         <ConnectionScreen
-                            key={activeFormTab.id}
+                            key={`${activeFormTab.id}-${activeFormTab.connectionParams.protocol || 'none'}`}
                             formOnly
                             connectionParams={activeFormTab.connectionParams}
                             quickConnectDirs={activeFormTab.quickConnectDirs}

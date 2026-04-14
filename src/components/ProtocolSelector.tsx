@@ -530,7 +530,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                     <div className="col-span-2">
                         <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Protocols</p>
                     </div>
-                    {PROTOCOLS.filter(p => !p.isCloudStorage && (!allowedProtocols || allowedProtocols.includes(p.type))).map((protocol) => (
+                    {PROTOCOLS.filter(p => !p.isCloudStorage && (!allowedProtocols || (allowedProtocols.includes(p.type) && !p.providerId))).map((protocol) => (
                         <button
                             key={protocol.type}
                             type="button"

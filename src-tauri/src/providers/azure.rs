@@ -1467,6 +1467,14 @@ impl AzureProvider {
         );
 
         let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         let response = self
@@ -1557,6 +1565,14 @@ impl AzureProvider {
         let url = format!("{}?comp=undelete", self.blob_url(&resolved));
 
         let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
         headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
 
         let response = self

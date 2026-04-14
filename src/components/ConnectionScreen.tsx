@@ -509,22 +509,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Track which preset fields have been unlocked for editing
     const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
 
-    // When re-opening dropdown with a protocol already selected, clear the selection
+    // Track previous protocol for switch detection in handleProtocolChange
+    const previousProtocolRef = React.useRef<ProviderType | undefined>(undefined);
+
+    // When re-opening dropdown with a protocol already selected, clear the selection.
+    // In formOnly (IntroHub edit), keep everything — just open the dropdown overlay.
     const handleProtocolSelectorOpenChange = (open: boolean) => {
         setIsProtocolSelectorOpen(open);
         if (open && protocol) {
-            onConnectionParamsChange({
-                ...connectionParams,
-                protocol: undefined,
-            });
-            setSelectedProviderId(null);
-            if (editingProfileId) {
-                setEditingProfileId(null);
-                editingProfileIdRef.current = null;
-                setConnectionName('');
-                setCustomIconForSave(undefined);
-                setFaviconForSave(undefined);
-                setSaveConnection(false);
+            previousProtocolRef.current = protocol;
+            if (!formOnly) {
+                onConnectionParamsChange({
+                    ...connectionParams,
+                    protocol: undefined,
+                });
+                setSelectedProviderId(null);
+                if (editingProfileId) {
+                    setEditingProfileId(null);
+                    editingProfileIdRef.current = null;
+                    setConnectionName('');
+                    setCustomIconForSave(undefined);
+                    setFaviconForSave(undefined);
+                    setSaveConnection(false);
+                }
             }
         }
     };
@@ -1075,10 +1082,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
         // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP),
-        // keep edit mode and only update protocol + port
+        // keep edit mode and only update protocol + port.
+        // Use previousProtocolRef as fallback when protocol was cleared on dropdown open.
+        const effectiveOldProtocol = protocol || previousProtocolRef.current;
+        previousProtocolRef.current = undefined;
         if (editingProfileId
             && SWITCHABLE_PROTOCOLS.includes(newProtocol)
-            && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
+            && SWITCHABLE_PROTOCOLS.includes(effectiveOldProtocol as ProviderType)
         ) {
             onConnectionParamsChange({
                 ...connectionParams,
