@@ -345,4 +345,5 @@ jobs:
         with:
           identifier: axpnet.AeroFTP
           installers-regex: '\.exe$|\.msi$'
+          fork-user: axpnet
           token: ${{ secrets.WINGET_TOKEN }}
