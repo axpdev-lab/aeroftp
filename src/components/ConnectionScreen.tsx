@@ -88,6 +88,7 @@ interface ConnectionScreenProps {
     formOnly?: boolean;  // IntroHub: hide SavedServers panel, center form at max-w-640px
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
     onFormSaved?: () => void;  // IntroHub: callback after save/edit completes (to close form tab)
+    onTabLabelChange?: (label: string) => void;  // IntroHub: update tab label when connection name changes
 }
 
 // --- FourSharedConnect: OAuth 1.0 authentication for 4shared ---
@@ -464,6 +465,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     formOnly = false,
     editingProfile,
     onFormSaved,
+    onTabLabelChange,
 }) => {
     const t = useTranslation();
     const protocol = connectionParams.protocol; // Can be undefined
@@ -471,6 +473,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Save connection state
     const [saveConnection, setSaveConnection] = useState(false);
     const [connectionName, setConnectionName] = useState('');
+    // Notify IntroHub when the user types a connection name
+    useEffect(() => {
+        if (onTabLabelChange && connectionName.trim()) {
+            onTabLabelChange(connectionName.trim());
+        }
+    }, [connectionName, onTabLabelChange]);
     const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
     const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
 

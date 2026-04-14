@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
+import { Trash2, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize, formatDate } from '../utils/formatters';
@@ -35,7 +35,7 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<InternxtTrashItem[]>('provider_list_trash');
+      const result = await invoke<InternxtTrashItem[]>('internxt_list_trash');
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -67,53 +67,8 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
     }
   };
 
-  const handleRestore = async () => {
-    const paths = Array.from(selected);
-    if (paths.length === 0) return;
-    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Internxt', count: paths.length });
-    setActionLoading('restore');
-    try {
-      for (const path of paths) {
-        await invoke('provider_restore_from_trash', { path });
-      }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Internxt] Restored ${paths.length} item(s) from trash` });
-      await loadTrash();
-      onRefreshFiles?.();
-    } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Internxt] Failed to restore from trash` });
-      setError(String(err));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
-
-  const handlePermanentDelete = () => {
-    if (selected.size === 0) return;
-    setPendingDeleteConfirm(true);
-  };
-
-  const confirmPermanentDelete = async () => {
-    setPendingDeleteConfirm(false);
-    const paths = Array.from(selected);
-    if (paths.length === 0) return;
-    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Internxt', count: paths.length });
-    setActionLoading('delete');
-    try {
-      for (const path of paths) {
-        await invoke('provider_permanent_delete', { path });
-      }
-      humanLog.updateEntry(logId, { status: 'success', message: `[Internxt] Permanently deleted ${paths.length} item(s) from trash` });
-      await loadTrash();
-      onRefreshFiles?.();
-    } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: `[Internxt] Failed to permanently delete from trash` });
-      setError(String(err));
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  // Internxt API only supports listing trash — restore and permanent delete
+  // are not available via the current API. This component is read-only.
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -160,34 +115,7 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
           </div>
         </div>
 
-        {items.length > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-            <button
-              onClick={toggleSelectAll}
-              className="flex items-center gap-1.5 px-2 py-1 text-xs rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-            >
-              {selected.size === items.length ? <CheckSquare size={12} /> : <Square size={12} />}
-              {selected.size === items.length ? t('contextMenu.trashDeselectAll') : t('contextMenu.trashSelectAll')}
-            </button>
-            <div className="flex-1" />
-            <button
-              onClick={handleRestore}
-              disabled={selected.size === 0 || actionLoading !== null}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {actionLoading === 'restore' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-              {t('contextMenu.restoreFromTrash')} {selected.size > 0 && `(${selected.size})`}
-            </button>
-            <button
-              onClick={handlePermanentDelete}
-              disabled={selected.size === 0 || actionLoading !== null}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />}
-              {t('contextMenu.permanentDelete')} {selected.size > 0 && `(${selected.size})`}
-            </button>
-          </div>
-        )}
+        {/* Internxt trash is read-only: no restore or permanent delete API available */}
 
         <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
@@ -255,29 +183,7 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
         </div>
       </div>
 
-      {pendingDeleteConfirm && (
-        <div className="fixed inset-0 z-[10000] bg-black/50 flex items-center justify-center" role="dialog" aria-modal="true" onClick={() => setPendingDeleteConfirm(false)}>
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in" onClick={e => e.stopPropagation()}>
-            <p className="text-gray-900 dark:text-gray-100 mb-4">
-              {t('contextMenu.permanentDeleteConfirm', { count: selected.size })}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setPendingDeleteConfirm(false)}
-                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={confirmPermanentDelete}
-                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
-              >
-                {t('contextMenu.permanentDelete')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* No delete confirm dialog — Internxt trash is read-only */}
     </div>
   );
 }

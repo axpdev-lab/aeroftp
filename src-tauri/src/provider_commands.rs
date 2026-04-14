@@ -7928,6 +7928,23 @@ pub async fn azure_undelete_blob(
 
 // ============ pCloud Trash Commands ============
 
+/// List items in the Internxt trash
+#[tauri::command]
+pub async fn internxt_list_trash(
+    state: State<'_, ProviderState>,
+) -> Result<Vec<crate::providers::RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Internxt {
+        return Err("Only available for Internxt".into());
+    }
+    let internxt = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::internxt::InternxtProvider>()
+        .ok_or("Failed to access Internxt provider")?;
+    internxt.list_trash().await.map_err(|e| e.to_string())
+}
+
 /// List items in the pCloud trash
 #[tauri::command]
 pub async fn pcloud_list_trash(

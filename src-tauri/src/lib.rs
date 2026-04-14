@@ -11554,6 +11554,8 @@ pub fn run() {
             provider_commands::azure_set_blob_tier,
             provider_commands::azure_list_deleted_blobs,
             provider_commands::azure_undelete_blob,
+            // Internxt Trash
+            provider_commands::internxt_list_trash,
             // pCloud Trash
             provider_commands::pcloud_list_trash,
             provider_commands::pcloud_restore_from_trash,

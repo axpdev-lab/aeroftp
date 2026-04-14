@@ -26,6 +26,8 @@ interface FormTabState extends FormTab {
     originTab?: string;
     /** Original label set at tab creation — used as fallback when server field is empty */
     defaultLabel: string;
+    /** User-typed connection name — takes priority over server-derived label */
+    userLabel?: string;
 }
 
 export interface IntroHubProps {
@@ -208,15 +210,23 @@ export function IntroHub(props: IntroHubProps) {
     const updateFormTabParams = useCallback((tabId: string, params: ConnectionParams) => {
         setFormTabs(prev => prev.map(ft => {
             if (ft.id !== tabId) return ft;
+            // Only derive label from server if user hasn't set a connection name
+            if (ft.userLabel) return { ...ft, connectionParams: params };
             // Derive label from server field: strip protocol prefix, take hostname only
             const raw = params.server?.trim() || '';
             const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
-            // Use provider default server to detect if user typed something custom
             const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
             const isDefault = !cleaned || cleaned === provider?.defaults?.server;
             const label = isDefault ? ft.defaultLabel : cleaned;
             return { ...ft, connectionParams: params, label };
         }));
+    }, []);
+
+    // Update form tab label when user types a connection name (highest priority)
+    const updateFormTabLabel = useCallback((tabId: string, name: string) => {
+        setFormTabs(prev => prev.map(ft =>
+            ft.id === tabId ? { ...ft, label: name, userLabel: name } : ft
+        ));
     }, []);
 
     // Update form tab's quickConnectDirs
@@ -324,6 +334,7 @@ export function IntroHub(props: IntroHubProps) {
                             loading={loading}
                             onConnectionParamsChange={(params) => updateFormTabParams(activeFormTab.id, params)}
                             onQuickConnectDirsChange={(dirs) => updateFormTabDirs(activeFormTab.id, dirs)}
+                            onTabLabelChange={(name) => updateFormTabLabel(activeFormTab.id, name)}
                             editingProfile={activeFormTab.editingProfile}
                             onConnect={() => {
                                 // Pass params directly to avoid stale React state (#81)
