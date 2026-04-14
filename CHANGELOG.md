@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### InfiniCLOUD REST API, protocol switch, UX improvements
+### InfiniCLOUD REST API, protocol switch, S3 transfer fix, UX improvements
 
 #### Added
 
@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- **S3 large file download/upload timeout**: The 30-second global request timeout caused downloads and multipart uploads to fail on files larger than ~200 MB across all S3-compatible providers (Storj, AWS, Backblaze, Wasabi). Replaced with connect timeout (30s) for TCP/TLS handshake and read timeout (300s) for stall detection, allowing large transfers to complete without artificial time limits
+- **GitHub/GitLab context buttons disappearing on tab switch**: Version counter prevents stale async responses from overwriting GitHub context state when switching between tabs
 - **InfiniCLOUD REST API header**: Corrected from `X-InfiniCLOUD-API-KEY` to `X-TeraCLOUD-API-KEY` per official documentation
 - **InfiniCLOUD quota not displaying**: Fixed race condition where `fetchStorageQuota` was called before React state updated with the new session. Now passes enriched session params directly
 - **Missing providerId in session params**: Provider ID was not included in `sessionParams` for provider connections, preventing provider-specific quota logic from activating
