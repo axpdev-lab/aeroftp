@@ -40,6 +40,7 @@
 
 | Feature | Description |
 |---------|-------------|
+| **MCP Server** | Native Model Context Protocol server via `aeroftp-cli agent --mcp`. 16 curated tools across all 27 protocols, connection pooling, rate limiting, audit logging, 5 resources, 4 prompt templates. Works with Claude Desktop, Cursor, and any MCP client. 2,800+ lines, async stdio, JSON-RPC 2.0 compliant. |
 | **Cross-profile transfer panel** | Dedicated toolbar button for cloud-to-cloud transfers. Floating panel with real-time queue, progress bars, and plan/execute/done transitions. |
 | **CLI `transfer` command** | Cross-profile copy between two vault-backed profiles with dry-run, recursive mode, and `--skip-existing` for backup flows. |
 | **CLI doctor workflows** | `sync-doctor` and `transfer-doctor` preflight commands with structured checks, risk summaries, and `suggested_next_command` for agent automation. |
@@ -209,7 +210,6 @@ Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
 | Feature | Status | Description |
 |---------|--------|-------------|
 | **InfiniCLOUD REST API** | Beta | Dual connector (WebDAV / REST API) with Muramasa API. Auto-discovery of user node server and real-time storage quota. Available for developer and beta testing. |
-| **Agent MCP Server** | In progress | `aeroftp-cli agent --mcp` for native integration with Claude Code, Cursor, and other MCP clients. 10 phases, 8 new files, async stdio, connection pool. |
 | **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. 17/19 tasks complete (89%). |
 
 ---
@@ -254,7 +254,7 @@ These features are production-ready in the CLI. GUI integration is planned for f
 
 | Feature | Description |
 |---------|-------------|
-| **Agent Orchestration** | JSON-RPC programmatic mode, mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync |
+| **Agent Orchestration v2** | Mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync. MCP Server already shipped with 16 read/write tools - this extends the grant and approval layer |
 | **AeroVault v2 Enhancements** | Cross-platform migration, multi-device sync integration, key rotation |
 
 ### Documentation & Distribution
