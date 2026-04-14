@@ -210,7 +210,8 @@ impl ImmichProvider {
             .user_agent(AEROFTP_USER_AGENT)
             .default_headers(headers)
             .connect_timeout(std::time::Duration::from_secs(15))
-            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(300))
             .build()
             .unwrap_or_default();
 

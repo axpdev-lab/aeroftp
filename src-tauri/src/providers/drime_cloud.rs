@@ -221,7 +221,8 @@ impl DrimeCloudProvider {
         default_headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(300))
             .connect_timeout(std::time::Duration::from_secs(30))
             .default_headers(default_headers)
             .build()

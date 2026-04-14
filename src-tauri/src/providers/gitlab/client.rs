@@ -65,7 +65,8 @@ impl GitLabHttpClient {
         accept_invalid_certs: bool,
     ) -> Result<Self, ProviderError> {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(300))
             .user_agent(USER_AGENT)
             .danger_accept_invalid_certs(accept_invalid_certs)
             .build()

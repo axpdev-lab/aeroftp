@@ -244,7 +244,8 @@ pub async fn download_release_asset(
     // to avoid GitHub API header conflicts (Accept: application/octet-stream vs vnd.github+json)
     let resp = if asset_name.starts_with("Source code") {
         reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(300))
             .build()
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
             .get(&download_url)
