@@ -17,8 +17,9 @@ use zeroize::Zeroize;
 
 use super::{
     mega_crypto::{
-        aes_ctr_decrypt, aes_ctr_encrypt, aes_ecb_decrypt_block, aes_ecb_encrypt_block,
-        aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries, decrypt_node_attrs,
+        aes_ctr_apply_inplace, aes_ctr_decrypt, aes_ecb_decrypt_block,
+        aes_ecb_encrypt_block, aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries,
+        decrypt_node_attrs,
         decrypt_node_key_xor, decrypt_rsa_privkey, encrypt_node_attrs, kdf_v1, kdf_v2,
         mega_base64_decode, mega_base64_encode, meta_mac, pack_node_key, rsa_decrypt_csid,
         unpack_node_key, username_hash_v1,
@@ -323,6 +324,14 @@ pub struct MegaNativeProvider {
     nodes_loaded: bool,
 }
 
+/// Ensure all sensitive material is zeroized when the provider is dropped,
+/// even if disconnect() was never called (e.g. on panic or early return).
+impl Drop for MegaNativeProvider {
+    fn drop(&mut self) {
+        self.clear_runtime_session();
+    }
+}
+
 impl MegaNativeProvider {
     pub fn new(config: MegaConfig) -> Self {
         Self {
@@ -363,17 +372,37 @@ impl MegaNativeProvider {
         self.connected = false;
         self.current_path = "/".to_string();
         self.api_client.set_session_id(None);
+
+        // Zeroize session ID before dropping
+        if let Some(ref mut sid) = self.session_id {
+            sid.zeroize();
+        }
         self.session_id = None;
+
         self.account_version = None;
         self.prelogin_salt = None;
         self.user_handle = None;
         self.sequence_number = None;
+
+        // Zeroize RSA private key components (BigUint bytes)
+        if let Some((ref mut p, ref mut q, ref mut d, ref mut u)) = self.rsa_components {
+            p.zeroize();
+            q.zeroize();
+            d.zeroize();
+            u.zeroize();
+        }
         self.rsa_components = None;
+
+        // Zeroize all decrypted node keys before clearing
+        for node in self.nodes.values_mut() {
+            node.key.zeroize();
+        }
         self.nodes.clear();
         self.children.clear();
         self.root_handle = None;
         self.trash_handle = None;
         self.nodes_loaded = false;
+
         if let Some(mut mk) = self.master_key.take() {
             mk.zeroize();
         }
@@ -409,6 +438,8 @@ impl MegaNativeProvider {
     // ─── Auth helpers ─────────────────────────────────────────────────
 
     fn verify_tsid(tsid: &str, master_key: &[u8; 16]) -> Result<(), ProviderError> {
+        use subtle::ConstantTimeEq;
+
         let decoded = mega_base64_decode(tsid)?;
         if decoded.len() != 32 {
             return Err(ProviderError::ParseError(format!(
@@ -419,12 +450,14 @@ impl MegaNativeProvider {
         let first_half = <[u8; 16]>::try_from(&decoded[..16])
             .map_err(|_| ProviderError::ParseError("tsid slice error".into()))?;
         let expected = aes_ecb_encrypt_block(&first_half, master_key)?;
-        if expected != decoded[16..32] {
-            return Err(ProviderError::AuthenticationFailed(
+        // Constant-time comparison to prevent timing side-channels
+        if expected.ct_eq(&decoded[16..32]).into() {
+            Ok(())
+        } else {
+            Err(ProviderError::AuthenticationFailed(
                 "MEGA tsid verification failed".into(),
-            ));
+            ))
         }
-        Ok(())
     }
 
     async fn get_user_info(&self) -> Result<MegaUserInfoWire, ProviderError> {
@@ -1049,12 +1082,134 @@ impl StorageProvider for MegaNativeProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let bytes = self
-            .download_to_bytes_with_progress(remote_path, on_progress)
+        self.ensure_nodes_loaded().await?;
+
+        let handle = self.resolve_path(remote_path)?;
+        let node = self
+            .nodes
+            .get(&handle)
+            .cloned()
+            .ok_or_else(|| ProviderError::NotFound(format!("Not found: {remote_path}")))?;
+
+        if !node.is_file() {
+            return Err(ProviderError::InvalidPath(format!(
+                "{remote_path} is not a file"
+            )));
+        }
+
+        if node.key.len() != 32 {
+            return Err(ProviderError::ParseError(format!(
+                "File node key invalid length: {} (need 32)",
+                node.key.len()
+            )));
+        }
+
+        let packed_key: [u8; 32] = node.key[..32]
+            .try_into()
+            .map_err(|_| ProviderError::ParseError("key conversion failed".into()))?;
+        let (file_key, nonce) = unpack_node_key(&packed_key)?;
+
+        // Get download URL
+        let dl_resp: GetDownloadUrlResponseWire = self
+            .command_with_retry(json!({ "a": "g", "g": 1, "n": handle }))
             .await?;
-        tokio::fs::write(local_path, &bytes)
+
+        let total_size = dl_resp.s;
+        let actual_size = node.size;
+
+        let response = self
+            .api_client
+            .client
+            .get(&dl_resp.g)
+            .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to write file: {e}")))?;
+            .map_err(map_reqwest_error)?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download HTTP {}",
+                response.status()
+            )));
+        }
+
+        // Streaming download: decrypt each MEGA chunk and write directly to disk.
+        // Peak memory = 1 MEGA chunk (max 1 MB) instead of 3x file size.
+        let chunks = compute_chunk_boundaries(total_size);
+        let mut stream = response.bytes_stream();
+        use futures_util::StreamExt;
+
+        let mut atomic =
+            super::atomic_write::AtomicFile::new(local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+        let mut downloaded: u64 = 0;
+        let mut chunk_idx = 0usize;
+        let mut chunk_buf: Vec<u8> = Vec::new();
+
+        while let Some(chunk_result) = stream.next().await {
+            let http_chunk = chunk_result.map_err(|e| {
+                ProviderError::TransferFailed(format!("Download stream error: {e}"))
+            })?;
+            chunk_buf.extend_from_slice(&http_chunk);
+
+            // Process all complete MEGA chunks accumulated in the buffer
+            while chunk_idx < chunks.len() {
+                let (mega_offset, mega_size) = chunks[chunk_idx];
+                if chunk_buf.len() < mega_size {
+                    break; // need more HTTP data
+                }
+
+                // Take exactly one MEGA chunk from the buffer
+                let mut mega_chunk: Vec<u8> = chunk_buf.drain(..mega_size).collect();
+
+                // Decrypt in-place (zero extra allocation)
+                aes_ctr_apply_inplace(&mut mega_chunk, &file_key, &nonce, mega_offset);
+
+                // Truncate last chunk to actual file size
+                let write_end = if mega_offset + mega_size as u64 > actual_size {
+                    (actual_size - mega_offset) as usize
+                } else {
+                    mega_size
+                };
+
+                atomic
+                    .write_all(&mega_chunk[..write_end])
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!("Write chunk failed: {e}"))
+                    })?;
+
+                downloaded += mega_size as u64;
+                if let Some(ref cb) = on_progress {
+                    cb(std::cmp::min(downloaded, actual_size), actual_size);
+                }
+
+                chunk_idx += 1;
+            }
+        }
+
+        // Flush any remaining partial chunk (should not happen with valid MEGA data)
+        if !chunk_buf.is_empty() && chunk_idx < chunks.len() {
+            let (mega_offset, _) = chunks[chunk_idx];
+            let mut remaining = chunk_buf;
+            aes_ctr_apply_inplace(&mut remaining, &file_key, &nonce, mega_offset);
+            let write_end = if mega_offset + remaining.len() as u64 > actual_size {
+                (actual_size - mega_offset) as usize
+            } else {
+                remaining.len()
+            };
+            atomic
+                .write_all(&remaining[..write_end])
+                .await
+                .map_err(|e| {
+                    ProviderError::TransferFailed(format!("Write final chunk failed: {e}"))
+                })?;
+        }
+
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {e}"))
+        })?;
+
         Ok(())
     }
 
@@ -1069,50 +1224,59 @@ impl StorageProvider for MegaNativeProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let data = tokio::fs::read(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to read local file: {e}"))
-        })?;
+        use tokio::io::AsyncReadExt;
+
+        let file_meta = tokio::fs::metadata(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let file_size = file_meta.len();
 
         self.ensure_nodes_loaded().await?;
         let master_key = self.master_key.ok_or(ProviderError::NotConnected)?;
 
         let (parent_handle, file_name) = self.resolve_parent_and_name(remote_path)?;
-        let file_size = data.len() as u64;
 
         // Generate file key and nonce
         let file_key: [u8; 16] = rand::random();
         let nonce: [u8; 8] = rand::random();
 
-        // Encrypt data
-        let encrypted = aes_ctr_encrypt(&data, &file_key, &nonce, 0)?;
-
-        // Compute chunk MACs for integrity
         let chunks = compute_chunk_boundaries(file_size);
-        let mut chunk_macs = Vec::with_capacity(chunks.len());
-        for &(offset, size) in &chunks {
-            let chunk_data = &data[offset as usize..offset as usize + size];
-            chunk_macs.push(chunk_mac(chunk_data, &file_key, &nonce)?);
-        }
-        let file_meta_mac = meta_mac(&chunk_macs, &file_key)?;
 
         // Request upload URL
         let upload_resp: RequestUploadUrlResponseWire = self
             .command_with_retry(json!({ "a": "u", "s": file_size, "ssl": 2 }))
             .await?;
 
-        // Upload encrypted data in chunks
+        // Streaming upload: read each MEGA chunk from disk, compute MAC on plaintext,
+        // encrypt in-place, upload. Peak memory = 1 chunk (max 1 MB).
+        let mut file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
         let mut upload_handle = String::new();
         let mut uploaded = 0u64;
+        let mut chunk_macs = Vec::with_capacity(chunks.len());
 
         for &(offset, size) in &chunks {
-            let chunk = &encrypted[offset as usize..offset as usize + size];
-            let url = format!("{}/{}", upload_resp.p, offset);
+            // Read one MEGA chunk from disk
+            let mut chunk_buf = vec![0u8; size];
+            file.read_exact(&mut chunk_buf).await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to read chunk: {e}"))
+            })?;
 
+            // Compute MAC on plaintext BEFORE encryption
+            chunk_macs.push(chunk_mac(&chunk_buf, &file_key, &nonce)?);
+
+            // Encrypt in-place (zero extra allocation)
+            aes_ctr_apply_inplace(&mut chunk_buf, &file_key, &nonce, offset);
+
+            // Upload encrypted chunk
+            let url = format!("{}/{}", upload_resp.p, offset);
             let resp = self
                 .api_client
                 .client
                 .post(&url)
-                .body(chunk.to_vec())
+                .body(chunk_buf)
                 .send()
                 .await
                 .map_err(map_reqwest_error)?;
@@ -1142,6 +1306,8 @@ impl StorageProvider for MegaNativeProvider {
                 "No upload handle received".into(),
             ));
         }
+
+        let file_meta_mac = meta_mac(&chunk_macs, &file_key)?;
 
         // Pack node key and encrypt
         let packed_key = pack_node_key(&file_key, &nonce, &file_meta_mac)?;

@@ -98,6 +98,7 @@ dependencies = [
  "sigstore",
  "similar",
  "ssh2",
+ "subtle",
  "suppaftp",
  "tar",
  "tauri",
