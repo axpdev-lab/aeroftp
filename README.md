@@ -186,7 +186,7 @@ AeroFTP
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
 │   └── AeroAgent    - AI-powered assistant (47 tools, 19 providers)
-├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, agent discovery)
+├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, daemon, FUSE mount, crypt, ncdu, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
 
@@ -267,7 +267,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 48 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 19 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 19 AI providers.
 
 ---
 
@@ -275,7 +275,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 32 subcommands, 27 protocols, encrypted vault profiles, JSON output, batch scripting, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 38 subcommands, 27 protocols, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, and native MCP server mode for AI integration.
 
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
@@ -283,9 +283,12 @@ aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
 aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
 aeroftp-cli serve webdav s3://key:secret@s3.aws.com       # Serve remote as local WebDAV
 aeroftp-cli agent --mcp                                   # MCP server for Claude/Cursor/VS Code
+aeroftp-cli mount sftp://user@host /mnt/remote             # FUSE filesystem
+aeroftp-cli ncdu sftp://user@host /data                    # Interactive disk usage
+aeroftp-cli daemon start                                   # Background job queue
 ```
 
-**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-8), `.aeroftp` batch scripts, `serve http/webdav`, MCP server mode, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
+**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-8), `.aeroftp` batch scripts, `serve http/webdav/ftp/sftp`, MCP server mode, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
 ---
 

@@ -4,9 +4,9 @@
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 3.3.x   | Yes (current)       |
-| 3.2.x   | Security fixes only |
-| 3.1.x   | Security fixes only |
+| 3.5.x   | Yes (current)       |
+| 3.4.x   | Security fixes only |
+| 3.1.x   | End of Life         |
 | < 3.0   | No                  |
 
 ## Security Architecture
@@ -72,7 +72,7 @@ Plain FTP connections display a prominent insecure warning badge. WebDAV support
 
 ### AI Tool Security
 
-AeroAgent (48 tools) operates under backend-enforced security controls:
+AeroAgent (47 tools) operates under backend-enforced security controls:
 
 - **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
 - **Native OS confirmation**: Grant approval triggers an operating system dialog that cannot be bypassed by web frontend compromise or prompt injection
@@ -101,7 +101,7 @@ For Sigstore verification commands and CI/CD security controls, see [Supply Chai
 ### Memory Safety
 
 - `zeroize` and `secrecy` crates clear passwords, keys, and tokens from memory after use
-- All provider credentials wrapped in `SecretString` across all 23 providers
+- All provider credentials wrapped in `SecretString` across all 22 providers
 - Rust ownership model prevents use-after-free and buffer overflows
 - Passwords are never logged or written to disk in plain text
 - Activity log and UI credential masking: usernames, emails, and access keys are masked at the source (`maskCredential`) before reaching log entries or display subtitles, preventing accidental exposure in bug reports and screenshots
@@ -159,4 +159,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.4.8 - 10 April 2026*
+*AeroFTP v3.5.0 - 14 April 2026*

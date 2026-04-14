@@ -87,7 +87,7 @@
 
 | Feature | Description |
 |---------|-------------|
-| **Advanced Share Links** | Password protection, expiry dates, and granular permissions for share links across 13 providers. |
+| **Advanced Share Links** | Password protection, expiry dates, and granular permissions for share links across 21 providers. |
 | **MEGA S4 Object Storage** | S3-compatible object storage via MEGA's S4 infrastructure. |
 | **CLI link enhancements** | New `--password`, `--expires`, and `--permissions` flags for the `link` command. |
 | **Security Hardening** | Additional security improvements across the application. |
@@ -99,7 +99,7 @@
 | **MEGA Native API** | Full native MEGA protocol - connect without MEGAcmd. Client-side AES-128-CTR encryption, RSA session auth, encrypted node tree, share links, trash management. Zero external dependencies. |
 | **MEGA Dual-Backend** | Users choose Native API or MEGAcmd in connection form. Mode-specific badges, session persistence, backward compatibility with existing profiles. |
 | **Windows MEGA Fixes** | Console flash eliminated (CREATE_NO_WINDOW), login via CLI arg for .bat wrappers. |
-| **Trash Date Formatting** | All 11 trash managers now display human-readable dates. |
+| **Trash Date Formatting** | All 14 trash managers now display human-readable dates. |
 
 ### v3.1.8 (March 2026)
 
@@ -133,7 +133,7 @@
 | Feature | Description |
 |---------|-------------|
 | **AeroAgent Hardening** | Improved AI agent reliability with prompt injection sanitization and memory management. |
-| **CLI Evolution** | 30 subcommands, batch engine with 17 commands, parallel transfers, shell completions. |
+| **CLI Evolution** | 38 subcommands, batch engine with 17 commands, parallel transfers, shell completions. |
 | **Security Audit** | Full security review with backend-enforced command denylist and signed audit log. |
 
 ### v3.1.4 (March 2026)
@@ -224,8 +224,8 @@ Optional Total Commander-style dual local panel with unified tab bar, local-to-l
 
 | Feature | Description |
 |---------|-------------|
-| **Universal File Versioning** | Unified versions panel across 12+ providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud, OpenDrive, MEGA) |
-| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support |
+| **Universal File Versioning** | Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud) |
+| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support (14 providers already implemented, 2 backend-only) |
 | **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI |
 | **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow |
 

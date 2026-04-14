@@ -1,6 +1,6 @@
 # AeroFTP Privacy Policy
 
-*Last updated: 7 March 2026*
+*Last updated: 14 April 2026*
 
 ## Overview
 
@@ -71,4 +71,4 @@ For privacy-related questions or concerns:
 
 ---
 
-*AeroFTP v2.8.8 — An open source project by axpdev*
+*AeroFTP v3.5.0 — An open source project by axpdev*

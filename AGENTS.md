@@ -115,6 +115,8 @@ The `profiles --json` output:
 | `crypt put` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt put ./file _ /dir` | Upload encrypted |
 | `crypt get` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt get filename _ /dir ./out` | Download + decrypt |
 | `crypt ls` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt ls _ /dir` | List decrypted names |
+| `batch` | `aeroftp-cli batch script.aeroftp` | Run batch script (.aeroftp) |
+| `import` | `aeroftp-cli import rclone [--json]` | Import profiles from rclone/FileZilla |
 
 ### Info Operations
 
@@ -274,7 +276,7 @@ If `--provider` is omitted, the CLI auto-detects from environment variables or v
 
 The agent has two tools for vault-backed server operations:
 
-**`server_list_saved`** — Lists all 57 saved server profiles (names, protocols, hosts). No credentials exposed.
+**`server_list_saved`** — Lists all saved server profiles (names, protocols, hosts). No credentials exposed.
 
 **`server_exec`** — Executes operations on any saved server. Credentials resolved internally.
 
@@ -332,7 +334,7 @@ Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that 
 
 ### Coming Soon
 
-- **Mutative server_exec**: `put`, `rm`, `mv`, `mkdir` via CLI agent with headless grant model
+- **Mutative server operations**: Available as dedicated tools — `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete`, `remote_rename`
 - **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` for programmatic agent-to-agent integration
 - **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
 - **Agent session tokens**: Pre-authorized scoped sessions for headless automation
@@ -343,12 +345,12 @@ Full orchestration documentation with a verified field test report: **[Agent Orc
 
 Saved profiles cover both direct-auth and browser-authorized providers.
 
-**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, MEGA, Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob
+**Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Azure Blob, Immich, SourceForge (SFTP preset)
 
-**Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime
+**Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared
 
 `df` and quota fields are provider-dependent. For several object-storage providers, `about` and `df` may omit quota data because the upstream API does not expose `storage_info`.
 
 ---
 
-*AeroFTP CLI v3.2.0 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v3.5.0 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

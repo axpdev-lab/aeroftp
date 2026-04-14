@@ -1,6 +1,6 @@
 # Universal Credential Vault — Technical Documentation
 
-> AeroFTP v1.9.0 — February 2026
+> AeroFTP v3.5.0 — April 2026
 
 ---
 
@@ -473,6 +473,19 @@ Import flow:
 - A compromised Tauri frontend sending credentials to a malicious endpoint
 
 These threats are out of scope for any client-side credential manager, including OS keyrings.
+
+---
+
+## Recent Additions (post-v1.9.0)
+
+| Version | Feature | Description |
+|---------|---------|-------------|
+| v2.2.4 | **TOTP 2FA** | Optional second factor for master password (RFC 6238). QR code setup, 6-digit verification, exponential rate limiting |
+| v2.2.4 | **Remote Vault** | Open `.aerovault` files on remote servers - download, operate locally, "Save & Close" uploads back |
+| v2.9.4 | **Recent Vaults** | SQLite WAL-backed vault history with last-opened tracking and one-click reopen |
+| v2.9.4 | **Folder Encryption** | Encrypt entire directories as AeroVault containers with recursive scan and progress events |
+| v2.9.2 | **OS File Association** | `.aerovault` double-click open on Linux (.deb/Snap), Windows (NSIS), and macOS. Deep-link handler with single-instance forwarding |
+| v1.8.0 | **AeroVault v2.1** | AES-256-GCM-SIV (RFC 8452) content encryption, Argon2id KDF (128 MiB/t=4/p=4), AES-256-KW key wrapping, AES-256-SIV filename encryption, optional ChaCha20-Poly1305 cascade mode |
 
 ---
 
