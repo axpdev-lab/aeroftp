@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.5.1] - 2026-04-14
 
-### InfiniCLOUD REST API, protocol switch, S3 transfer fix, UX improvements
+### S3/MEGA streaming fix, cross-provider timeout, protocol switch, security hardening
 
 #### Added
 
@@ -17,19 +17,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Remote/local paths in server list view**: Saved servers with default paths now show them on two compact rows (remote + local) in the list view, truncated from the start for long paths
 - **InfiniCLOUD added to Special Thanks** for responsive technical support and API key issuance
 
+#### Added
+
+- **Internxt Trash Manager**: View deleted files on Internxt (read-only, listing only)
+- **Azure Blob Trash Manager**: View and restore soft-deleted blobs on Azure Blob Storage
+- **Zoho WorkDrive versioning enabled**: `supports_versions()` now correctly returns true, enabling version management for Zoho files
+- **LargeIconsGrid virtualization**: Grid view now uses react-virtuoso for smooth performance with 10,000+ files
+
 #### Fixed
 
-- **S3 large file download/upload timeout**: The 30-second global request timeout caused downloads and multipart uploads to fail on files larger than ~200 MB across all S3-compatible providers (Storj, AWS, Backblaze, Wasabi). Replaced with connect timeout (30s) for TCP/TLS handshake and read timeout (300s) for stall detection, allowing large transfers to complete without artificial time limits
-- **GitHub/GitLab context buttons disappearing on tab switch**: Version counter prevents stale async responses from overwriting GitHub context state when switching between tabs
+- **Cross-provider transfer timeout** (critical): All 22 cloud providers had a global request timeout (30s) that killed any transfer taking longer than 30 seconds. Replaced with connect timeout (30s) + read timeout (300s) across S3, Azure, WebDAV, OneDrive, Dropbox, Google Drive, Box, pCloud, Filen, Zoho, 4shared, Google Photos, Yandex, MEGA, Internxt, FileLu, Jottacloud, kDrive, OpenDrive, Koofr, Drime, Immich, GitHub, GitLab. Transfers of any size now complete as long as data flows
+- **MEGA Native streaming download/upload**: Download and upload loaded entire files into memory (3x file size on download, 2x on upload), causing out-of-memory crashes on files larger than ~700 MB. Rewritten to stream through MEGA chunk boundaries with AES-128-CTR encryption in-place. Peak memory now 1 MB regardless of file size
+- **MEGA Native security hardening**: Implemented Drop trait for automatic zeroization on provider drop. RSA private key components (BigUint), decrypted node keys, and session IDs now zeroized in clear_runtime_session. Replaced timing-vulnerable == comparison in verify_tsid with subtle::ConstantTimeEq
+- **MEGA batch permanent delete**: Rapid sequential deletes could produce non-JSON responses from MEGA API, causing parse errors. Now tolerates parse errors on delete (node likely already removed)
+- **Azure Blob trash 403 error**: list_deleted_blobs and undelete_blob were missing x-ms-date and x-ms-version headers, causing AuthenticationFailed on Shared Key accounts
+- **Protocol switch in IntroHub edit** ([#108](https://github.com/axpdev-lab/aeroftp/issues/108)): Switching between FTP, FTPS, and SFTP while editing a saved server now works correctly. Form data (server, username, password, paths) preserved, only protocol and port change. SourceForge preset hidden from switch selector
+- **IntroHub tab label**: Tab now shows the connection name typed by the user (highest priority), falls back to server hostname, then to default provider label
+- **S3 large file download/upload timeout**: The 30-second global request timeout caused downloads and multipart uploads to fail on files larger than ~200 MB across all S3-compatible providers (Storj, AWS, Backblaze, Wasabi)
+- **GitHub/GitLab context buttons disappearing on tab switch**: Version counter prevents stale async responses from overwriting GitHub context state
 - **InfiniCLOUD REST API header**: Corrected from `X-InfiniCLOUD-API-KEY` to `X-TeraCLOUD-API-KEY` per official documentation
-- **InfiniCLOUD quota not displaying**: Fixed race condition where `fetchStorageQuota` was called before React state updated with the new session. Now passes enriched session params directly
-- **Missing providerId in session params**: Provider ID was not included in `sessionParams` for provider connections, preventing provider-specific quota logic from activating
+- **InfiniCLOUD quota not displaying**: Fixed race condition where `fetchStorageQuota` was called before React state updated with the new session
+- **Missing providerId in session params**: Provider ID was not included in `sessionParams` for provider connections
 
 #### Improved
 
+- **IntroHub dedup**: Deduplicated renderRightColumn for FileLu, Jottacloud, and Drime branches, removing ~200 lines of duplicate code. Removed orphaned IntroHub/CommandPalette.tsx
 - **Connection mode locked in edit mode**: InfiniCLOUD and MEGA connection mode selectors are now read-only when editing an existing connection, preventing accidental mode changes
 - **AlertDialog Cancel button**: Shows "Cancel" instead of "OK" when an action button is present. Action icon is now customizable (Trash icon for delete, Key icon for vault)
 - **Badge column reordered**: Protocol badge now appears before the username column in server list view for better scannability
+- **Documentation aligned to v3.5.0**: 14 public documents updated with correct version numbers, tool counts, CLI features, and protocol counts
 
 ## [3.5.0] - 2026-04-13
 

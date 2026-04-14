@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.1" date="2026-04-14">
+      <description>
+        <p>Critical transfer fix: replaced 30-second global timeout with connect + read timeout across all 22 cloud providers. MEGA Native streaming rewrite eliminates out-of-memory on large files. Security hardening with zeroization and constant-time comparison. Azure Blob trash management. Zoho versioning enabled. Protocol switch FTP/SFTP in edit mode. IntroHub dynamic tab labels. Grid virtualization for 10K+ files.</p>
+      </description>
+    </release>
     <release version="3.5.0" date="2026-04-13">
       <description>
         <p>Profile Bridge hub: unified import/export for rclone, WinSCP, and FileZilla with contextual UI. FileZilla sitemanager.xml bridge with base64 password decoding. Nextcloud WebDAV auto-detection. Transfer engine fixes: size-based timeout for large files, skip-if-identical action mapping, retry queue callback preservation, AeroSync crash fix. UI polish: hover animation, drag/rename conflict, parent folder double-click, font scaling, Ukrainian/Russian i18n fix.</p>

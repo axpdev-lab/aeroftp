@@ -2710,6 +2710,10 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         extra.insert("two_factor_code".to_string(), code.clone());
     }
 
+    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
+        extra.insert("mega_mode".to_string(), "native".to_string());
+    }
+
     let config = ProviderConfig {
         name: format!("{} CLI", provider_type),
         provider_type,
@@ -4335,6 +4339,10 @@ fn profile_to_provider_config(
                 host = resolved_endpoint;
             }
         }
+    }
+
+    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
+        extra.insert("mega_mode".to_string(), "native".to_string());
     }
 
     if !cli.quiet {
@@ -20812,6 +20820,17 @@ mod tests {
         let cli = test_cli();
         let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
         assert_eq!(config.provider_type, ProviderType::Mega);
+        assert_eq!(config.extra.get("mega_mode"), Some(&"native".to_string()));
+    }
+
+    #[test]
+    fn test_url_parsing_mega_keeps_native_with_other_cli_options() {
+        let cli = Cli {
+            two_factor: Some("123456".to_string()),
+            ..test_cli()
+        };
+        let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
+        assert_eq!(config.extra.get("mega_mode"), Some(&"native".to_string()));
     }
 
     #[test]
