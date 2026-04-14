@@ -1571,6 +1571,13 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
+        // Guard: refuse to wipe the entire bucket
+        if path.trim_matches('/').is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to recursively delete root '/'. This would erase the entire bucket.".into(),
+            ));
+        }
+
         let prefix = format!("{}/", path.trim_matches('/'));
         let mut keys = self.list_keys_with_prefix(&prefix).await?;
 

@@ -969,6 +969,11 @@ impl StorageProvider for SwiftProvider {
     ///   Body: /{container}/path1\n/{container}/path2\n...
     /// Max 10000 per request.
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        if path.trim_matches('/').is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to recursively delete root '/'. This would erase the entire container.".into(),
+            ));
+        }
         let prefix = Self::normalize_path(path);
 
         // List all objects under prefix (no delimiter = flat recursive listing)

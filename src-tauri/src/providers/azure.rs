@@ -1024,6 +1024,11 @@ impl StorageProvider for AzureProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        if path.trim_matches('/').is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to recursively delete root '/'. This would erase the entire container.".into(),
+            ));
+        }
         let entries = self.list(path).await?;
         for entry in entries {
             if entry.is_dir {

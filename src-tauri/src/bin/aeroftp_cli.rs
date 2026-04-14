@@ -8915,6 +8915,18 @@ async fn cmd_rm(
         Err(code) => return code,
     };
 
+    // Block recursive delete on root — prevents wiping entire bucket/account
+    let normalized = path.trim_matches('/');
+    if recursive && normalized.is_empty() {
+        print_error(
+            format,
+            "Refusing to recursively delete root '/'. This would erase all data on the remote. Delete specific paths instead.",
+            1,
+        );
+        let _ = provider.disconnect().await;
+        return 1;
+    }
+
     // Confirmation for recursive delete (unless --force)
     if recursive && !force && std::io::stdin().is_terminal() {
         eprint!("Recursively delete '{}'? [y/N]: ", path);
