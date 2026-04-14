@@ -28,6 +28,9 @@ import { Checkbox } from './ui/Checkbox';
 // Storage key for saved servers (same as SavedServers component)
 const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
 
+// Protocols that can be switched between when editing a saved connection
+const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
+
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
     ftps: 'from-green-500 to-emerald-400',
@@ -1063,7 +1066,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
-        // Exit edit mode when changing protocol (user wants to create new connection)
+        // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP),
+        // keep edit mode and only update protocol + port
+        if (editingProfileId
+            && SWITCHABLE_PROTOCOLS.includes(newProtocol)
+            && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
+        ) {
+            onConnectionParamsChange({
+                ...connectionParams,
+                protocol: newProtocol,
+                port: getDefaultPort(newProtocol),
+                options: {},
+            });
+            return;
+        }
+
+        // Exit edit mode when changing to an incompatible protocol
         if (editingProfileId) {
             setEditingProfileId(null);
             editingProfileIdRef.current = null;
@@ -1438,14 +1456,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </div>
                     )}
                     <div className="space-y-3">
-                        {/* Protocol Selector - hidden in formOnly (protocol already chosen from Discover) */}
-                        {!formOnly && (
+                        {/* Protocol Selector - hidden in formOnly unless editing a switchable protocol (FTP/FTPS/SFTP) */}
+                        {(!formOnly || (editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType))) && (
                         <ProtocolSelector
                             value={protocol}
                             onChange={handleProtocolChange}
                             disabled={loading}
                             onOpenChange={handleProtocolSelectorOpenChange}
                             ftpTlsMode={connectionParams.options?.tlsMode}
+                            allowedProtocols={editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType) ? SWITCHABLE_PROTOCOLS : undefined}
                         />
                         )}
 
@@ -3211,11 +3230,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div className="grid grid-cols-2 gap-2">
                                                 {(['native', 'megacmd'] as const).map((mode) => {
                                                     const isActive = megaMode === mode;
+                                                    const isLocked = !!editingProfileId;
                                                     return (
                                                         <button
                                                             key={mode}
                                                             type="button"
-                                                            onClick={() => onConnectionParamsChange({
+                                                            disabled={isLocked && !isActive}
+                                                            onClick={() => !isLocked && onConnectionParamsChange({
                                                                 ...connectionParams,
                                                                 options: {
                                                                     ...connectionParams.options,
@@ -3223,9 +3244,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 },
                                                             })}
                                                             className={`rounded-lg border px-3 py-3 text-left transition-colors ${
-                                                                isActive
-                                                                    ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
-                                                                    : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
+                                                                isLocked && !isActive
+                                                                    ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-700'
+                                                                    : isActive
+                                                                        ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
+                                                                        : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
                                                             }`}
                                                         >
                                                             <div className="text-sm font-medium">
@@ -3648,6 +3671,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             const hideServerField = hasPresetServer && !editingProfileId;
                                             if (isNonGenericS3) return null;
                                             if (hideServerField) return null; // Shown in Advanced Options below
+                                            if (selectedProviderId === 'infinicloud') return null; // Rendered inside InfiniCloud mode selector block
                                             return (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
@@ -3678,6 +3702,53 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </div>
                                             );
                                         })()}
+                                        {/* InfiniCloud: connection mode selector (before credentials) */}
+                                        {selectedProviderId === 'infinicloud' && (
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                                    {t('protocol.infinicloudConnectionMode')}
+                                                </label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {(['webdav', 'api'] as const).map((mode) => {
+                                                        const isActive = (connectionParams.options?.infinicloud_mode || 'webdav') === mode;
+                                                        const isLocked = !!editingProfileId;
+                                                        return (
+                                                            <button
+                                                                key={mode}
+                                                                type="button"
+                                                                disabled={isLocked && !isActive}
+                                                                onClick={() => !isLocked && onConnectionParamsChange({
+                                                                    ...connectionParams,
+                                                                    options: {
+                                                                        ...connectionParams.options,
+                                                                        infinicloud_mode: mode,
+                                                                        ...(mode === 'webdav' ? { apiKey: undefined } : {}),
+                                                                    },
+                                                                })}
+                                                                className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                                                                    isLocked && !isActive
+                                                                        ? 'opacity-40 cursor-not-allowed border-gray-200 dark:border-gray-700'
+                                                                        : isActive
+                                                                            ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500/60'
+                                                                }`}
+                                                            >
+                                                                <div className="text-sm font-medium">
+                                                                    {mode === 'webdav'
+                                                                        ? t('protocol.infinicloudModeWebdav')
+                                                                        : t('protocol.infinicloudModeApi')}
+                                                                </div>
+                                                                <p className="mt-1 text-xs opacity-80">
+                                                                    {mode === 'webdav'
+                                                                        ? t('protocol.infinicloudModeWebdavDesc')
+                                                                        : t('protocol.infinicloudModeApiDesc')}
+                                                                </p>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{getUsernameLabel()}</label>
                                             <input
@@ -3704,7 +3775,55 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* InfiniCloud API Key field — hidden until REST API access is granted */}
+                                        {/* InfiniCloud: mode-dependent fields (server+port for WebDAV, API key for REST API) */}
+                                        {selectedProviderId === 'infinicloud' && (
+                                            connectionParams.options?.infinicloud_mode === 'api' ? (
+                                                <div>
+                                                    <label className="block text-sm font-medium mb-1.5">API Key</label>
+                                                    <input
+                                                        type="text"
+                                                        value={connectionParams.options?.apiKey || ''}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            options: { ...connectionParams.options, apiKey: e.target.value.trim() },
+                                                        })}
+                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                                        placeholder="FEF5078EA41D182EEF89A21E034BD680"
+                                                    />
+                                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                                        {t('protocol.infinicloudApiKeyHint')}
+                                                    </p>
+                                                    <div className="mt-2 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-200">
+                                                        <p className="font-medium mb-1">{t('protocol.infinicloudApiInfoTitle')}</p>
+                                                        <p className="opacity-80">{t('protocol.infinicloudApiInfoDesc')}</p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.server')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={connectionParams.server}
+                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
+                                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                            placeholder="https://davXXX.teracloud.jp/dav/"
+                                                        />
+                                                    </div>
+                                                    <div className="w-24">
+                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.port')}</label>
+                                                        <input
+                                                            type="number"
+                                                            value={connectionParams.port || 443}
+                                                            onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || 443 })}
+                                                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                                            min={1}
+                                                            max={65535}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )
+                                        )}
 
                                         {/* Protocol-specific fields */}
                                         <ProtocolFields
@@ -4000,7 +4119,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const providerName = disclaimerProvider?.name
                 || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
             if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;
-            const contactProtocols = new Set(['zohoworkdrive', 'koofr', 'jottacloud']);
+            const contactProtocols = new Set(['zohoworkdrive', 'koofr', 'jottacloud', 'infinicloud']);
             const isContact = disclaimerProvider?.contactVerified || contactProtocols.has(protocol || '');
             return (
                 <div className="mt-3 space-y-1">

@@ -13,6 +13,7 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
+import { AlertDialog } from '../Dialogs';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -119,6 +120,7 @@ export function MyServersPanel({
     });
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
+    const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
     // Drag & reorder
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -394,16 +396,19 @@ export function MyServersPanel({
     }, [servers]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
-        if (!window.confirm(t('introHub.confirmDeleteServer').replace('{name}', server.name))) {
-            return;
-        }
-        const updated = servers.filter(s => s.id !== server.id);
+        setDeleteTarget(server);
+    }, []);
+
+    const confirmDelete = useCallback(() => {
+        if (!deleteTarget) return;
+        const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
         // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${server.id}` }).catch(() => {});
+        invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
         onServersChange?.(updated.length);
-    }, [servers, t, onServersChange]);
+        setDeleteTarget(null);
+    }, [deleteTarget, servers, onServersChange]);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {
         const isFav = favorites.has(server.id);
@@ -548,6 +553,17 @@ export function MyServersPanel({
                     servers={servers}
                     onClose={() => setHealthCheckTarget(false)}
                     singleServerId={healthCheckTarget !== 'all' ? healthCheckTarget : undefined}
+                />
+            )}
+            {deleteTarget && (
+                <AlertDialog
+                    title={t('common.delete')}
+                    message={t('introHub.confirmDeleteServer').replace('{name}', deleteTarget.name || deleteTarget.host)}
+                    type="warning"
+                    onClose={() => setDeleteTarget(null)}
+                    actionLabel={t('common.delete')}
+                    onAction={confirmDelete}
+                    actionIcon={<Trash2 size={14} />}
                 />
             )}
         </div>

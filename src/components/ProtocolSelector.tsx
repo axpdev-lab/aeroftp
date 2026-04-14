@@ -95,6 +95,8 @@ interface ProtocolSelectorProps {
     showLabel?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
     ftpTlsMode?: string;
+    /** When set, only these protocols are shown (e.g. editing FTP/FTPS/SFTP connections) */
+    allowedProtocols?: ProviderType[];
 }
 
 interface ProtocolInfo {
@@ -470,6 +472,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
     showLabel = true,
     onOpenChange,
     ftpTlsMode,
+    allowedProtocols,
 }) => {
     const t = useTranslation();
     const PROTOCOLS = React.useMemo(() => getProtocols(t), [t]);
@@ -527,7 +530,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                     <div className="col-span-2">
                         <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Protocols</p>
                     </div>
-                    {PROTOCOLS.filter(p => !p.isCloudStorage).map((protocol) => (
+                    {PROTOCOLS.filter(p => !p.isCloudStorage && (!allowedProtocols || allowedProtocols.includes(p.type))).map((protocol) => (
                         <button
                             key={protocol.type}
                             type="button"
@@ -569,11 +572,13 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                         </button>
                     ))}
 
-                    {/* Service Providers */}
+                    {/* Service Providers — hidden when allowedProtocols filters them all out */}
+                    {(!allowedProtocols || PROTOCOLS.some(p => p.isCloudStorage && allowedProtocols.includes(p.type))) && (
                     <div className="col-span-2 mt-2">
                         <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Services</p>
                     </div>
-                    {PROTOCOLS.filter(p => p.isCloudStorage).map((protocol) => (
+                    )}
+                    {PROTOCOLS.filter(p => p.isCloudStorage && (!allowedProtocols || allowedProtocols.includes(p.type))).map((protocol) => (
                         <button
                             key={protocol.type}
                             type="button"

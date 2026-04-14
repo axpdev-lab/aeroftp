@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive } from 'lucide-react';
 import { ServerProfile, ProviderType } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { maskCredential } from '../../utils/maskCredential';
-import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../../utils/providerConnectionMeta';
+import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
 import { useTranslation } from '../../i18n';
 
 function ServerBadges({ server }: { server: ServerProfile }) {
@@ -22,6 +22,7 @@ function ServerBadges({ server }: { server: ServerProfile }) {
     const certVerified = hasTlsConnection && !certUnverified;
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
+    const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
 
     const badgeClass = isFtps
         ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
@@ -63,6 +64,11 @@ function ServerBadges({ server }: { server: ServerProfile }) {
             {megaBadge && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${megaBadge.className}`}>
                     {megaBadge.label}
+                </span>
+            )}
+            {infiniCloudBadge && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${infiniCloudBadge.className}`}>
+                    {infiniCloudBadge.label}
                 </span>
             )}
             {server.host === 'test.rebex.net' && (
@@ -206,15 +212,33 @@ export const ServerCard = React.memo(function ServerCard({
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
                 </div>
 
+                {/* Col: Badge */}
+                <div className="shrink-0">
+                    <ServerBadges server={server} />
+                </div>
+
                 {/* Col: User/Host */}
                 <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate">
                     {subtitle}
                 </div>
 
-                {/* Col: Badge */}
-                <div className="shrink-0">
-                    <ServerBadges server={server} />
-                </div>
+                {/* Col: Paths (remote / local, 2 rows) */}
+                {(server.initialPath || server.localInitialPath) && (
+                    <div className="flex flex-col gap-0.5 min-w-0 max-w-[200px] text-right">
+                        {server.initialPath && (
+                            <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.initialPath}>
+                                <Folder size={8} className="shrink-0" />
+                                <span className="truncate" dir="rtl">{server.initialPath}</span>
+                            </span>
+                        )}
+                        {server.localInitialPath && (
+                            <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.localInitialPath}>
+                                <HardDrive size={8} className="shrink-0" />
+                                <span className="truncate" dir="rtl">{server.localInitialPath}</span>
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* Col: Time */}
                 {timeAgo && (

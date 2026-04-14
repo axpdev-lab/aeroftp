@@ -39,6 +39,22 @@ export const getMegaConnectionBadge = (options?: ProviderOptions): ProviderModeB
     };
 };
 
+export const getInfiniCloudConnectionMode = (options?: ProviderOptions): 'webdav' | 'api' => {
+    return options?.infinicloud_mode === 'api' ? 'api' : 'webdav';
+};
+
+export const getInfiniCloudConnectionBadge = (options?: ProviderOptions): ProviderModeBadge | null => {
+    const mode = getInfiniCloudConnectionMode(options);
+    if (mode === 'api') {
+        return {
+            label: 'API',
+            longLabel: 'REST API',
+            className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
+        };
+    }
+    return null; // WebDAV is default, no extra badge needed
+};
+
 export const getGitHubConnectionBadge = (options?: ProviderOptions): ProviderModeBadge | null => {
     const mode = options?.githubAuthMode;
     if (!mode) return null;

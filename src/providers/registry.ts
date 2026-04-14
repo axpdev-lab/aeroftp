@@ -1013,6 +1013,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'Japanese cloud storage with WebDAV (25 GB free)',
         protocol: 'webdav',
         category: 'webdav',
+        contactVerified: true,
         icon: 'Cloud',
         color: '#00A0E9',
         stable: true,

@@ -112,7 +112,7 @@ async fn discover(
     let resp = client
         .get(format!("{}/ba/user", API_BASE))
         .header("Authorization", &auth)
-        .header("X-InfiniCLOUD-API-KEY", api_key)
+        .header("X-TeraCLOUD-API-KEY", api_key)
         .header("Accept", "application/json")
         .send()
         .await
@@ -173,7 +173,7 @@ async fn get_quota(
     let resp = client
         .get(&url)
         .header("Authorization", &auth)
-        .header("X-InfiniCLOUD-API-KEY", api_key)
+        .header("X-TeraCLOUD-API-KEY", api_key)
         .header("Accept", "application/json")
         .send()
         .await
@@ -217,6 +217,8 @@ pub async fn infinicloud_discover(
     api_key: String,
 ) -> Result<UserInfo, String> {
     let secret = SecretString::from(password);
+    let api_key = api_key.trim().to_string();
+    info!("InfiniCloud discover: user={}, api_key_len={}", username, api_key.len());
     discover(&username, &secret, &api_key).await
 }
 

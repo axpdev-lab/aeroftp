@@ -318,7 +318,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 |--------|--------|-------|
 | **Koofr** | Stable | EU-based, 10 GB free |
 | **Jianguoyun** | Stable | China-based WebDAV |
-| **InfiniCLOUD** | Stable | Japan-based, 20 GB free |
+| **InfiniCLOUD** | Stable | Japan-based, 25 GB free. Native REST API v2 integration: auto-discovery, real-time quota |
 | **CloudMe** | Stable | Swedish, 3 GB free, Digest auth (auto-detected) |
 | **Nextcloud** | Beta | Self-hosted WebDAV |
 | **Seafile** | Stable | Self-hosted or cloud, WebDAV via `seafdav` endpoint |

@@ -117,6 +117,7 @@ export interface ProviderOptions {
   githubBranch?: string;         // Optional branch override for repository browsing
 
   // InfiniCloud-specific
+  infinicloud_mode?: 'webdav' | 'api'; // Connection mode: standard WebDAV or REST API with auto-discovery
   apiKey?: string;                  // InfiniCloud developer API key (128-bit hex)
   infinicloudNode?: string;        // Discovered node server FQDN (set by discovery)
   infinicloudCapacityGb?: number;  // Contract capacity in GB (set by discovery)

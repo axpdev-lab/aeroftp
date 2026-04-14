@@ -18,6 +18,7 @@ import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/provi
 import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
+import { AlertDialog } from './Dialogs';
 
 // Helper: get credential with retry if vault not ready yet (race condition on app startup)
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -141,6 +142,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
+    const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
     // Filter servers by search query (name, host, protocol, username)
@@ -246,15 +248,20 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         })();
     }, [lastUpdate]);
 
-    const handleDelete = (id: string) => {
+    const handleDelete = (server: ServerProfile) => {
         // Prevent deletion if connecting
-        if (oauthConnecting === id) return;
+        if (oauthConnecting === server.id) return;
+        setDeleteTarget(server);
+    };
 
-        const updated = servers.filter(s => s.id !== id);
+    const confirmDelete = () => {
+        if (!deleteTarget) return;
+        const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
         saveServers(updated);
         // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${id}` }).catch(() => {});
+        invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
+        setDeleteTarget(null);
     };
 
     const handleEdit = (server: ServerProfile) => {
@@ -292,7 +299,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             { label: t('connection.editServer'), icon: <Edit2 size={14} />, action: () => handleEdit(server) },
             { label: t('connection.duplicateServer'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
-            { label: t('connection.deleteServer'), icon: <Trash2 size={14} />, danger: true, action: () => handleDelete(server.id), divider: true },
+            { label: t('connection.deleteServer'), icon: <Trash2 size={14} />, danger: true, action: () => handleDelete(server), divider: true },
         ];
         showContextMenu(e, items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -721,7 +728,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 <Copy size={14} />
                             </button>
                             <button
-                                onClick={() => handleDelete(server.id)}
+                                onClick={() => handleDelete(server)}
                                 className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                 title={t('connection.deleteServer')}
                             >
@@ -755,6 +762,17 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     servers={servers}
                     onClose={() => setHealthCheckTarget(false)}
                     singleServerId={healthCheckTarget !== 'all' ? healthCheckTarget : undefined}
+                />
+            )}
+            {deleteTarget && (
+                <AlertDialog
+                    title={t('connection.deleteServer')}
+                    message={t('introHub.confirmDeleteServer').replace('{name}', deleteTarget.name || deleteTarget.host)}
+                    type="warning"
+                    onClose={() => setDeleteTarget(null)}
+                    actionLabel={t('common.delete')}
+                    onAction={confirmDelete}
+                    actionIcon={<Trash2 size={14} />}
                 />
             )}
         </div>

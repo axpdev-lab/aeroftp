@@ -1227,19 +1227,21 @@ interface UpdateVerificationInfo {
 
 
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
-  const fetchStorageQuota = async (protocol?: string) => {
+  const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
     const version = ++quotaVersionRef.current;
 
     // InfiniCloud: use REST API for quota (more accurate than WebDAV PROPFIND)
+    // freshSessionParams provides enriched options (infinicloudNode) immediately after connect,
+    // before the session state is updated by React
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const opts = connectionParams.options || activeSession?.connectionParams?.options;
-    const pid = connectionParams.providerId || activeSession?.providerId;
+    const opts = freshSessionParams?.options || activeSession?.connectionParams?.options || connectionParams.options;
+    const pid = freshSessionParams?.providerId || activeSession?.providerId || connectionParams.providerId;
     if (pid === 'infinicloud' && opts?.apiKey && opts?.infinicloudNode) {
       try {
         const quota = await invoke<{ total: number; used: number; available: number }>('infinicloud_quota', {
           node: opts.infinicloudNode,
-          username: connectionParams.username || activeSession?.connectionParams?.username || '',
-          password: connectionParams.password || activeSession?.connectionParams?.password || '',
+          username: freshSessionParams?.username || connectionParams.username || activeSession?.connectionParams?.username || '',
+          password: freshSessionParams?.password || connectionParams.password || activeSession?.connectionParams?.password || '',
           apiKey: opts.apiKey,
         });
         if (version === quotaVersionRef.current) {
@@ -2258,7 +2260,9 @@ interface UpdateVerificationInfo {
     }
 
     // InfiniCloud: auto-discover node server via REST API when API key is provided
-    if (effectiveParams.providerId === 'infinicloud' && effectiveParams.options?.apiKey && !effectiveParams.server) {
+    // Always run discovery when API key is present — populates node, capacity, introduce_code
+    // needed for quota display and future REST API features
+    if (effectiveParams.providerId === 'infinicloud' && effectiveParams.options?.apiKey) {
       try {
         const discovery = await invoke<{
           node: string;
@@ -2273,7 +2277,7 @@ interface UpdateVerificationInfo {
         });
         effectiveParams = {
           ...effectiveParams,
-          server: discovery.webdav_url,
+          server: effectiveParams.server || discovery.webdav_url,
           options: {
             ...effectiveParams.options,
             infinicloudNode: discovery.node,
@@ -2282,7 +2286,11 @@ interface UpdateVerificationInfo {
           },
         };
       } catch (e) {
-        throw new Error(`InfiniCloud discovery failed: ${e}`);
+        // If server is already set, discovery failure is non-fatal (quota won't work but connection proceeds)
+        if (!effectiveParams.server) {
+          throw new Error(`InfiniCloud discovery failed: ${e}`);
+        }
+        console.warn('[InfiniCloud] Discovery failed, proceeding with manual server:', e);
       }
     }
 
@@ -2750,6 +2758,7 @@ interface UpdateVerificationInfo {
           username: effectiveParams.username,
           password: effectiveParams.password,
           options: effectiveParams.options,
+          providerId: effectiveParams.providerId,
         };
         createSession(
           providerName,
@@ -2758,7 +2767,7 @@ interface UpdateVerificationInfo {
           quickConnectDirs.localDir || currentLocalPath,
           files
         );
-        fetchStorageQuota(protocol);
+        fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
         humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         notify.error(t('connection.connectionFailed'), String(error));
@@ -3183,7 +3192,7 @@ interface UpdateVerificationInfo {
       ));
 
       // Fetch storage quota after successful reconnection
-      fetchStorageQuota(protocol);
+      fetchStorageQuota(protocol, targetSession.connectionParams);
 
       // Also refresh local files for this session's local path
       const localFilesData: LocalFile[] = await invoke('get_local_files', {
@@ -8010,7 +8019,7 @@ interface UpdateVerificationInfo {
                       resolvedLocalPath2,
                       files
                     );
-                    fetchStorageQuota(connectedParams.protocol);
+                    fetchStorageQuota(connectedParams.protocol, connectedParams);
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });

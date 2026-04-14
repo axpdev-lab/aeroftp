@@ -21,6 +21,7 @@ interface AlertDialogProps {
     onClose: () => void;
     actionLabel?: string;
     onAction?: () => void;
+    actionIcon?: React.ReactNode;
 }
 
 export const AlertDialog: React.FC<AlertDialogProps> = ({
@@ -30,6 +31,7 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
     onClose,
     actionLabel,
     onAction,
+    actionIcon,
 }) => {
     const t = useTranslation();
     const iconMap = {
@@ -66,14 +68,14 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
                         onClick={onClose}
                         className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
-                        {t('common.ok')}
+                        {actionLabel && onAction ? t('common.cancel') : t('common.ok')}
                     </button>
                     {actionLabel && onAction && (
                         <button
                             onClick={onAction}
                             className={`px-4 py-2 text-sm text-white rounded-lg transition-colors flex items-center gap-2 ${actionColorMap[type]}`}
                         >
-                            <KeyRound size={14} />
+                            {actionIcon ?? <KeyRound size={14} />}
                             {actionLabel}
                         </button>
                     )}
