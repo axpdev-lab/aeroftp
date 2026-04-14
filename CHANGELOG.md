@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### InfiniCLOUD REST API, protocol switch, UX improvements
+
+#### Added
+
+- **InfiniCLOUD REST API v2 dual connector**: New connection mode selector (WebDAV / REST API). REST API mode enables auto-discovery of the user's node server and real-time storage quota via InfiniCLOUD's Muramasa API. Currently available for developers and internal beta testing
+- **Protocol switching for saved connections**: Edit a saved FTP connection and switch between FTP, FTPS, and SFTP without recreating it. Port updates automatically. Resolves [#108](https://github.com/axpdev-lab/aeroftp/issues/108)
+- **Delete confirmation dialog for saved servers**: Deleting a saved server now shows a warning dialog with Cancel/Delete instead of deleting immediately. Fixes silent deletion on Linux (WebKitGTK does not support `window.confirm`)
+- **Remote/local paths in server list view**: Saved servers with default paths now show them on two compact rows (remote + local) in the list view, truncated from the start for long paths
+- **InfiniCLOUD added to Special Thanks** for responsive technical support and API key issuance
+
+#### Fixed
+
+- **InfiniCLOUD REST API header**: Corrected from `X-InfiniCLOUD-API-KEY` to `X-TeraCLOUD-API-KEY` per official documentation
+- **InfiniCLOUD quota not displaying**: Fixed race condition where `fetchStorageQuota` was called before React state updated with the new session. Now passes enriched session params directly
+- **Missing providerId in session params**: Provider ID was not included in `sessionParams` for provider connections, preventing provider-specific quota logic from activating
+
+#### Improved
+
+- **Connection mode locked in edit mode**: InfiniCLOUD and MEGA connection mode selectors are now read-only when editing an existing connection, preventing accidental mode changes
+- **AlertDialog Cancel button**: Shows "Cancel" instead of "OK" when an action button is present. Action icon is now customizable (Trash icon for delete, Key icon for vault)
+- **Badge column reordered**: Protocol badge now appears before the username column in server list view for better scannability
+
 ## [3.5.0] - 2026-04-13
 
 ### Profile Bridge hub, FileZilla import/export, Nextcloud auto-detect, transfer engine fixes
