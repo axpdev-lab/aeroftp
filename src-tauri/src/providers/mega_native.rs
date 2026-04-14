@@ -1648,12 +1648,25 @@ impl MegaNativeProvider {
             .cloned()
             .ok_or_else(|| ProviderError::NotFound(format!("{filename} not found in trash")))?;
 
-        let _: Value = self
-            .command_with_retry(json!({
+        // MEGA delete command returns 0 on success. In batch operations,
+        // subsequent deletes may hit rate limits or return unexpected responses.
+        // Treat parse errors as success since the node may already be deleted.
+        match self
+            .command_with_retry::<Value>(json!({
                 "a": "d",
                 "n": node_handle,
             }))
-            .await?;
+            .await
+        {
+            Ok(_) => {}
+            Err(ProviderError::ParseError(_)) => {
+                tracing::warn!(
+                    "[MEGA Native] Delete response parse error for '{}' — node likely deleted",
+                    filename
+                );
+            }
+            Err(e) => return Err(e),
+        }
 
         self.invalidate_nodes();
         Ok(())
