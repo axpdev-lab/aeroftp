@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Delingslenke slettet",
             "newDocumentName": "Dokumentnavn:",
             "pcloudTrashTitle": "pCloud papirkurv",
-            "kdriveTrashTitle": "kDrive papirkurv"
+            "kdriveTrashTitle": "kDrive papirkurv",
+            "internxtTrashTitle": "Internxt papirkurv",
+            "azureTrashTitle": "Azure Blob papirkurv"
         },
         "transfer": {
             "transferring": "Overfører...",

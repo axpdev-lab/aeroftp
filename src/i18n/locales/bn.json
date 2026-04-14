@@ -386,7 +386,9 @@
             "shareLinkDeleted": "শেয়ার লিঙ্ক মুছে ফেলা হয়েছে",
             "newDocumentName": "ডকুমেন্টের নাম:",
             "pcloudTrashTitle": "pCloud ট্র্যাশ",
-            "kdriveTrashTitle": "kDrive ট্র্যাশ"
+            "kdriveTrashTitle": "kDrive ট্র্যাশ",
+            "internxtTrashTitle": "Internxt ট্র্যাশ",
+            "azureTrashTitle": "Azure Blob ট্র্যাশ"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",

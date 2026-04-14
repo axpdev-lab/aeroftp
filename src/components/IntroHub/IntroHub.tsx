@@ -24,6 +24,8 @@ interface FormTabState extends FormTab {
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
     originTab?: string;
+    /** Original label set at tab creation — used as fallback when server field is empty */
+    defaultLabel: string;
 }
 
 export interface IntroHubProps {
@@ -122,9 +124,11 @@ export function IntroHub(props: IntroHubProps) {
         const label = demo ? `Demo: ${protocol.toUpperCase()}` : (PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
+        const defaultLabel = `New: ${label}`;
         const newTab: FormTabState = {
             id,
-            label: `New: ${label}`,
+            label: defaultLabel,
+            defaultLabel,
             protocol,
             providerId,
             connectionParams: {
@@ -157,9 +161,11 @@ export function IntroHub(props: IntroHubProps) {
         }
 
         const id = generateTabId();
+        const editLabel = profile.name || profile.host || 'Edit';
         const newTab: FormTabState = {
             id,
-            label: profile.name || profile.host || 'Edit',
+            label: editLabel,
+            defaultLabel: editLabel,
             editingProfile: profile,
             protocol: profile.protocol,
             providerId: profile.providerId,
@@ -198,9 +204,19 @@ export function IntroHub(props: IntroHubProps) {
         setActiveTab('my-servers');
     }, []);
 
-    // Update form tab's connectionParams
+    // Update form tab's connectionParams + derive dynamic tab label from server field
     const updateFormTabParams = useCallback((tabId: string, params: ConnectionParams) => {
-        setFormTabs(prev => prev.map(ft => ft.id === tabId ? { ...ft, connectionParams: params } : ft));
+        setFormTabs(prev => prev.map(ft => {
+            if (ft.id !== tabId) return ft;
+            // Derive label from server field: strip protocol prefix, take hostname only
+            const raw = params.server?.trim() || '';
+            const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+            // Use provider default server to detect if user typed something custom
+            const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
+            const isDefault = !cleaned || cleaned === provider?.defaults?.server;
+            const label = isDefault ? ft.defaultLabel : cleaned;
+            return { ...ft, connectionParams: params, label };
+        }));
     }, []);
 
     // Update form tab's quickConnectDirs

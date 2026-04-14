@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Линкот за споделување е избришан",
             "newDocumentName": "Име на документот:",
             "pcloudTrashTitle": "pCloud ѓубре",
-            "kdriveTrashTitle": "kDrive ѓубре"
+            "kdriveTrashTitle": "kDrive ѓубре",
+            "internxtTrashTitle": "Internxt корпа",
+            "azureTrashTitle": "Azure Blob корпа"
         },
         "transfer": {
             "transferring": "Се пренесува...",

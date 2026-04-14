@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Na-delete ang share link",
             "newDocumentName": "Pangalan ng dokumento:",
             "pcloudTrashTitle": "Basurahan ng pCloud",
-            "kdriveTrashTitle": "Basurahan ng kDrive"
+            "kdriveTrashTitle": "Basurahan ng kDrive",
+            "internxtTrashTitle": "Internxt Basurahan",
+            "azureTrashTitle": "Azure Blob Basurahan"
         },
         "transfer": {
             "transferring": "Naglilipat...",

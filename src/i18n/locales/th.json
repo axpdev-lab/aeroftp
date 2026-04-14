@@ -386,7 +386,9 @@
             "shareLinkDeleted": "ลบลิงก์แชร์แล้ว",
             "newDocumentName": "ชื่อเอกสาร:",
             "pcloudTrashTitle": "ถังขยะ pCloud",
-            "kdriveTrashTitle": "ถังขยะ kDrive"
+            "kdriveTrashTitle": "ถังขยะ kDrive",
+            "internxtTrashTitle": "Internxt ถังขยะ",
+            "azureTrashTitle": "Azure Blob ถังขยะ"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",

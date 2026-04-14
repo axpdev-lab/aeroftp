@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Đã xóa liên kết chia sẻ",
             "newDocumentName": "Tên tài liệu:",
             "pcloudTrashTitle": "Thùng rác pCloud",
-            "kdriveTrashTitle": "Thùng rác kDrive"
+            "kdriveTrashTitle": "Thùng rác kDrive",
+            "internxtTrashTitle": "Internxt Thùng rác",
+            "azureTrashTitle": "Azure Blob Thùng rác"
         },
         "transfer": {
             "transferring": "Đang truyền...",

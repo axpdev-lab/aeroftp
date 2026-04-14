@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Deellink verwijderd",
             "newDocumentName": "Documentnaam:",
             "pcloudTrashTitle": "pCloud prullenbak",
-            "kdriveTrashTitle": "kDrive prullenbak"
+            "kdriveTrashTitle": "kDrive prullenbak",
+            "internxtTrashTitle": "Internxt prullenbak",
+            "azureTrashTitle": "Azure Blob prullenbak"
         },
         "transfer": {
             "transferring": "Overdragen...",

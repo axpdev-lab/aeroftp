@@ -386,7 +386,9 @@
             "shareLinkDeleted": "공유 링크가 삭제되었습니다",
             "newDocumentName": "문서 이름:",
             "pcloudTrashTitle": "pCloud 휴지통",
-            "kdriveTrashTitle": "kDrive 휴지통"
+            "kdriveTrashTitle": "kDrive 휴지통",
+            "internxtTrashTitle": "Internxt 휴지통",
+            "azureTrashTitle": "Azure Blob 휴지통"
         },
         "transfer": {
             "transferring": "전송 중...",

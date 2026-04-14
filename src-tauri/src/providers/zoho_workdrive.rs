@@ -3009,4 +3009,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         info!("Restored version {} of {}", version_id, path);
         Ok(())
     }
+
+    fn supports_versions(&self) -> bool {
+        true
+    }
 }

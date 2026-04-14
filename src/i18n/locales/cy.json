@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Dolen rannu wedi'i dileu",
             "newDocumentName": "Enw'r ddogfen:",
             "pcloudTrashTitle": "Sbwriel pCloud",
-            "kdriveTrashTitle": "Sbwriel kDrive"
+            "kdriveTrashTitle": "Sbwriel kDrive",
+            "internxtTrashTitle": "Sbwriel Internxt",
+            "azureTrashTitle": "Sbwriel Azure Blob"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",

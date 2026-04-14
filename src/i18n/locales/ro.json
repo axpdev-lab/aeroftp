@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Link de partajare șters",
             "newDocumentName": "Numele documentului:",
             "pcloudTrashTitle": "Coș de gunoi pCloud",
-            "kdriveTrashTitle": "Coș de gunoi kDrive"
+            "kdriveTrashTitle": "Coș de gunoi kDrive",
+            "internxtTrashTitle": "Internxt Coș de gunoi",
+            "azureTrashTitle": "Azure Blob Coș de gunoi"
         },
         "transfer": {
             "transferring": "Se transferă...",

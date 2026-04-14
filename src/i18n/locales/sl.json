@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Povezava za skupno rabo izbrisana",
             "newDocumentName": "Ime dokumenta:",
             "pcloudTrashTitle": "Koš pCloud",
-            "kdriveTrashTitle": "Koš kDrive"
+            "kdriveTrashTitle": "Koš kDrive",
+            "internxtTrashTitle": "Internxt Koš",
+            "azureTrashTitle": "Azure Blob Koš"
         },
         "transfer": {
             "transferring": "Prenašanje...",

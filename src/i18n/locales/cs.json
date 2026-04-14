@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Sdílený odkaz smazán",
             "newDocumentName": "Název dokumentu:",
             "pcloudTrashTitle": "Koš pCloud",
-            "kdriveTrashTitle": "Koš kDrive"
+            "kdriveTrashTitle": "Koš kDrive",
+            "internxtTrashTitle": "Koš Internxt",
+            "azureTrashTitle": "Koš Azure Blob"
         },
         "transfer": {
             "transferring": "Přenášení...",

@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Ссылка удалена",
             "newDocumentName": "Имя документа:",
             "pcloudTrashTitle": "Корзина pCloud",
-            "kdriveTrashTitle": "Корзина kDrive"
+            "kdriveTrashTitle": "Корзина kDrive",
+            "internxtTrashTitle": "Internxt Корзина",
+            "azureTrashTitle": "Azure Blob Корзина"
         },
         "transfer": {
             "transferring": "Передача...",

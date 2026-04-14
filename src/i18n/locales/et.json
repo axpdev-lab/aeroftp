@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Jagamislink kustutatud",
             "newDocumentName": "Dokumendi nimi:",
             "pcloudTrashTitle": "pCloud prügikast",
-            "kdriveTrashTitle": "kDrive prügikast"
+            "kdriveTrashTitle": "kDrive prügikast",
+            "internxtTrashTitle": "Internxt prügikast",
+            "azureTrashTitle": "Azure Blob prügikast"
         },
         "transfer": {
             "transferring": "Ülekanne...",

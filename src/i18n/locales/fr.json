@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Lien de partage supprimé",
             "newDocumentName": "Nom du document :",
             "pcloudTrashTitle": "Corbeille pCloud",
-            "kdriveTrashTitle": "Corbeille kDrive"
+            "kdriveTrashTitle": "Corbeille kDrive",
+            "internxtTrashTitle": "Corbeille Internxt",
+            "azureTrashTitle": "Corbeille Azure Blob"
         },
         "transfer": {
             "transferring": "Transfert en cours...",

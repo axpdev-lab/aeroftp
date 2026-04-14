@@ -7905,7 +7905,8 @@ pub async fn azure_list_deleted_blobs(
 #[tauri::command]
 pub async fn azure_undelete_blob(
     state: State<'_, ProviderState>,
-    path: String,
+    path: Option<String>,
+    blob_name: Option<String>,
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
@@ -7916,7 +7917,13 @@ pub async fn azure_undelete_blob(
         .as_any_mut()
         .downcast_mut::<crate::providers::azure::AzureProvider>()
         .ok_or("Failed to access Azure provider")?;
-    azure.undelete_blob(&path).await.map_err(|e| e.to_string())
+    let resolved_path = path
+        .or(blob_name)
+        .ok_or_else(|| "Missing path or blobName".to_string())?;
+    azure
+        .undelete_blob(&resolved_path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ============ pCloud Trash Commands ============

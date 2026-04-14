@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Delningslänk borttagen",
             "newDocumentName": "Dokumentnamn:",
             "pcloudTrashTitle": "pCloud papperskorg",
-            "kdriveTrashTitle": "kDrive papperskorg"
+            "kdriveTrashTitle": "kDrive papperskorg",
+            "internxtTrashTitle": "Internxt Papperskorgen",
+            "azureTrashTitle": "Azure Blob Papperskorgen"
         },
         "transfer": {
             "transferring": "Överför...",

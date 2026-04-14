@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Enllaç compartit eliminat",
             "newDocumentName": "Nom del document:",
             "pcloudTrashTitle": "Paperera de pCloud",
-            "kdriveTrashTitle": "Paperera de kDrive"
+            "kdriveTrashTitle": "Paperera de kDrive",
+            "internxtTrashTitle": "Paperera d'Internxt",
+            "azureTrashTitle": "Paperera d'Azure Blob"
         },
         "transfer": {
             "transferring": "Transferint...",

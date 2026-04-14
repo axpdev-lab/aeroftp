@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Freigabelink gelöscht",
             "newDocumentName": "Dokumentname:",
             "pcloudTrashTitle": "pCloud Papierkorb",
-            "kdriveTrashTitle": "kDrive Papierkorb"
+            "kdriveTrashTitle": "kDrive Papierkorb",
+            "internxtTrashTitle": "Internxt Papierkorb",
+            "azureTrashTitle": "Azure Blob Papierkorb"
         },
         "transfer": {
             "transferring": "Übertragung...",

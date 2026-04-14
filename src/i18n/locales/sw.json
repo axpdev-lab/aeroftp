@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Kiungo cha kushiriki kimefutwa",
             "newDocumentName": "Jina la hati:",
             "pcloudTrashTitle": "Takataka ya pCloud",
-            "kdriveTrashTitle": "Takataka ya kDrive"
+            "kdriveTrashTitle": "Takataka ya kDrive",
+            "internxtTrashTitle": "Internxt Tupio",
+            "azureTrashTitle": "Azure Blob Tupio"
         },
         "transfer": {
             "transferring": "Inahamisha...",

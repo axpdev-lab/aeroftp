@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Paylaşım bağlantısı silindi",
             "newDocumentName": "Belge adı:",
             "pcloudTrashTitle": "pCloud Çöp Kutusu",
-            "kdriveTrashTitle": "kDrive Çöp Kutusu"
+            "kdriveTrashTitle": "kDrive Çöp Kutusu",
+            "internxtTrashTitle": "Internxt Çöp Kutusu",
+            "azureTrashTitle": "Azure Blob Çöp Kutusu"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",

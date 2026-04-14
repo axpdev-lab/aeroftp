@@ -95,11 +95,13 @@ import { BoxTagsDialog } from './components/BoxTagsDialog';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
+import { InternxtTrashManager } from './components/InternxtTrashManager';
 import { NextcloudTrashManager } from './components/NextcloudTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
 import { PCloudTrashManager } from './components/PCloudTrashManager';
 import { KDriveTrashManager } from './components/KDriveTrashManager';
+import { AzureTrashManager } from './components/AzureTrashManager';
 import { FilenNotesPanel } from './components/FilenNotesPanel';
 import { CompressDialog, CompressOptions } from './components/CompressDialog';
 import { ShareLinkModal } from './components/ShareLinkModal';
@@ -406,10 +408,12 @@ const App: React.FC = () => {
   const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
   const [showFileLuTrash, setShowFileLuTrash] = useState(false);
   const [showKoofrTrash, setShowKoofrTrash] = useState(false);
+  const [showInternxtTrash, setShowInternxtTrash] = useState(false);
   const [showOpenDriveTrash, setShowOpenDriveTrash] = useState(false);
   const [showYandexTrash, setShowYandexTrash] = useState(false);
   const [showPCloudTrash, setShowPCloudTrash] = useState(false);
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
+  const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
   const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerType?: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
@@ -7696,6 +7700,12 @@ interface UpdateVerificationInfo {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {showInternxtTrash && (
+          <InternxtTrashManager
+            onClose={() => setShowInternxtTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
         {showNextcloudTrash && (
           <NextcloudTrashManager
             providerName={(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
@@ -7734,6 +7744,12 @@ interface UpdateVerificationInfo {
         {showKDriveTrash && (
           <KDriveTrashManager
             onClose={() => setShowKDriveTrash(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {showAzureTrash && (
+          <AzureTrashManager
+            onClose={() => setShowAzureTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
@@ -8473,6 +8489,8 @@ interface UpdateVerificationInfo {
                     )}
                     {isConnected && (() => {
                       const proto = getActiveProviderProtocol();
+                      const activeProviderId = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
+                      const isAzure = proto === 'azure' || (proto === 's3' && activeProviderId === 'azure');
                       const trashMap: Record<string, () => void> = {
                         zohoworkdrive: () => setShowZohoTrash(true),
                         jottacloud: () => setShowJottaTrash(true),
@@ -8482,12 +8500,16 @@ interface UpdateVerificationInfo {
                         dropbox: () => setShowDropboxTrash(true),
                         filelu: () => setShowFileLuTrash(true),
                         koofr: () => setShowKoofrTrash(true),
+                        internxt: () => setShowInternxtTrash(true),
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
                         pcloud: () => setShowPCloudTrash(true),
                       };
                       let handler = trashMap[proto || ''];
+                      if (!handler && isAzure) {
+                        handler = () => setShowAzureTrash(true);
+                      }
                       // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
                       if (proto === 'webdav') {
                         const pid = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;

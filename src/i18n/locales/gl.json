@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Ligazón compartida eliminada",
             "newDocumentName": "Nome do documento:",
             "pcloudTrashTitle": "Papeleira de pCloud",
-            "kdriveTrashTitle": "Papeleira de kDrive"
+            "kdriveTrashTitle": "Papeleira de kDrive",
+            "internxtTrashTitle": "Papeleira de Internxt",
+            "azureTrashTitle": "Papeleira de Azure Blob"
         },
         "transfer": {
             "transferring": "Transferindo...",

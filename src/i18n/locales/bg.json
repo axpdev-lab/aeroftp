@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Споделеният линк е изтрит",
             "newDocumentName": "Име на документа:",
             "pcloudTrashTitle": "Кошче на pCloud",
-            "kdriveTrashTitle": "Кошче на kDrive"
+            "kdriveTrashTitle": "Кошче на kDrive",
+            "internxtTrashTitle": "Кошче Internxt",
+            "azureTrashTitle": "Кошче Azure Blob"
         },
         "transfer": {
             "transferring": "Прехвърляне...",

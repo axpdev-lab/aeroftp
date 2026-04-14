@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Megosztási link törölve",
             "newDocumentName": "Dokumentum neve:",
             "pcloudTrashTitle": "pCloud szemétkosár",
-            "kdriveTrashTitle": "kDrive szemétkosár"
+            "kdriveTrashTitle": "kDrive szemétkosár",
+            "internxtTrashTitle": "Internxt lomtar",
+            "azureTrashTitle": "Azure Blob lomtar"
         },
         "transfer": {
             "transferring": "Átvitel...",

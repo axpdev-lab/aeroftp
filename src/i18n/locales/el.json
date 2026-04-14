@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Ο σύνδεσμος κοινής χρήσης διαγράφηκε",
             "newDocumentName": "Όνομα εγγράφου:",
             "pcloudTrashTitle": "Κάδος pCloud",
-            "kdriveTrashTitle": "Κάδος kDrive"
+            "kdriveTrashTitle": "Κάδος kDrive",
+            "internxtTrashTitle": "Κάδος Internxt",
+            "azureTrashTitle": "Κάδος Azure Blob"
         },
         "transfer": {
             "transferring": "Μεταφορά...",

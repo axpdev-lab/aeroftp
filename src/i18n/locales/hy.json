@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Տարածման հղումը ջնջվել է",
             "newDocumentName": "Փաստաթղթի անունը՝",
             "pcloudTrashTitle": "pCloud Աղբաման",
-            "kdriveTrashTitle": "kDrive Աղբաման"
+            "kdriveTrashTitle": "kDrive Աղբաման",
+            "internxtTrashTitle": "Internxt Աղբաման",
+            "azureTrashTitle": "Azure Blob Աղբաման"
         },
         "transfer": {
             "transferring": "Փոխանցում...",

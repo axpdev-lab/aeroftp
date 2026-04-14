@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Partekatzeko esteka ezabatuta",
             "newDocumentName": "Dokumentuaren izena:",
             "pcloudTrashTitle": "pCloud zakarrontzia",
-            "kdriveTrashTitle": "kDrive zakarrontzia"
+            "kdriveTrashTitle": "kDrive zakarrontzia",
+            "internxtTrashTitle": "Internxt zakarrontzia",
+            "azureTrashTitle": "Azure Blob zakarrontzia"
         },
         "transfer": {
             "transferring": "Transferitzen...",

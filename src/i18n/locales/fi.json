@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Jakolinkki poistettu",
             "newDocumentName": "Asiakirjan nimi:",
             "pcloudTrashTitle": "pCloud roskakori",
-            "kdriveTrashTitle": "kDrive roskakori"
+            "kdriveTrashTitle": "kDrive roskakori",
+            "internxtTrashTitle": "Internxt roskakori",
+            "azureTrashTitle": "Azure Blob roskakori"
         },
         "transfer": {
             "transferring": "Siirretään...",

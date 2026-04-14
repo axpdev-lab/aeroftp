@@ -386,7 +386,9 @@
             "shareLinkDeleted": "លិងក៍ចែករំលែកត្រូវបានលុប",
             "newDocumentName": "ឈ្មោះឯកសារ:",
             "pcloudTrashTitle": "pCloud ធុងសំរាម",
-            "kdriveTrashTitle": "kDrive ធុងសំរាម"
+            "kdriveTrashTitle": "kDrive ធុងសំរាម",
+            "internxtTrashTitle": "Internxt ធុងស្ដុបស្ដាំង",
+            "azureTrashTitle": "Azure Blob ធុងស្ដុបស្ដាំង"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",

@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Deilingartengli eytt",
             "newDocumentName": "Heiti skjals:",
             "pcloudTrashTitle": "pCloud rusl",
-            "kdriveTrashTitle": "kDrive rusl"
+            "kdriveTrashTitle": "kDrive rusl",
+            "internxtTrashTitle": "Internxt rusl",
+            "azureTrashTitle": "Azure Blob rusl"
         },
         "transfer": {
             "transferring": "Flytur...",

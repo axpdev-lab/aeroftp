@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Bendrinimo nuoroda ištrinta",
             "newDocumentName": "Dokumento pavadinimas:",
             "pcloudTrashTitle": "pCloud šiukšlinė",
-            "kdriveTrashTitle": "kDrive šiukšlinė"
+            "kdriveTrashTitle": "kDrive šiukšlinė",
+            "internxtTrashTitle": "Internxt šiukšliadėžė",
+            "azureTrashTitle": "Azure Blob šiukšliadėžė"
         },
         "transfer": {
             "transferring": "Perduodama...",

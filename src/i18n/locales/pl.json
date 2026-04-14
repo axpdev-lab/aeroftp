@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Link udostępniania usunięty",
             "newDocumentName": "Nazwa dokumentu:",
             "pcloudTrashTitle": "Kosz pCloud",
-            "kdriveTrashTitle": "Kosz kDrive"
+            "kdriveTrashTitle": "Kosz kDrive",
+            "internxtTrashTitle": "Internxt Kosz",
+            "azureTrashTitle": "Azure Blob Kosz"
         },
         "transfer": {
             "transferring": "Przesyłanie...",

@@ -1711,325 +1711,130 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 {/* Connection Fields Area */}
                                 {protocol === 'filelu' ? (
                                     /* FileLu Specific Form — API Key */
-                                    <div className="space-y-4 pt-2">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
-                                            <div className="relative">
-                                                <input
-                                                    type={showPassword ? 'text' : 'password'}
-                                                    value={connectionParams.password}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        password: e.target.value,
-                                                        server: 'filelu.com',
-                                                        port: 443,
-                                                        username: 'api-key'
-                                                    })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-                                                    placeholder={t('ai.settings.enterApiKey')}
-                                                    autoFocus
-                                                />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
-                                            <span>{t('protocol.fileluTooltip')}</span>
-                                            <a
-                                                href="https://filelu.com/5253515355.html"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-sky-500 hover:text-sky-400 transition-colors"
-                                                title="FileLu"
-                                                aria-label="Open FileLu link"
-                                            >
-                                                <ExternalLink size={12} />
-                                            </a>
-                                        </p>
-
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
+                                                <div className="relative">
                                                     <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'filelu.com',
+                                                            port: 443,
+                                                            username: 'api-key'
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                                                        placeholder={t('ai.settings.enterApiKey')}
+                                                        autoFocus
                                                     />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
                                             </div>
+                                            <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
+                                                <span>{t('protocol.fileluTooltip')}</span>
+                                                <a
+                                                    href="https://filelu.com/5253515355.html"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-sky-500 hover:text-sky-400 transition-colors"
+                                                    title="FileLu"
+                                                    aria-label="Open FileLu link"
+                                                >
+                                                    <ExternalLink size={12} />
+                                                </a>
+                                            </p>
                                         </div>
 
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('filelu.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-sky-600 hover:bg-sky-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
+                                        {formOnly ? (
+                                            renderRightColumn({
+                                                disabled: !connectionParams.password,
+                                                buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
+                                                connectionNameKey: t('filelu.connectionNamePlaceholder')
+                                            })
+                                        ) : (
+                                            renderRightColumn({
+                                                disabled: !connectionParams.password,
+                                                buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
+                                                connectionNameKey: t('filelu.connectionNamePlaceholder')
+                                            })
+                                        )}
                                     </div>
                                 ) : protocol === 'jottacloud' ? (
                                     /* Jottacloud Specific Form — Login Token only */
-                                    <div className="space-y-4 pt-2">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.jottacloudToken')}</label>
-                                            <div className="relative">
-                                                <input
-                                                    type={showPassword ? 'text' : 'password'}
-                                                    value={connectionParams.password}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        password: e.target.value,
-                                                        server: 'jfs.jottacloud.com',
-                                                        port: 443,
-                                                        username: 'token'
-                                                    })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                                    placeholder={t('connection.jottacloudTokenPlaceholder')}
-                                                    autoFocus
-                                                />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            {t('connection.jottacloudTokenHelp')}
-                                        </p>
-
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.jottacloudToken')}</label>
+                                                <div className="relative">
                                                     <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'jfs.jottacloud.com',
+                                                            port: 443,
+                                                            username: 'token'
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                                        placeholder={t('connection.jottacloudTokenPlaceholder')}
+                                                        autoFocus
                                                     />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
                                             </div>
+                                            <p className="text-xs text-gray-400 mt-2">
+                                                {t('connection.jottacloudTokenHelp')}
+                                            </p>
                                         </div>
 
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.password,
+                                            buttonColorClass: 'bg-purple-600 hover:bg-purple-700'
+                                        })}
                                     </div>
                                 ) : protocol === 'drime' ? (
                                     /* Drime Cloud Specific Form — API Token only */
-                                    <div className="space-y-4 pt-2">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.drimeToken')}</label>
-                                            <div className="relative">
-                                                <input
-                                                    type={showPassword ? 'text' : 'password'}
-                                                    value={connectionParams.password}
-                                                    onChange={(e) => onConnectionParamsChange({
-                                                        ...connectionParams,
-                                                        password: e.target.value,
-                                                        server: 'app.drime.cloud',
-                                                        port: 443,
-                                                        username: 'api-token'
-                                                    })}
-                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                                                    placeholder={t('connection.drimeTokenPlaceholder')}
-                                                    autoFocus
-                                                />
-                                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            {t('connection.drimeTokenHelp')}
-                                        </p>
-
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.drimeToken')}</label>
+                                                <div className="relative">
                                                     <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'app.drime.cloud',
+                                                            port: 443,
+                                                            username: 'api-token'
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                        placeholder={t('connection.drimeTokenPlaceholder')}
+                                                        autoFocus
                                                     />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
                                             </div>
+                                            <p className="text-xs text-gray-400 mt-2">
+                                                {t('connection.drimeTokenHelp')}
+                                            </p>
                                         </div>
 
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.password,
+                                            buttonColorClass: 'bg-green-600 hover:bg-green-700'
+                                        })}
                                     </div>
                                 ) : protocol === 'koofr' ? (
                                     /* Koofr Specific Form — Email + App Password */

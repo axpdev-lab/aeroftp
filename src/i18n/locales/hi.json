@@ -386,7 +386,9 @@
             "shareLinkDeleted": "शेयर लिंक हटाया गया",
             "newDocumentName": "दस्तावेज़ का नाम:",
             "pcloudTrashTitle": "pCloud ट्रैश",
-            "kdriveTrashTitle": "kDrive ट्रैश"
+            "kdriveTrashTitle": "kDrive ट्रैश",
+            "internxtTrashTitle": "Internxt ट्रैश",
+            "azureTrashTitle": "Azure Blob ट्रैश"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",

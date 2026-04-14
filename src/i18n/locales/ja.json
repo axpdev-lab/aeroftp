@@ -386,7 +386,9 @@
             "shareLinkDeleted": "共有リンクを削除しました",
             "newDocumentName": "ドキュメント名：",
             "pcloudTrashTitle": "pCloud ゴミ箱",
-            "kdriveTrashTitle": "kDrive ゴミ箱"
+            "kdriveTrashTitle": "kDrive ゴミ箱",
+            "internxtTrashTitle": "Internxt ゴミ箱",
+            "azureTrashTitle": "Azure Blob ゴミ箱"
         },
         "transfer": {
             "transferring": "転送中...",

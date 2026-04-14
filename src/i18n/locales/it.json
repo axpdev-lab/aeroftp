@@ -654,7 +654,9 @@
             "shareLinkDeleted": "Link di condivisione eliminato",
             "newDocumentName": "Nome del documento:",
             "pcloudTrashTitle": "Cestino pCloud",
-            "kdriveTrashTitle": "Cestino kDrive"
+            "kdriveTrashTitle": "Cestino kDrive",
+            "internxtTrashTitle": "Cestino Internxt",
+            "azureTrashTitle": "Cestino Azure Blob"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

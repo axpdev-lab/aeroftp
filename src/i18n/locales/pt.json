@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Link de partilha eliminado",
             "newDocumentName": "Nome do documento:",
             "pcloudTrashTitle": "Lixeira do pCloud",
-            "kdriveTrashTitle": "Lixeira do kDrive"
+            "kdriveTrashTitle": "Lixeira do kDrive",
+            "internxtTrashTitle": "Lixeira Internxt",
+            "azureTrashTitle": "Lixeira Azure Blob"
         },
         "transfer": {
             "transferring": "Transferindo...",

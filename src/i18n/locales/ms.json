@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Pautan kongsi dipadam",
             "newDocumentName": "Nama dokumen:",
             "pcloudTrashTitle": "Tong Sampah pCloud",
-            "kdriveTrashTitle": "Tong Sampah kDrive"
+            "kdriveTrashTitle": "Tong Sampah kDrive",
+            "internxtTrashTitle": "Tong Sampah Internxt",
+            "azureTrashTitle": "Tong Sampah Azure Blob"
         },
         "transfer": {
             "transferring": "Memindahkan...",

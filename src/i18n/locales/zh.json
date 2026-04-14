@@ -386,7 +386,9 @@
             "shareLinkDeleted": "分享链接已删除",
             "newDocumentName": "文档名称：",
             "pcloudTrashTitle": "pCloud 回收站",
-            "kdriveTrashTitle": "kDrive 回收站"
+            "kdriveTrashTitle": "kDrive 回收站",
+            "internxtTrashTitle": "Internxt 回收站",
+            "azureTrashTitle": "Azure Blob 回收站"
         },
         "transfer": {
             "transferring": "传输中...",

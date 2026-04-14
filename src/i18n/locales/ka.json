@@ -386,7 +386,9 @@
             "shareLinkDeleted": "გაზიარების ბმული წაიშალა",
             "newDocumentName": "დოკუმენტის სახელი:",
             "pcloudTrashTitle": "pCloud კალათა",
-            "kdriveTrashTitle": "kDrive კალათა"
+            "kdriveTrashTitle": "kDrive კალათა",
+            "internxtTrashTitle": "Internxt ნაგავი",
+            "azureTrashTitle": "Azure Blob ნაგავი"
         },
         "transfer": {
             "transferring": "გადაცემა...",

@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Veza za dijeljenje obrisana",
             "newDocumentName": "Naziv dokumenta:",
             "pcloudTrashTitle": "pCloud smeće",
-            "kdriveTrashTitle": "kDrive smeće"
+            "kdriveTrashTitle": "kDrive smeće",
+            "internxtTrashTitle": "Internxt smece",
+            "azureTrashTitle": "Azure Blob smece"
         },
         "transfer": {
             "transferring": "Prijenos...",

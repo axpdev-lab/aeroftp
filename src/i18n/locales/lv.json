@@ -386,7 +386,9 @@
             "shareLinkDeleted": "Kopīgošanas saite dzēsta",
             "newDocumentName": "Dokumenta nosaukums:",
             "pcloudTrashTitle": "pCloud atkritne",
-            "kdriveTrashTitle": "kDrive atkritne"
+            "kdriveTrashTitle": "kDrive atkritne",
+            "internxtTrashTitle": "Internxt atkritne",
+            "azureTrashTitle": "Azure Blob atkritne"
         },
         "transfer": {
             "transferring": "Pārsūta...",
