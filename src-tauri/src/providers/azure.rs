@@ -1466,8 +1466,11 @@ impl AzureProvider {
             self.blob_url("")
         );
 
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+
         let response = self
-            .send_with_auth_and_retry(reqwest::Method::GET, &url, HeaderMap::new(), 0, None)
+            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
             .await?;
 
         let status = response.status();
@@ -1553,8 +1556,11 @@ impl AzureProvider {
         let resolved = self.resolve_blob_path(blob_path);
         let url = format!("{}?comp=undelete", self.blob_url(&resolved));
 
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+
         let response = self
-            .send_with_auth_and_retry(reqwest::Method::PUT, &url, HeaderMap::new(), 0, None)
+            .send_with_auth_and_retry(reqwest::Method::PUT, &url, headers, 0, None)
             .await?;
 
         match response.status() {
