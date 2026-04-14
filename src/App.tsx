@@ -8500,7 +8500,7 @@ interface UpdateVerificationInfo {
                         dropbox: () => setShowDropboxTrash(true),
                         filelu: () => setShowFileLuTrash(true),
                         koofr: () => setShowKoofrTrash(true),
-                        internxt: () => setShowInternxtTrash(true),
+                        // internxt: disabled — API endpoint returns 400, needs investigation
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
