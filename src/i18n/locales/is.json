@@ -2261,7 +2261,7 @@
       "executionComplete": "Lauk {count} skrefum",
       "maxStepsReached": "Hámarksskrefum náð ({max})",
       "rag": {
-        "indexing": "Vísar skrám í {path}...",
+        "indexing": "Vísar skrám...",
         "indexed": "Vísaði {count} skrár",
         "searching": "Leitar...",
         "noResults": "Engar niðurstöður fundust"

@@ -2261,7 +2261,7 @@
       "executionComplete": "Selesai {count} langkah",
       "maxStepsReached": "Mencapai langkah maksimum ({max})",
       "rag": {
-        "indexing": "Mengindeks file dalam {path}...",
+        "indexing": "Mengindeks file...",
         "indexed": "Diindeks {count} file",
         "searching": "Mencari...",
         "noResults": "Tidak ada hasil ditemukan"
