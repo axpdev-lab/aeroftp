@@ -913,6 +913,89 @@ impl StorageProvider for AzureProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_range_download: true,
+            supports_resume_download: true,
+            ..Default::default()
+        }
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let blob_path = self.resolve_blob_path(remote_path);
+        let url = self.blob_url(&blob_path);
+
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        headers.insert(
+            "Range",
+            HeaderValue::from_str(&format!("bytes={}-", offset))
+                .map_err(|e| ProviderError::Other(format!("Invalid range header: {}", e)))?,
+        );
+
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
+            .await?;
+
+        match resp.status() {
+            reqwest::StatusCode::PARTIAL_CONTENT => {
+                let content_len = resp.content_length().unwrap_or(0);
+                let total_size = offset + content_len;
+                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(resp, &mut resumable, total_size, progress)
+                    .await?;
+                resumable.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            reqwest::StatusCode::OK => {
+                // Server ignored Range — restart from scratch
+                let total_size = resp.content_length().unwrap_or(0);
+                let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(resp, &mut fresh, total_size, progress)
+                    .await?;
+                fresh.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            reqwest::StatusCode::RANGE_NOT_SATISFIABLE => {
+                let tmp = format!("{}.aerotmp", local_path);
+                let _ = tokio::fs::remove_file(&tmp).await;
+                Err(ProviderError::TransferFailed(
+                    "Range not satisfiable — file may have changed on server".to_string(),
+                ))
+            }
+            status => Err(ProviderError::TransferFailed(format!(
+                "Resume download failed: {}",
+                status
+            ))),
+        }
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let blob_path = self.resolve_blob_path(remote_path);
         let url = self.blob_url(&blob_path);
@@ -1197,6 +1280,57 @@ impl StorageProvider for AzureProvider {
         ))
     }
 
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_path = self.resolve_blob_path(from);
+        let to_path = self.resolve_blob_path(to);
+
+        let source_url = self.blob_url(&from_path);
+        let dest_url = self.blob_url(&to_path);
+
+        let now = chrono::Utc::now();
+        let date_str = now.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-date", HeaderValue::from_str(&date_str).unwrap());
+        headers.insert(
+            "x-ms-version",
+            HeaderValue::from_static(API_VERSION),
+        );
+        // x-ms-copy-source points to the source blob URL
+        headers.insert(
+            "x-ms-copy-source",
+            HeaderValue::from_str(&source_url)
+                .map_err(|e| ProviderError::Other(format!("Invalid source URL: {}", e)))?,
+        );
+        // Azure requires Content-Length: 0 for Copy Blob
+        headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
+
+        let resp = self
+            .send_with_auth_and_retry(
+                reqwest::Method::PUT,
+                &dest_url,
+                headers,
+                0,
+                None,
+            )
+            .await?;
+
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 202 {
+            Ok(())
+        } else {
+            let body = resp.text().await.unwrap_or_default();
+            Err(ProviderError::ServerError(format!(
+                "Copy Blob failed ({}): {}",
+                status, sanitize_api_error(&body)
+            )))
+        }
+    }
+
     fn supports_share_links(&self) -> bool {
         true
     }
@@ -1207,6 +1341,7 @@ impl StorageProvider for AzureProvider {
             supports_password: false,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 
@@ -1439,6 +1574,15 @@ impl AzureProvider {
         let url = format!("{}?comp=tier", self.blob_url(&resolved));
 
         let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
         headers.insert(
             "x-ms-access-tier",
             tier.parse()
@@ -1467,102 +1611,129 @@ impl AzureProvider {
 
     /// List soft-deleted blobs in the container.
     pub async fn list_deleted_blobs(&self) -> Result<Vec<super::RemoteEntry>, ProviderError> {
-        let url = format!(
+        let base_url = format!(
             "{}?restype=container&comp=list&include=deleted",
             self.blob_url("")
         );
 
-        let mut headers = HeaderMap::new();
-        let now = chrono::Utc::now()
-            .format("%a, %d %b %Y %H:%M:%S GMT")
-            .to_string();
-        headers.insert(
-            "x-ms-date",
-            HeaderValue::from_str(&now)
-                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
-        );
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-
-        let response = self
-            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
-            .await?;
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(ProviderError::ServerError(format!(
-                "List deleted blobs failed ({}): {}",
-                status,
-                parse_azure_xml_error(&body)
-            )));
-        }
-
-        // Parse XML to find <Blob> entries with <Deleted>true</Deleted>
-        let mut entries = Vec::new();
-        let mut reader = quick_xml::Reader::from_str(&body);
-        reader.config_mut().trim_text(true);
-        let mut buf = Vec::new();
-        let mut in_blob = false;
-        let mut blob_name = String::new();
-        let mut is_deleted = false;
-        let mut tag_name = String::new();
+        let mut all_entries = Vec::new();
+        let mut marker: Option<String> = None;
 
         loop {
-            match reader.read_event_into(&mut buf) {
-                Ok(quick_xml::events::Event::Start(ref e)) => {
-                    let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if name == "Blob" {
-                        in_blob = true;
-                        blob_name.clear();
-                        is_deleted = false;
-                    }
-                    tag_name = name;
-                }
-                Ok(quick_xml::events::Event::Text(ref e)) => {
-                    if in_blob {
-                        let text = String::from_utf8_lossy(e.as_ref()).into_owned();
-                        match tag_name.as_str() {
-                            "Name" => blob_name = text,
-                            "Deleted" => is_deleted = text == "true",
-                            _ => {}
-                        }
-                    }
-                }
-                Ok(quick_xml::events::Event::End(ref e)) => {
-                    if String::from_utf8_lossy(e.name().as_ref()) == "Blob" {
-                        if in_blob && is_deleted && !blob_name.is_empty() {
-                            let mut meta = std::collections::HashMap::new();
-                            meta.insert("deleted".to_string(), "true".to_string());
-                            entries.push(super::RemoteEntry {
-                                name: blob_name
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or(&blob_name)
-                                    .to_string(),
-                                path: blob_name.clone(),
-                                is_dir: false,
-                                size: 0,
-                                modified: None,
-                                permissions: None,
-                                owner: None,
-                                group: None,
-                                is_symlink: false,
-                                link_target: None,
-                                mime_type: None,
-                                metadata: meta,
-                            });
-                        }
-                        in_blob = false;
-                    }
-                }
-                Ok(quick_xml::events::Event::Eof) => break,
-                Err(_) => break,
-                _ => {}
+            let url = match &marker {
+                Some(m) => format!("{}&marker={}", base_url, urlencoding::encode(m)),
+                None => base_url.clone(),
+            };
+
+            let mut headers = HeaderMap::new();
+            let now = chrono::Utc::now()
+                .format("%a, %d %b %Y %H:%M:%S GMT")
+                .to_string();
+            headers.insert(
+                "x-ms-date",
+                HeaderValue::from_str(&now)
+                    .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+            );
+            headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+
+            let response = self
+                .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
+                .await?;
+
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(ProviderError::ServerError(format!(
+                    "List deleted blobs failed ({}): {}",
+                    status,
+                    parse_azure_xml_error(&body)
+                )));
             }
-            buf.clear();
+
+            let mut next_marker: Option<String> = None;
+            let mut reader = quick_xml::Reader::from_str(&body);
+            reader.config_mut().trim_text(true);
+            let mut buf = Vec::new();
+            let mut in_blob = false;
+            let mut blob_name = String::new();
+            let mut blob_size: u64 = 0;
+            let mut blob_modified: Option<String> = None;
+            let mut is_deleted = false;
+            let mut tag_name = String::new();
+
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(quick_xml::events::Event::Start(ref e)) => {
+                        let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                        if name == "Blob" {
+                            in_blob = true;
+                            blob_name.clear();
+                            blob_size = 0;
+                            blob_modified = None;
+                            is_deleted = false;
+                        }
+                        tag_name = name;
+                    }
+                    Ok(quick_xml::events::Event::Text(ref e)) => {
+                        let text = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        if in_blob {
+                            match tag_name.as_str() {
+                                "Name" => blob_name = text,
+                                "Deleted" => is_deleted = text == "true",
+                                "Content-Length" => {
+                                    blob_size = text.parse().unwrap_or(0);
+                                }
+                                "Last-Modified" => {
+                                    blob_modified = Some(text);
+                                }
+                                _ => {}
+                            }
+                        } else if tag_name == "NextMarker" && !text.is_empty() {
+                            next_marker = Some(text);
+                        }
+                    }
+                    Ok(quick_xml::events::Event::End(ref e)) => {
+                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" {
+                            if in_blob && is_deleted && !blob_name.is_empty() {
+                                let mut meta = std::collections::HashMap::new();
+                                meta.insert("deleted".to_string(), "true".to_string());
+                                all_entries.push(super::RemoteEntry {
+                                    name: blob_name
+                                        .rsplit('/')
+                                        .next()
+                                        .unwrap_or(&blob_name)
+                                        .to_string(),
+                                    path: blob_name.clone(),
+                                    is_dir: false,
+                                    size: blob_size,
+                                    modified: blob_modified.clone(),
+                                    permissions: None,
+                                    owner: None,
+                                    group: None,
+                                    is_symlink: false,
+                                    link_target: None,
+                                    mime_type: None,
+                                    metadata: meta,
+                                });
+                            }
+                            in_blob = false;
+                        }
+                    }
+                    Ok(quick_xml::events::Event::Eof) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+                buf.clear();
+            }
+
+            if next_marker.is_some() {
+                marker = next_marker;
+            } else {
+                break;
+            }
         }
 
-        Ok(entries)
+        Ok(all_entries)
     }
 
     /// Undelete a soft-deleted blob.

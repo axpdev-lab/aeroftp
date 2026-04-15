@@ -473,12 +473,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Save connection state
     const [saveConnection, setSaveConnection] = useState(false);
     const [connectionName, setConnectionName] = useState('');
+    // Stable ref for onTabLabelChange to avoid re-render loops from unstable arrow functions
+    const onTabLabelChangeRef = useRef(onTabLabelChange);
+    onTabLabelChangeRef.current = onTabLabelChange;
     // Notify IntroHub when the user types a connection name (or clears it)
     useEffect(() => {
-        if (onTabLabelChange) {
-            onTabLabelChange(connectionName.trim());
-        }
-    }, [connectionName, onTabLabelChange]);
+        onTabLabelChangeRef.current?.(connectionName.trim());
+    }, [connectionName]);
     const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
     const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
 

@@ -19,8 +19,9 @@ use std::time::Duration;
 
 use super::{
     response_bytes_with_limit, sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig,
-    ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider, TransferOptimizationHints, MAX_DOWNLOAD_TO_BYTES,
+    ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, TransferOptimizationHints,
+    MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://app.koofr.net/api/v2.1";
@@ -175,6 +176,12 @@ struct KoofrLink {
     #[serde(rename = "hasPassword")]
     #[allow(dead_code)]
     has_password: Option<bool>,
+    #[serde(rename = "validFrom", default)]
+    valid_from: Option<String>,
+    #[serde(rename = "validTo", default)]
+    valid_to: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,8 +288,8 @@ impl KoofrProvider {
     pub fn new(config: KoofrConfig) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(300))
             .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -1167,6 +1174,17 @@ impl StorageProvider for KoofrProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: false,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: vec![],
+            supports_list_links: true,
+            supports_revoke: true,
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
@@ -1202,6 +1220,46 @@ impl StorageProvider for KoofrProvider {
             password: None,
             expires_at: None,
         })
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let url = format!("{}/mounts/{}/links", API_BASE, self.mount_id);
+        let resp = self.get(&url).await?;
+        let resp = Self::check_response(resp).await?;
+        let links_resp: KoofrLinksResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Failed to parse links: {}", e)))?;
+
+        let resolved = self.resolve_path(path);
+        let links = links_resp
+            .links
+            .into_iter()
+            .filter(|link| {
+                if let Some(ref p) = link.path {
+                    p == &resolved
+                } else {
+                    link.url.contains(&resolved)
+                }
+            })
+            .map(|link| ShareLinkInfo {
+                id: link.id,
+                url: link.short_url.unwrap_or(link.url),
+                created_at: link.valid_from,
+                expires_at: link.valid_to,
+                password_protected: link.has_password.unwrap_or(false),
+                permissions: None,
+            })
+            .collect();
+
+        Ok(links)
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {

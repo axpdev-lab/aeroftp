@@ -1294,6 +1294,7 @@ impl StorageProvider for ImmichProvider {
             supports_password: true,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 

@@ -1587,6 +1587,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             case 'remote_only': return t('syncPanel.statusNewRemote');
             case 'conflict': return t('syncPanel.statusConflict');
             case 'size_mismatch': return t('syncPanel.statusSizeDiffers');
+            default: return status || 'Unknown';
         }
     };
 
@@ -2194,6 +2195,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 <div style={{ height: virtualTotalHeight, position: 'relative' }}>
                                     <div style={{ position: 'absolute', top: virtualTopPad, left: 0, right: 0 }}>
                                         {comparisons.slice(virtualStart, virtualEnd).map((comparison) => {
+                                            if (!comparison || !comparison.relative_path) return null;
                                             const isOrphanDelete = isDeleteOrphan(comparison.status, comparison);
                                             const statusCfg = isOrphanDelete
                                                 ? { Icon: Trash2, color: '#ef4444' }

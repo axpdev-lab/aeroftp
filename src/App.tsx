@@ -4207,7 +4207,7 @@ interface UpdateVerificationInfo {
               await invoke('rename_local_file', { from: file.path, to: destPath });
             }
           } catch (e) {
-            notify.error(t('toast.renameFailed'), `${file.name}: ${String(e)}`);
+            notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
         }
         if (targetIsRemote) loadRemoteFiles(undefined, true);
@@ -4810,6 +4810,9 @@ interface UpdateVerificationInfo {
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
 
+      // Native batch download uses the FTP session pool for parallel transfers.
+      // Provider-based downloads use a single connection (Mutex<Provider>) and must
+      // run sequentially until a provider connection pool is implemented.
       const canUseNativeDownloadBatch = !isProvider
         && filesToDownload.length > 1
         && filesToDownload.every(file => !file.is_dir);
@@ -4901,12 +4904,14 @@ interface UpdateVerificationInfo {
       // Queue shows progress - no toast needed
 
       // Add all files to queue first
+      // Freeze paths at queue time so retry callbacks don't use stale state
+      const frozenLocalPath = currentLocalPath;
       const queueItems = filesToDownload.map(file => {
         const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download');
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, currentLocalPath, file.is_dir, file.size || undefined);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined);
             transferQueue.completeTransfer(id);
           } catch (error) {
             transferQueue.failTransfer(id, String(error));
@@ -5602,7 +5607,7 @@ interface UpdateVerificationInfo {
           notify.success(t('toast.folderCreated'), name);
         } catch (error) {
           humanLog.logError('MKDIR', { foldername: name, isRemote }, logId);
-          notify.error(t('toast.folderCreateFailed'), String(error));
+          notify.error(t('toast.folderCreateFailed', { error: String(error) }));
         }
       }
     });
@@ -8505,6 +8510,7 @@ interface UpdateVerificationInfo {
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
                         pcloud: () => setShowPCloudTrash(true),
+                        onedrive: () => setShowOneDriveTrash(true),
                       };
                       let handler = trashMap[proto || ''];
                       if (!handler && isAzure) {
@@ -8640,7 +8646,7 @@ interface UpdateVerificationInfo {
                               <tr
                                 role="row"
                                 className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                                onClick={() => canGoUp && changeRemoteDirectory('..')}
+                                onDoubleClick={() => canGoUp && changeRemoteDirectory('..')}
                               >
                                 <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                                   {iconProvider.getFolderUpIcon(16).icon}
@@ -8659,7 +8665,7 @@ interface UpdateVerificationInfo {
                               data-file-row
                               role="row"
                               aria-selected={selectedRemoteFiles.has(file.name)}
-                              draggable={file.name !== '..'}
+                              draggable={file.name !== '..' && inlineRename?.path !== file.path}
                               onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                               onDragEnd={handleDragEnd}
                               onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
@@ -8823,7 +8829,7 @@ interface UpdateVerificationInfo {
                         {/* Go Up Item - always visible, disabled at root */}
                         <div
                           className={`file-grid-item file-grid-go-up ${currentRemotePath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
+                          onDoubleClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
                         >
                           <div className="file-grid-icon">
                             {iconProvider.getFolderUpIcon(32).icon}
@@ -8834,7 +8840,7 @@ interface UpdateVerificationInfo {
                           <div
                             key={`${file.name}-${i}`}
                             data-file-card
-                            draggable={file.name !== '..'}
+                            draggable={file.name !== '..' && inlineRename?.path !== file.path}
                             onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
                             onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}

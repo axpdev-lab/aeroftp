@@ -20,8 +20,8 @@ use tracing::info;
 
 use super::{
     sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, KDriveConfig, ProviderError,
-    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider,
+    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 const API_BASE: &str = "https://api.infomaniak.com";
@@ -101,6 +101,12 @@ struct ShareLinkData {
     url: Option<String>,
     #[allow(dead_code)]
     uuid: Option<String>,
+    #[serde(default)]
+    valid_until: Option<serde_json::Value>,
+    #[serde(default)]
+    right: Option<String>,
+    #[serde(default)]
+    has_password: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -173,7 +179,6 @@ impl KDriveProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -782,6 +787,43 @@ impl StorageProvider for KDriveProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(remote_path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _is_dir) = self
+            .find_file_in_folder(parent_id, filename)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(format!("File '{}' not found", filename)))?;
+
+        let url = self.api_url_v2(&format!("/files/{}/download", file_id));
+        let auth = self.auth_header()?;
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let (parent_path, filename) = Self::split_path(&resolved);
@@ -1266,6 +1308,8 @@ impl StorageProvider for KDriveProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: true,
+            supports_revoke: true,
         }
     }
 
@@ -1340,6 +1384,62 @@ impl StorageProvider for KDriveProvider {
             password: None,
             expires_at: None,
         })
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _) = self
+            .find_file_in_folder(parent_id, filename)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = self.api_url_v2(&format!("/files/{}/link", file_id));
+        let resp = self.get_with_retry(&url).await?;
+
+        if resp.status().as_u16() == 404 {
+            // No share link exists for this file
+            return Ok(vec![]);
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "List share links failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
+            ProviderError::ServerError(format!("Parse share link response failed: {}", e))
+        })?;
+
+        if let Some(link_data) = api_resp.data {
+            if let Some(ref link_url) = link_data.url {
+                let expires_at = link_data
+                    .valid_until
+                    .as_ref()
+                    .and_then(|v| v.as_str().map(|s| s.to_string()).or_else(|| v.as_i64().map(|ts| ts.to_string())));
+
+                return Ok(vec![ShareLinkInfo {
+                    id: link_data.uuid.unwrap_or_else(|| file_id.to_string()),
+                    url: link_url.clone(),
+                    created_at: None,
+                    expires_at,
+                    password_protected: link_data.has_password.unwrap_or(false),
+                    permissions: link_data.right,
+                }]);
+            }
+        }
+
+        Ok(vec![])
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1508,6 +1608,13 @@ impl StorageProvider for KDriveProvider {
     }
 
     // ─── KD-010: Trash management via kDrive trash API ────────────────
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
+    }
 }
 
 // =============================================================================

@@ -539,7 +539,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               <tr
                 role="row"
                 className={`${currentPath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                onClick={() => currentPath !== '/' && navigateUp()}
+                onDoubleClick={() => currentPath !== '/' && navigateUp()}
               >
                 <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                   {iconProvider.getFolderUpIcon(16).icon}
@@ -555,7 +555,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   data-file-row
                   role="row"
                   aria-selected={selectedFiles.has(file.name)}
-                  draggable={file.name !== '..'}
+                  draggable={file.name !== '..' && inlineRename?.path !== file.path}
                   onDragStart={(e) => onDragStart(e, file, false, selectedFiles, sortedFiles)}
                   onDragEnd={onDragEnd}
                   onDragOver={(e) => onDragOver(e, file.path, file.is_dir, false)}
@@ -627,7 +627,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 data-file-card
                 role="row"
                 aria-selected={selectedFiles.has(file.name)}
-                draggable={file.name !== '..'}
+                draggable={file.name !== '..' && inlineRename?.path !== file.path}
                 onDragStart={(e) => onDragStart(e, file, false, selectedFiles, sortedFiles)}
                 onDragEnd={onDragEnd}
                 onDragOver={(e) => onDragOver(e, file.path, file.is_dir, false)}

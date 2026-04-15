@@ -22,7 +22,8 @@ use std::collections::HashMap;
 
 use super::{
     response_bytes_with_limit, sanitize_api_error, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
@@ -648,6 +649,58 @@ impl StorageProvider for YandexDiskProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let resolved = self.resolve_path(remote_path);
+        let encoded = encode_yd_path(&resolved);
+
+        // Step 1: Get download URL (same as download())
+        let url = format!("{}/resources/download?path={}", API_BASE, encoded);
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header())
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+
+        let link: YdLink = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        validate_yd_url(&link.href)?;
+
+        // Step 2: Resumable download (Yandex CDN URLs don't need auth)
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&link.href);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -926,6 +979,41 @@ impl StorageProvider for YandexDiskProvider {
         true
     }
 
+    fn share_link_capabilities(&self) -> ShareLinkCapabilities {
+        ShareLinkCapabilities {
+            supports_expiration: false,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: vec![],
+            supports_list_links: false,
+            supports_revoke: true,
+        }
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let resolved = self.resolve_path(path);
+        let resource = self.get_resource(&resolved).await?;
+
+        if let Some(ref url) = resource.public_url {
+            Ok(vec![ShareLinkInfo {
+                id: resolved,
+                url: url.clone(),
+                created_at: None,
+                expires_at: None,
+                password_protected: false,
+                permissions: Some("public".to_string()),
+            }])
+        } else {
+            Ok(vec![])
+        }
+    }
+
     async fn create_share_link(
         &mut self,
         path: &str,
@@ -1152,6 +1240,13 @@ impl StorageProvider for YandexDiskProvider {
             Ok(())
         } else {
             Err(self.parse_error(resp).await)
+        }
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
         }
     }
 }

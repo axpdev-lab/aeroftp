@@ -25,6 +25,7 @@ use super::{
 };
 
 /// S3 Storage Provider
+#[derive(Clone)]
 pub struct S3Provider {
     config: S3Config,
     client: Client,
@@ -33,6 +34,8 @@ pub struct S3Provider {
     /// Clock offset in seconds to compensate for local system clock skew.
     /// Auto-detected from the server's Date header on time-related auth errors.
     clock_offset_secs: i64,
+    /// Override for multipart upload part size (default: 5 MB)
+    upload_chunk_override: Option<usize>,
 }
 
 impl S3Provider {
@@ -54,6 +57,7 @@ impl S3Provider {
             current_prefix: String::new(),
             connected: false,
             clock_offset_secs: 0,
+            upload_chunk_override: None,
         })
     }
 
@@ -752,8 +756,15 @@ impl S3Provider {
 
     /// Minimum part size for multipart upload (5 MB)
     const MULTIPART_THRESHOLD: usize = 5 * 1024 * 1024;
-    /// Part size for multipart upload chunks (5 MB)
+    /// Default part size for multipart upload chunks (5 MB)
     const MULTIPART_PART_SIZE: usize = 5 * 1024 * 1024;
+
+    /// Effective part size, using override if set (min 5 MB per S3 spec)
+    fn effective_part_size(&self) -> usize {
+        self.upload_chunk_override
+            .unwrap_or(Self::MULTIPART_PART_SIZE)
+            .max(Self::MULTIPART_THRESHOLD)
+    }
 
     /// Initiate a multipart upload, returns the UploadId.
     /// Optionally sets Content-Type for the resulting object (UPLOAD-01).
@@ -927,39 +938,75 @@ impl S3Provider {
         let mut part_number = 1u32;
         let mut uploaded: u64 = 0;
 
-        loop {
-            let mut buf = vec![0u8; Self::MULTIPART_PART_SIZE];
-            let mut filled = 0;
-            // Read exactly MULTIPART_PART_SIZE bytes (or less at EOF)
-            while filled < Self::MULTIPART_PART_SIZE {
-                let n = file
-                    .read(&mut buf[filled..])
-                    .await
-                    .map_err(|e| ProviderError::TransferFailed(format!("Read error: {e}")))?;
-                if n == 0 {
-                    break; // EOF
-                }
-                filled += n;
-            }
-            if filled == 0 {
-                break; // No more data
-            }
-            buf.truncate(filled);
+        let part_size = self.effective_part_size();
+        let max_parallel = 4usize;
 
-            match self.upload_part(key, &upload_id, part_number, buf).await {
-                Ok(etag) => {
-                    parts.push((part_number, etag));
-                    uploaded += filled as u64;
-                    if let Some(ref progress) = on_progress {
-                        progress(uploaded, total_size);
+        loop {
+            // Pre-read up to max_parallel parts from disk
+            let mut batch: Vec<(u32, Vec<u8>)> = Vec::with_capacity(max_parallel);
+            for _ in 0..max_parallel {
+                let mut buf = vec![0u8; part_size];
+                let mut filled = 0;
+                while filled < part_size {
+                    let n = file
+                        .read(&mut buf[filled..])
+                        .await
+                        .map_err(|e| ProviderError::TransferFailed(format!("Read error: {e}")))?;
+                    if n == 0 {
+                        break;
                     }
-                    part_number += 1;
+                    filled += n;
                 }
-                Err(e) => {
-                    let _ = self.abort_multipart_upload(key, &upload_id).await;
-                    return Err(e);
+                if filled == 0 {
+                    break;
+                }
+                buf.truncate(filled);
+                batch.push((part_number, buf));
+                part_number += 1;
+            }
+
+            if batch.is_empty() {
+                break;
+            }
+
+            // Upload batch in parallel via tokio::spawn.
+            // S3Provider is Clone (reqwest::Client is Arc-based, clone is cheap).
+            let mut handles = Vec::with_capacity(batch.len());
+            for (pn, data) in batch {
+                let provider = self.clone();
+                let key_owned = key.to_string();
+                let uid = upload_id.clone();
+                let data_len = data.len() as u64;
+                handles.push(tokio::spawn(async move {
+                    let etag = provider.upload_part(&key_owned, &uid, pn, data).await?;
+                    Ok::<(u32, String, u64), ProviderError>((pn, etag, data_len))
+                }));
+            }
+
+            for handle in handles {
+                match handle.await {
+                    Ok(Ok((pn, etag, data_len))) => {
+                        parts.push((pn, etag));
+                        uploaded += data_len;
+                        if let Some(ref progress) = on_progress {
+                            progress(uploaded, total_size);
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        let _ = self.abort_multipart_upload(key, &upload_id).await;
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        let _ = self.abort_multipart_upload(key, &upload_id).await;
+                        return Err(ProviderError::TransferFailed(format!(
+                            "Upload task panicked: {e}"
+                        )));
+                    }
                 }
             }
+
+            // Sort parts by number (parallel completion may be out of order)
+            parts.sort_by_key(|(pn, _)| *pn);
         }
 
         self.complete_multipart_upload(key, &upload_id, &parts)
@@ -1421,6 +1468,80 @@ impl StorageProvider for S3Provider {
         }
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let key = remote_path.trim_start_matches('/');
+        let range_value = format!("bytes={}-", offset);
+        let response = self
+            .s3_request_ext(Method::GET, key, None, None, &[("range", &range_value)])
+            .await?;
+
+        match response.status() {
+            StatusCode::PARTIAL_CONTENT => {
+                let content_len = response.content_length().unwrap_or(0);
+                let total_size = offset + content_len;
+                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(
+                    response,
+                    &mut resumable,
+                    total_size,
+                    on_progress,
+                )
+                .await?;
+                resumable.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            StatusCode::OK => {
+                // Server ignored Range — full content returned, restart from scratch
+                let total_size = response.content_length().unwrap_or(0);
+                let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(
+                    response,
+                    &mut fresh,
+                    total_size,
+                    on_progress,
+                )
+                .await?;
+                fresh.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            StatusCode::RANGE_NOT_SATISFIABLE => {
+                // Discard stale .aerotmp to prevent infinite 416 loop on next attempt
+                let tmp = format!("{}.aerotmp", local_path);
+                let _ = tokio::fs::remove_file(&tmp).await;
+                Err(ProviderError::TransferFailed(
+                    "Range not satisfiable — file may have changed on server".to_string(),
+                ))
+            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Resume download failed with status: {}",
+                status
+            ))),
+        }
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1847,6 +1968,7 @@ impl StorageProvider for S3Provider {
             supports_password: false,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 
@@ -2194,12 +2316,21 @@ impl StorageProvider for S3Provider {
         super::TransferOptimizationHints {
             supports_multipart: true,
             multipart_threshold: Self::MULTIPART_THRESHOLD as u64,
-            multipart_part_size: Self::MULTIPART_PART_SIZE as u64,
+            multipart_part_size: self.effective_part_size() as u64,
             multipart_max_parallel: 4,
             supports_range_download: true,
+            supports_resume_download: true,
             supports_server_checksum: true,
             preferred_checksum_algo: Some("ETag".to_string()),
             ..Default::default()
+        }
+    }
+
+    fn set_chunk_sizes(&mut self, upload: Option<u64>, _download: Option<u64>) {
+        if let Some(size) = upload {
+            // Cap at 512 MB per part (S3 max is 5 GB, but 512 MB is practical)
+            let capped = (size as usize).min(512 * 1024 * 1024);
+            self.upload_chunk_override = Some(capped);
         }
     }
 

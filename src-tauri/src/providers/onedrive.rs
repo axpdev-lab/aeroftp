@@ -688,6 +688,65 @@ impl StorageProvider for OneDriveProvider {
         Ok(())
     }
 
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let path = if remote_path.starts_with('/') {
+            remote_path.to_string()
+        } else {
+            format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                remote_path
+            )
+        };
+
+        let item = self.get_item(&path).await?;
+
+        // Get download URL (same logic as download())
+        let download_url = if let Some(url) = item.download_url {
+            url
+        } else {
+            let url = format!("{}:/content", self.api_path(&path));
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if response.status().is_redirection() {
+                response
+                    .headers()
+                    .get("Location")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from)
+                    .ok_or_else(|| ProviderError::Other("No download URL".to_string()))?
+            } else {
+                return Err(ProviderError::Other("Cannot get download URL".to_string()));
+            }
+        };
+
+        // OneDrive pre-authenticated download URLs don't need auth headers
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&download_url);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let path = if remote_path.starts_with('/') {
             remote_path.to_string()
@@ -979,6 +1038,7 @@ impl StorageProvider for OneDriveProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            ..Default::default()
         }
     }
 
@@ -1636,5 +1696,13 @@ impl StorageProvider for OneDriveProvider {
 
         info!("Resumable upload completed: {}", remote_path);
         Ok(())
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        }
     }
 }

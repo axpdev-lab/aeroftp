@@ -124,8 +124,8 @@ impl SwiftProvider {
     pub fn new(config: SwiftConfig) -> Self {
         let client = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(300))
             .danger_accept_invalid_certs(!config.verify_cert)
             .build()
             .unwrap_or_else(|_| Client::new());
@@ -824,6 +824,38 @@ impl StorageProvider for SwiftProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.ensure_auth().await?;
+        let url = self.object_url(remote_path)?;
+        let token = self.token()?.to_string();
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self
+                    .client
+                    .get(&url)
+                    .header("X-Auth-Token", &token);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let url = self.object_url(remote_path)?;
         let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
@@ -1220,5 +1252,12 @@ impl StorageProvider for SwiftProvider {
             total,
             free: total.saturating_sub(used),
         })
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

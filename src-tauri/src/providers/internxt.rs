@@ -367,7 +367,6 @@ impl InternxtProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {

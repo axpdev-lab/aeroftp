@@ -171,12 +171,9 @@ pub fn sanitize_api_error(body: &str) -> String {
     } else {
         first_line.to_string()
     };
-    // Strip potential Bearer tokens or API keys from error messages
-    if truncated.contains("Bearer ") || truncated.contains("eyJ") {
-        "API error (response contained credentials — redacted)".to_string()
-    } else {
-        truncated
-    }
+    // Apply the same regex-based sanitization used by the AI pipeline
+    // (covers sk-*, Bearer tokens, x-api-key, Google key= params)
+    crate::ai::sanitize_error_message(&truncated)
 }
 
 /// Transfer optimization hints — per-provider capability advertisement
@@ -243,6 +240,27 @@ pub struct ShareLinkCapabilities {
     pub supports_password: bool,
     pub supports_permissions: bool,
     pub available_permissions: Vec<String>,
+    /// Whether this provider supports listing existing share links
+    pub supports_list_links: bool,
+    /// Whether this provider supports revoking share links
+    pub supports_revoke: bool,
+}
+
+/// Information about an existing share link
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ShareLinkInfo {
+    /// Provider-specific link identifier (for revocation)
+    pub id: String,
+    /// The share link URL
+    pub url: String,
+    /// When the link was created (ISO 8601)
+    pub created_at: Option<String>,
+    /// When the link expires (ISO 8601), None = permanent
+    pub expires_at: Option<String>,
+    /// Whether the link is password protected
+    pub password_protected: bool,
+    /// Permission level (e.g. "view", "edit")
+    pub permissions: Option<String>,
 }
 
 /// Unified storage provider trait
@@ -399,6 +417,17 @@ pub trait StorageProvider: Send + Sync {
     /// Remove a previously created share/export link
     async fn remove_share_link(&mut self, _path: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("remove_share_link".to_string()))
+    }
+
+    /// List existing share links for a file or folder.
+    /// Returns all active share links for the given path.
+    async fn list_share_links(
+        &mut self,
+        _path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        Err(ProviderError::NotSupported(
+            "list_share_links".to_string(),
+        ))
     }
 
     /// Get storage quota information (used/total/free)
@@ -590,6 +619,10 @@ pub trait StorageProvider: Send + Sync {
         TransferOptimizationHints::default()
     }
 
+    /// Override upload chunk size and download buffer size.
+    /// Providers that support dynamic sizing should override this.
+    fn set_chunk_sizes(&mut self, _upload: Option<u64>, _download: Option<u64>) {}
+
     /// Whether this provider supports delta sync (rsync-style block transfer)
     fn supports_delta_sync(&self) -> bool {
         false
@@ -757,6 +790,142 @@ impl ProviderFactory {
             ProviderType::GooglePhotos,
             ProviderType::Immich,
         ]
+    }
+}
+
+// =========================================================================
+// Resume Download Helpers
+// =========================================================================
+
+/// Stream an HTTP response body into a `ResumableFile`, tracking progress.
+///
+/// This is the shared implementation used by all HTTP-based providers for resume
+/// downloads. The caller is responsible for:
+/// 1. Detecting the `.aerotmp` offset via `ResumableFile::open()`
+/// 2. Sending the HTTP request with `Range: bytes=<offset>-` header
+/// 3. Handling 200 (restart) vs 206 (resume) vs 416 (range error)
+/// 4. Passing the response and the `ResumableFile` to this function
+///
+/// Progress reports `(transferred_total, total_size)` where `transferred_total`
+/// includes the pre-existing offset bytes.
+pub async fn stream_response_to_resumable(
+    response: reqwest::Response,
+    resumable: &mut atomic_write::ResumableFile,
+    total_size: u64,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    use futures_util::StreamExt;
+
+    let mut stream = response.bytes_stream();
+    let mut transferred = resumable.offset();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        resumable
+            .write_all(&chunk)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        transferred += chunk.len() as u64;
+        if let Some(ref progress) = on_progress {
+            progress(transferred, total_size);
+        }
+    }
+
+    Ok(())
+}
+
+/// Perform a resumable HTTP GET download for any provider that uses reqwest.
+///
+/// This handles the full lifecycle:
+/// 1. Check for existing `.aerotmp` partial file
+/// 2. Send GET with Range header if partial data exists
+/// 3. Handle 200 (fresh) / 206 (resume) / 416 (completed or range error)
+/// 4. Stream to `ResumableFile` and commit on success
+///
+/// `build_request` is a closure that takes an optional `Range` header value
+/// (e.g. `"bytes=12345-"`) and returns a configured `reqwest::RequestBuilder`.
+/// This allows each provider to add its own auth headers.
+pub async fn http_resumable_download<F>(
+    local_path: &str,
+    build_request: F,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError>
+where
+    F: FnOnce(Option<&str>) -> reqwest::RequestBuilder,
+{
+    use reqwest::StatusCode;
+
+    let mut resumable = atomic_write::ResumableFile::open(local_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+
+    let offset = resumable.offset();
+    let range_header = if offset > 0 {
+        Some(format!("bytes={}-", offset))
+    } else {
+        None
+    };
+
+    let response = build_request(range_header.as_deref())
+        .send()
+        .await
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+    match response.status() {
+        StatusCode::PARTIAL_CONTENT => {
+            // 206: server honored our Range — append to existing data
+            let content_len = response.content_length().unwrap_or(0);
+            let total_size = offset + content_len;
+            stream_response_to_resumable(response, &mut resumable, total_size, on_progress)
+                .await?;
+            resumable.commit().await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+            })?;
+            Ok(())
+        }
+        StatusCode::OK => {
+            // 200: server ignored Range or fresh download — restart from scratch
+            if offset > 0 {
+                // We had partial data but server sent full content — discard and restart
+                let _ = resumable.discard().await;
+                let mut fresh = atomic_write::ResumableFile::open_fresh(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let total_size = response.content_length().unwrap_or(0);
+                stream_response_to_resumable(response, &mut fresh, total_size, on_progress)
+                    .await?;
+                fresh.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+            } else {
+                let total_size = response.content_length().unwrap_or(0);
+                stream_response_to_resumable(response, &mut resumable, total_size, on_progress)
+                    .await?;
+                resumable.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+            }
+            Ok(())
+        }
+        StatusCode::RANGE_NOT_SATISFIABLE => {
+            // 416: offset past end — file may already be complete
+            // Discard partial and restart
+            let _ = resumable.discard().await;
+            Err(ProviderError::TransferFailed(
+                "Range not satisfiable — file may have changed on server".to_string(),
+            ))
+        }
+        StatusCode::NOT_FOUND => {
+            let _ = resumable.discard().await;
+            Err(ProviderError::NotFound(local_path.to_string()))
+        }
+        status => {
+            // Keep partial data for retry
+            Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            )))
+        }
     }
 }
 

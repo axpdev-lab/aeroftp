@@ -130,58 +130,101 @@ impl TransferExecutor for ProviderDownloadExecutor {
                 match provider_lock.as_mut() {
                     Some(provider) => {
                         let dl_start = std::time::Instant::now();
-                        match tokio::time::timeout(
-                            Duration::from_secs(self.runtime_settings.timeout_seconds),
+                        // Resume-aware: on retries, if provider supports resume
+                        // and a partial .aerotmp exists, resume from where we left off
+                        let tmp_path = format!("{}.aerotmp", &local_path);
+                        let partial_offset = if attempt > 0 && provider.supports_resume() {
+                            tokio::fs::metadata(&tmp_path)
+                                .await
+                                .map(|m| m.len())
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> =
+                            Some(Box::new(move |transferred, total| {
+                                if cancel_flag.load(Ordering::Relaxed) {
+                                    return;
+                                }
+                                let percentage = if total > 0 {
+                                    ((transferred as f64 / total as f64) * 100.0) as u8
+                                } else {
+                                    0
+                                };
+                                let elapsed = dl_start.elapsed().as_secs_f64();
+                                let speed = if elapsed > 0.1 {
+                                    (transferred as f64 / elapsed) as u64
+                                } else {
+                                    0
+                                };
+                                let remaining =
+                                    total.max(file_size).saturating_sub(transferred);
+                                let eta = if speed > 0 {
+                                    (remaining as f64 / speed as f64) as u64
+                                } else {
+                                    0
+                                };
+                                let _ = app.emit(
+                                    "transfer_event",
+                                    crate::TransferEvent {
+                                        event_type: "progress".to_string(),
+                                        transfer_id: transfer_id.clone(),
+                                        filename: display_name.clone(),
+                                        direction: "download".to_string(),
+                                        message: None,
+                                        progress: Some(crate::TransferProgress {
+                                            transfer_id: transfer_id.clone(),
+                                            filename: display_name.clone(),
+                                            transferred,
+                                            total: total.max(file_size),
+                                            percentage,
+                                            speed_bps: speed,
+                                            eta_seconds: eta as u32,
+                                            direction: "download".to_string(),
+                                            total_files: None,
+                                            path: None,
+                                        }),
+                                        path: Some(remote_path_for_progress.clone()),
+                                    },
+                                );
+                            }));
+
+                        let dl_future = if partial_offset > 0 {
+                            tracing::info!(
+                                "Resuming download from {} bytes (attempt {}): {}",
+                                partial_offset,
+                                attempt,
+                                remote_path
+                            );
+                            provider.resume_download(
+                                &remote_path,
+                                &local_path,
+                                partial_offset,
+                                progress_cb,
+                            )
+                        } else {
                             provider.download(
                                 &remote_path,
                                 &local_path,
-                                Some(Box::new(move |transferred, total| {
-                                    if cancel_flag.load(Ordering::Relaxed) {
-                                        return;
-                                    }
+                                progress_cb,
+                            )
+                        };
 
-                                    let percentage = if total > 0 {
-                                        ((transferred as f64 / total as f64) * 100.0) as u8
-                                    } else {
-                                        0
-                                    };
-                                    let elapsed = dl_start.elapsed().as_secs_f64();
-                                    let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
-                                    let remaining = total.max(file_size).saturating_sub(transferred);
-                                    let eta = if speed > 0 { (remaining as f64 / speed as f64) as u64 } else { 0 };
-
-                                    let _ = app.emit(
-                                        "transfer_event",
-                                        crate::TransferEvent {
-                                            event_type: "progress".to_string(),
-                                            transfer_id: transfer_id.clone(),
-                                            filename: display_name.clone(),
-                                            direction: "download".to_string(),
-                                            message: None,
-                                            progress: Some(crate::TransferProgress {
-                                                transfer_id: transfer_id.clone(),
-                                                filename: display_name.clone(),
-                                                transferred,
-                                                total: total.max(file_size),
-                                                percentage,
-                                                speed_bps: speed,
-                                                eta_seconds: eta as u32,
-                                                direction: "download".to_string(),
-                                                total_files: None,
-                                                path: None,
-                                            }),
-                                            path: Some(remote_path_for_progress.clone()),
-                                        },
-                                    );
-                                })),
-                            ),
+                        // Dynamic timeout: base timeout + file_size / 50 KB/s (pessimistic slow connection)
+                        // Ensures large files on slow connections (e.g. 70 MB at 180 KB/s) don't time out
+                        let size_based_secs = file_size / 50_000; // 50 KB/s minimum assumed speed
+                        let effective_timeout = self.runtime_settings.timeout_seconds
+                            .max(size_based_secs + self.runtime_settings.timeout_seconds);
+                        match tokio::time::timeout(
+                            Duration::from_secs(effective_timeout),
+                            dl_future,
                         )
                         .await
                         {
                             Ok(result) => result.map_err(|e| e.to_string()),
                             Err(_) => Err(format!(
                                 "Download timed out after {} seconds",
-                                self.runtime_settings.timeout_seconds
+                                effective_timeout
                             )),
                         }
                     }
@@ -334,28 +377,36 @@ impl TransferExecutor for ProviderUploadExecutor {
                                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                                 .ok_or_else(|| "Failed to access GitHub provider".to_string());
                             match github {
-                                Ok(github) => match tokio::time::timeout(
-                                    Duration::from_secs(self.runtime_settings.timeout_seconds),
-                                    github.upload_file(
-                                        &local_path,
-                                        &remote_path,
-                                        commit_message.as_deref(),
-                                    ),
-                                )
-                                .await
-                                {
-                                    Ok(result) => result.map_err(|e| e.to_string()),
-                                    Err(_) => Err(format!(
-                                        "Upload timed out after {} seconds",
-                                        self.runtime_settings.timeout_seconds
-                                    )),
+                                Ok(github) => {
+                                    let size_secs = file_size / 50_000;
+                                    let eff_timeout = self.runtime_settings.timeout_seconds
+                                        .max(size_secs + self.runtime_settings.timeout_seconds);
+                                    match tokio::time::timeout(
+                                        Duration::from_secs(eff_timeout),
+                                        github.upload_file(
+                                            &local_path,
+                                            &remote_path,
+                                            commit_message.as_deref(),
+                                        ),
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => result.map_err(|e| e.to_string()),
+                                        Err(_) => Err(format!(
+                                            "Upload timed out after {} seconds",
+                                            eff_timeout
+                                        )),
+                                    }
                                 },
                                 Err(error) => Err(error),
                             }
                         } else {
                             let ul_start = std::time::Instant::now();
+                            let size_secs = file_size / 50_000;
+                            let eff_timeout = self.runtime_settings.timeout_seconds
+                                .max(size_secs + self.runtime_settings.timeout_seconds);
                             match tokio::time::timeout(
-                                Duration::from_secs(self.runtime_settings.timeout_seconds),
+                                Duration::from_secs(eff_timeout),
                                 provider.upload(
                                     &local_path,
                                     &remote_path,
@@ -405,7 +456,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                                 Ok(result) => result.map_err(|e| e.to_string()),
                                 Err(_) => Err(format!(
                                     "Upload timed out after {} seconds",
-                                    self.runtime_settings.timeout_seconds
+                                    eff_timeout
                                 )),
                             }
                         }

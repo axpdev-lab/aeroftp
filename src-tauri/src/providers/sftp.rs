@@ -116,6 +116,8 @@ pub struct SftpProvider {
     upload_limit_bps: u64,
     /// SSH compression enabled (zlib@openssh.com)
     compression_enabled: bool,
+    /// Buffer size for download/upload (default: 32 KB)
+    buffer_size: usize,
 }
 
 impl SftpProvider {
@@ -129,6 +131,7 @@ impl SftpProvider {
             download_limit_bps: 0,
             upload_limit_bps: 0,
             compression_enabled: false,
+            buffer_size: 32768,
         }
     }
 
@@ -640,7 +643,7 @@ impl StorageProvider for SftpProvider {
             })?;
 
         // Read and write in chunks with optional rate limiting
-        let mut buffer = vec![0u8; 32768]; // 32KB chunks
+        let mut buffer = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
         let start = std::time::Instant::now();
 
@@ -750,7 +753,7 @@ impl StorageProvider for SftpProvider {
         })?;
 
         // Read and write in chunks with optional rate limiting
-        let mut buffer = vec![0u8; 32768]; // 32KB chunks
+        let mut buffer = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
         let start = std::time::Instant::now();
 
@@ -1078,12 +1081,23 @@ impl StorageProvider for SftpProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
-            supports_resume_download: true,
-            supports_resume_upload: true,
+            supports_resume_download: false,
+            supports_resume_upload: false,
             supports_range_download: true,
             supports_compression: true,
             supports_delta_sync: true,
             ..Default::default()
+        }
+    }
+
+    fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
+        // Cap at 16 MB (larger buffers waste memory without improving throughput)
+        let cap = 16 * 1024 * 1024;
+        if let Some(size) = upload {
+            self.buffer_size = (size as usize).clamp(4096, cap);
+        }
+        if let Some(size) = download {
+            self.buffer_size = (size as usize).clamp(4096, cap);
         }
     }
 

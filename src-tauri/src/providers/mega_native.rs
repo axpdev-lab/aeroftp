@@ -177,7 +177,8 @@ impl MegaApiClient {
     fn new(session_id: Option<String>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .timeout(Duration::from_secs(120))
+            .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(300))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -189,6 +190,9 @@ impl MegaApiClient {
     }
 
     fn set_session_id(&mut self, session_id: Option<String>) {
+        if let Some(ref mut old) = self.session_id {
+            old.zeroize();
+        }
         self.session_id = session_id;
     }
 
@@ -500,11 +504,13 @@ impl MegaNativeProvider {
             sequence_number: self.sequence_number.clone(),
             stored_at_unix_ms: Self::now_unix_ms(),
         };
-        let serialized = serde_json::to_string(&persisted)
+        let mut serialized = serde_json::to_string(&persisted)
             .map_err(|e| ProviderError::ParseError(format!("Failed to serialize session: {e}")))?;
-        store
+        let result = store
             .store(&self.session_vault_key(), &serialized)
-            .map_err(|e| ProviderError::Other(format!("Failed to persist session: {e}")))
+            .map_err(|e| ProviderError::Other(format!("Failed to persist session: {e}")));
+        serialized.zeroize();
+        result
     }
 
     fn clear_persisted_session(&self) -> Result<(), ProviderError> {
@@ -527,15 +533,19 @@ impl MegaNativeProvider {
             return Ok(false);
         };
 
-        let serialized = match store.get(&self.session_vault_key()) {
+        let mut serialized = match store.get(&self.session_vault_key()) {
             Ok(s) => s,
             Err(crate::credential_store::CredentialError::NotFound(_)) => return Ok(false),
             Err(e) => return Err(ProviderError::Other(format!("Failed to load session: {e}"))),
         };
 
         let persisted: MegaPersistedSession = match serde_json::from_str(&serialized) {
-            Ok(p) => p,
+            Ok(p) => {
+                serialized.zeroize();
+                p
+            }
             Err(_) => {
+                serialized.zeroize();
                 self.clear_persisted_session()?;
                 return Ok(false);
             }
@@ -1167,7 +1177,7 @@ impl StorageProvider for MegaNativeProvider {
 
                 // Truncate last chunk to actual file size
                 let write_end = if mega_offset + mega_size as u64 > actual_size {
-                    (actual_size - mega_offset) as usize
+                    actual_size.saturating_sub(mega_offset) as usize
                 } else {
                     mega_size
                 };
@@ -1194,7 +1204,7 @@ impl StorageProvider for MegaNativeProvider {
             let mut remaining = chunk_buf;
             aes_ctr_apply_inplace(&mut remaining, &file_key, &nonce, mega_offset);
             let write_end = if mega_offset + remaining.len() as u64 > actual_size {
-                (actual_size - mega_offset) as usize
+                actual_size.saturating_sub(mega_offset) as usize
             } else {
                 remaining.len()
             };
@@ -1281,10 +1291,18 @@ impl StorageProvider for MegaNativeProvider {
                 .await
                 .map_err(map_reqwest_error)?;
 
+            let status = resp.status();
             let body = resp
                 .text()
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Upload chunk failed: {e}")))?;
+
+            if !status.is_success() {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Upload chunk failed ({}): {}",
+                    status, body
+                )));
+            }
 
             uploaded += size as u64;
             if let Some(ref cb) = on_progress {

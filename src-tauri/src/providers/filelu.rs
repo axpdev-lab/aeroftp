@@ -285,7 +285,6 @@ impl FileLuProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -1344,6 +1343,38 @@ impl StorageProvider for FileLuProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let norm = self.resolve_path(remote_path);
+        let direct_url = self.get_direct_url_v2(&norm).await?;
+
+        // FileLu CDN URLs don't need auth headers
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&direct_url);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1943,6 +1974,13 @@ impl StorageProvider for FileLuProvider {
 
         self.invalidate_cache_under(&dest_dir);
         Ok(())
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }
 

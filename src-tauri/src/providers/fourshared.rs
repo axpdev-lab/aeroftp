@@ -1021,6 +1021,38 @@ impl StorageProvider for FourSharedProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(remote_path);
+        let file_id = self.resolve_file_id(&resolved).await?;
+
+        let url = format!("{}/files/{}/download", API_BASE, file_id);
+        let creds = self.credentials();
+        let auth = oauth1::authorization_header("GET", &url, &creds, &[]);
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url).header("Authorization", &auth);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let file_id = self.resolve_file_id(&resolved).await?;
@@ -1521,4 +1553,11 @@ impl StorageProvider for FourSharedProvider {
     //         restore_from_trash(), permanent_delete() in future.
 
     // FS-014: TODO — 4shared does not support file versioning. No version API available.
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
+    }
 }

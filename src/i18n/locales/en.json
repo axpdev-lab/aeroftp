@@ -3745,7 +3745,20 @@
       "perm_view": "View",
       "perm_comment": "Comment",
       "perm_edit": "Edit",
-      "generateWithOptions": "Generate with options"
+      "generateWithOptions": "Generate with options",
+      "tabCreate": "Create",
+      "tabManage": "Manage",
+      "manageLoading": "Loading existing links...",
+      "manageEmpty": "No share links for this file",
+      "manageRevoke": "Revoke",
+      "manageRevoking": "Revoking...",
+      "manageRevoked": "Link revoked",
+      "manageRevokeFailed": "Failed to revoke link",
+      "manageRevokeConfirm": "Revoke this share link? Anyone with the link will lose access.",
+      "manageCreated": "Created",
+      "manageExpires": "Expires",
+      "manageNeverExpires": "Never",
+      "managePasswordProtected": "Password protected"
     },
     "filelu": {
       "setFilePassword": "Set File Password",

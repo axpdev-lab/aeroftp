@@ -21,7 +21,8 @@ use tracing::{info, warn};
 
 use super::{
     sanitize_api_error, DrimeCloudConfig, FileVersion, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 const API_BASE: &str = "https://app.drime.cloud/api/v1";
@@ -223,7 +224,6 @@ impl DrimeCloudProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .default_headers(default_headers)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -1727,7 +1727,64 @@ impl StorageProvider for DrimeCloudProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: true,
+            supports_revoke: true,
         }
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let (file_id, _, _) = self
+            .find_file_in_folder(&parent_id, filename)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+
+        let url = Self::api_url(&format!("/file-entries/{}/shareable-link", file_id));
+        let auth = self.auth_header()?;
+        let resp = self
+            .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
+            .await?;
+
+        if resp.status().as_u16() == 404 {
+            return Ok(vec![]);
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "List share links failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        let link_resp: DrimeShareLinkResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("Parse share link response: {}", e)))?;
+
+        if let Some(link) = link_resp.link {
+            if let Some(hash) = link.hash {
+                let share_url = format!("https://app.drime.cloud/drive/shares/{}", hash);
+                return Ok(vec![ShareLinkInfo {
+                    id: hash,
+                    url: share_url,
+                    created_at: None,
+                    expires_at: None,
+                    password_protected: false,
+                    permissions: None,
+                }]);
+            }
+        }
+
+        Ok(vec![])
     }
 
     async fn create_share_link(

@@ -48,7 +48,9 @@ const getDateComparison = (source: Date | string | number | undefined, dest: Dat
     if (isNaN(srcDate.getTime()) || isNaN(destDate.getTime())) return 'unknown';
 
     const diff = srcDate.getTime() - destDate.getTime();
-    if (Math.abs(diff) < 1000) return 'same'; // Within 1 second = same
+    // Tolerance of 3 seconds accounts for filesystem mtime granularity differences
+    // (FAT32 = 2s, SFTP/FTP mtime rounding, timezone edge cases)
+    if (Math.abs(diff) < 3000) return 'same';
     return diff > 0 ? 'newer' : 'older';
 };
 

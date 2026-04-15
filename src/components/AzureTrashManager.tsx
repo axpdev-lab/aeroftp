@@ -74,7 +74,7 @@ export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManager
     setActionLoading('restore');
     try {
       for (const item of selectedItems) {
-        await invoke('azure_undelete_blob', { blobName: item.name });
+        await invoke('azure_undelete_blob', { blobName: item.path });
       }
       humanLog.updateEntry(logId, { status: 'success', message: `[Azure Blob] Restored ${selectedItems.length} item(s) from trash` });
       await loadTrash();

@@ -365,7 +365,7 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'medium',
     },
 
-    // Read-only analysis tools (safe)
+    // Read-only analysis tools
     {
         name: 'local_diff',
         description: 'Compare two local files and show unified diff output with additions and deletions',
@@ -374,7 +374,7 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'path_b', type: 'string', description: 'Second file path', required: true },
             { name: 'context_lines', type: 'number', description: 'Lines of context around changes (default: 3)', required: false },
         ],
-        dangerLevel: 'safe',
+        dangerLevel: 'medium',
     },
     {
         name: 'local_file_info',

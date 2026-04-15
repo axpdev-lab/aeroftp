@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye } from 'lucide-react';
+import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye, Trash2, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { ProviderType } from '../types';
@@ -16,6 +16,16 @@ interface ShareLinkResult {
   expires_at: string | null;
 }
 
+/** Backend response from provider_list_share_links */
+interface ShareLinkInfo {
+  id: string;
+  url: string;
+  created_at: string | null;
+  expires_at: string | null;
+  password_protected: boolean;
+  permissions: string | null;
+}
+
 /** Per-provider capability flags */
 interface ShareLinkCapabilities {
   expiration: boolean;
@@ -23,6 +33,8 @@ interface ShareLinkCapabilities {
   permissions: boolean;
   availablePermissions: string[];
   hasAdvancedOptions: boolean;
+  supportsList: boolean;
+  supportsRevoke: boolean;
 }
 
 /** Map of provider capabilities for share link advanced options */
@@ -33,6 +45,8 @@ function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCap
     permissions: false,
     availablePermissions: [],
     hasAdvancedOptions: false,
+    supportsList: false,
+    supportsRevoke: false,
   };
 
   switch (provider) {
@@ -45,6 +59,8 @@ function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCap
       caps.password = true; // Pro+ only
       caps.permissions = true;
       caps.availablePermissions = ['view', 'edit'];
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'onedrive':
       caps.expiration = true;
@@ -57,32 +73,43 @@ function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCap
       caps.password = true; // Paid only
       caps.permissions = true;
       caps.availablePermissions = ['view', 'edit'];
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'pcloud':
       caps.expiration = true; // Premium only
       caps.password = true; // Premium only
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'filen':
       caps.expiration = true;
       caps.password = true;
+      caps.supportsRevoke = true;
       break;
     case 'zohoworkdrive':
       caps.expiration = true;
       caps.password = true;
       caps.permissions = true;
       caps.availablePermissions = ['view', 'edit'];
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'kdrive':
       caps.expiration = true;
       caps.password = true;
       caps.permissions = true;
       caps.availablePermissions = ['view', 'edit'];
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'drime':
       caps.expiration = true;
       caps.password = true;
       caps.permissions = true;
       caps.availablePermissions = ['view', 'edit'];
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
       break;
     case 'webdav':
       caps.expiration = true;
@@ -97,7 +124,18 @@ function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCap
     case 'opendrive':
       caps.expiration = true;
       break;
-    // No advanced options: mega, jottacloud, koofr, yandexdisk, github, filelu
+    case 'koofr':
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
+      break;
+    case 'yandexdisk':
+      caps.supportsList = true;
+      caps.supportsRevoke = true;
+      break;
+    case 'mega':
+      caps.supportsRevoke = true;
+      break;
+    // No advanced options: jottacloud, github, filelu
   }
 
   caps.hasAdvancedOptions = caps.expiration || caps.password || caps.permissions;
@@ -114,6 +152,7 @@ interface ShareLinkModalProps {
 }
 
 type ModalState = 'options' | 'loading' | 'success' | 'error';
+type ModalTab = 'create' | 'manage';
 
 const EXPIRATION_PRESETS = [
   { label: '1 hour', value: 3600 },
@@ -140,6 +179,47 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
   const [optExpiration, setOptExpiration] = useState<number | null>(null);
   const [optPermissions, setOptPermissions] = useState<string>('view');
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Tab + Manage state
+  const [activeTab, setActiveTab] = useState<ModalTab>('create');
+  const [existingLinks, setExistingLinks] = useState<ShareLinkInfo[]>([]);
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [manageCopiedId, setManageCopiedId] = useState<string | null>(null);
+
+  const loadExistingLinks = useCallback(async () => {
+    setManageLoading(true);
+    setManageError(null);
+    try {
+      const links = await invoke<ShareLinkInfo[]>('provider_list_share_links', { path });
+      setExistingLinks(links);
+    } catch (err) {
+      setManageError(String(err));
+      setExistingLinks([]);
+    } finally {
+      setManageLoading(false);
+    }
+  }, [path]);
+
+  const handleRevoke = useCallback(async (linkPath: string) => {
+    setRevokingId(linkPath);
+    try {
+      await invoke('provider_remove_share_link', { path: linkPath });
+      setExistingLinks(prev => prev.filter(l => l.id !== linkPath));
+    } catch (err) {
+      setManageError(String(err));
+    } finally {
+      setRevokingId(null);
+    }
+  }, []);
+
+  // Load links when switching to manage tab
+  useEffect(() => {
+    if (activeTab === 'manage' && caps.supportsList) {
+      loadExistingLinks();
+    }
+  }, [activeTab, caps.supportsList, loadExistingLinks]);
 
   const humanLogRef = React.useRef(humanLog);
   humanLogRef.current = humanLog;
@@ -232,19 +312,51 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
         aria-label={t('shareLinkModal.title')}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            {providerIcon || <Link2 size={18} className="text-blue-500" />}
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {t('shareLinkModal.title')} - {providerName}
-            </h2>
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              {providerIcon || <Link2 size={18} className="text-blue-500" />}
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {t('shareLinkModal.title')} - {providerName}
+              </h2>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+            >
+              <X size={14} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-          >
-            <X size={14} />
-          </button>
+          {/* Tab bar — only show if provider supports listing */}
+          {caps.supportsList && (
+            <div className="flex px-4 gap-4">
+              <button
+                onClick={() => setActiveTab('create')}
+                className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === 'create'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {t('shareLinkModal.tabCreate')}
+              </button>
+              <button
+                onClick={() => setActiveTab('manage')}
+                className={`pb-2 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === 'manage'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {t('shareLinkModal.tabManage')}
+                {existingLinks.length > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-200 dark:bg-gray-600">
+                    {existingLinks.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -253,6 +365,132 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-3 truncate" title={path}>
             {fileName}
           </div>
+
+          {/* MANAGE tab */}
+          {activeTab === 'manage' && caps.supportsList && (
+            <div className="min-h-[120px]">
+              {manageLoading ? (
+                <div className="flex items-center justify-center py-8 text-gray-500 dark:text-gray-400">
+                  <Loader2 size={18} className="animate-spin mr-2" />
+                  <span className="text-xs">{t('shareLinkModal.manageLoading')}</span>
+                </div>
+              ) : manageError ? (
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span className="break-words">{manageError}</span>
+                </div>
+              ) : existingLinks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <Link2 size={24} className="mb-2 opacity-30" />
+                  <span className="text-xs">{t('shareLinkModal.manageEmpty')}</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {existingLinks.map(link => (
+                    <div
+                      key={link.id}
+                      className="p-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg"
+                    >
+                      {/* Link URL */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={link.url}
+                          className="flex-1 text-xs px-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 select-all cursor-text truncate"
+                          onClick={e => (e.target as HTMLInputElement).select()}
+                        />
+                        <button
+                          onClick={() => {
+                            copyToClipboard(link.url, 'link');
+                            setManageCopiedId(link.id);
+                            setTimeout(() => setManageCopiedId(null), 2000);
+                          }}
+                          className={`p-1.5 rounded transition-colors ${
+                            manageCopiedId === link.id
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-600'
+                              : 'hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500'
+                          }`}
+                          title={t('shareLinkModal.copyLink')}
+                        >
+                          {manageCopiedId === link.id ? <Check size={12} /> : <Copy size={12} />}
+                        </button>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500"
+                          title="Open"
+                        >
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+
+                      {/* Metadata row */}
+                      <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-gray-400">
+                        {link.created_at && (
+                          <span>{t('shareLinkModal.manageCreated')}: {new Date(link.created_at).toLocaleDateString()}</span>
+                        )}
+                        {link.expires_at ? (
+                          <span className="flex items-center gap-0.5">
+                            <Clock size={9} />
+                            {t('shareLinkModal.manageExpires')}: {new Date(link.expires_at).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-green-600 dark:text-green-500">{t('shareLinkModal.manageNeverExpires')}</span>
+                        )}
+                        {link.password_protected && (
+                          <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-500">
+                            <Key size={9} />
+                            {t('shareLinkModal.managePasswordProtected')}
+                          </span>
+                        )}
+                        {link.permissions && (
+                          <span className="capitalize">{link.permissions}</span>
+                        )}
+                      </div>
+
+                      {/* Revoke button */}
+                      {caps.supportsRevoke && (
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={() => {
+                              if (window.confirm(t('shareLinkModal.manageRevokeConfirm'))) {
+                                handleRevoke(link.id);
+                              }
+                            }}
+                            disabled={revokingId === link.id}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                          >
+                            {revokingId === link.id ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={10} />
+                            )}
+                            {t('shareLinkModal.manageRevoke')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Refresh button */}
+              <div className="flex justify-center mt-3">
+                <button
+                  onClick={loadExistingLinks}
+                  disabled={manageLoading}
+                  className="flex items-center gap-1 px-3 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                >
+                  <RefreshCw size={11} className={manageLoading ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* CREATE tab content */}
+          {activeTab === 'create' && <>
 
           {/* OPTIONS phase */}
           {state === 'options' && (
@@ -483,9 +721,11 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
               )}
             </div>
           )}
+
+          </>}
         </div>
 
-        {/* Footer (only on success) */}
+        {/* Footer (only on success/manage) */}
         {state === 'success' && (
           <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
             <button

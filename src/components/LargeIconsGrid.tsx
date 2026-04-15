@@ -198,10 +198,10 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
           onKeyDown={handleRenameKeyDown}
           onBlur={onInlineRenameCommit}
           onClick={(e) => e.stopPropagation()}
-          className="mt-1.5 px-1 w-full text-xs text-center bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none"
+          className="mt-1.5 px-1 w-full text-sm text-center bg-white dark:bg-gray-900 border border-blue-500 rounded outline-none"
         />
       ) : (
-        <span className="text-xs text-center leading-tight mt-1.5 line-clamp-2 max-w-full break-all">
+        <span className="text-sm text-center leading-tight mt-1.5 line-clamp-2 max-w-full break-all">
           {!file.is_dir && !showFileExtensions && file.name.lastIndexOf('.') > 0
             ? file.name.substring(0, file.name.lastIndexOf('.'))
             : file.name}
@@ -263,7 +263,7 @@ export function LargeIconsGrid({
       <div className="flex items-center justify-center w-16 h-16">
         {getFolderUpIcon ? getFolderUpIcon().icon : getFileIcon('..', true).icon}
       </div>
-      <span className="text-xs text-center leading-tight mt-1.5 italic text-gray-500">..</span>
+      <span className="text-sm text-center leading-tight mt-1.5 italic text-gray-500">..</span>
     </div>
   );
 

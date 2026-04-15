@@ -4,9 +4,8 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Trash2, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
+import { Trash2, AlertTriangle, X, RefreshCw, Loader2, Folder, File } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface InternxtTrashItem {
@@ -22,13 +21,10 @@ interface InternxtTrashManagerProps {
   onRefreshFiles?: () => void;
 }
 
-export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashManagerProps) {
+export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
   const t = useTranslation();
-  const humanLog = useHumanizedLog();
   const [items, setItems] = useState<InternxtTrashItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadTrash = useCallback(async () => {
@@ -37,7 +33,6 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
     try {
       const result = await invoke<InternxtTrashItem[]>('internxt_list_trash');
       setItems(result);
-      setSelected(new Set());
     } catch (err) {
       setError(String(err));
     } finally {
@@ -48,24 +43,6 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
   useEffect(() => {
     loadTrash();
   }, [loadTrash]);
-
-  const toggleSelect = (item: InternxtTrashItem) => {
-    const id = item.path;
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selected.size === items.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(items.map(i => i.path)));
-    }
-  };
 
   // Internxt API only supports listing trash — restore and permanent delete
   // are not available via the current API. This component is read-only.
@@ -115,8 +92,6 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
           </div>
         </div>
 
-        {/* Internxt trash is read-only: no restore or permanent delete API available */}
-
         <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-gray-600 dark:text-gray-400">
@@ -137,7 +112,6 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                 <tr className="text-left text-gray-500 dark:text-gray-500">
-                  <th className="w-8 px-2 py-1.5"></th>
                   <th className="px-2 py-1.5">{t('common.name')}</th>
                   <th className="px-2 py-1.5 w-20 text-right">{t('common.size')}</th>
                   <th className="px-2 py-1.5 w-32">{t('contextMenu.trashDeletedDate')}</th>
@@ -147,18 +121,8 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
                 {items.map(item => (
                   <tr
                     key={item.path}
-                    className={`cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30 ${
-                      selected.has(item.path) ? 'bg-blue-500/10' : ''
-                    }`}
-                    onClick={() => toggleSelect(item)}
+                    className="hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700/30"
                   >
-                    <td className="px-2 py-1.5 text-center">
-                      {selected.has(item.path) ? (
-                        <CheckSquare size={13} className="text-blue-500" />
-                      ) : (
-                        <Square size={13} className="text-gray-500 dark:text-gray-500" />
-                      )}
-                    </td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1.5">
                         {item.is_dir ? (
@@ -170,10 +134,10 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
                       </div>
                     </td>
                     <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                      {item.is_dir ? '—' : formatSize(item.size)}
+                      {item.is_dir ? '-' : formatSize(item.size)}
                     </td>
                     <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                      {item.modified ? formatDate(item.modified) : '—'}
+                      {item.modified ? formatDate(item.modified) : '-'}
                     </td>
                   </tr>
                 ))}
@@ -182,8 +146,6 @@ export function InternxtTrashManager({ onClose, onRefreshFiles }: InternxtTrashM
           )}
         </div>
       </div>
-
-      {/* No delete confirm dialog — Internxt trash is read-only */}
     </div>
   );
 }

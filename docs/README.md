@@ -97,8 +97,8 @@ AeroAgent provides a broad built-in tool catalog across local files, remote oper
 
 ---
 
-- **Documentation Version**: 3.5.0
-- **Last Update**: 14 April 2026
+- **Documentation Version**: 3.5.2
+- **Last Update**: 15 April 2026
 
 ---
 

@@ -11445,6 +11445,7 @@ pub fn run() {
             provider_commands::provider_create_share_link,
             provider_commands::provider_share_link_capabilities,
             provider_commands::provider_remove_share_link,
+            provider_commands::provider_list_share_links,
             provider_commands::provider_import_link,
             provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,

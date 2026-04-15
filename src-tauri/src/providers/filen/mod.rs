@@ -1810,6 +1810,7 @@ impl StorageProvider for FilenProvider {
             supports_password: true,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 

@@ -1140,6 +1140,57 @@ impl StorageProvider for GoogleDriveProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let path = remote_path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            "root".to_string()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+
+        // Skip resume for Workspace files (exports are generated on-the-fly)
+        if Self::workspace_export_info(&file.mime_type).is_some() {
+            return self.download(remote_path, local_path, on_progress).await;
+        }
+
+        let url = format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id);
+        let auth = self.auth_header().await?;
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -1539,6 +1590,7 @@ impl StorageProvider for GoogleDriveProvider {
             supports_password: false,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "comment".into(), "edit".into()],
+            ..Default::default()
         }
     }
 
@@ -2374,5 +2426,12 @@ impl StorageProvider for GoogleDriveProvider {
         }
 
         Ok(())
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

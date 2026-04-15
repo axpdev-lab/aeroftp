@@ -28,6 +28,8 @@ pub struct FtpProvider {
     hash_supported: Option<String>,
     /// Set to true if ExplicitIfAvailable mode fell back to plaintext
     pub tls_downgraded: bool,
+    /// Buffer size for download/upload (default: 8 KB)
+    buffer_size: usize,
 }
 
 impl FtpProvider {
@@ -41,6 +43,7 @@ impl FtpProvider {
             mfmt_supported: false,
             hash_supported: None,
             tls_downgraded: false,
+            buffer_size: 8192,
         }
     }
 
@@ -622,7 +625,7 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
-        let mut chunk = [0u8; 8192];
+        let mut chunk = vec![0u8; self.buffer_size];
         let mut transferred: u64 = 0;
 
         loop {
@@ -1149,6 +1152,14 @@ impl StorageProvider for FtpProvider {
             supports_resume_upload: true,
             supports_range_download: true,
             ..Default::default()
+        }
+    }
+
+    fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
+        // Cap at 16 MB; use the larger of upload/download as unified buffer
+        let cap = 16 * 1024 * 1024;
+        if let Some(size) = upload.or(download) {
+            self.buffer_size = (size as usize).clamp(4096, cap);
         }
     }
 

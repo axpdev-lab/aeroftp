@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.2" date="2026-04-15">
+      <description>
+        <p>CLI determinism: 12 structured exit codes, idempotent mkdir -p, rm -f, put --no-clobber. Performance: configurable chunk/buffer sizes, S3 parallel multipart upload, Azure server-side copy, dynamic file-size timeout for slow connections. Security: STRIDE threat model, LLM integration guide, multi-agent audit with 6 findings fixed, unified error sanitization, path traversal prevention. UX: parent folder double-click, drag disabled during rename, grid font scaling, overwrite dialog timestamp tolerance.</p>
+      </description>
+    </release>
     <release version="3.5.1" date="2026-04-14">
       <description>
         <p>Critical transfer fix: replaced 30-second global timeout with connect + read timeout across all 22 cloud providers. MEGA Native streaming rewrite eliminates out-of-memory on large files. Security hardening with zeroization and constant-time comparison. Azure Blob trash management. Zoho versioning enabled. Protocol switch FTP/SFTP in edit mode. IntroHub dynamic tab labels. Grid virtualization for 10K+ files.</p>

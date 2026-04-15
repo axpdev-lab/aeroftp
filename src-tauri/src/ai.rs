@@ -99,6 +99,15 @@ pub struct ImageAttachment {
 }
 
 // Chat message
+/// Minimal tool call echo stored on assistant ChatMessage for OpenAI/Cohere format compliance.
+/// When the assistant requests tool calls, we echo them back so the API can pair tool results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallEcho {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -106,6 +115,12 @@ pub struct ChatMessage {
     /// Optional image attachments for vision-capable models
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<ImageAttachment>>,
+    /// Tool calls echo for assistant messages (OpenAI format requires these for tool result pairing)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls_echo: Option<Vec<ToolCallEcho>>,
+    /// Tool call ID for tool result messages (role="tool")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 // AI Request from frontend
@@ -624,6 +639,24 @@ mod openai_compat {
         pub content: serde_json::Value,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub tool_call_id: Option<String>,
+        /// Tool calls requested by the assistant (echo back for tool result pairing)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub tool_calls: Option<Vec<OpenAIToolCallSer>>,
+    }
+
+    /// Serialization-only tool call for OpenAI assistant messages
+    #[derive(Serialize)]
+    pub struct OpenAIToolCallSer {
+        pub id: String,
+        #[serde(rename = "type")]
+        pub call_type: String,
+        pub function: OpenAIToolCallFnSer,
+    }
+
+    #[derive(Serialize)]
+    pub struct OpenAIToolCallFnSer {
+        pub name: String,
+        pub arguments: String,
     }
 
     #[derive(Serialize)]
@@ -721,7 +754,17 @@ mod openai_compat {
             .map(|m| OpenAIMessage {
                 role: m.role.clone(),
                 content: m.to_openai_content(),
-                tool_call_id: None,
+                tool_call_id: m.tool_call_id.clone(),
+                tool_calls: m.tool_calls_echo.as_ref().map(|echos| {
+                    echos.iter().map(|tc| OpenAIToolCallSer {
+                        id: tc.id.clone(),
+                        call_type: "function".to_string(),
+                        function: OpenAIToolCallFnSer {
+                            name: tc.name.clone(),
+                            arguments: tc.arguments.clone(),
+                        },
+                    }).collect()
+                }),
             })
             .collect();
 
@@ -732,6 +775,7 @@ mod openai_compat {
                     role: "tool".to_string(),
                     content: serde_json::Value::String(r.content.clone()),
                     tool_call_id: Some(r.tool_call_id.clone()),
+                    tool_calls: None,
                 });
             }
         }

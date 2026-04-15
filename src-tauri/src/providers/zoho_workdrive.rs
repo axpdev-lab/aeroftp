@@ -21,7 +21,8 @@ use super::{
     http_retry::{send_with_retry, HttpRetryConfig},
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
     sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 /// Zoho WorkDrive provider configuration
@@ -2079,6 +2080,72 @@ impl StorageProvider for ZohoWorkdriveProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let path = remote_path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let parent_id = if parent_path.is_empty() {
+            self.current_folder_id.clone()
+        } else {
+            self.resolve_path(parent_path).await?
+        };
+
+        let file = self
+            .find_by_name(file_name, &parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+
+        // Skip resume for native Zoho docs (exports are generated on-the-fly)
+        if file
+            .attributes
+            .extn
+            .as_deref()
+            .and_then(zoho_native_export_info)
+            .or_else(|| zoho_native_export_info(&file.attributes.file_type))
+            .is_some()
+        {
+            return self.download(remote_path, local_path, on_progress).await;
+        }
+
+        let download_url = format!(
+            "https://{}/v1/workdrive/download/{}",
+            self.config.download_domain(),
+            file.id
+        );
+        let auth = self.auth_header().await?;
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self
+                    .client
+                    .get(&download_url)
+                    .header(AUTHORIZATION, auth.clone())
+                    .header(ACCEPT, HeaderValue::from_static("*/*"));
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let path = remote_path.trim_matches('/');
         let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
@@ -2610,7 +2677,28 @@ impl StorageProvider for ZohoWorkdriveProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: true,
+            supports_revoke: true,
         }
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let zoho_links = self.get_file_share_links(path).await?;
+        let links = zoho_links
+            .into_iter()
+            .map(|zl| ShareLinkInfo {
+                id: zl.id,
+                url: zl.attributes.link.unwrap_or_default(),
+                created_at: zl.attributes.created_time,
+                expires_at: zl.attributes.expiry_date,
+                password_protected: zl.attributes.is_password_protected.unwrap_or(false),
+                permissions: zl.attributes.link_type,
+            })
+            .collect();
+        Ok(links)
     }
 
     async fn create_share_link(
@@ -3013,5 +3101,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
     fn supports_versions(&self) -> bool {
         true
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

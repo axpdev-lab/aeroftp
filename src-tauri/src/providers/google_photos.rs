@@ -1016,6 +1016,54 @@ impl StorageProvider for GooglePhotosProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let (folder, filename) = Self::parse_path(remote_path);
+        let folder_name = folder.ok_or_else(|| {
+            ProviderError::InvalidPath("Cannot download root directory".to_string())
+        })?;
+        let filename = filename.ok_or_else(|| {
+            ProviderError::InvalidPath(
+                "Path must point to a media file, not a folder".to_string(),
+            )
+        })?;
+
+        let item = self.resolve_media_item(folder_name, filename).await?;
+        let is_video = Self::is_video_item(&item);
+        let media_id = item.id.clone();
+
+        if let Some(ref base_url) = item.base_url {
+            self.base_url_cache
+                .insert(media_id.clone(), (base_url.clone(), Instant::now()));
+        }
+
+        let base_url = self.get_fresh_base_url(&media_id).await?;
+        let download_url = Self::download_url(&base_url, is_video);
+
+        // Google Photos download URLs are pre-authenticated (no auth header needed)
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&download_url);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(
         &mut self,
         remote_path: &str,
@@ -1396,5 +1444,12 @@ impl StorageProvider for GooglePhotosProvider {
 
         // Thumbnail: crop to 256x256
         Ok(format!("{}=w256-h256-c", base_url))
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

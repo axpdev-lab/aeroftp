@@ -698,9 +698,33 @@ pub async fn provider_download_file(
         None
     };
 
-    let result = provider
-        .download(&remote_path, &local_path, progress_cb)
-        .await;
+    // Resume-aware download: if provider supports resume and a partial .aerotmp exists,
+    // use resume_download to continue from where we left off. This avoids re-downloading
+    // data on S3/Azure (pay-per-GB) and all other HTTP-based providers.
+    let result = if provider.supports_resume() {
+        let tmp_path = format!("{}.aerotmp", local_path);
+        let offset = tokio::fs::metadata(&tmp_path)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
+        if offset > 0 {
+            info!(
+                "Resuming download from offset {} bytes: {}",
+                offset, filename
+            );
+            provider
+                .resume_download(&remote_path, &local_path, offset, progress_cb)
+                .await
+        } else {
+            provider
+                .download(&remote_path, &local_path, progress_cb)
+                .await
+        }
+    } else {
+        provider
+            .download(&remote_path, &local_path, progress_cb)
+            .await
+    };
 
     match &result {
         Ok(()) => {
@@ -2639,6 +2663,23 @@ pub async fn provider_remove_share_link(
 
     info!("Removed share link for {}", path);
     Ok(())
+}
+
+/// List existing share links for a file or folder
+#[tauri::command]
+pub async fn provider_list_share_links(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<crate::providers::ShareLinkInfo>, String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    provider
+        .list_share_links(&path)
+        .await
+        .map_err(|e| format!("Failed to list share links: {}", e))
 }
 
 /// Import a file/folder from a public link into the account

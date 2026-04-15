@@ -17,7 +17,8 @@ use super::{
     http_retry::{send_with_retry, HttpRetryConfig},
     oauth2::{OAuth2Manager, OAuthConfig},
     sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 /// pCloud folder metadata
@@ -99,6 +100,12 @@ struct PCloudPubLinkEntry {
     linkid: u64,
     #[serde(default)]
     path: Option<String>,
+    #[serde(default)]
+    link: Option<String>,
+    #[serde(default)]
+    created: Option<String>,
+    #[serde(default)]
+    modified: Option<String>,
     /// Metadata contains the path for the linked file/folder
     metadata: Option<PCloudPubLinkMeta>,
 }
@@ -568,6 +575,67 @@ impl StorageProvider for PCloudProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(remote_path);
+        let auth = self.auth_header().await?;
+
+        // Step 1: Get download link (same as download())
+        let url = format!(
+            "{}/getfilelink?path={}",
+            self.config.api_base(),
+            urlencoding::encode(&resolved)
+        );
+
+        let link_resp: PCloudFileLink = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if link_resp.result != 0 {
+            return Err(ProviderError::TransferFailed(sanitize_api_error(
+                &link_resp
+                    .error
+                    .unwrap_or_else(|| "Failed to get download link".to_string()),
+            )));
+        }
+
+        let host = link_resp
+            .hosts
+            .and_then(|h| h.into_iter().next())
+            .ok_or_else(|| ProviderError::TransferFailed("No download host".to_string()))?;
+        let path = link_resp
+            .path
+            .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
+
+        let download_url = format!("https://{}{}", host, path);
+
+        // Step 2: Resumable download (pCloud CDN URLs don't need auth)
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&download_url);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let auth = self.auth_header().await?;
@@ -974,6 +1042,8 @@ impl StorageProvider for PCloudProvider {
             supports_password: true,
             supports_permissions: false,
             available_permissions: vec![],
+            supports_list_links: true,
+            supports_revoke: true,
         }
     }
 
@@ -1025,6 +1095,61 @@ impl StorageProvider for PCloudProvider {
             password: None,
             expires_at: None,
         })
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let resolved = self.resolve_path(path);
+        let auth = self.auth_header().await?;
+
+        let list_url = format!("{}/listpublinks", self.config.api_base());
+        let links_resp: PCloudPubLinksResponse = self
+            .get_with_retry(&list_url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        if links_resp.result != 0 {
+            return Err(ProviderError::Other(sanitize_api_error(
+                &links_resp
+                    .error
+                    .unwrap_or_else(|| "Failed to list public links".to_string()),
+            )));
+        }
+
+        // Filter links matching the resolved path
+        let links = links_resp
+            .publinks
+            .into_iter()
+            .filter(|entry| {
+                if let Some(ref meta) = entry.metadata {
+                    if let Some(ref p) = meta.path {
+                        if p == &resolved {
+                            return true;
+                        }
+                    }
+                }
+                if let Some(ref p) = entry.path {
+                    if p == &resolved {
+                        return true;
+                    }
+                }
+                false
+            })
+            .map(|entry| ShareLinkInfo {
+                id: entry.linkid.to_string(),
+                url: entry.link.unwrap_or_default(),
+                created_at: entry.created.clone(),
+                expires_at: None,
+                password_protected: false,
+                permissions: None,
+            })
+            .collect();
+
+        Ok(links)
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1399,6 +1524,13 @@ impl StorageProvider for PCloudProvider {
         let mut results = Vec::new();
         self.collect_matching(&metadata, &resolved, pattern, &mut results);
         Ok(results)
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }
 

@@ -15,7 +15,8 @@ use tracing::info;
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
     sanitize_api_error, LockInfo, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 /// Dropbox API endpoints
@@ -736,6 +737,41 @@ impl StorageProvider for DropboxProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let path = self.normalize_path(remote_path);
+        let arg = serde_json::json!({ "path": path });
+        let url = format!("{}/files/download", CONTENT_BASE);
+        let auth = self.auth_header().await?;
+        let arg_str = arg.to_string();
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self
+                    .client
+                    .post(&url)
+                    .header(AUTHORIZATION, auth.clone())
+                    .header("Dropbox-API-Arg", &arg_str);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let path = self.normalize_path(remote_path);
 
@@ -1196,6 +1232,8 @@ impl StorageProvider for DropboxProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: true,
+            supports_revoke: true,
         }
     }
 
@@ -1333,6 +1371,92 @@ impl StorageProvider for DropboxProvider {
             password: None,
             expires_at: None,
         })
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let full_path = if path.starts_with('/') {
+            self.normalize_path(path)
+        } else {
+            self.normalize_path(&format!("{}/{}", self.current_path, path))
+        };
+
+        let body = serde_json::json!({
+            "path": full_path,
+            "direct_only": false
+        });
+
+        let url = format!("{}/sharing/list_shared_links", API_BASE);
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Failed to list share links: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+
+        #[derive(Deserialize)]
+        struct DropboxSharedLink {
+            #[serde(default)]
+            id: Option<String>,
+            url: String,
+            #[serde(default)]
+            expires: Option<String>,
+            #[serde(default)]
+            link_permissions: Option<serde_json::Value>,
+        }
+        #[derive(Deserialize)]
+        struct ListResult {
+            links: Vec<DropboxSharedLink>,
+        }
+
+        let result: ListResult = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+
+        let links = result
+            .links
+            .into_iter()
+            .map(|link| {
+                let permissions = link
+                    .link_permissions
+                    .as_ref()
+                    .and_then(|lp| lp.get("resolved_visibility"))
+                    .and_then(|v| v.get(".tag"))
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string());
+                ShareLinkInfo {
+                    id: link.id.unwrap_or_else(|| link.url.clone()),
+                    url: link.url,
+                    created_at: None,
+                    expires_at: link.expires,
+                    password_protected: link
+                        .link_permissions
+                        .as_ref()
+                        .and_then(|lp| lp.get("resolved_visibility"))
+                        .and_then(|v| v.get(".tag"))
+                        .and_then(|t| t.as_str())
+                        .map(|s| s == "password")
+                        .unwrap_or(false),
+                    permissions,
+                }
+            })
+            .collect();
+
+        Ok(links)
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1710,5 +1834,12 @@ impl StorageProvider for DropboxProvider {
 
         info!("Unlocked file: {}", path);
         Ok(())
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

@@ -394,7 +394,6 @@ impl OpenDriveProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -1239,6 +1238,44 @@ impl StorageProvider for OpenDriveProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.ensure_session().await?;
+
+        let resolved = self.resolve_path(remote_path)?;
+        let file_id = self.resolve_file_id(&resolved).await?;
+
+        let mut url =
+            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
+                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("session_id", &self.session_id);
+
+        let url_str = url.to_string();
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url_str);
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         self.ensure_session().await?;
         if !self.connected {
@@ -1600,6 +1637,7 @@ impl StorageProvider for OpenDriveProvider {
             supports_password: false,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 
@@ -1730,5 +1768,12 @@ impl StorageProvider for OpenDriveProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }

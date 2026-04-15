@@ -105,7 +105,6 @@ impl JottacloudProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .connect_timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -1170,6 +1169,38 @@ impl StorageProvider for JottacloudProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(remote_path);
+        let url = format!("{}?mode=bin", self.jfs_url(&resolved));
+
+        // Ensure token is fresh before building the request closure
+        self.refresh_if_needed().await?;
+        let auth = self.auth_header();
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn upload(
         &mut self,
         local_path: &str,
@@ -1521,6 +1552,13 @@ impl StorageProvider for JottacloudProvider {
     }
     fn supports_versions(&self) -> bool {
         false
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }
 

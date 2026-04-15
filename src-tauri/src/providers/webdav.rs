@@ -1951,6 +1951,7 @@ impl StorageProvider for WebDavProvider {
             supports_password: true,
             supports_permissions: false,
             available_permissions: vec![],
+            ..Default::default()
         }
     }
 
@@ -1992,9 +1993,84 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let response = self
+            .request(Method::GET, remote_path)
+            .header("Range", format!("bytes={}-", offset))
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        match response.status() {
+            StatusCode::PARTIAL_CONTENT => {
+                let content_len = response.content_length().unwrap_or(0);
+                let total_size = offset + content_len;
+                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(
+                    response,
+                    &mut resumable,
+                    total_size,
+                    on_progress,
+                )
+                .await?;
+                resumable.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            StatusCode::OK => {
+                // Server ignored Range — restart from scratch
+                let total_size = response.content_length().unwrap_or(0);
+                let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                super::stream_response_to_resumable(
+                    response,
+                    &mut fresh,
+                    total_size,
+                    on_progress,
+                )
+                .await?;
+                fresh.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                Ok(())
+            }
+            StatusCode::RANGE_NOT_SATISFIABLE => {
+                let tmp = format!("{}.aerotmp", local_path);
+                let _ = tokio::fs::remove_file(&tmp).await;
+                Err(ProviderError::TransferFailed(
+                    "Range not satisfiable — file may have changed on server".to_string(),
+                ))
+            }
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
+            status => Err(ProviderError::TransferFailed(format!(
+                "Resume download failed: {}",
+                status
+            ))),
+        }
+    }
+
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
             supports_range_download: true,
+            supports_resume_download: true,
             ..Default::default()
         }
     }

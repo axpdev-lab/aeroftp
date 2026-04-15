@@ -73,6 +73,10 @@ export interface VirtualFileListProps {
 
     // --- Labels ---
     parentFolderLabel: string;
+
+    // --- Rename ---
+    /** Path of file currently being renamed (disables drag on that row) */
+    renamingPath?: string | null;
 }
 
 // Row height default: matches py-2 (8+8) + content (~17) = ~33px
@@ -137,7 +141,7 @@ function VirtualRow({ index, style, files, listProps }: RowComponentProps<RowExt
             data-file-row
             role="row"
             aria-selected={isSelected}
-            draggable={file.name !== '..'}
+            draggable={file.name !== '..' && listProps.renamingPath !== file.path}
             onDragStart={(e) => listProps.onDragStart?.(e, file)}
             onDragEnd={() => listProps.onDragEnd?.()}
             onDragOver={(e) => listProps.onDragOver?.(e, file)}

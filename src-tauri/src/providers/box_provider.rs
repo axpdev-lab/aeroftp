@@ -17,7 +17,8 @@ use super::types::BoxConfig;
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig},
     sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 /// Box API endpoints
@@ -72,6 +73,12 @@ struct BoxUser {
 #[allow(dead_code)]
 struct BoxSharedLink {
     url: String,
+    #[serde(default)]
+    effective_access: Option<String>,
+    #[serde(default)]
+    unshared_at: Option<String>,
+    #[serde(default)]
+    is_password_enabled: Option<bool>,
 }
 
 /// Box file/folder with shared link
@@ -1444,6 +1451,36 @@ impl StorageProvider for BoxProvider {
         Ok(())
     }
 
+    fn supports_resume(&self) -> bool {
+        true
+    }
+
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let file_id = self.resolve_file_id(remote_path).await?;
+        let token = self.get_token().await?;
+        let url = format!("{}/files/{}/content", API_BASE, file_id);
+        let auth = Self::bearer_header(&token)?;
+
+        super::http_resumable_download(
+            local_path,
+            |range_header| {
+                let mut req = self.client.get(&url).header(AUTHORIZATION, auth.clone());
+                if let Some(range) = range_header {
+                    req = req.header("Range", range);
+                }
+                req
+            },
+            on_progress,
+        )
+        .await
+    }
+
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let file_id = self.resolve_file_id(remote_path).await?;
         let token = self.get_token().await?;
@@ -1913,6 +1950,53 @@ impl StorageProvider for BoxProvider {
             supports_password: true,
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
+            supports_list_links: true,
+            supports_revoke: true,
+        }
+    }
+
+    async fn list_share_links(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        let file_id = self.resolve_file_id(path).await?;
+        let token = self.get_token().await?;
+
+        let resp = self
+            .client
+            .get(format!(
+                "{}/files/{}?fields=shared_link",
+                API_BASE, file_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Failed to get file shared link: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+
+        let item: BoxItemWithLink = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        if let Some(link) = item.shared_link {
+            Ok(vec![ShareLinkInfo {
+                id: file_id.clone(),
+                url: link.url,
+                created_at: None,
+                expires_at: link.unshared_at,
+                password_protected: link.is_password_enabled.unwrap_or(false),
+                permissions: link.effective_access,
+            }])
+        } else {
+            Ok(vec![])
         }
     }
 
@@ -2247,5 +2331,12 @@ impl StorageProvider for BoxProvider {
                 }
             })
             .collect())
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
     }
 }
