@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Relácia ukončená — odpojené od {server}",
       "disconnectedAllClosed": "Všetky relácie ukončené — odpojené od {server}",
-      "movedToTrash": "Presunuté do koša",
+      "movedToTrash": "Presunuté do koša ({count})",
       "moveToTrashFailed": "Presun do koša sa nepodaril",
       "batchRenameResult": "{success} premenovaných, {errors} zlyhalo",
       "copyCompleted": "Kopírovanie dokončené",

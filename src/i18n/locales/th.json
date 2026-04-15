@@ -1150,7 +1150,7 @@
       "saveFailed": "บันทึกล้มเหลว",
       "disconnectedTabClosed": "ปิดเซสชันแล้ว — ยกเลิกการเชื่อมต่อจาก {server}",
       "disconnectedAllClosed": "ปิดทุกเซสชันแล้ว — ยกเลิกการเชื่อมต่อจาก {server}",
-      "movedToTrash": "ย้ายไปยังถังขยะแล้ว",
+      "movedToTrash": "ย้ายไปยังถังขยะแล้ว ({count})",
       "moveToTrashFailed": "ไม่สามารถย้ายไปยังถังขยะได้",
       "batchRenameResult": "{success} เปลี่ยนชื่อสำเร็จ, {errors} ล้มเหลว",
       "copyCompleted": "คัดลอกเสร็จสมบูรณ์",

@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сессия закрыта — отключено от {server}",
       "disconnectedAllClosed": "Все сессии закрыты — отключено от {server}",
-      "movedToTrash": "Перемещено в Корзину",
+      "movedToTrash": "Перемещено в Корзину ({count})",
       "moveToTrashFailed": "Не удалось переместить в Корзину",
       "batchRenameResult": "{success} переименовано, {errors} не удалось",
       "copyCompleted": "Копирование завершено",

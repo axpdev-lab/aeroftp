@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Kikao kimefungwa — imetenganishwa na {server}",
       "disconnectedAllClosed": "Vikao vyote vimefungwa — imetenganishwa na {server}",
-      "movedToTrash": "Imehamishiwa kwenye Takataka",
+      "movedToTrash": "Imehamishiwa kwenye Takataka ({count})",
       "moveToTrashFailed": "Imeshindwa kuhamisha kwenye Takataka",
       "batchRenameResult": "{success} zimebadilishwa jina, {errors} zimeshindwa",
       "copyCompleted": "Kunakili kumekamilika",

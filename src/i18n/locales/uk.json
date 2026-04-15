@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесію закрито — відключено від {server}",
       "disconnectedAllClosed": "Усі сесії закрито — відключено від {server}",
-      "movedToTrash": "Переміщено до кошика",
+      "movedToTrash": "Переміщено до кошика ({count})",
       "moveToTrashFailed": "Не вдалося перемістити до кошика",
       "batchRenameResult": "{success} перейменовано, {errors} не вдалося",
       "copyCompleted": "Копіювання завершено",

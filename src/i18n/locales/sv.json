@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Session stängd — frånkopplad från {server}",
       "disconnectedAllClosed": "Alla sessioner stängda — frånkopplad från {server}",
-      "movedToTrash": "Flyttad till papperskorgen",
+      "movedToTrash": "Flyttad till papperskorgen ({count})",
       "moveToTrashFailed": "Det gick inte att flytta till papperskorgen",
       "batchRenameResult": "{success} omdöpta, {errors} misslyckades",
       "copyCompleted": "Kopiering slutförd",

@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sarado ang sesyon — nadiskonekta mula sa {server}",
       "disconnectedAllClosed": "Sarado ang lahat ng sesyon — nadiskonekta mula sa {server}",
-      "movedToTrash": "Inilipat sa Basurahan",
+      "movedToTrash": "Inilipat sa Basurahan ({count})",
       "moveToTrashFailed": "Nabigo ang paglipat sa Basurahan",
       "batchRenameResult": "{success} napalitan ang pangalan, {errors} nabigo",
       "copyCompleted": "Kumpleto na ang pagkopya",

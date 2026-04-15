@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Sesiune închisă — deconectat de la {server}",
       "disconnectedAllClosed": "Toate sesiunile închise — deconectat de la {server}",
-      "movedToTrash": "Mutat în Coș de gunoi",
+      "movedToTrash": "Mutat în Coș de gunoi ({count})",
       "moveToTrashFailed": "Mutarea în Coș de gunoi a eșuat",
       "batchRenameResult": "{success} redenumite, {errors} eșuate",
       "copyCompleted": "Copiere finalizată",

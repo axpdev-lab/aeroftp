@@ -1150,7 +1150,7 @@
       "saveFailed": "Lưu thất bại",
       "disconnectedTabClosed": "Phiên đã đóng — đã ngắt kết nối khỏi {server}",
       "disconnectedAllClosed": "Tất cả phiên đã đóng — đã ngắt kết nối khỏi {server}",
-      "movedToTrash": "Đã chuyển vào Thùng rác",
+      "movedToTrash": "Đã chuyển vào Thùng rác ({count})",
       "moveToTrashFailed": "Không thể chuyển vào Thùng rác",
       "batchRenameResult": "{success} đã đổi tên, {errors} thất bại",
       "copyCompleted": "Sao chép hoàn tất",

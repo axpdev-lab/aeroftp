@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Сесија затворена — одспојено са {server}",
       "disconnectedAllClosed": "Све сесије затворене — одспојено са {server}",
-      "movedToTrash": "Премештено у корпу",
+      "movedToTrash": "Премештено у корпу ({count})",
       "moveToTrashFailed": "Премештање у корпу није успело",
       "batchRenameResult": "{success} преименовано, {errors} неуспешно",
       "copyCompleted": "Копирање завршено",

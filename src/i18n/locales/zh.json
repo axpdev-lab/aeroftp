@@ -1150,7 +1150,7 @@
       "saveFailed": "保存失败",
       "disconnectedTabClosed": "会话已关闭 — 已断开与 {server} 的连接",
       "disconnectedAllClosed": "所有会话已关闭 — 已断开与 {server} 的连接",
-      "movedToTrash": "已移至废纸篓",
+      "movedToTrash": "已移至废纸篓 ({count})",
       "moveToTrashFailed": "移至废纸篓失败",
       "batchRenameResult": "{success} 个已重命名，{errors} 个失败",
       "copyCompleted": "复制完成",

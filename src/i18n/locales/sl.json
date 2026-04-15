@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Seja zaprta — odklop od {server}",
       "disconnectedAllClosed": "Vse seje zaprte — odklop od {server}",
-      "movedToTrash": "Premaknjeno v koš",
+      "movedToTrash": "Premaknjeno v koš ({count})",
       "moveToTrashFailed": "Premikanje v koš ni uspelo",
       "batchRenameResult": "{success} preimenovanih, {errors} neuspešnih",
       "copyCompleted": "Kopiranje končano",

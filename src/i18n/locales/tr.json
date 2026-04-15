@@ -1150,7 +1150,7 @@
       "permissionsUpdatedDesc": "{name} → {mode}",
       "disconnectedTabClosed": "Oturum kapatıldı — {server} bağlantısı kesildi",
       "disconnectedAllClosed": "Tüm oturumlar kapatıldı — {server} bağlantısı kesildi",
-      "movedToTrash": "Çöp Kutusuna Taşındı",
+      "movedToTrash": "Çöp Kutusuna Taşındı ({count})",
       "moveToTrashFailed": "Çöp Kutusuna taşıma başarısız oldu",
       "batchRenameResult": "{success} yeniden adlandırıldı, {errors} başarısız",
       "copyCompleted": "Kopyalama tamamlandı",
