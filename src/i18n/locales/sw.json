@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Chagua eneo linalolingana na akaunti yako ya Zoho (mf. zoho.eu kwa Ulaya).",
         "redirectUri": "URI ya kuelekeza upya",
         "redirectUriHelp": "Nakili URL hii na uibandike kama URI ya kuelekeza upya katika mipangilio ya programu yako ya msanidi.",
-        "redirectUriNoteGoogle": "Google inakubali bandari yoyote ya loopback. Nakili hii kama URI ya kuelekeza upya iliyoidhinishwa katika Google Cloud Console.",
+        "redirectUriNoteGoogle": "Inapendekezwa: tengeneza OAuth Client ID ya aina \"Desktop app\" katika Google Cloud Console (hakuna redirect URI inayohitajika). Ukitumia aina ya \"Web application\", weka redirect URI kuwa http://127.0.0.1.",
         "enablePhotosApi": "Hakikisha Photos Library API imewezeshwa katika Google Cloud Console yako.",
         "enableDriveApi": "Hakikisha Google Drive API imewezeshwa katika Google Cloud Console yako."
       },

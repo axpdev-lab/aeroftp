@@ -197,7 +197,7 @@
         "zohoRegionHelp": "अपने Zoho खाते से मेल खाने वाला क्षेत्र चुनें (उदा. यूरोप के लिए zoho.eu)।",
         "redirectUri": "रीडायरेक्ट URI",
         "redirectUriHelp": "इस URL को कॉपी करें और इसे अपनी डेवलपर ऐप सेटिंग्स में रीडायरेक्ट URI के रूप में पेस्ट करें।",
-        "redirectUriNoteGoogle": "Google किसी भी loopback पोर्ट को स्वीकार करता है। इसे अपने Google Cloud Console में अधिकृत रीडायरेक्ट URI के रूप में कॉपी करें।",
+        "redirectUriNoteGoogle": "अनुशंसित: Google Cloud Console में \"Desktop app\" प्रकार का OAuth Client ID बनाएँ (किसी redirect URI की आवश्यकता नहीं)। यदि \"Web application\" प्रकार का उपयोग कर रहे हैं, तो redirect URI को http://127.0.0.1 पर सेट करें।",
         "enablePhotosApi": "सुनिश्चित करें कि Photos Library API आपके Google Cloud Console में सक्षम है।",
         "enableDriveApi": "सुनिश्चित करें कि Google Drive API आपके Google Cloud Console में सक्षम है।"
       },

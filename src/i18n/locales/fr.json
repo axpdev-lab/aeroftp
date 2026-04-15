@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Selectionnez la region correspondant a votre compte Zoho (ex. zoho.eu pour l'Europe).",
         "redirectUri": "URI de redirection",
         "redirectUriHelp": "Copiez cette URL et collez-la comme URI de redirection dans les paramètres de votre application développeur.",
-        "redirectUriNoteGoogle": "Google accepte n'importe quel port loopback. Copiez ceci comme URI de redirection autorisé dans votre Google Cloud Console.",
+        "redirectUriNoteGoogle": "Recommandé : créez un OAuth Client ID de type \"Desktop app\" dans la Google Cloud Console (aucun redirect URI nécessaire). Si vous utilisez le type \"Web application\", définissez le redirect URI sur http://127.0.0.1.",
         "enablePhotosApi": "Assurez-vous que Photos Library API est activé dans votre Google Cloud Console.",
         "enableDriveApi": "Assurez-vous que Google Drive API est activé dans votre Google Cloud Console."
       },

@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Válassza ki a Zoho fiókjának megfelelő régiót (pl. zoho.eu Európa esetén).",
         "redirectUri": "Átirányítási URI",
         "redirectUriHelp": "Másolja ki ezt az URL-t, és illessze be átirányítási URI-ként a fejlesztői alkalmazás beállításaiban.",
-        "redirectUriNoteGoogle": "A Google bármely loopback portot elfogadja. Másolja ezt engedélyezett átirányítási URI-ként a Google Cloud Console-ban.",
+        "redirectUriNoteGoogle": "Ajánlott: hozzon létre egy \"Desktop app\" típusú OAuth Client ID-t a Google Cloud Console-ban (redirect URI nem szükséges). Ha \"Web application\" típust használ, állítsa a redirect URI-t http://127.0.0.1 értékre.",
         "enablePhotosApi": "Győződjön meg róla, hogy a Photos Library API engedélyezve van a Google Cloud Console-ban.",
         "enableDriveApi": "Győződjön meg róla, hogy a Google Drive API engedélyezve van a Google Cloud Console-ban."
       },

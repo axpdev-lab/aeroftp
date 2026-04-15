@@ -217,7 +217,7 @@
         "backToExistingAccount": "Torna all'account esistente",
         "redirectUri": "URI di Reindirizzamento",
         "redirectUriHelp": "Copia questo URL e incollalo come URI di Reindirizzamento nelle impostazioni della tua app sviluppatore.",
-        "redirectUriNoteGoogle": "Google accetta qualsiasi porta loopback. Copia questo come URI di Reindirizzamento Autorizzato nella tua Google Cloud Console.",
+        "redirectUriNoteGoogle": "Consigliato: crea un Client ID OAuth di tipo \"App desktop\" nella Google Cloud Console (nessun redirect URI necessario). Se usi il tipo \"Applicazione web\", imposta il redirect URI su http://127.0.0.1.",
         "zohoRegion": "Regione Zoho",
         "zohoRegionHelp": "Seleziona la regione corrispondente al tuo account Zoho (es. zoho.eu per l'Europa).",
         "enablePhotosApi": "Assicurati che Photos Library API sia abilitata nella tua Google Cloud Console.",

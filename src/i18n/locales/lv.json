@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Atlasiet reģionu, kas atbilst jūsu Zoho kontam (piem., zoho.eu Eiropai).",
         "redirectUri": "Pāradresācijas URI",
         "redirectUriHelp": "Nokopējiet šo URL un ielīmējiet to kā pāradresācijas URI savas izstrādātāja lietotnes iestatījumos.",
-        "redirectUriNoteGoogle": "Google pieņem jebkuru loopback portu. Nokopējiet šo kā autorizēto pāradresācijas URI savā Google Cloud Console.",
+        "redirectUriNoteGoogle": "Ieteicams: izveidojiet \"Desktop app\" tipa OAuth Client ID Google Cloud Console (redirect URI nav nepieciešams). Ja izmantojat \"Web application\" tipu, iestatiet redirect URI uz http://127.0.0.1.",
         "enablePhotosApi": "Pārliecinieties, ka Photos Library API ir iespējots jūsu Google Cloud Console.",
         "enableDriveApi": "Pārliecinieties, ka Google Drive API ir iespējots jūsu Google Cloud Console."
       },

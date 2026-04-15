@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Επιλέξτε την περιοχή που αντιστοιχεί στον λογαριασμό σας Zoho (π.χ. zoho.eu για Ευρώπη).",
         "redirectUri": "URI Ανακατεύθυνσης",
         "redirectUriHelp": "Αντιγράψτε αυτό το URL και επικολλήστε το ως URI Ανακατεύθυνσης στις ρυθμίσεις της εφαρμογής σας για προγραμματιστές.",
-        "redirectUriNoteGoogle": "Η Google δέχεται οποιαδήποτε θύρα loopback. Αντιγράψτε αυτό ως εξουσιοδοτημένο URI Ανακατεύθυνσης στην Google Cloud Console σας.",
+        "redirectUriNoteGoogle": "Συνιστάται: δημιουργήστε ένα OAuth Client ID τύπου \"Desktop app\" στο Google Cloud Console (δεν απαιτείται redirect URI). Αν χρησιμοποιείτε τον τύπο \"Web application\", ορίστε το redirect URI σε http://127.0.0.1.",
         "enablePhotosApi": "Βεβαιωθείτε ότι το Photos Library API είναι ενεργοποιημένο στο Google Cloud Console.",
         "enableDriveApi": "Βεβαιωθείτε ότι το Google Drive API είναι ενεργοποιημένο στο Google Cloud Console."
       },

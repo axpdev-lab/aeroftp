@@ -1154,7 +1154,7 @@
         "quickConnectNextTime": "Quick connect next time",
         "redirectUri": "Redirect URI",
         "redirectUriHelp": "Copy this URL and paste it as the Redirect URI in your developer app settings.",
-        "redirectUriNoteGoogle": "Google accepts any loopback port. Copy this as the Authorized Redirect URI in your Google Cloud Console.",
+        "redirectUriNoteGoogle": "Recommended: create a \"Desktop app\" OAuth Client ID in Google Cloud Console (no redirect URI needed). If using \"Web application\" type, set the redirect URI to http://127.0.0.1.",
         "selectLocalFolder": "Select Local Folder",
         "signInWith": "Sign in with {provider}",
         "enablePhotosApi": "Make sure Photos Library API is enabled in your Google Cloud Console.",

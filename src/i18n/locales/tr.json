@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Zoho hesabinizla eslesen bolgeyi secin (orn. Avrupa icin zoho.eu).",
         "redirectUri": "Yönlendirme URI'si",
         "redirectUriHelp": "Bu URL'yi kopyalayın ve geliştirici uygulama ayarlarınıza Yönlendirme URI'si olarak yapıştırın.",
-        "redirectUriNoteGoogle": "Google herhangi bir loopback portunu kabul eder. Bunu Google Cloud Console'da Yetkili Yönlendirme URI'si olarak kopyalayın.",
+        "redirectUriNoteGoogle": "Önerilen: Google Cloud Console'da \"Desktop app\" türünde bir OAuth Client ID oluşturun (redirect URI gerekmez). \"Web application\" türü kullanıyorsanız, redirect URI olarak http://127.0.0.1 ayarlayın.",
         "enablePhotosApi": "Google Cloud Console'da Photos Library API'nin etkin olduğundan emin olun.",
         "enableDriveApi": "Google Cloud Console'da Google Drive API'nin etkin olduğundan emin olun."
       },

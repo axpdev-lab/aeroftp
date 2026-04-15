@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Valj den region som matchar ditt Zoho-konto (t.ex. zoho.eu for Europa).",
         "redirectUri": "Omdirigerings-URI",
         "redirectUriHelp": "Kopiera denna URL och klistra in den som omdirigerings-URI i inställningarna för din utvecklarapp.",
-        "redirectUriNoteGoogle": "Google accepterar vilken loopback-port som helst. Kopiera detta som auktoriserad omdirigerings-URI i Google Cloud Console.",
+        "redirectUriNoteGoogle": "Rekommenderat: skapa ett \"Desktop app\" OAuth Client ID i Google Cloud Console (ingen redirect URI behövs). Om du använder typen \"Web application\", ställ in redirect URI till http://127.0.0.1.",
         "enablePhotosApi": "Se till att Photos Library API är aktiverat i din Google Cloud Console.",
         "enableDriveApi": "Se till att Google Drive API är aktiverat i din Google Cloud Console."
       },

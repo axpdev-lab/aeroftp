@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Hautatu zure Zoho kontuarekin bat datorren eskualdea (adib. zoho.eu Europarako).",
         "redirectUri": "Birbideratze URIa",
         "redirectUriHelp": "Kopiatu URL hau eta itsatsi Birbideratze URI gisa zure garatzaile aplikazioaren ezarpenetan.",
-        "redirectUriNoteGoogle": "Google-k edozein loopback ataka onartzen du. Kopiatu hau Baimendutako Birbideratze URI gisa zure Google Cloud Console-n.",
+        "redirectUriNoteGoogle": "Gomendatua: sortu \"Desktop app\" motako OAuth Client ID bat Google Cloud Console-n (ez da redirect URI behar). \"Web application\" mota erabiltzen baduzu, ezarri redirect URI http://127.0.0.1 gisa.",
         "enablePhotosApi": "Ziurtatu Photos Library API gaituta dagoela zure Google Cloud Console-n.",
         "enableDriveApi": "Ziurtatu Google Drive API gaituta dagoela zure Google Cloud Console-n."
       },

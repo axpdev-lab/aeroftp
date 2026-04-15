@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Chon khu vuc phu hop voi tai khoan Zoho cua ban (vd: zoho.eu cho Chau Au).",
         "redirectUri": "URI chuyển hướng",
         "redirectUriHelp": "Sao chép URL này và dán làm URI chuyển hướng trong cài đặt ứng dụng nhà phát triển của bạn.",
-        "redirectUriNoteGoogle": "Google chấp nhận bất kỳ cổng loopback nào. Sao chép địa chỉ này làm URI chuyển hướng được ủy quyền trong Google Cloud Console.",
+        "redirectUriNoteGoogle": "Khuyến nghị: tạo OAuth Client ID loại \"Desktop app\" trong Google Cloud Console (không cần redirect URI). Nếu dùng loại \"Web application\", đặt redirect URI thành http://127.0.0.1.",
         "enablePhotosApi": "Đảm bảo Photos Library API được bật trong Google Cloud Console của bạn.",
         "enableDriveApi": "Đảm bảo Google Drive API được bật trong Google Cloud Console của bạn."
       },

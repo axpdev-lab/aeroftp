@@ -197,7 +197,7 @@
         "zohoRegionHelp": "აირჩიეთ თქვენი Zoho ანგარიშის შესაბამისი რეგიონი (მაგ. zoho.eu ევროპისთვის).",
         "redirectUri": "გადამისამართებელი URI",
         "redirectUriHelp": "დააკოპირეთ ეს URL და ჩასვით როგორც გადამისამართებელი URI თქვენი დეველოპერ აპლიკაციის პარამეტრებში.",
-        "redirectUriNoteGoogle": "Google იღებს ნებისმიერ loopback პორტს. დააკოპირეთ ეს როგორც ავტორიზებული გადამისამართებელი URI თქვენს Google Cloud Console-ში.",
+        "redirectUriNoteGoogle": "რეკომენდებულია: შექმენით \"Desktop app\" ტიპის OAuth Client ID Google Cloud Console-ში (redirect URI არ არის საჭირო). თუ იყენებთ \"Web application\" ტიპს, დააყენეთ redirect URI http://127.0.0.1.",
         "enablePhotosApi": "დარწმუნდით, რომ Photos Library API ჩართულია თქვენს Google Cloud Console-ში.",
         "enableDriveApi": "დარწმუნდით, რომ Google Drive API ჩართულია თქვენს Google Cloud Console-ში."
       },

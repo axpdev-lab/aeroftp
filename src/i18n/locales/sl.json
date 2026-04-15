@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Izberite regijo, ki ustreza vasemu racunu Zoho (npr. zoho.eu za Evropo).",
         "redirectUri": "URI preusmeritve",
         "redirectUriHelp": "Kopirajte ta URL in ga prilepite kot URI preusmeritve v nastavitvah vaše razvojne aplikacije.",
-        "redirectUriNoteGoogle": "Google sprejema katera koli vrata loopback. Kopirajte to kot pooblaščeni URI preusmeritve v Google Cloud Console.",
+        "redirectUriNoteGoogle": "Priporočeno: ustvarite OAuth Client ID tipa \"Desktop app\" v Google Cloud Console (redirect URI ni potreben). Če uporabljate tip \"Web application\", nastavite redirect URI na http://127.0.0.1.",
         "enablePhotosApi": "Prepričajte se, da je Photos Library API omogočen v vaši Google Cloud Console.",
         "enableDriveApi": "Prepričajte se, da je Google Drive API omogočen v vaši Google Cloud Console."
       },

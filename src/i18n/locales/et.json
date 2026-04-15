@@ -197,7 +197,7 @@
         "zohoRegionHelp": "Valige oma Zoho kontoga sobiv piirkond (nt zoho.eu Euroopa jaoks).",
         "redirectUri": "Ümbersuunamise URI",
         "redirectUriHelp": "Kopeerige see URL ja kleepige see ümbersuunamise URI-na oma arendajarakenduse seadetesse.",
-        "redirectUriNoteGoogle": "Google aktsepteerib mis tahes loopback-porti. Kopeerige see volitatud ümbersuunamise URI-na oma Google Cloud Console'is.",
+        "redirectUriNoteGoogle": "Soovitatav: looge Google Cloud Console'is \"Desktop app\" tüüpi OAuth Client ID (redirect URI pole vajalik). Kui kasutate \"Web application\" tüüpi, seadke redirect URI väärtuseks http://127.0.0.1.",
         "enablePhotosApi": "Veenduge, et Photos Library API on teie Google Cloud Console-is lubatud.",
         "enableDriveApi": "Veenduge, et Google Drive API on teie Google Cloud Console-is lubatud."
       },

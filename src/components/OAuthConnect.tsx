@@ -82,8 +82,8 @@ const ZOHO_REGIONS = [
 
 // Redirect URIs that users must configure in their OAuth2 developer app dashboard
 const REDIRECT_URIS: Record<string, { uri: string; note?: string }> = {
-  googledrive: { uri: 'http://127.0.0.1', note: 'redirectUriNoteGoogle' },
-  googlephotos: { uri: 'http://127.0.0.1', note: 'redirectUriNoteGoogle' },
+  googledrive: { uri: 'http://127.0.0.1 (auto-assigned port)', note: 'redirectUriNoteGoogle' },
+  googlephotos: { uri: 'http://127.0.0.1 (auto-assigned port)', note: 'redirectUriNoteGoogle' },
   dropbox: { uri: 'http://127.0.0.1:17548/callback' },
   onedrive: { uri: 'http://127.0.0.1:27154/callback' },
   box: { uri: 'http://127.0.0.1:9484/callback' },

@@ -197,7 +197,7 @@
         "zohoRegionHelp": "ជ្រើសរើសជំនាន់ដែលត្រូវនឹងគណត់ Zoho របស់អ្នក (ឧទាហរណ៍ zoho.eu សម្រាប់អឺរ៉ុប).",
         "redirectUri": "URI ការបញ្ជូនប្តិ",
         "redirectUriHelp": "ចំលង URL នេះ ហើយបិទិតអ៊ីជា URI ការបញ្ជូនប្តិនៅក្នុងការកំណត់កម្មវិដីអ្នកបង្កើតរបស់អ្នក។",
-        "redirectUriNoteGoogle": "Google ទទួលយកលេខ loopback port ណាមួយ។ ចំលងវាជា URI បញ្ជូនប្តិដែលបានអនុញ្ញាតនៅក្នុង Google Cloud Console របស់អ្នក។",
+        "redirectUriNoteGoogle": "ណែនាំ: បង្កើត OAuth Client ID ប្រភេទ \"Desktop app\" នៅក្នុង Google Cloud Console (មិនត្រូវការ redirect URI)។ បើប្រើប្រភេទ \"Web application\" សូមកំណត់ redirect URI ទៅ http://127.0.0.1។",
         "enablePhotosApi": "សូមប្រាកដថា Photos Library API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។",
         "enableDriveApi": "សូមប្រាកដថា Google Drive API ត្រូវបានបើកនៅក្នុង Google Cloud Console របស់អ្នក។"
       },
