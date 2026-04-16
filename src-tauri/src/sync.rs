@@ -1278,7 +1278,7 @@ pub fn list_sync_journals() -> Result<Vec<JournalSummary>, String> {
             }
         }
     }
-    summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    summaries.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
     Ok(summaries)
 }
 
@@ -1810,7 +1810,7 @@ pub fn list_sync_snapshots() -> Result<Vec<SyncSnapshot>, String> {
                 .and_then(|s| serde_json::from_str(&s).ok())
         })
         .collect();
-    snapshots.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    snapshots.sort_by_key(|b| std::cmp::Reverse(b.created_at));
     snapshots.truncate(10);
 
     // Cleanup: keep only last 5 snapshots on disk
@@ -1831,7 +1831,7 @@ pub fn list_sync_snapshots() -> Result<Vec<SyncSnapshot>, String> {
                 })
             })
             .collect();
-        by_time.sort_by(|a, b| b.1.cmp(&a.1));
+        by_time.sort_by_key(|b| std::cmp::Reverse(b.1));
         for (path, _) in by_time.into_iter().skip(5) {
             let _ = std::fs::remove_file(path);
         }
@@ -1928,7 +1928,7 @@ pub fn select_canary_sample(
             });
         }
         "largest" => {
-            file_list.sort_by(|a, b| b.1.size.cmp(&a.1.size));
+            file_list.sort_by_key(|b| std::cmp::Reverse(b.1.size));
         }
         _ => {
             // "random" or default: shuffle using Fisher-Yates via rand

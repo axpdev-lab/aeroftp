@@ -1263,7 +1263,7 @@ The CLI sanitizes filenames with ANSI escape sequences. If filenames appear trun
 
 ---
 
-## Live Test Results (v3.0.8)
+## Live Test Results
 
 The following providers have been tested live via CLI with `--profile`:
 

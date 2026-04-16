@@ -698,14 +698,13 @@ impl S3Provider {
                         inside_target = true;
                     }
                 }
-                Ok(Event::Text(ref e)) => {
-                    if inside_target {
+                Ok(Event::Text(ref e))
+                    if inside_target => {
                         let trimmed = String::from_utf8_lossy(e.as_ref()).trim().to_string();
                         if !trimmed.is_empty() {
                             return Some(trimmed);
                         }
                     }
-                }
                 Ok(Event::End(ref e)) => {
                     let name = e.name();
                     let tag_name = String::from_utf8_lossy(name.as_ref());

@@ -224,6 +224,10 @@ fi
 
 ## MCP Server Integration
 
+### VS Code Extension (Recommended)
+
+Install the [AeroFTP MCP Server](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp) extension to auto-configure the MCP server for Claude Code, Claude Desktop, Cursor, and Windsurf with one click.
+
 ### Starting the MCP Server
 
 ```bash

@@ -766,7 +766,7 @@ pub fn list_subdirectories(path: String) -> Result<Vec<SubDirectory>, String> {
     }
 
     // Sort alphabetically, case-insensitive
-    subdirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    subdirs.sort_by_key(|a| a.name.to_lowercase());
 
     Ok(subdirs)
 }
@@ -1762,7 +1762,7 @@ fn build_usage_tree(
     }
 
     // Sort by size descending, keep top 50
-    children.sort_by(|a, b| b.size.cmp(&a.size));
+    children.sort_by_key(|b| std::cmp::Reverse(b.size));
     children.truncate(50);
 
     let total_size: u64 = children.iter().map(|c| c.size).sum();

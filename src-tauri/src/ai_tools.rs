@@ -1112,11 +1112,10 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 }
             }
         }
-        "clipboard_write" => {
-            if args.get("content").and_then(|v| v.as_str()).is_none() {
+        "clipboard_write"
+            if args.get("content").and_then(|v| v.as_str()).is_none() => {
                 errors.push("Missing 'content' parameter".to_string());
             }
-        }
         "set_theme" => match args.get("theme").and_then(|v| v.as_str()) {
             Some(t) if ["light", "dark", "tokyo", "cyber"].contains(&t) => {}
             Some(t) => errors.push(format!(

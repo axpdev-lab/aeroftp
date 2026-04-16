@@ -923,11 +923,10 @@ impl WebDavProvider {
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
                                 "getetag" => getetag = text,
-                                "iscollection" => {
-                                    if text == "1" {
+                                "iscollection"
+                                    if text == "1" => {
                                         is_collection_by_iscollection = true;
                                     }
-                                }
                                 _ => {}
                             }
                         }
@@ -945,11 +944,10 @@ impl WebDavProvider {
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
                                 "getetag" => getetag = text,
-                                "iscollection" => {
-                                    if text == "1" {
+                                "iscollection"
+                                    if text == "1" => {
                                         is_collection_by_iscollection = true;
                                     }
-                                }
                                 _ => {}
                             }
                         }

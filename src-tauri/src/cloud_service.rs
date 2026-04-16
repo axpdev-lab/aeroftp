@@ -889,8 +889,8 @@ impl CloudService {
                     }
                 }
             }
-            SyncAction::KeepBoth => {
-                if !comparison.is_dir {
+            SyncAction::KeepBoth
+                if !comparison.is_dir => {
                     let local_path = config.local_folder.join(&comparison.relative_path);
                     // Rename local file with Dropbox-style conflict suffix to preserve both versions
                     if local_path.exists() {
@@ -920,7 +920,6 @@ impl CloudService {
                             .map_err(|e| format!("KeepBoth download failed: {}", e))?;
                     }
                 }
-            }
             _ => {}
         }
 
@@ -1208,8 +1207,8 @@ impl CloudService {
                     }
                 }
             }
-            SyncAction::KeepBoth => {
-                if !comparison.is_dir {
+            SyncAction::KeepBoth
+                if !comparison.is_dir => {
                     let local_path = config.local_folder.join(&comparison.relative_path);
                     // Rename local file with Dropbox-style conflict suffix to preserve both versions
                     if local_path.exists() {
@@ -1235,7 +1234,6 @@ impl CloudService {
                             .map_err(|e| format!("KeepBoth download failed: {}", e))?;
                     }
                 }
-            }
             _ => {}
         }
 

@@ -361,4 +361,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v3.5.0 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v3.5.3 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

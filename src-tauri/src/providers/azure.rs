@@ -345,22 +345,20 @@ impl AzureProvider {
                         ParseState::BlobContentLength => {
                             current_size = text.parse().unwrap_or(0);
                         }
-                        ParseState::BlobLastModified => {
-                            if !text.is_empty() {
+                        ParseState::BlobLastModified
+                            if !text.is_empty() => {
                                 current_modified = Some(text);
                             }
-                        }
-                        ParseState::NextMarker => {
-                            if !text.is_empty() {
+                        ParseState::NextMarker
+                            if !text.is_empty() => {
                                 next_marker = Some(text);
                             }
-                        }
                         _ => {}
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"BlobPrefix" => {
-                        if in_prefix {
+                    b"BlobPrefix"
+                        if in_prefix => {
                             let display_name = current_name.trim_end_matches('/');
                             let relative = display_name
                                 .strip_prefix(&self.current_prefix)
@@ -377,9 +375,8 @@ impl AzureProvider {
                             in_prefix = false;
                             state = ParseState::Root;
                         }
-                    }
-                    b"Blob" => {
-                        if in_blob {
+                    b"Blob"
+                        if in_blob => {
                             let relative = current_name
                                 .strip_prefix(&self.current_prefix)
                                 .unwrap_or(&current_name);
@@ -395,7 +392,6 @@ impl AzureProvider {
                             in_blob = false;
                             state = ParseState::Root;
                         }
-                    }
                     b"Name" => {
                         if in_prefix {
                             state = ParseState::BlobPrefix;
@@ -403,16 +399,14 @@ impl AzureProvider {
                             state = ParseState::Blob;
                         }
                     }
-                    b"Properties" => {
-                        if in_blob {
+                    b"Properties"
+                        if in_blob => {
                             state = ParseState::Blob;
                         }
-                    }
-                    b"Content-Length" | b"Last-Modified" => {
-                        if in_blob {
+                    b"Content-Length" | b"Last-Modified"
+                        if in_blob => {
                             state = ParseState::BlobProperties;
                         }
-                    }
                     b"NextMarker" => {
                         state = ParseState::Root;
                     }
@@ -1722,8 +1716,8 @@ impl AzureProvider {
                             next_marker = Some(text);
                         }
                     }
-                    Ok(quick_xml::events::Event::End(ref e)) => {
-                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" {
+                    Ok(quick_xml::events::Event::End(ref e))
+                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" => {
                             if in_blob && is_deleted && !blob_name.is_empty() {
                                 let mut meta = std::collections::HashMap::new();
                                 meta.insert("deleted".to_string(), "true".to_string());
@@ -1748,7 +1742,6 @@ impl AzureProvider {
                             }
                             in_blob = false;
                         }
-                    }
                     Ok(quick_xml::events::Event::Eof) => break,
                     Err(_) => break,
                     _ => {}

@@ -394,7 +394,7 @@ impl SyncVersioning {
         })?;
 
         for (_key, mut versions) in groups {
-            versions.sort_by(|a, b| b.1.cmp(&a.1)); // Newest first
+            versions.sort_by_key(|b| std::cmp::Reverse(b.1)); // Newest first
 
             let mut kept_in_hour: std::collections::HashMap<u64, bool> =
                 std::collections::HashMap::new();

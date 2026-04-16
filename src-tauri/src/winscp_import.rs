@@ -277,12 +277,11 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
     let mut options = serde_json::Map::new();
 
     match protocol {
-        "webdav" => {
+        "webdav"
             // Ftps=1 means HTTPS for WebDAV
-            if ftps == 1 {
+            if ftps == 1 => {
                 options.insert("useSsl".to_string(), serde_json::Value::Bool(true));
             }
-        }
         "ftps" => {
             // Track implicit vs explicit
             if ftps == 1 {

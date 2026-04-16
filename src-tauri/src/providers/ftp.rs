@@ -288,12 +288,11 @@ impl FtpProvider {
                 "unix.group" | "unix.gid" => {
                     group = Some(value.to_string());
                 }
-                "perm" => {
+                "perm"
                     // MLSD perm facts (e.g. "rwcedf") - store as metadata
-                    if permissions.is_none() {
+                    if permissions.is_none() => {
                         permissions = Some(value.to_string());
                     }
-                }
                 _ => {}
             }
         }

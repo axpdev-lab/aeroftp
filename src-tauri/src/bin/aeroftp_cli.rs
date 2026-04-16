@@ -7856,7 +7856,7 @@ async fn cmd_ls(
 
     // Sort
     match sort {
-        "size" => entries.sort_by(|a, b| a.size.cmp(&b.size)),
+        "size" => entries.sort_by_key(|a| a.size),
         "date" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
         _ => entries.sort_by(|a, b| {
             // Directories first, then alphabetical
@@ -10380,7 +10380,7 @@ fn cmd_alias(command: &AliasCommands, format: OutputFormat) -> i32 {
                 return 0;
             }
             let mut aliases: Vec<_> = config.aliases.iter().collect();
-            aliases.sort_by(|(left, _), (right, _)| left.cmp(right));
+            aliases.sort_by_key(|(left, _)| *left);
             match format {
                 OutputFormat::Text => {
                     for (name, command) in &aliases {
@@ -11420,10 +11420,10 @@ fn dedupe_sort_group(group: &mut [(String, u64, Option<String>)], mode: &str) {
             group.sort_by(|a, b| compare_mtime(a.2.as_deref(), b.2.as_deref()));
         }
         "largest" => {
-            group.sort_by(|a, b| b.1.cmp(&a.1));
+            group.sort_by_key(|b| std::cmp::Reverse(b.1));
         }
         "smallest" => {
-            group.sort_by(|a, b| a.1.cmp(&b.1));
+            group.sort_by_key(|a| a.1);
         }
         _ => {} // skip, delete, list, interactive, rename: keep original order (first = keeper)
     }
@@ -13221,16 +13221,14 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                     state.current.children.len() + if state.path_stack.is_empty() { 0 } else { 1 };
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if state.selected + 1 < max_idx {
+                    KeyCode::Down | KeyCode::Char('j')
+                        if state.selected + 1 < max_idx => {
                             state.selected += 1;
                         }
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        if state.selected > 0 {
+                    KeyCode::Up | KeyCode::Char('k')
+                        if state.selected > 0 => {
                             state.selected -= 1;
                         }
-                    }
                     KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                         // If on ".." entry, go back
                         if !state.path_stack.is_empty() && state.selected == 0 {
@@ -13249,11 +13247,10 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                         state.go_back();
                     }
                     KeyCode::Home => state.selected = 0,
-                    KeyCode::End => {
-                        if max_idx > 0 {
+                    KeyCode::End
+                        if max_idx > 0 => {
                             state.selected = max_idx - 1;
                         }
-                    }
                     KeyCode::PageDown => {
                         state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
                     }

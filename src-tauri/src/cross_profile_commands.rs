@@ -323,11 +323,7 @@ pub async fn cross_profile_execute(
                             filename: entry.display_name.clone(),
                             transferred: transferred + skipped,
                             total,
-                            percentage: if total > 0 {
-                                (((transferred + skipped) * 100) / total).min(100) as u8
-                            } else {
-                                0
-                            },
+                            percentage: (((transferred + skipped) * 100).checked_div(total).unwrap_or(0)).min(100) as u8,
                             speed_bps: 0,
                             eta_seconds: 0,
                             direction: "cross-profile".to_string(),
@@ -354,11 +350,7 @@ pub async fn cross_profile_execute(
                     filename: entry.display_name.clone(),
                     transferred,
                     total,
-                    percentage: if total > 0 {
-                        ((transferred * 100) / total).min(100) as u8
-                    } else {
-                        0
-                    },
+                    percentage: ((transferred * 100).checked_div(total).unwrap_or(0)).min(100) as u8,
                     speed_bps: 0,
                     eta_seconds: 0,
                     direction: "cross-profile".to_string(),
@@ -424,16 +416,8 @@ pub async fn cross_profile_execute(
                         filename: entry.display_name.clone(),
                         transferred: transferred + skipped,
                         total,
-                        percentage: if total > 0 {
-                            (((transferred + skipped) * 100) / total).min(100) as u8
-                        } else {
-                            100
-                        },
-                        speed_bps: if elapsed_ms > 0 {
-                            bytes_transferred * 1000 / elapsed_ms
-                        } else {
-                            0
-                        },
+                        percentage: (((transferred + skipped) * 100).checked_div(total).unwrap_or(100)).min(100) as u8,
+                        speed_bps: (bytes_transferred * 1000).checked_div(elapsed_ms).unwrap_or(0),
                         eta_seconds: 0,
                         direction: "cross-profile".to_string(),
                         total_files: Some(total),
@@ -465,11 +449,7 @@ pub async fn cross_profile_execute(
                     transferred: transferred + skipped,
                     total,
                     percentage: 100,
-                    speed_bps: if duration_ms > 0 {
-                        bytes_transferred * 1000 / duration_ms
-                    } else {
-                        0
-                    },
+                    speed_bps: (bytes_transferred * 1000).checked_div(duration_ms).unwrap_or(0),
                     eta_seconds: 0,
                     direction: "cross-profile".to_string(),
                     total_files: Some(total),
