@@ -54,6 +54,7 @@ import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { IntroHub } from './components/IntroHub';
 import { AboutDialog } from './components/AboutDialog';
+import McpDialog from './components/McpDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { ProvidersDialog } from './components/ProvidersDialog';
@@ -366,6 +367,7 @@ const App: React.FC = () => {
   const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
@@ -6993,6 +6995,7 @@ interface UpdateVerificationInfo {
           onShowCyberTools={() => setShowCyberTools(true)}
           onShowVault={() => setShowVaultPanel({ mode: 'home' })}
           onShowAbout={() => setShowAboutDialog(true)}
+          onShowMcp={() => setShowMcpDialog(true)}
           onShowShortcuts={() => setShowShortcutsDialog(true)}
           onShowDependencies={() => setShowDependenciesPanel(true)}
           onShowProviders={() => setShowProvidersDialog(true)}
@@ -7534,6 +7537,7 @@ interface UpdateVerificationInfo {
         )}
         {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
         <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
+        <McpDialog isOpen={showMcpDialog} onClose={() => setShowMcpDialog(false)} />
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
         <ProvidersDialog isOpen={showProvidersDialog} onClose={() => setShowProvidersDialog(false)} />
         {showCommandPalette && (

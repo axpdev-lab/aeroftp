@@ -202,6 +202,26 @@ struct Cli {
     #[arg(long, global = true)]
     exclude_from: Option<String>,
 
+    /// Read file list from file (one path per line). Only listed files are transferred.
+    #[arg(long, global = true)]
+    files_from: Option<String>,
+
+    /// Like --files-from but don't skip empty lines or strip whitespace
+    #[arg(long, global = true)]
+    files_from_raw: Option<String>,
+
+    /// Never overwrite existing files on destination (append-only / immutable mode)
+    #[arg(long, global = true)]
+    immutable: bool,
+
+    /// Skip listing destination before transfer (assume dest is empty)
+    #[arg(long, global = true)]
+    no_check_dest: bool,
+
+    /// Maximum directory recursion depth (default: unlimited). Applies to ls -R, find, sync, get -r.
+    #[arg(long, global = true)]
+    max_depth: Option<u32>,
+
     /// Minimum file size (e.g., "100k", "1M", "1G")
     #[arg(long, global = true)]
     min_size: Option<String>,
@@ -246,6 +266,18 @@ struct Cli {
     /// Override download buffer size (e.g., "256K", "1M")
     #[arg(long, global = true)]
     buffer_size: Option<String>,
+
+    /// Default mtime when backend returns None (ISO 8601 or "now")
+    #[arg(long, global = true)]
+    default_time: Option<String>,
+
+    /// Use recursive listing in a single API call (S3 only, faster for large datasets)
+    #[arg(long, global = true)]
+    fast_list: bool,
+
+    /// Write downloads directly to final path (no .aerotmp temp file)
+    #[arg(long, global = true)]
+    inplace: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -583,6 +615,18 @@ enum Commands {
         remote_path: Option<String>,
     },
     /// Find and resolve duplicate files by content hash
+    /// Remove orphaned .aerotmp files from interrupted downloads
+    Cleanup {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_")]
+        url: String,
+        /// Remote path to scan (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Actually delete orphaned files (default: dry-run listing)
+        #[arg(long)]
+        force: bool,
+    },
     Dedupe {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_")]
@@ -590,7 +634,7 @@ enum Commands {
         /// Remote path to scan
         #[arg(default_value = "/")]
         path: String,
-        /// Resolution mode: interactive, skip, newest, oldest, largest, smallest
+        /// Resolution mode: skip, delete, newest, oldest, largest, smallest, rename, interactive, list
         #[arg(long, default_value = "skip")]
         mode: String,
         /// Preview only (don't delete)
@@ -632,12 +676,39 @@ enum Commands {
         /// Suffix for backup files (e.g., ".bak")
         #[arg(long, default_value = "")]
         backup_suffix: String,
-        /// Conflict resolution for --direction both: newer, older, larger, smaller, skip (default: newer)
+        /// Place suffix before the file extension (file.bak.txt instead of file.txt.bak)
+        #[arg(long)]
+        suffix_keep_extension: bool,
+        /// Skip transfer if file exists in this local directory with same size+mtime
+        #[arg(long)]
+        compare_dest: Option<String>,
+        /// Copy from this local directory instead of downloading if file matches size+mtime
+        #[arg(long)]
+        copy_dest: Option<String>,
+        /// Conflict resolution for --direction both: newer, older, larger, smaller, rename, skip (default: newer)
         #[arg(long, default_value = "newer")]
         conflict_mode: String,
         /// Discard previous bisync snapshot and rebuild from scratch
         #[arg(long)]
         resync: bool,
+        /// Watch local directory for changes and re-sync automatically
+        #[arg(long)]
+        watch: bool,
+        /// Watcher backend: auto, native, poll (default: auto)
+        #[arg(long, default_value = "auto")]
+        watch_mode: String,
+        /// Debounce window in milliseconds (default: 1500)
+        #[arg(long, default_value = "1500")]
+        watch_debounce_ms: u64,
+        /// Minimum seconds between consecutive re-syncs (default: 15)
+        #[arg(long, default_value = "15")]
+        watch_cooldown: u64,
+        /// Full rescan interval in seconds, 0 to disable (default: 300)
+        #[arg(long, default_value = "300")]
+        watch_rescan: u64,
+        /// Skip the initial full sync on startup
+        #[arg(long)]
+        watch_no_initial: bool,
     },
     /// Preflight checks and risk summary before sync
     SyncDoctor {
@@ -662,7 +733,7 @@ enum Commands {
         /// Detect renamed files by hash to avoid re-upload
         #[arg(long)]
         track_renames: bool,
-        /// Conflict resolution for --direction both
+        /// Conflict resolution for --direction both: newer, older, larger, smaller, rename, skip
         #[arg(long, default_value = "newer")]
         conflict_mode: String,
         /// Discard previous bisync snapshot and rebuild from scratch
@@ -1238,6 +1309,26 @@ struct CliSyncResult {
     skipped: u32,
     errors: Vec<String>,
     elapsed_secs: f64,
+}
+
+/// Stats returned by cmd_sync for watch mode output enrichment.
+#[derive(Default, Clone)]
+struct SyncCycleStats {
+    exit_code: i32,
+    uploaded: u32,
+    downloaded: u32,
+    deleted: u32,
+    skipped: u32,
+    error_count: u32,
+}
+
+impl From<i32> for SyncCycleStats {
+    fn from(code: i32) -> Self {
+        Self {
+            exit_code: code,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -2025,6 +2116,52 @@ fn parse_age_filter(s: &str) -> Result<u64, String> {
 }
 
 /// Load patterns from a file (one per line, # comments, blank lines skipped).
+/// Load file list from --files-from or --files-from-raw.
+/// Returns None if neither flag is set, or Some(HashSet) with normalized paths.
+fn load_files_from(cli: &Cli) -> Option<std::collections::HashSet<String>> {
+    let (path, raw) = match (&cli.files_from, &cli.files_from_raw) {
+        (Some(p), _) => (p.as_str(), false),
+        (_, Some(p)) => (p.as_str(), true),
+        _ => return None,
+    };
+    // Cap file size at 10 MB to prevent OOM
+    const MAX_FILES_FROM_SIZE: u64 = 10 * 1024 * 1024;
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.len() > MAX_FILES_FROM_SIZE => {
+            eprintln!("Error: --files-from '{}' exceeds 10 MB limit ({} bytes)", path, meta.len());
+            std::process::exit(5);
+        }
+        Err(e) => {
+            eprintln!("Error: --files-from '{}' not accessible: {}", path, e);
+            std::process::exit(5);
+        }
+        _ => {}
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            // Fatal: user explicitly requested --files-from, silent fallback to "all files" is dangerous
+            eprintln!("Error: cannot read --files-from '{}': {}", path, e);
+            std::process::exit(5);
+        }
+    };
+    let set: std::collections::HashSet<String> = content
+        .lines()
+        .map(|l| if raw { l.to_string() } else { l.trim().to_string() })
+        .filter(|l| if raw { true } else { !l.is_empty() && !l.starts_with('#') })
+        .map(|l| {
+            // Normalize: strip leading ./ and /
+            let s = l.strip_prefix("./").unwrap_or(&l);
+            let s = s.strip_prefix('/').unwrap_or(s);
+            s.to_string()
+        })
+        .collect();
+    if !cli.quiet {
+        eprintln!("Note: --files-from loaded {} entries from '{}'", set.len(), path);
+    }
+    Some(set)
+}
+
 fn load_patterns_from_file(path: &str) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Cannot read filter file '{}': {}", path, e))?;
@@ -2468,6 +2605,13 @@ async fn download_transfer_task(
         .await
         .map_err(|e| e.to_string());
 
+    // In --inplace mode the download writes directly to the final path, so a failed
+    // transfer can leave a truncated file behind. When --partial is disabled, match
+    // the single-file commands and remove that partial artifact.
+    if result.is_err() && cli.inplace && !cli.partial {
+        let _ = std::fs::remove_file(&local_path);
+    }
+
     // Account transferred bytes
     if result.is_ok() {
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
@@ -2497,6 +2641,12 @@ async fn upload_transfer_task(
     let (mut provider, _) = create_and_connect(url, cli, format)
         .await
         .map_err(|code| format!("connection failed with exit code {}", code))?;
+
+    // --immutable: skip if remote file already exists (never overwrite)
+    if cli.immutable && provider.stat(&remote_path).await.is_ok() {
+        let _ = provider.disconnect().await;
+        return Err(format!("skipped (already exists, --immutable): {}", remote_path));
+    }
 
     if let Some(parent) = Path::new(&remote_path).parent() {
         let _ = provider.mkdir(&parent.to_string_lossy()).await;
@@ -7850,6 +8000,19 @@ async fn cmd_get(
     } else {
         filename
     };
+    // --immutable: skip if local file already exists
+    if cli.immutable && Path::new(local_path).exists() {
+        let _ = provider.disconnect().await;
+        let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+        if !quiet {
+            eprintln!("Skipped: {} (already exists, --immutable)", local_path);
+        }
+        if let OutputFormat::Json = format {
+            print_json(&serde_json::json!({"status": "skipped", "reason": "already_exists", "path": local_path}));
+        }
+        return 9;
+    }
+
     let start = Instant::now();
 
     // Get file size for progress bar
@@ -8393,6 +8556,8 @@ async fn cmd_get_recursive(
     };
 
     let remote_dir = &resolve_cli_remote_path(&initial_path, remote_dir);
+    let files_from_set = load_files_from(cli);
+    let scan_max_depth = cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize;
     let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
     let mut files: Vec<(String, String, u64)> = Vec::new();
     let mut dirs: Vec<String> = Vec::new();
@@ -8401,9 +8566,9 @@ async fn cmd_get_recursive(
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
-        if depth >= MAX_SCAN_DEPTH {
+        if depth >= scan_max_depth {
             if !quiet {
-                eprintln!("Warning: max depth {} reached at {}", MAX_SCAN_DEPTH, dir);
+                eprintln!("Warning: max depth {} reached at {}", scan_max_depth, dir);
             }
             continue;
         }
@@ -8431,8 +8596,21 @@ async fn cmd_get_recursive(
                         let Some(relative) = validate_relative_path(relative) else {
                             continue;
                         };
+                        // --files-from: skip files not in the list
+                        if let Some(ref set) = files_from_set {
+                            if !set.contains(relative) {
+                                continue;
+                            }
+                        }
                         let local_path_buf = Path::new(local_base).join(relative);
                         if verify_path_within_root(&local_path_buf, Path::new(local_base)).is_ok() {
+                            // --immutable: skip if local file already exists
+                            if cli.immutable && local_path_buf.exists() {
+                                if !quiet {
+                                    eprintln!("Skipping (immutable): {}", relative);
+                                }
+                                continue;
+                            }
                             files.push((
                                 e.path,
                                 local_path_buf.to_string_lossy().to_string(),
@@ -8767,14 +8945,15 @@ async fn cmd_put(
     let resolved_remote = resolve_cli_remote_path(&initial_path, &effective_remote);
     let remote_path = resolved_remote.as_str();
 
-    // --no-clobber: skip upload if remote file already exists
-    if no_clobber {
+    // --immutable / --no-clobber: skip upload if remote file already exists
+    if no_clobber || cli.immutable {
         match provider.stat(remote_path).await {
             Ok(_) => {
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
-                            eprintln!("Skipped: {} (already exists, --no-clobber)", remote_path);
+                            let flag_name = if cli.immutable { "--immutable" } else { "--no-clobber" };
+                            eprintln!("Skipped: {} (already exists, {})", remote_path, flag_name);
                         }
                     }
                     OutputFormat::Json => {
@@ -8907,9 +9086,11 @@ async fn cmd_put_recursive(
     // Walk local directory (bounded: max 100 levels deep, 500K entries)
     const MAX_SCAN_DEPTH_PUT: usize = 100;
     const MAX_SCAN_ENTRIES_PUT: usize = 500_000;
+    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH_PUT);
+    let files_from_set = load_files_from(cli);
     let walker = walkdir::WalkDir::new(local_dir)
         .follow_links(false)
-        .max_depth(MAX_SCAN_DEPTH_PUT);
+        .max_depth(scan_depth);
     let mut files: Vec<(String, String, u64)> = Vec::new(); // (local, remote, size)
     let mut dirs: Vec<String> = Vec::new();
 
@@ -8943,6 +9124,12 @@ async fn cmd_put_recursive(
         if entry.file_type().is_dir() {
             dirs.push(remote_path);
         } else if entry.file_type().is_file() {
+            // --files-from: skip files not in the list
+            if let Some(ref set) = files_from_set {
+                if !set.contains(relative_str.as_str()) {
+                    continue;
+                }
+            }
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             files.push((
                 entry.path().to_string_lossy().to_string(),
@@ -9038,10 +9225,14 @@ async fn cmd_put_recursive(
     }
 
     let mut uploaded: u32 = 0;
+    let mut skipped: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
     for result in results {
         match result {
             Ok(_) => uploaded += 1,
+            Err(ref err) if err.contains("--immutable") => {
+                skipped += 1;
+            }
             Err(err) => errors.push(err),
         }
     }
@@ -9052,11 +9243,16 @@ async fn cmd_put_recursive(
         OutputFormat::Text => {
             if !cli.quiet {
                 println!(
-                    "\nUploaded {}/{} files ({}) in {:.1}s",
+                    "\nUploaded {}/{} files ({}) in {:.1}s{}",
                     uploaded,
                     total_files,
                     format_size(total_bytes),
-                    elapsed.as_secs_f64()
+                    elapsed.as_secs_f64(),
+                    if skipped > 0 {
+                        format!(" ({} skipped, --immutable)", skipped)
+                    } else {
+                        String::new()
+                    }
                 );
                 for err in &errors {
                     eprintln!("  Error: {}", err);
@@ -9065,18 +9261,26 @@ async fn cmd_put_recursive(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if errors.is_empty() {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
-                skipped: 0,
+                skipped,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
             });
         }
     }
-    if uploaded == total_files as u32 {
-        0
+    if uploaded + skipped == total_files as u32 {
+        if skipped > 0 && uploaded == 0 {
+            9
+        } else {
+            0
+        }
     } else {
         4
     }
@@ -10325,8 +10529,9 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
             let mut found = Vec::new();
             let mut scanned: usize = 0;
 
+            let find_max_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
             while let Some((dir, depth)) = queue.pop() {
-                if depth >= MAX_SCAN_DEPTH {
+                if depth >= find_max_depth {
                     continue;
                 }
                 if let Ok(entries) = provider.list(&dir).await {
@@ -10675,6 +10880,172 @@ async fn cmd_speed(
     0
 }
 
+async fn cmd_cleanup(
+    url: &str,
+    path: &str,
+    force: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let path = &resolve_cli_remote_path(&initial_path, path);
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+
+    if !quiet {
+        eprintln!("Scanning {} for orphaned .aerotmp files...", path);
+    }
+
+    // BFS scan for .aerotmp files
+    let mut orphans: Vec<(String, u64)> = Vec::new();
+    let mut dirs = vec![path.to_string()];
+    let max_entries = 100_000usize;
+    let mut scan_errors = 0u32;
+    let mut delete_errors = 0u32;
+    let mut exit_code = 0i32;
+
+    while let Some(dir) = dirs.pop() {
+        if orphans.len() >= max_entries {
+            break;
+        }
+        match provider.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    if entry.is_dir {
+                        dirs.push(entry.path.clone());
+                    } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
+                        orphans.push((entry.path.clone(), entry.size));
+                    }
+                }
+            }
+            Err(e) => {
+                scan_errors += 1;
+                if exit_code == 0 {
+                    exit_code = provider_error_to_exit_code(&e);
+                }
+                if !quiet {
+                    eprintln!("  Failed to list {}: {}", dir, e);
+                }
+                continue;
+            }
+        }
+    }
+
+    if orphans.is_empty() {
+        if !quiet {
+            if scan_errors == 0 {
+                eprintln!("No orphaned .aerotmp files found.");
+            } else {
+                eprintln!(
+                    "No orphaned .aerotmp files found, but scan completed with {} error(s).",
+                    scan_errors
+                );
+            }
+        }
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({
+                "status": if scan_errors == 0 { "ok" } else { "partial" },
+                "cleaned": 0,
+                "bytes_freed": 0,
+                "scan_errors": scan_errors,
+                "delete_errors": 0,
+            }));
+        }
+        let _ = provider.disconnect().await;
+        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
+    }
+
+    let total_bytes: u64 = orphans.iter().map(|(_, s)| *s).sum();
+
+    if !force {
+        // Dry run (default)
+        match format {
+            OutputFormat::Text => {
+                eprintln!(
+                    "\nFound {} orphaned file(s), {} total:",
+                    orphans.len(),
+                    format_size(total_bytes)
+                );
+                for (p, s) in &orphans {
+                    eprintln!("  {} ({})", p, format_size(*s));
+                }
+                eprintln!("\nUse --force to delete these files.");
+            }
+            OutputFormat::Json => {
+                let files: Vec<serde_json::Value> = orphans
+                    .iter()
+                    .map(|(p, s)| serde_json::json!({"path": p, "size": s}))
+                    .collect();
+                print_json(&serde_json::json!({
+                    "status": if scan_errors == 0 { "dry_run" } else { "partial" },
+                    "dry_run": true,
+                    "orphans": orphans.len(),
+                    "bytes": total_bytes,
+                    "scan_errors": scan_errors,
+                    "delete_errors": 0,
+                    "files": files,
+                }));
+            }
+        }
+        let _ = provider.disconnect().await;
+        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
+    }
+
+    // Force: delete orphans
+    let mut cleaned = 0u32;
+    let mut bytes_freed = 0u64;
+    for (p, s) in &orphans {
+        match provider.delete(p).await {
+            Ok(()) => {
+                cleaned += 1;
+                bytes_freed += s;
+                if !quiet {
+                    eprintln!("  Deleted {} ({})", p, format_size(*s));
+                }
+            }
+            Err(e) => {
+                delete_errors += 1;
+                if exit_code == 0 {
+                    exit_code = provider_error_to_exit_code(&e);
+                }
+                eprintln!("  Failed to delete {}: {}", p, e);
+            }
+        }
+    }
+
+    let had_partial_errors = scan_errors > 0 || delete_errors > 0;
+
+    match format {
+        OutputFormat::Text => {
+            eprintln!(
+                "\nCleaned {} file(s), {} freed.",
+                cleaned,
+                format_size(bytes_freed)
+            );
+            if had_partial_errors {
+                eprintln!(
+                    "Completed with {} scan error(s) and {} delete error(s).",
+                    scan_errors, delete_errors
+                );
+            }
+        }
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "status": if had_partial_errors { "partial" } else { "ok" },
+                "cleaned": cleaned,
+                "bytes_freed": bytes_freed,
+                "scan_errors": scan_errors,
+                "delete_errors": delete_errors,
+            }));
+        }
+    }
+
+    let _ = provider.disconnect().await;
+    if had_partial_errors { exit_code.max(4) } else { 0 }
+}
+
 async fn cmd_dedupe(
     url: &str,
     path: &str,
@@ -10689,15 +11060,31 @@ async fn cmd_dedupe(
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
 
+    // For interactive mode, check TTY availability — fallback to skip if not a terminal
+    let effective_mode = if mode == "interactive" {
+        if std::io::stdin().is_terminal() {
+            "interactive"
+        } else {
+            eprintln!("Warning: --mode interactive requires a TTY; falling back to skip");
+            "skip"
+        }
+    } else {
+        mode
+    };
+
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
         eprintln!("Scanning {} for duplicates...", path);
     }
 
-    // BFS scan to collect all files with sizes
-    let mut files: Vec<(String, u64)> = Vec::new();
+    // BFS scan to collect all files with sizes and mtime
+    let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs = vec![path.to_string()];
     let max_entries = 100_000usize;
+    let mut scan_errors = 0u32;
+    let mut hash_errors = 0u32;
+    let mut action_errors = 0u32;
+    let mut exit_code = 0i32;
 
     while let Some(dir) = dirs.pop() {
         if files.len() >= max_entries {
@@ -10709,11 +11096,20 @@ async fn cmd_dedupe(
                     if entry.is_dir {
                         dirs.push(entry.path.clone());
                     } else {
-                        files.push((entry.path.clone(), entry.size));
+                        files.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
             }
-            Err(_) => continue,
+            Err(e) => {
+                scan_errors += 1;
+                if exit_code == 0 {
+                    exit_code = provider_error_to_exit_code(&e);
+                }
+                if !quiet {
+                    eprintln!("  Failed to list {}: {}", dir, e);
+                }
+                continue;
+            }
         }
     }
 
@@ -10722,30 +11118,47 @@ async fn cmd_dedupe(
     }
 
     // Group by size (fast pre-filter)
-    let mut size_groups: std::collections::HashMap<u64, Vec<String>> =
+    let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
         std::collections::HashMap::new();
-    for (path, size) in &files {
+    for (path, size, mtime) in &files {
         if *size > 0 {
-            // Skip empty files
-            size_groups.entry(*size).or_default().push(path.clone());
+            size_groups
+                .entry(*size)
+                .or_default()
+                .push((path.clone(), mtime.clone()));
         }
     }
 
     // Filter to groups with >1 file (potential duplicates)
-    let candidate_groups: Vec<(u64, Vec<String>)> = size_groups
+    #[allow(clippy::type_complexity)]
+    let candidate_groups: Vec<(u64, Vec<(String, Option<String>)>)> = size_groups
         .into_iter()
         .filter(|(_, paths)| paths.len() > 1)
         .collect();
 
     if candidate_groups.is_empty() {
         if !quiet {
-            eprintln!("No potential duplicates found.");
+            if scan_errors == 0 {
+                eprintln!("No potential duplicates found.");
+            } else {
+                eprintln!(
+                    "No potential duplicates found, but scan completed with {} error(s).",
+                    scan_errors
+                );
+            }
         }
         if matches!(format, OutputFormat::Json) {
-            print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
+            print_json(&serde_json::json!({
+                "status": if scan_errors == 0 { "ok" } else { "partial" },
+                "groups": 0,
+                "duplicates": 0,
+                "scan_errors": scan_errors,
+                "hash_errors": 0,
+                "action_errors": 0,
+            }));
         }
         let _ = provider.disconnect().await;
-        return 0;
+        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
     }
 
     if !quiet {
@@ -10756,21 +11169,34 @@ async fn cmd_dedupe(
     }
 
     // Hash files within each group to confirm duplicates
-    let mut duplicate_groups: Vec<Vec<String>> = Vec::new();
+    // Each entry: (path, size, mtime)
+    let mut duplicate_groups: Vec<Vec<(String, u64, Option<String>)>> = Vec::new();
     let mut total_duplicates = 0u32;
     let mut wasted_bytes = 0u64;
 
-    for (size, paths) in &candidate_groups {
-        let mut hash_map: std::collections::HashMap<String, Vec<String>> =
+    for (size, paths_with_mtime) in &candidate_groups {
+        let mut hash_map: std::collections::HashMap<String, Vec<(String, u64, Option<String>)>> =
             std::collections::HashMap::new();
-        for p in paths {
+        for (p, mtime) in paths_with_mtime {
             match provider.download_to_bytes(p).await {
                 Ok(data) => {
                     use sha2::Digest;
                     let hash = format!("{:x}", sha2::Sha256::digest(&data));
-                    hash_map.entry(hash).or_default().push(p.clone());
+                    hash_map
+                        .entry(hash)
+                        .or_default()
+                        .push((p.clone(), *size, mtime.clone()));
                 }
-                Err(_) => continue,
+                Err(e) => {
+                    hash_errors += 1;
+                    if exit_code == 0 {
+                        exit_code = provider_error_to_exit_code(&e);
+                    }
+                    if !quiet {
+                        eprintln!("  Failed to hash {}: {}", p, e);
+                    }
+                    continue;
+                }
             }
         }
         for (_, group) in hash_map {
@@ -10785,16 +11211,42 @@ async fn cmd_dedupe(
 
     if duplicate_groups.is_empty() {
         if !quiet {
-            eprintln!("No duplicates found (same size but different content).");
+            if scan_errors == 0 && hash_errors == 0 {
+                eprintln!("No duplicates found (same size but different content).");
+            } else {
+                eprintln!(
+                    "No duplicates found, but scan/hash completed with {} scan error(s) and {} hash error(s).",
+                    scan_errors, hash_errors
+                );
+            }
         }
         if matches!(format, OutputFormat::Json) {
-            print_json(&serde_json::json!({"status": "ok", "groups": 0, "duplicates": 0}));
+            print_json(&serde_json::json!({
+                "status": if scan_errors == 0 && hash_errors == 0 { "ok" } else { "partial" },
+                "groups": 0,
+                "duplicates": 0,
+                "scan_errors": scan_errors,
+                "hash_errors": hash_errors,
+                "action_errors": 0,
+            }));
         }
         let _ = provider.disconnect().await;
-        return 0;
+        return if scan_errors == 0 && hash_errors == 0 {
+            0
+        } else {
+            exit_code.max(4)
+        };
     }
 
-    // Report duplicates
+    // Sort each group to determine the "keeper" based on mode
+    for group in &mut duplicate_groups {
+        dedupe_sort_group(group, effective_mode);
+    }
+
+    let mut deleted = 0u32;
+    let mut renamed = 0u32;
+
+    // Report and act
     match format {
         OutputFormat::Text => {
             eprintln!(
@@ -10806,64 +11258,189 @@ async fn cmd_dedupe(
 
             for (i, group) in duplicate_groups.iter().enumerate() {
                 eprintln!("\n  Group {} ({} files):", i + 1, group.len());
-                for (j, p) in group.iter().enumerate() {
+                for (j, (p, sz, mtime)) in group.iter().enumerate() {
+                    let mtime_str = mtime.as_deref().unwrap_or("-");
                     let marker = if j == 0 {
                         "KEEP"
                     } else {
-                        match mode {
-                            "skip" => "DUPE",
+                        match effective_mode {
+                            "skip" | "list" => "DUPE",
+                            "rename" => "RENAME",
                             _ => "DELETE",
                         }
                     };
-                    eprintln!("    [{}] {}", marker, p);
+                    eprintln!("    [{}] {} ({}, {})", marker, p, format_size(*sz), mtime_str);
                 }
-            }
 
-            if !dry_run && mode != "skip" {
-                // Delete duplicates (keep first in each group)
-                let mut deleted = 0u32;
-                for group in &duplicate_groups {
-                    for p in group.iter().skip(1) {
-                        match provider.delete(p).await {
+                // Interactive mode: ask the user which file to keep
+                if effective_mode == "interactive" && !dry_run {
+                    eprint!("  Keep which? (1-{}, s=skip, a=all): ", group.len());
+                    let mut input = String::new();
+                    if std::io::stdin().read_line(&mut input).is_ok() {
+                        let choice = input.trim();
+                        if choice == "s" {
+                            continue;
+                        }
+                        if choice == "a" {
+                            continue;
+                        }
+                        if let Ok(idx) = choice.parse::<usize>() {
+                            if idx >= 1 && idx <= group.len() {
+                                let keep_idx = idx - 1;
+                                for (j, (p, _, _)) in group.iter().enumerate() {
+                                    if j != keep_idx {
+                                        match provider.delete(p).await {
+                                            Ok(()) => deleted += 1,
+                                            Err(e) => {
+                                                action_errors += 1;
+                                                if exit_code == 0 {
+                                                    exit_code = provider_error_to_exit_code(&e);
+                                                }
+                                                eprintln!("  Failed to delete {}: {}", p, e);
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                eprintln!("  Invalid choice, skipping group");
+                            }
+                        } else {
+                            eprintln!("  Invalid input, skipping group");
+                        }
+                    }
+                    continue;
+                }
+
+                if dry_run || effective_mode == "skip" || effective_mode == "list" {
+                    continue;
+                }
+
+                // Rename mode: rename duplicates with numeric suffix
+                if effective_mode == "rename" {
+                    for (j, (p, _, _)) in group.iter().enumerate() {
+                        if j == 0 {
+                            continue; // keep the first
+                        }
+                        let renamed_path = dedupe_rename_path(p, j);
+                        match provider.rename(p, &renamed_path).await {
                             Ok(()) => {
-                                deleted += 1;
+                                renamed += 1;
+                                if !quiet {
+                                    eprintln!("  Renamed {} -> {}", p, renamed_path);
+                                }
                             }
                             Err(e) => {
-                                eprintln!("  Failed to delete {}: {}", p, e);
+                                action_errors += 1;
+                                if exit_code == 0 {
+                                    exit_code = provider_error_to_exit_code(&e);
+                                }
+                                eprintln!("  Failed to rename {}: {}", p, e);
                             }
                         }
                     }
+                    continue;
                 }
+
+                // Delete mode (delete, newest, oldest, largest, smallest):
+                // group is already sorted so index 0 is the keeper
+                for (p, _, _) in group.iter().skip(1) {
+                    match provider.delete(p).await {
+                        Ok(()) => deleted += 1,
+                        Err(e) => {
+                            action_errors += 1;
+                            if exit_code == 0 {
+                                exit_code = provider_error_to_exit_code(&e);
+                            }
+                            eprintln!("  Failed to delete {}: {}", p, e);
+                        }
+                    }
+                }
+            }
+
+            if dry_run {
+                eprintln!("\n(dry run - no changes made)");
+            } else if deleted > 0 {
                 eprintln!("\nDeleted {} duplicate file(s).", deleted);
-            } else if dry_run {
-                eprintln!("\n(dry run - no files deleted)");
+            }
+            if renamed > 0 {
+                eprintln!("Renamed {} duplicate file(s).", renamed);
+            }
+            if scan_errors > 0 || hash_errors > 0 || action_errors > 0 {
+                eprintln!(
+                    "Completed with {} scan error(s), {} hash error(s), and {} action error(s).",
+                    scan_errors, hash_errors, action_errors
+                );
             }
         }
         OutputFormat::Json => {
             let groups_json: Vec<serde_json::Value> = duplicate_groups
                 .iter()
                 .map(|g| {
+                    let files: Vec<&str> = g.iter().map(|(p, _, _)| p.as_str()).collect();
                     serde_json::json!({
-                        "files": g,
-                        "keep": g[0],
-                        "duplicates": &g[1..],
+                        "files": files,
+                        "keep": g[0].0,
+                        "duplicates": files[1..],
                     })
                 })
                 .collect();
+            let had_partial_errors = scan_errors > 0 || hash_errors > 0 || action_errors > 0;
             print_json(&serde_json::json!({
-                "status": "ok",
+                "status": if had_partial_errors { "partial" } else { "ok" },
                 "groups": duplicate_groups.len(),
                 "duplicates": total_duplicates,
                 "wasted_bytes": wasted_bytes,
-                "mode": mode,
+                "mode": effective_mode,
                 "dry_run": dry_run,
+                "deleted": deleted,
+                "renamed": renamed,
+                "scan_errors": scan_errors,
+                "hash_errors": hash_errors,
+                "action_errors": action_errors,
                 "details": groups_json,
             }));
         }
     }
 
     let _ = provider.disconnect().await;
-    0
+    if scan_errors > 0 || hash_errors > 0 || action_errors > 0 {
+        exit_code.max(4)
+    } else {
+        0
+    }
+}
+
+/// Sort a dedupe group so index 0 is the file to keep, based on mode.
+fn dedupe_sort_group(group: &mut [(String, u64, Option<String>)], mode: &str) {
+    match mode {
+        "newest" => {
+            group.sort_by(|a, b| compare_mtime(b.2.as_deref(), a.2.as_deref()));
+        }
+        "oldest" => {
+            group.sort_by(|a, b| compare_mtime(a.2.as_deref(), b.2.as_deref()));
+        }
+        "largest" => {
+            group.sort_by(|a, b| b.1.cmp(&a.1));
+        }
+        "smallest" => {
+            group.sort_by(|a, b| a.1.cmp(&b.1));
+        }
+        _ => {} // skip, delete, list, interactive, rename: keep original order (first = keeper)
+    }
+}
+
+/// Generate a renamed path for a dedupe duplicate.
+/// "dir/file.txt" with index 1 -> "dir/file-1.txt"
+/// "dir/file" with index 2 -> "dir/file-2"
+fn dedupe_rename_path(path: &str, index: usize) -> String {
+    if let Some(dot_pos) = path.rfind('.') {
+        // Check the dot is in the filename, not a directory separator
+        let slash_pos = path.rfind('/').unwrap_or(0);
+        if dot_pos > slash_pos {
+            return format!("{}-{}{}", &path[..dot_pos], index, &path[dot_pos..]);
+        }
+    }
+    format!("{}-{}", path, index)
 }
 
 // ── Bisync Snapshot ───────────────────────────────────────────────
@@ -10937,6 +11514,36 @@ fn parse_mtime_secs(s: &str) -> Option<i64> {
 
 /// Compare two mtime strings (ISO 8601). Returns Ordering.
 /// Parses timestamps to handle timezone differences (e.g., "T10:30:00" vs "T10:30:00Z").
+/// Resolve a default mtime value from the --default-time flag.
+/// Returns the parsed default time string, or None if not set/invalid.
+fn resolve_default_time(cli: &Cli) -> Option<String> {
+    cli.default_time.as_ref().map(|dt| {
+        if dt == "now" {
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+        } else {
+            // Try RFC 3339 / ISO 8601 with timezone (e.g. 2026-04-16T12:30:00Z, 2026-04-16T12:30:00+02:00)
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(dt) {
+                return parsed.with_timezone(&chrono::Utc).format("%Y-%m-%dT%H:%M:%S").to_string();
+            }
+            // Try naive datetime (YYYY-MM-DDTHH:MM:SS)
+            if chrono::NaiveDateTime::parse_from_str(dt, "%Y-%m-%dT%H:%M:%S").is_ok() {
+                return dt.clone();
+            }
+            // Try date-only (YYYY-MM-DD) → normalize to T00:00:00
+            if chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d").is_ok() {
+                return format!("{}T00:00:00", dt);
+            }
+            eprintln!("Error: --default-time '{}' is not a valid ISO 8601 timestamp (expected YYYY-MM-DDTHH:MM:SS, YYYY-MM-DD, or RFC 3339 with timezone)", dt);
+            std::process::exit(5);
+        }
+    })
+}
+
+/// Apply --default-time: replace None mtime with the configured default.
+fn apply_default_time<'a>(mtime: Option<&'a str>, default: Option<&'a str>) -> Option<&'a str> {
+    mtime.or(default)
+}
+
 fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
     match (a, b) {
         (Some(a), Some(b)) => {
@@ -10952,7 +11559,7 @@ fn compare_mtime(a: Option<&str>, b: Option<&str>) -> std::cmp::Ordering {
 }
 
 /// Resolve a conflict between local and remote file for --direction both.
-/// Returns: "upload" (local wins), "download" (remote wins), or "skip".
+/// Returns: "upload" (local wins), "download" (remote wins), "rename" (keep both), or "skip".
 fn resolve_conflict(
     conflict_mode: &str,
     local_size: u64,
@@ -10961,7 +11568,7 @@ fn resolve_conflict(
     remote_mtime: Option<&str>,
 ) -> &'static str {
     match conflict_mode {
-        "newer" => match compare_mtime(local_mtime, remote_mtime) {
+        "newer" | "newest" => match compare_mtime(local_mtime, remote_mtime) {
             std::cmp::Ordering::Greater => "upload",
             std::cmp::Ordering::Less => "download",
             std::cmp::Ordering::Equal => {
@@ -10975,7 +11582,7 @@ fn resolve_conflict(
                 }
             }
         },
-        "older" => match compare_mtime(local_mtime, remote_mtime) {
+        "older" | "oldest" => match compare_mtime(local_mtime, remote_mtime) {
             std::cmp::Ordering::Less => "upload",
             std::cmp::Ordering::Greater => "download",
             std::cmp::Ordering::Equal => {
@@ -10988,7 +11595,7 @@ fn resolve_conflict(
                 }
             }
         },
-        "larger" => {
+        "larger" | "largest" => {
             if local_size > remote_size {
                 "upload"
             } else if remote_size > local_size {
@@ -10997,7 +11604,7 @@ fn resolve_conflict(
                 "skip"
             }
         }
-        "smaller" => {
+        "smaller" | "smallest" => {
             if local_size < remote_size {
                 "upload"
             } else if remote_size < local_size {
@@ -11006,16 +11613,66 @@ fn resolve_conflict(
                 "skip"
             }
         }
+        "rename" => "rename",
         _ => "skip", // "skip" or unknown
     }
 }
 
+fn partition_conflict_rename_downloads<'a>(
+    to_download: Vec<&'a str>,
+    to_conflict_upload: &[(String, String)],
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    let conflict_paths: std::collections::HashSet<&str> = to_conflict_upload
+        .iter()
+        .map(|(orig_path, _)| orig_path.as_str())
+        .collect();
+
+    let mut normal_downloads = Vec::new();
+    let mut gated_conflict_downloads = Vec::new();
+
+    for path in to_download {
+        if conflict_paths.contains(path) {
+            gated_conflict_downloads.push(path);
+        } else {
+            normal_downloads.push(path);
+        }
+    }
+
+    (normal_downloads, gated_conflict_downloads)
+}
+
 /// Backup a file before overwriting (if --backup-dir is set).
-fn backup_file(source_path: &str, backup_dir: &str, backup_suffix: &str, relative_path: &str) {
+fn backup_file(
+    source_path: &str,
+    backup_dir: &str,
+    backup_suffix: &str,
+    relative_path: &str,
+    suffix_keep_extension: bool,
+) {
     if backup_dir.is_empty() {
         return;
     }
-    let dest = Path::new(backup_dir).join(format!("{}{}", relative_path, backup_suffix));
+    let backup_name = if suffix_keep_extension && !backup_suffix.is_empty() {
+        // Insert suffix before extension: "file.txt" + ".bak" -> "file.bak.txt"
+        if let Some(dot_pos) = relative_path.rfind('.') {
+            let slash_pos = relative_path.rfind('/').unwrap_or(0);
+            if dot_pos > slash_pos {
+                format!(
+                    "{}{}{}",
+                    &relative_path[..dot_pos],
+                    backup_suffix,
+                    &relative_path[dot_pos..]
+                )
+            } else {
+                format!("{}{}", relative_path, backup_suffix)
+            }
+        } else {
+            format!("{}{}", relative_path, backup_suffix)
+        }
+    } else {
+        format!("{}{}", relative_path, backup_suffix)
+    };
+    let dest = Path::new(backup_dir).join(backup_name);
     if let Some(parent) = dest.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -11037,15 +11694,19 @@ async fn cmd_sync(
     max_delete: Option<&str>,
     backup_dir: Option<&str>,
     backup_suffix: &str,
+    suffix_keep_extension: bool,
+    compare_dest: Option<&str>,
+    copy_dest: Option<&str>,
     conflict_mode: &str,
     resync: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
-) -> i32 {
+    precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
+) -> SyncCycleStats {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return code.into(),
     };
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
@@ -11053,7 +11714,11 @@ async fn cmd_sync(
     let start = Instant::now();
 
     if !quiet {
-        eprintln!("Scanning local: {}", local);
+        if precomputed_local.is_some() {
+            eprintln!("Scanning local: {} (incremental)", local);
+        } else {
+            eprintln!("Scanning local: {}", local);
+        }
         eprintln!("Scanning remote: {}", remote);
     }
 
@@ -11063,11 +11728,17 @@ async fn cmd_sync(
         .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
         .collect();
 
-    // Scan local files (bounded: max 100 levels, 500K entries)
-    let local_entries: Vec<(String, u64, Option<String>)> = {
+    let files_from_set = load_files_from(cli);
+    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
+
+    // Scan local files (bounded: max depth, 500K entries)
+    // If precomputed_local is provided (incremental watch mode), skip walkdir entirely.
+    let local_entries: Vec<(String, u64, Option<String>)> = if let Some(pre) = precomputed_local {
+        pre
+    } else {
         let walker = walkdir::WalkDir::new(local)
             .follow_links(false)
-            .max_depth(100);
+            .max_depth(scan_depth);
         let mut entries = Vec::new();
         for entry in walker {
             if entries.len() >= 500_000 {
@@ -11102,6 +11773,12 @@ async fn cmd_sync(
             {
                 continue;
             }
+            // --files-from filter
+            if let Some(ref set) = files_from_set {
+                if !set.contains(relative.as_str()) {
+                    continue;
+                }
+            }
 
             let meta = entry.metadata().ok();
             let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -11116,15 +11793,100 @@ async fn cmd_sync(
         entries
     };
 
+    // SAFETY: --no-check-dest + --delete is a dangerous combination that would delete all
+    // files on the destination since the remote listing is empty. Reject explicitly.
+    if cli.no_check_dest && delete {
+        print_error(format, "--no-check-dest cannot be used with --delete (would mark all destination files as orphans for deletion)", 5);
+        return 5.into();
+    }
+    // SAFETY: --immutable + --no-check-dest cannot work together: immutable needs the remote
+    // listing to detect existing files, but --no-check-dest skips it entirely.
+    if cli.immutable && cli.no_check_dest {
+        print_error(format, "--immutable cannot be used with --no-check-dest (immutable needs remote listing to detect existing files)", 5);
+        return 5.into();
+    }
+
     // Scan remote files (recursive, depth and entry limited)
+    // --no-check-dest: skip remote listing entirely (assume dest is empty)
     let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
-    {
+    if cli.no_check_dest {
+        if !quiet {
+            eprintln!("Note: --no-check-dest skipping remote scan (assuming empty destination)");
+        }
+    } else {
+        // Try --fast-list first (S3 only), then fall back to BFS
+        let mut used_fast_list = false;
+        if cli.fast_list {
+            if let Some(s3) = provider.as_any_mut().downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>() {
+                if !quiet {
+                    eprintln!("Using --fast-list (S3 recursive listing)...");
+                }
+                match s3.list_recursive(remote).await {
+                    Ok(entries) => {
+                        let max_depth = cli.max_depth.map(|d| d as usize);
+                        for e in entries {
+                            if e.is_dir {
+                                continue;
+                            }
+                            // Cap entries like BFS path
+                            if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                                if !quiet {
+                                    eprintln!("Warning: --fast-list capped at {} entries", MAX_SCAN_ENTRIES);
+                                }
+                                break;
+                            }
+                            let relative = e
+                                .path
+                                .strip_prefix(remote)
+                                .unwrap_or(&e.path)
+                                .trim_start_matches('/')
+                                .to_string();
+                            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                                continue;
+                            }
+                            // Respect --max-depth by counting path separators
+                            if let Some(max_d) = max_depth {
+                                let depth = relative.matches('/').count();
+                                if depth >= max_d {
+                                    continue;
+                                }
+                            }
+                            if exclude_matchers
+                                .iter()
+                                .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                            {
+                                continue;
+                            }
+                            if let Some(ref set) = files_from_set {
+                                if !set.contains(relative.as_str()) {
+                                    continue;
+                                }
+                            }
+                            remote_entries.push((relative, e.size, e.modified));
+                        }
+                        used_fast_list = true;
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("Warning: --fast-list failed, falling back to BFS scan: {}", e);
+                        }
+                        // used_fast_list stays false → BFS will execute below
+                    }
+                }
+            } else if !quiet {
+                eprintln!("Note: --fast-list only supported for S3; using standard scan");
+            }
+        }
+
+        // BFS fallback (also the default when --fast-list is not used)
+        if !used_fast_list {
+        let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
         let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
         while let Some((dir, depth)) = queue.pop() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
-            if depth >= MAX_SCAN_DEPTH {
+            if depth >= remote_scan_depth {
                 if !quiet {
                     eprintln!("Warning: max scan depth reached at {}", dir);
                 }
@@ -11168,7 +11930,8 @@ async fn cmd_sync(
                 }
             }
         }
-    }
+    } // end if !used_fast_list
+    } // end if !no_check_dest
 
     // Build comparison maps
     let local_map: HashMap<&str, (u64, Option<&str>)> = local_entries
@@ -11190,21 +11953,28 @@ async fn cmd_sync(
         None
     };
 
+    let default_time_val = resolve_default_time(cli);
+    let default_time_ref = default_time_val.as_deref();
+
     let mut to_upload: Vec<&str> = Vec::new();
     let mut to_download: Vec<&str> = Vec::new();
     let mut to_delete_remote: Vec<&str> = Vec::new();
     let mut to_delete_local: Vec<&str> = Vec::new();
+    // Conflict renames: (original_relative_path, conflict_suffixed_remote_path)
+    let mut to_conflict_upload: Vec<(String, String)> = Vec::new();
     let mut conflicts_resolved: u32 = 0;
     let mut skipped: u32 = 0;
 
     if direction == "upload" || direction == "both" {
         for (path, (size, mtime)) in &local_map {
             if let Some((rsize, rmtime)) = remote_map.get(path) {
-                if size == rsize && compare_mtime(*mtime, *rmtime) == std::cmp::Ordering::Equal {
+                let lm = apply_default_time(*mtime, default_time_ref);
+                let rm = apply_default_time(*rmtime, default_time_ref);
+                if size == rsize && compare_mtime(lm, rm) == std::cmp::Ordering::Equal {
                     skipped += 1;
                 } else if direction == "both" {
                     // Conflict: file exists on both sides with different content
-                    let action = resolve_conflict(conflict_mode, *size, *mtime, *rsize, *rmtime);
+                    let action = resolve_conflict(conflict_mode, *size, lm, *rsize, rm);
                     match action {
                         "upload" => {
                             to_upload.push(path);
@@ -11212,6 +11982,18 @@ async fn cmd_sync(
                         }
                         "download" => {
                             to_download.push(path);
+                            conflicts_resolved += 1;
+                        }
+                        "rename" => {
+                            // Keep both: download remote version, upload local with conflict suffix
+                            to_download.push(path);
+                            let ts = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3f");
+                            let conflict_path = if let Some(dot_pos) = path.rfind('.') {
+                                format!("{}.conflict-{}{}", &path[..dot_pos], ts, &path[dot_pos..])
+                            } else {
+                                format!("{}.conflict-{}", path, ts)
+                            };
+                            to_conflict_upload.push((path.to_string(), conflict_path));
                             conflicts_resolved += 1;
                         }
                         _ => {
@@ -11249,7 +12031,9 @@ async fn cmd_sync(
     if direction == "download" || direction == "both" {
         for (path, (size, mtime)) in &remote_map {
             if let Some((lsize, lmtime)) = local_map.get(path) {
-                if size == lsize && compare_mtime(*mtime, *lmtime) == std::cmp::Ordering::Equal {
+                let rm = apply_default_time(*mtime, default_time_ref);
+                let lm = apply_default_time(*lmtime, default_time_ref);
+                if size == lsize && compare_mtime(rm, lm) == std::cmp::Ordering::Equal {
                     if direction == "download" {
                         skipped += 1;
                     }
@@ -11356,6 +12140,88 @@ async fn cmd_sync(
         }
     }
 
+    // --immutable: remove uploads that would overwrite existing remote files
+    if cli.immutable {
+        let before = to_upload.len();
+        to_upload.retain(|path| !remote_map.contains_key(path));
+        let removed = before - to_upload.len();
+        if removed > 0 && !quiet {
+            eprintln!("Note: --immutable skipped {} file(s) that already exist on remote", removed);
+        }
+        // Also prevent downloads that would overwrite local files
+        let before_dl = to_download.len();
+        to_download.retain(|path| !local_map.contains_key(path));
+        let removed_dl = before_dl - to_download.len();
+        if removed_dl > 0 && !quiet {
+            eprintln!("Note: --immutable skipped {} download(s) that already exist locally", removed_dl);
+        }
+    }
+
+    // --compare-dest: skip uploads where file exists in compare dir with same size+mtime
+    let mut copy_dest_ops: Vec<(String, String)> = Vec::new(); // (compare_src, local_dest)
+    if let Some(cdir) = compare_dest.or(copy_dest) {
+        // Validate compare/copy-dest path exists and canonicalize
+        let cdir_canonical = match std::fs::canonicalize(cdir) {
+            Ok(p) => p,
+            Err(e) => {
+                if !quiet {
+                    eprintln!("Warning: --compare-dest/--copy-dest '{}' not accessible: {}. Skipping.", cdir, e);
+                }
+                Path::new(cdir).to_path_buf()
+            }
+        };
+        let cdir_ref = cdir_canonical.to_str().unwrap_or(cdir);
+        let is_copy = copy_dest.is_some();
+        let before = to_upload.len();
+        let mut retained = Vec::new();
+        for path in &to_upload {
+            let compare_file = Path::new(cdir_ref).join(path);
+            // Path traversal check: ensure resolved path stays within compare-dest
+            if let Ok(resolved) = compare_file.canonicalize() {
+                if !resolved.starts_with(&cdir_canonical) {
+                    if !quiet {
+                        eprintln!("Warning: path traversal blocked for compare-dest: {}", path);
+                    }
+                    retained.push(*path);
+                    continue;
+                }
+            }
+            if let Ok(meta) = std::fs::metadata(&compare_file) {
+                let csize = meta.len();
+                let cmtime = meta.modified().ok().map(|t| {
+                    let dt: chrono::DateTime<chrono::Utc> = t.into();
+                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+                });
+                if let Some((lsize, lmtime)) = local_map.get(path) {
+                    let lm = apply_default_time(*lmtime, default_time_ref);
+                    if csize == *lsize
+                        && compare_mtime(cmtime.as_deref(), lm) == std::cmp::Ordering::Equal
+                    {
+                        if is_copy {
+                            // Copy from compare-dest to local instead of downloading
+                            let local_dest =
+                                Path::new(local).join(path).to_string_lossy().to_string();
+                            copy_dest_ops
+                                .push((compare_file.to_string_lossy().to_string(), local_dest));
+                        }
+                        // Skip upload either way
+                        continue;
+                    }
+                }
+            }
+            retained.push(*path);
+        }
+        to_upload = retained;
+        let removed = before - to_upload.len();
+        if removed > 0 && !quiet {
+            let label = if is_copy { "--copy-dest" } else { "--compare-dest" };
+            eprintln!(
+                "Note: {} skipped {} upload(s) matched in {}",
+                label, removed, cdir
+            );
+        }
+    }
+
     if !quiet {
         let conflict_info = if conflicts_resolved > 0 {
             format!(
@@ -11366,11 +12232,12 @@ async fn cmd_sync(
             String::new()
         };
         eprintln!(
-            "\nSync plan: {} upload, {} download, {} delete, {} rename, {} skipped{}",
+            "\nSync plan: {} upload, {} download, {} delete, {} rename, {} conflict-rename, {} skipped{}",
             to_upload.len(),
             to_download.len(),
             to_delete_remote.len() + to_delete_local.len(),
             renames.len(),
+            to_conflict_upload.len(),
             skipped,
             conflict_info
         );
@@ -11393,7 +12260,7 @@ async fn cmd_sync(
             );
             print_error(format, &msg, 4);
             let _ = provider.disconnect().await;
-            return 4;
+            return 4.into();
         }
     }
 
@@ -11412,6 +12279,9 @@ async fn cmd_sync(
                 for p in &to_delete_local {
                     println!("  DELETE (local)  {}", p);
                 }
+                for (orig, conflict) in &to_conflict_upload {
+                    println!("  CONFLICT-RENAME  {} -> {}", orig, conflict);
+                }
                 println!("\n(dry run - no changes made)");
             }
             OutputFormat::Json => {
@@ -11427,7 +12297,26 @@ async fn cmd_sync(
             }
         }
         let _ = provider.disconnect().await;
-        return 0;
+        return SyncCycleStats {
+            exit_code: 0,
+            uploaded: to_upload.len() as u32,
+            downloaded: to_download.len() as u32,
+            deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
+            skipped,
+            error_count: 0,
+        };
+    }
+
+    // Execute --copy-dest local copies first
+    for (src, dst) in &copy_dest_ops {
+        if let Some(parent) = Path::new(dst).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::copy(src, dst) {
+            eprintln!("  copy-dest {} -> {}: {}", src, dst, e);
+        } else if !quiet {
+            eprintln!("  COPY-DEST  {}", dst);
+        }
     }
 
     // Execute sync transfers
@@ -11447,27 +12336,11 @@ async fn cmd_sync(
         })
         .collect();
 
-    let mut download_jobs: Vec<(String, String, String, u64)> = Vec::new();
-    for path in &to_download {
-        if validate_relative_path(path).is_none() {
-            errors.push(format!(
-                "download {}: unsafe path (traversal rejected)",
-                path
-            ));
-            continue;
-        }
-        let relative = (*path).to_string();
-        let local_path = Path::new(local).join(path).to_string_lossy().to_string();
-        let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
-        let size = remote_map.get(*path).map(|(size, _)| *size).unwrap_or(0);
-        download_jobs.push((relative, local_path, remote_path, size));
-    }
-
-    let total_transfer_files = upload_jobs.len() + download_jobs.len();
+    let total_transfer_files = upload_jobs.len() + to_download.len();
     let total_transfer_bytes: u64 = upload_jobs.iter().map(|(_, _, _, size)| *size).sum::<u64>()
-        + download_jobs
+        + to_download
             .iter()
-            .map(|(_, _, _, size)| *size)
+            .map(|path| remote_map.get(*path).map(|(size, _)| *size).unwrap_or(0))
             .sum::<u64>();
 
     if !quiet && total_transfer_files > 0 {
@@ -11543,6 +12416,64 @@ async fn cmd_sync(
             Ok(_) => uploaded += 1,
             Err(err) => errors.push(err),
         }
+    }
+
+    let (normal_download_paths, gated_conflict_download_paths) =
+        partition_conflict_rename_downloads(to_download.clone(), &to_conflict_upload);
+
+    // Execute conflict renames first: preserve the local version remotely before
+    // downloading the remote canonical version over the local path.
+    let mut conflict_uploaded = 0u32;
+    let mut preserved_conflict_downloads: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for (orig_path, conflict_path) in &to_conflict_upload {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+        let local_path = Path::new(local).join(orig_path).to_string_lossy().to_string();
+        let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
+        match upload_transfer_task(
+            url,
+            local_path,
+            remote_conflict,
+            cli,
+            format,
+            None,
+            None,
+            resolve_max_transfer(cli),
+        )
+        .await
+        {
+            Ok(()) => {
+                conflict_uploaded += 1;
+                preserved_conflict_downloads.insert(orig_path.clone());
+                if !quiet {
+                    eprintln!("  CONFLICT-RENAME  {} -> {}", orig_path, conflict_path);
+                }
+            }
+            Err(e) => errors.push(format!("conflict-rename {}: {}", orig_path, e)),
+        }
+    }
+
+    let mut download_jobs: Vec<(String, String, String, u64)> = Vec::new();
+    for path in normal_download_paths
+        .into_iter()
+        .chain(gated_conflict_download_paths.into_iter().filter(|path| {
+            preserved_conflict_downloads.contains(*path)
+        }))
+    {
+        if validate_relative_path(path).is_none() {
+            errors.push(format!(
+                "download {}: unsafe path (traversal rejected)",
+                path
+            ));
+            continue;
+        }
+        let relative = path.to_string();
+        let local_path = Path::new(local).join(path).to_string_lossy().to_string();
+        let remote_path = format!("{}/{}", remote.trim_end_matches('/'), path);
+        let size = remote_map.get(path).map(|(size, _)| *size).unwrap_or(0);
+        download_jobs.push((relative, local_path, remote_path, size));
     }
 
     let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
@@ -11645,7 +12576,7 @@ async fn cmd_sync(
         let local_path = format!("{}/{}", local, path);
         // Backup before delete (if --backup-dir set)
         if let Some(bdir) = backup_dir {
-            backup_file(&local_path, bdir, backup_suffix, path);
+            backup_file(&local_path, bdir, backup_suffix, path, suffix_keep_extension);
         }
         match std::fs::remove_file(&local_path) {
             Ok(()) => deleted += 1,
@@ -11670,11 +12601,12 @@ async fn cmd_sync(
         OutputFormat::Text => {
             if !cli.quiet {
                 println!(
-                    "\nSync complete: {} uploaded, {} downloaded, {} deleted, {} renamed in {:.1}s",
+                    "\nSync complete: {} uploaded, {} downloaded, {} deleted, {} renamed, {} conflict-renamed in {:.1}s",
                     uploaded,
                     downloaded,
                     deleted,
                     renamed,
+                    conflict_uploaded,
                     elapsed.as_secs_f64()
                 );
                 for err in &errors {
@@ -11696,10 +12628,13 @@ async fn cmd_sync(
     }
 
     let _ = provider.disconnect().await;
-    if errors.is_empty() {
-        0
-    } else {
-        4
+    SyncCycleStats {
+        exit_code: if errors.is_empty() { 0 } else { 4 },
+        uploaded,
+        downloaded,
+        deleted,
+        skipped,
+        error_count: errors.len() as u32,
     }
 }
 
@@ -14970,6 +15905,510 @@ async fn cmd_put_glob(
     }
 }
 
+// ---------------------------------------------------------------------------
+// sync --watch: continuous sync with filesystem watcher
+// ---------------------------------------------------------------------------
+
+/// Returns true if a path should be excluded from watcher events (temp files, VCS dirs, OS metadata).
+fn should_exclude_watch_path(path: &std::path::Path) -> bool {
+    let name = match path.file_name().and_then(|n| n.to_str()) {
+        Some(n) => n,
+        None => return false,
+    };
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    // OS metadata
+    if matches!(
+        name,
+        ".DS_Store" | "Thumbs.db" | "desktop.ini" | ".directory"
+    ) {
+        return true;
+    }
+    // VCS / heavy dirs (will never be a leaf event worth syncing)
+    if matches!(name, ".git" | ".svn" | ".hg" | "node_modules" | "__pycache__") {
+        return true;
+    }
+    // Temp/editor artifacts by extension
+    if matches!(
+        ext,
+        "swp" | "swo" | "swx" | "tmp" | "temp" | "bak" | "crdownload" | "part"
+    ) {
+        return true;
+    }
+    // Temp artifacts by name pattern
+    if name.starts_with('~')
+        || name.starts_with(".#")
+        || name.ends_with('~')
+        || name.ends_with(".aerotmp")
+    {
+        return true;
+    }
+    // Vim swap: .filename.swp (already caught by ext, but be safe for .swpx etc.)
+    if name.starts_with('.') && name.ends_with(".swp") {
+        return true;
+    }
+    false
+}
+
+/// Build a local entry list incrementally: refresh metadata only for watcher-reported paths,
+/// and merge with the previous full snapshot for everything else.
+/// This avoids a full walkdir when only a few files changed.
+fn incremental_local_scan(
+    base: &std::path::Path,
+    changed_paths: &[std::path::PathBuf],
+    previous_entries: &std::collections::HashMap<String, (u64, Option<String>)>,
+    exclude_matchers: &[globset::GlobMatcher],
+) -> Vec<(String, u64, Option<String>)> {
+    let mut result: std::collections::HashMap<String, (u64, Option<String>)> =
+        previous_entries.clone();
+
+    for changed in changed_paths {
+        // Compute relative path
+        let relative = match changed.strip_prefix(base) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => continue,
+        };
+        if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+            continue;
+        }
+        // Check excludes
+        let fname = changed
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(&relative) || m.is_match(fname))
+        {
+            result.remove(&relative);
+            continue;
+        }
+        // Read current metadata — if file was deleted, remove from snapshot
+        match std::fs::metadata(changed) {
+            Ok(meta) if meta.is_file() => {
+                let size = meta.len();
+                let mtime = meta.modified().ok().map(|t| {
+                    let dt: chrono::DateTime<chrono::Utc> = t.into();
+                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+                });
+                result.insert(relative, (size, mtime));
+            }
+            _ => {
+                // File deleted or not a regular file
+                result.remove(&relative);
+            }
+        }
+    }
+
+    result
+        .into_iter()
+        .map(|(path, (size, mtime))| (path, size, mtime))
+        .collect()
+}
+
+/// Start a filesystem watcher and return a boxed handle (dropped to stop).
+/// Filtered, debounced paths are sent on `tx`.
+fn start_watch_watcher(
+    watch_path: &std::path::Path,
+    mode: &str,
+    debounce_ms: u64,
+    tx: std::sync::mpsc::Sender<Vec<std::path::PathBuf>>,
+) -> Result<Box<dyn std::any::Any + Send>, String> {
+    let debounce_dur = std::time::Duration::from_millis(debounce_ms);
+    match mode {
+        "poll" => {
+            use notify::PollWatcher;
+            let config = notify::Config::default()
+                .with_poll_interval(std::time::Duration::from_secs(5));
+            let watcher = PollWatcher::new(
+                move |res: Result<notify::Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        let paths: Vec<_> = event
+                            .paths
+                            .into_iter()
+                            .filter(|p| !should_exclude_watch_path(p))
+                            .collect();
+                        if !paths.is_empty() {
+                            let _ = tx.send(paths);
+                        }
+                    }
+                },
+                config,
+            )
+            .map_err(|e| format!("Failed to create poll watcher: {}", e))?;
+            // PollWatcher with notify 8 doesn't need explicit watch call for config,
+            // but we do need to add the path:
+            let mut w = watcher;
+            notify::Watcher::watch(&mut w, watch_path, notify::RecursiveMode::Recursive)
+                .map_err(|e| format!("Failed to watch path: {}", e))?;
+            Ok(Box::new(w))
+        }
+        _ => {
+            // native or auto — use debounced watcher
+            use notify_debouncer_full::new_debouncer;
+
+            let (dtx, drx) = std::sync::mpsc::channel();
+            let mut debouncer = new_debouncer(debounce_dur, None, dtx)
+                .map_err(|e| format!("Failed to create watcher: {}", e))?;
+            debouncer
+                .watch(watch_path, notify::RecursiveMode::Recursive)
+                .map_err(|e| format!("Failed to watch path: {}", e))?;
+
+            // Spawn thread to drain debouncer events and forward filtered paths
+            std::thread::spawn(move || {
+                while let Ok(result) = drx.recv() {
+                    if let Ok(events) = result {
+                        let mut all_paths = Vec::new();
+                        for event in &events {
+                            for p in &event.paths {
+                                if !should_exclude_watch_path(p) && !all_paths.contains(p) {
+                                    all_paths.push(p.clone());
+                                }
+                            }
+                        }
+                        if !all_paths.is_empty() && tx.send(all_paths).is_err() {
+                            break; // receiver dropped
+                        }
+                    }
+                }
+            });
+
+            Ok(Box::new(debouncer))
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_sync_watch(
+    url: &str,
+    local: &str,
+    remote: &str,
+    direction: &str,
+    dry_run: bool,
+    delete: bool,
+    exclude: &[String],
+    track_renames: bool,
+    max_delete: Option<&str>,
+    backup_dir: Option<&str>,
+    backup_suffix: &str,
+    suffix_keep_extension: bool,
+    compare_dest: Option<&str>,
+    copy_dest: Option<&str>,
+    conflict_mode: &str,
+    resync: bool,
+    watch_mode: &str,
+    watch_debounce_ms: u64,
+    watch_cooldown: u64,
+    watch_rescan: u64,
+    watch_no_initial: bool,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> i32 {
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let local_path = std::path::Path::new(local);
+    if !local_path.is_dir() {
+        if matches!(format, OutputFormat::Json) {
+            print_json(&serde_json::json!({"error": "Local path is not a directory", "path": local}));
+        } else {
+            eprintln!("Error: local path is not a directory: {}", local);
+        }
+        return 5;
+    }
+
+    // Start filesystem watcher
+    let (std_tx, std_rx) = std::sync::mpsc::channel::<Vec<std::path::PathBuf>>();
+    let _watcher_handle = match start_watch_watcher(local_path, watch_mode, watch_debounce_ms, std_tx) {
+        Ok(h) => h,
+        Err(e) => {
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({"error": format!("Failed to start watcher: {}", e)}));
+            } else {
+                eprintln!("Error: failed to start filesystem watcher: {}", e);
+            }
+            return 5;
+        }
+    };
+
+    // Bridge std mpsc to tokio mpsc so we can use tokio::select!
+    let (async_tx, mut async_rx) = tokio::sync::mpsc::channel::<Vec<std::path::PathBuf>>(64);
+    std::thread::spawn(move || {
+        while let Ok(paths) = std_rx.recv() {
+            if async_tx.blocking_send(paths).is_err() {
+                break;
+            }
+        }
+    });
+
+    if !quiet {
+        eprintln!(
+            "Watching {} -> {} (direction: {}, cooldown: {}s, rescan: {}s)",
+            local,
+            if url == "_" { "(profile)" } else { url },
+            direction,
+            watch_cooldown,
+            watch_rescan,
+        );
+    }
+
+    let syncing = Arc::new(AtomicBool::new(false));
+    let mut cycle_count: u64 = 0;
+    let cooldown_dur = std::time::Duration::from_secs(watch_cooldown);
+    let rescan_dur = if watch_rescan > 0 {
+        std::time::Duration::from_secs(watch_rescan)
+    } else {
+        std::time::Duration::from_secs(86400) // effectively disabled
+    };
+    let mut shutdown_tick = tokio::time::interval(std::time::Duration::from_millis(200));
+    shutdown_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    shutdown_tick.tick().await;
+    let mut rescan_tick = tokio::time::interval(rescan_dur);
+    rescan_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    rescan_tick.tick().await;
+    let mut last_sync_completed = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(watch_cooldown + 1))
+        .unwrap_or_else(std::time::Instant::now);
+
+    // Helper macro to run one sync cycle.
+    // Usage: run_sync_cycle!("trigger")            — full walkdir scan (None)
+    //        run_sync_cycle!("trigger", entries)    — incremental (Some(entries))
+    macro_rules! run_sync_cycle {
+        ($trigger:expr) => {
+            run_sync_cycle!($trigger, None)
+        };
+        ($trigger:expr, $precomputed:expr) => {{
+            cycle_count += 1;
+            let cycle = cycle_count;
+            let trigger_label: &str = $trigger;
+            syncing.store(true, Ordering::SeqCst);
+            let cycle_start = std::time::Instant::now();
+
+            let stats: SyncCycleStats = cmd_sync(
+                url,
+                local,
+                remote,
+                direction,
+                dry_run,
+                delete,
+                exclude,
+                track_renames,
+                max_delete,
+                backup_dir,
+                backup_suffix,
+                suffix_keep_extension,
+                compare_dest,
+                copy_dest,
+                conflict_mode,
+                resync && cycle == 1, // resync only on first cycle
+                cli,
+                format,
+                cancelled.clone(),
+                $precomputed,
+            )
+            .await;
+
+            syncing.store(false, Ordering::SeqCst);
+            last_sync_completed = std::time::Instant::now();
+            let elapsed = cycle_start.elapsed();
+            let total_changes = stats.uploaded + stats.downloaded + stats.deleted;
+
+            // Emit cycle status with detailed stats
+            if matches!(format, OutputFormat::Json) {
+                let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                print_json(&serde_json::json!({
+                    "cycle": cycle,
+                    "trigger": trigger_label,
+                    "exit_code": stats.exit_code,
+                    "uploaded": stats.uploaded,
+                    "downloaded": stats.downloaded,
+                    "deleted": stats.deleted,
+                    "skipped": stats.skipped,
+                    "errors": stats.error_count,
+                    "elapsed_secs": (elapsed.as_millis() as f64) / 1000.0,
+                    "timestamp": ts,
+                }));
+            } else if !quiet {
+                let ts = chrono::Local::now().format("%H:%M:%S");
+                if total_changes == 0 && stats.error_count == 0 {
+                    eprintln!(
+                        "[{}] Sync #{} ({}) -- no changes ({}s)",
+                        ts, cycle, trigger_label,
+                        format!("{:.1}", elapsed.as_secs_f64()),
+                    );
+                } else {
+                    eprintln!(
+                        "[{}] Sync #{} ({}) -- {} up, {} down, {} del{} ({}s)",
+                        ts, cycle, trigger_label,
+                        stats.uploaded, stats.downloaded, stats.deleted,
+                        if stats.error_count > 0 {
+                            format!(", {} errors", stats.error_count)
+                        } else {
+                            String::new()
+                        },
+                        format!("{:.1}", elapsed.as_secs_f64()),
+                    );
+                }
+            }
+
+            // Drain any watcher events accumulated during the sync
+            while async_rx.try_recv().is_ok() {}
+
+            stats.exit_code
+        }};
+    }
+
+    // Pre-compile exclude matchers for incremental scan
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    // Incremental scan is only safe when:
+    // - direction is not download-only (local scan is irrelevant)
+    // - track_renames is off (needs full file set for hash matching)
+    let use_incremental = direction != "download" && !track_renames;
+
+    // Local snapshot: populated after each full scan for incremental merging
+    let mut local_snapshot: std::collections::HashMap<String, (u64, Option<String>)> =
+        std::collections::HashMap::new();
+
+    // Helper: build snapshot from a full local walkdir scan
+    let build_snapshot = |local_dir: &str| -> std::collections::HashMap<String, (u64, Option<String>)> {
+        let mut snap = std::collections::HashMap::new();
+        let walker = walkdir::WalkDir::new(local_dir)
+            .follow_links(false)
+            .max_depth(100);
+        for entry in walker {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let relative = match entry.path().strip_prefix(local_dir) {
+                Ok(r) => r.to_string_lossy().replace('\\', "/"),
+                Err(_) => continue,
+            };
+            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                continue;
+            }
+            if let Ok(meta) = entry.metadata() {
+                let size = meta.len();
+                let mtime = meta.modified().ok().map(|t| {
+                    let dt: chrono::DateTime<chrono::Utc> = t.into();
+                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+                });
+                snap.insert(relative, (size, mtime));
+            }
+        }
+        snap
+    };
+
+    // Initial sync
+    if !watch_no_initial {
+        let code = run_sync_cycle!("initial");
+        if cancelled.load(Ordering::SeqCst) {
+            return code;
+        }
+    }
+
+    // Build initial snapshot after first sync (or immediately if --watch-no-initial)
+    if use_incremental {
+        local_snapshot = build_snapshot(local);
+    }
+
+    // Watch loop
+    loop {
+        tokio::select! {
+            biased; // prioritize ctrl_c
+
+            _ = shutdown_tick.tick() => {
+                if cancelled.load(Ordering::SeqCst) {
+                    if syncing.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    if !quiet {
+                        eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
+                    }
+                    return 0;
+                }
+            }
+
+            Some(changed_paths) = async_rx.recv() => {
+                // Suppress if sync in progress
+                if syncing.load(Ordering::SeqCst) {
+                    while async_rx.try_recv().is_ok() {}
+                    continue;
+                }
+                // Cooldown check
+                if last_sync_completed.elapsed() < cooldown_dur {
+                    while async_rx.try_recv().is_ok() {}
+                    continue;
+                }
+                let path_count = changed_paths.len();
+                let trigger = format!("watcher: {} paths", path_count);
+
+                if use_incremental {
+                    let entries = incremental_local_scan(
+                        local_path,
+                        &changed_paths,
+                        &local_snapshot,
+                        &exclude_matchers,
+                    );
+                    // Update snapshot with changes
+                    for (ref rel, size, ref mtime) in &entries {
+                        local_snapshot.insert(rel.clone(), (*size, mtime.clone()));
+                    }
+                    // Remove deleted files from snapshot
+                    for p in &changed_paths {
+                        if let Ok(rel) = p.strip_prefix(local_path) {
+                            let rel_str = rel.to_string_lossy().replace('\\', "/");
+                            if !entries.iter().any(|(r, _, _)| r == &rel_str) {
+                                local_snapshot.remove(&rel_str);
+                            }
+                        }
+                    }
+                    run_sync_cycle!(trigger.as_str(), Some(entries));
+                    if cancelled.load(Ordering::SeqCst) {
+                        if !quiet {
+                            eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
+                        }
+                        return 0;
+                    }
+                } else {
+                    run_sync_cycle!(trigger.as_str());
+                    if cancelled.load(Ordering::SeqCst) {
+                        if !quiet {
+                            eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
+                        }
+                        return 0;
+                    }
+                }
+            }
+
+            _ = rescan_tick.tick() => {
+                if syncing.load(Ordering::SeqCst) {
+                    continue;
+                }
+                run_sync_cycle!("rescan");
+                // Rebuild snapshot after full rescan
+                if use_incremental {
+                    local_snapshot = build_snapshot(local);
+                }
+                if cancelled.load(Ordering::SeqCst) {
+                    if !quiet {
+                        eprintln!("\nWatch mode stopped. {} sync cycles completed.", cycle_count);
+                    }
+                    return 0;
+                }
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_sync_doctor(
     url: &str,
@@ -16918,13 +18357,18 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     None,
                     None,
                     "",
+                    false,
+                    None,
+                    None,
                     "newer",
                     false,
                     cli,
                     format,
                     cancelled.clone(),
+                    None,
                 )
-                .await;
+                .await
+                .exit_code;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -20195,6 +21639,11 @@ async fn main() {
         cancelled_clone.store(true, Ordering::Relaxed);
     });
 
+    // Apply --inplace mode (skip .aerotmp temp files in downloads)
+    if cli.inplace {
+        ftp_client_gui_lib::providers::atomic_write::set_inplace_mode(true);
+    }
+
     maybe_check_for_updates(&cli).await;
 
     let exit_code = match &cli.command {
@@ -20657,20 +22106,25 @@ async fn main() {
             max_delete,
             backup_dir,
             backup_suffix,
+            suffix_keep_extension,
+            compare_dest,
+            copy_dest,
             conflict_mode,
             resync,
+            watch,
+            watch_mode,
+            watch_debounce_ms,
+            watch_cooldown,
+            watch_rescan,
+            watch_no_initial,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
                 (url.as_str(), local.as_str(), remote.as_str())
             };
-            let max_attempts = cli.retries.max(1);
-            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-            let max_transfer_limit = resolve_max_transfer(&cli);
-            let mut last_code = 0i32;
-            for attempt in 1..=max_attempts {
-                last_code = cmd_sync(
+            if *watch {
+                cmd_sync_watch(
                     u,
                     l,
                     r,
@@ -20682,30 +22136,69 @@ async fn main() {
                     max_delete.as_deref(),
                     backup_dir.as_deref(),
                     backup_suffix,
+                    *suffix_keep_extension,
+                    compare_dest.as_deref(),
+                    copy_dest.as_deref(),
                     conflict_mode,
                     *resync,
+                    watch_mode,
+                    *watch_debounce_ms,
+                    *watch_cooldown,
+                    *watch_rescan,
+                    *watch_no_initial,
                     &cli,
                     format,
                     cancelled.clone(),
                 )
-                .await;
-                if !is_retryable_exit(last_code)
-                    || session_transfer_exceeded(max_transfer_limit)
-                    || attempt == max_attempts
-                {
-                    break;
+                .await
+            } else {
+                let max_attempts = cli.retries.max(1);
+                let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+                let max_transfer_limit = resolve_max_transfer(&cli);
+                let mut last_code = 0i32;
+                for attempt in 1..=max_attempts {
+                    last_code = cmd_sync(
+                        u,
+                        l,
+                        r,
+                        direction,
+                        *dry_run,
+                        *delete,
+                        exclude,
+                        *track_renames,
+                        max_delete.as_deref(),
+                        backup_dir.as_deref(),
+                        backup_suffix,
+                        *suffix_keep_extension,
+                        compare_dest.as_deref(),
+                        copy_dest.as_deref(),
+                        conflict_mode,
+                        *resync,
+                        &cli,
+                        format,
+                        cancelled.clone(),
+                        None,
+                    )
+                    .await
+                    .exit_code;
+                    if !is_retryable_exit(last_code)
+                        || session_transfer_exceeded(max_transfer_limit)
+                        || attempt == max_attempts
+                    {
+                        break;
+                    }
+                    if !cli.quiet {
+                        eprintln!(
+                            "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                            attempt, max_attempts, last_code, sleep_dur
+                        );
+                    }
+                    if !sleep_dur.is_zero() {
+                        tokio::time::sleep(sleep_dur).await;
+                    }
                 }
-                if !cli.quiet {
-                    eprintln!(
-                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                        attempt, max_attempts, last_code, sleep_dur
-                    );
-                }
-                if !sleep_dur.is_zero() {
-                    tokio::time::sleep(sleep_dur).await;
-                }
+                last_code
             }
-            last_code
         }
         Commands::SyncDoctor {
             url,
@@ -20768,6 +22261,14 @@ async fn main() {
                 format,
             )
             .await
+        }
+        Commands::Cleanup { url, path, force } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_cleanup(u, p, *force, &cli, format).await
         }
         Commands::Dedupe {
             url,
@@ -21074,6 +22575,14 @@ mod tests {
             dump: Vec::new(),
             chunk_size: None,
             buffer_size: None,
+            default_time: None,
+            fast_list: false,
+            inplace: false,
+            files_from: None,
+            files_from_raw: None,
+            immutable: false,
+            no_check_dest: false,
+            max_depth: None,
             command: Commands::Profiles,
         }
     }
@@ -22019,5 +23528,176 @@ mod tests {
         assert!(parse_mtime_secs("not-a-date").is_none());
         assert!(parse_mtime_secs("?").is_none());
         assert!(parse_mtime_secs("").is_none());
+    }
+
+    #[test]
+    fn test_partition_conflict_rename_downloads_splits_conflicts() {
+        let to_download = vec!["same.txt", "remote-only.txt", "nested/file.bin"];
+        let to_conflict_upload = vec![
+            (
+                "same.txt".to_string(),
+                "same.conflict-20260416T120000000.txt".to_string(),
+            ),
+            (
+                "nested/file.bin".to_string(),
+                "nested/file.conflict-20260416T120000000.bin".to_string(),
+            ),
+        ];
+
+        let (normal, gated) =
+            partition_conflict_rename_downloads(to_download, &to_conflict_upload);
+
+        assert_eq!(normal, vec!["remote-only.txt"]);
+        assert_eq!(gated, vec!["same.txt", "nested/file.bin"]);
+    }
+
+    #[test]
+    fn test_partition_conflict_rename_downloads_no_conflicts() {
+        let to_download = vec!["a.txt", "b.txt"];
+        let to_conflict_upload = Vec::new();
+
+        let (normal, gated) =
+            partition_conflict_rename_downloads(to_download.clone(), &to_conflict_upload);
+
+        assert_eq!(normal, to_download);
+        assert!(gated.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // sync --watch tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_should_exclude_watch_path_os_metadata() {
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/.DS_Store")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/Thumbs.db")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/desktop.ini")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/.directory")));
+    }
+
+    #[test]
+    fn test_should_exclude_watch_path_vcs_dirs() {
+        assert!(should_exclude_watch_path(std::path::Path::new("/repo/.git")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/repo/.svn")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/repo/.hg")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/repo/node_modules")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/repo/__pycache__")));
+    }
+
+    #[test]
+    fn test_should_exclude_watch_path_temp_extensions() {
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.swp")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.swo")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.tmp")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.temp")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.bak")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.crdownload")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.part")));
+    }
+
+    #[test]
+    fn test_should_exclude_watch_path_temp_patterns() {
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/~tempfile")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/.#lock")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file~")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.aerotmp")));
+        assert!(should_exclude_watch_path(std::path::Path::new("/a/.file.swp")));
+    }
+
+    #[test]
+    fn test_should_exclude_watch_path_normal_files_pass() {
+        assert!(!should_exclude_watch_path(std::path::Path::new("/a/readme.md")));
+        assert!(!should_exclude_watch_path(std::path::Path::new("/a/src/main.rs")));
+        assert!(!should_exclude_watch_path(std::path::Path::new("/a/photo.jpg")));
+        assert!(!should_exclude_watch_path(std::path::Path::new("/a/data.csv")));
+        assert!(!should_exclude_watch_path(std::path::Path::new("/a/.gitignore")));
+    }
+
+    #[test]
+    fn test_incremental_local_scan_new_file() {
+        let dir = std::env::temp_dir().join("aeroftp_test_incr_new");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("hello.txt");
+        std::fs::write(&file, "hello world").unwrap();
+
+        let previous = std::collections::HashMap::new();
+        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &previous, &[]);
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, "hello.txt");
+        assert_eq!(result[0].1, 11); // "hello world" = 11 bytes
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_incremental_local_scan_deleted_file() {
+        let dir = std::env::temp_dir().join("aeroftp_test_incr_del");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let mut previous = std::collections::HashMap::new();
+        previous.insert("gone.txt".to_string(), (100u64, Some("2026-01-01T00:00:00".to_string())));
+
+        // File does not exist on disk
+        let ghost = dir.join("gone.txt");
+        let result = incremental_local_scan(&dir, &[ghost], &previous, &[]);
+
+        assert!(result.is_empty()); // deleted file removed from snapshot
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_incremental_local_scan_preserves_unchanged() {
+        let dir = std::env::temp_dir().join("aeroftp_test_incr_keep");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("changed.txt");
+        std::fs::write(&file, "new content").unwrap();
+
+        let mut previous = std::collections::HashMap::new();
+        previous.insert("existing.txt".to_string(), (50u64, Some("2026-01-01T00:00:00".to_string())));
+
+        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &previous, &[]);
+
+        // Should contain both: existing (from snapshot) + changed (from disk)
+        assert_eq!(result.len(), 2);
+        let names: Vec<&str> = result.iter().map(|(n, _, _)| n.as_str()).collect();
+        assert!(names.contains(&"existing.txt"));
+        assert!(names.contains(&"changed.txt"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_incremental_local_scan_respects_excludes() {
+        let dir = std::env::temp_dir().join("aeroftp_test_incr_excl");
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("debug.log");
+        std::fs::write(&file, "log data").unwrap();
+
+        let matcher = globset::Glob::new("*.log").unwrap().compile_matcher();
+        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &std::collections::HashMap::new(), &[matcher]);
+
+        assert!(result.is_empty()); // excluded by glob
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_sync_cycle_stats_from_i32() {
+        let stats: SyncCycleStats = 5.into();
+        assert_eq!(stats.exit_code, 5);
+        assert_eq!(stats.uploaded, 0);
+        assert_eq!(stats.downloaded, 0);
+        assert_eq!(stats.deleted, 0);
+        assert_eq!(stats.skipped, 0);
+        assert_eq!(stats.error_count, 0);
+    }
+
+    #[test]
+    fn test_sync_cycle_stats_default() {
+        let stats = SyncCycleStats::default();
+        assert_eq!(stats.exit_code, 0);
+        assert_eq!(stats.uploaded, 0);
     }
 }

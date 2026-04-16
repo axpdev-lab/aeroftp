@@ -584,6 +584,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     });
     const agentModeRef = useRef<AgentMode>(agentMode);
     useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
+    // Reset extreme mode when leaving Cyber theme
+    useEffect(() => {
+        if (appTheme !== 'cyber' && agentMode === 'extreme') {
+            setAgentMode('normal');
+            localStorage.setItem('aeroftp_ai_agent_mode', 'normal');
+        }
+    }, [appTheme]);
     const [showExtremeWarning, setShowExtremeWarning] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
 

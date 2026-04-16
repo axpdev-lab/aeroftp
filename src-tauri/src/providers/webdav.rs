@@ -869,10 +869,10 @@ impl WebDavProvider {
                                 continue;
                             }
 
-                            let path = if self.current_path.ends_with('/') {
-                                format!("{}{}", self.current_path, name)
+                            let path = if base_clean.is_empty() || base_clean == "/" {
+                                format!("/{}", name)
                             } else {
-                                format!("{}/{}", self.current_path, name)
+                                format!("{}/{}", base_clean, name)
                             };
 
                             let mime_type = if getcontenttype.is_empty() {

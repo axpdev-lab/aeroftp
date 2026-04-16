@@ -95,6 +95,11 @@ The `profiles --json` output:
 | `put glob` | `aeroftp-cli put --profile NAME "./*.json" /remote/` | Upload matching files |
 | `sync` | `aeroftp-cli sync --profile NAME ./local/ /remote/` | Bidirectional sync |
 | `sync --dry-run` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
+| `sync --immutable` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --immutable` | Never overwrite existing files |
+| `sync --files-from` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --files-from list.txt` | Transfer only listed files |
+| `sync --fast-list` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --fast-list` | S3 recursive listing (fewer API calls) |
+| `cleanup` | `aeroftp-cli cleanup --profile NAME /path/ [--force]` | Find/delete orphaned .aerotmp files |
+| `dedupe` | `aeroftp-cli dedupe --profile NAME /path/ --mode list` | Find duplicate files |
 | `transfer` | `aeroftp-cli transfer "SRC" "DST" /src /dst --recursive` | Cross-profile transfer between saved servers |
 | `transfer-doctor` | `aeroftp-cli transfer-doctor "SRC" "DST" /src /dst --json` | Preflight plan and risk summary |
 
@@ -164,18 +169,21 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 | 6 | Auth failed | Ask user to re-authorize |
 | 7 | Not supported | Use alternative approach |
 | 8 | Timeout | Retry with longer timeout |
+| 9 | Already exists | File exists (--immutable/--no-clobber) |
+| 10 | Server/parse error | Check server status |
+| 11 | I/O error | Check disk space/permissions |
 | 99 | Unknown | Report to user |
 
 ## Safety Guidelines
 
 ### Safe operations (no confirmation needed)
-- `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`
+- `ls`, `cat`, `stat`, `find`, `tree`, `df`, `profiles`, `connect`, `agent-info`, `cleanup` (dry-run), `dedupe --mode list`
 
 ### Operations that modify remote state (inform user before executing)
 - `put`, `mkdir`, `mv`, `sync`, `transfer`, `crypt put`, `crypt init`
 
 ### Destructive operations (always confirm with user first)
-- `rm`, `rm -rf`, `sync --delete`
+- `rm`, `rm -rf`, `sync --delete`, `cleanup --force`, `dedupe --mode newest/oldest/largest/smallest`
 
 ### Never do
 - Do not ask the user for passwords — use `--profile`

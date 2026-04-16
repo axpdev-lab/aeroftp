@@ -1056,10 +1056,40 @@ impl StorageProvider for AzureProvider {
         }
     }
 
-    async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
-        // Azure Blob Storage doesn't have real directories
-        // Virtual directories are created implicitly by blobs with "/" in names
-        Ok(())
+    async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Azure Blob Storage doesn't have real directories.
+        // Create a zero-byte marker blob with trailing "/" to preserve empty directories
+        // (same pattern as S3). The marker is visible in listing but ignored by most tools.
+        let blob_path = format!("{}/", self.resolve_blob_path(path).trim_end_matches('/'));
+        let url = self.blob_url(&blob_path);
+
+        let mut headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
+        headers.insert(CONTENT_LENGTH, HeaderValue::from(0u64));
+
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::PUT, &url, headers, 0, Some(Vec::new()))
+            .await?;
+
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 409 {
+            // 409 Conflict = already exists
+            Ok(())
+        } else {
+            Err(ProviderError::ServerError(format!(
+                "mkdir marker failed: {}",
+                status
+            )))
+        }
     }
 
     /// AZ-012: Delete with lease conflict detection.

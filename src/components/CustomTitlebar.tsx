@@ -46,6 +46,7 @@ interface TitlebarProps {
     onShowCyberTools: () => void;
     onShowVault: () => void;
     onShowAbout: () => void;
+    onShowMcp: () => void;
     onShowShortcuts: () => void;
     onShowDependencies: () => void;
     onShowProviders: () => void;
@@ -163,7 +164,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         appTheme, theme, setTheme,
         isConnected, onDisconnect, onShowConnectionScreen, showConnectionScreen,
         onOpenSettings, onShowSupport, onShowCyberTools, onShowVault,
-        onShowAbout, onShowShortcuts, onShowDependencies, onShowProviders,
+        onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
         masterPasswordSet, onLockApp, onSetupMasterPassword,
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
@@ -247,6 +248,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.checkForUpdates'), onClick: onCheckForUpdates },
         { separator: true },
         { label: t('menu.providers'), onClick: onShowProviders },
+        { label: t('menu.mcp'), onClick: onShowMcp },
         { separator: true },
         { label: t('menu.support'), onClick: onShowSupport },
         { label: t('menu.about'), onClick: onShowAbout },

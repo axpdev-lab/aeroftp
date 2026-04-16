@@ -2982,6 +2982,86 @@ impl S3Provider {
     }
 }
 
+// ── S3 fast-list (recursive listing without delimiter) ────────────────────
+
+impl S3Provider {
+    /// List all objects recursively under a prefix in a single API call sequence.
+    /// Uses ListObjectsV2 WITHOUT Delimiter, returning a flat list of all files.
+    /// Much faster than BFS directory-by-directory listing for large datasets
+    /// (reduces API calls from O(dirs) to O(files/1000)).
+    pub async fn list_recursive(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let prefix = if path.is_empty() || path == "/" || path == "." {
+            self.current_prefix.clone()
+        } else {
+            path.trim_matches('/').to_string()
+        };
+
+        let prefix_with_slash = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", prefix)
+        };
+
+        let mut all_entries = Vec::new();
+        let mut continuation_token: Option<String> = None;
+
+        loop {
+            // NO delimiter → recursive flat listing
+            let mut params: Vec<(&str, &str)> =
+                vec![("list-type", "2"), ("max-keys", "1000")];
+
+            if !prefix_with_slash.is_empty() {
+                params.push(("prefix", &prefix_with_slash));
+            }
+
+            let token_str: String;
+            if let Some(ref token) = continuation_token {
+                token_str = token.clone();
+                params.push(("continuation-token", &token_str));
+            }
+
+            let response = self
+                .s3_request(Method::GET, "", Some(&params), None)
+                .await?;
+
+            match response.status() {
+                StatusCode::OK => {
+                    let xml = response
+                        .text()
+                        .await
+                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+                    let (entries, next_token) = self.parse_list_response(&xml)?;
+                    all_entries.extend(entries);
+
+                    if let Some(token) = next_token {
+                        continuation_token = Some(token);
+                    } else {
+                        break;
+                    }
+                }
+                status => {
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(ProviderError::ServerError(format!(
+                        "List recursive failed ({}): {}",
+                        status,
+                        sanitize_api_error(&body)
+                    )));
+                }
+            }
+        }
+
+        Ok(all_entries)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

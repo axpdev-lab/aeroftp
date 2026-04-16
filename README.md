@@ -288,7 +288,7 @@ aeroftp-cli ncdu sftp://user@host /data                    # Interactive disk us
 aeroftp-cli daemon start                                   # Background job queue
 ```
 
-**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-8), `.aeroftp` batch scripts, `serve http/webdav/ftp/sftp`, MCP server mode, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
+**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp` batch scripts, `serve http/webdav/ftp/sftp`, MCP server mode, `cleanup`/`dedupe` commands, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
 ---
 

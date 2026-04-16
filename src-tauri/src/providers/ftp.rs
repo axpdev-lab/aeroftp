@@ -107,10 +107,10 @@ impl FtpProvider {
     }
 
     /// Parse FTP listing into RemoteEntry
-    fn parse_listing(&self, line: &str) -> Option<RemoteEntry> {
+    fn parse_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         // Try Unix format first, then DOS format
-        self.parse_unix_listing(line)
-            .or_else(|| self.parse_dos_listing(line))
+        self.parse_unix_listing(line, base_path)
+            .or_else(|| self.parse_dos_listing(line, base_path))
     }
 
     fn join_remote_path(base_path: &str, name: &str) -> String {
@@ -136,7 +136,7 @@ impl FtpProvider {
     }
 
     /// Parse Unix-style listing (ls -l format)
-    fn parse_unix_listing(&self, line: &str) -> Option<RemoteEntry> {
+    fn parse_unix_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 9 {
             return None;
@@ -168,11 +168,7 @@ impl FtpProvider {
             return None;
         }
 
-        let path = if self.current_path.ends_with('/') {
-            format!("{}{}", self.current_path, actual_name)
-        } else {
-            format!("{}/{}", self.current_path, actual_name)
-        };
+        let path = Self::join_remote_path(base_path, &actual_name);
 
         // Parse date (parts[5..8] typically contain month day time/year)
         let modified = if parts.len() >= 8 {
@@ -198,7 +194,7 @@ impl FtpProvider {
     }
 
     /// Parse DOS-style listing (Windows FTP servers)
-    fn parse_dos_listing(&self, line: &str) -> Option<RemoteEntry> {
+    fn parse_dos_listing(&self, line: &str, base_path: &str) -> Option<RemoteEntry> {
         // DOS format: 01-23-24  10:30AM       <DIR>          folder_name
         // Or:         01-23-24  10:30AM           12345      file.txt
 
@@ -220,11 +216,7 @@ impl FtpProvider {
             return None;
         }
 
-        let path = if self.current_path.ends_with('/') {
-            format!("{}{}", self.current_path, name)
-        } else {
-            format!("{}/{}", self.current_path, name)
-        };
+        let path = Self::join_remote_path(base_path, &name);
 
         let modified = Some(format!("{} {}", parts[0], parts[1]));
 
@@ -549,7 +541,7 @@ impl StorageProvider for FtpProvider {
 
         let entries: Vec<RemoteEntry> = lines
             .iter()
-            .filter_map(|line| self.parse_listing(line))
+            .filter_map(|line| self.parse_listing(line, &base_path))
             .collect();
 
         Ok(entries)
@@ -1305,7 +1297,7 @@ mod tests {
         });
 
         let line = "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects";
-        let entry = provider.parse_unix_listing(line).unwrap();
+        let entry = provider.parse_unix_listing(line, "/").unwrap();
 
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
@@ -1388,7 +1380,7 @@ mod tests {
         });
 
         let line = "01-20-26  10:00AM       <DIR>          Projects";
-        let entry = provider.parse_dos_listing(line).unwrap();
+        let entry = provider.parse_dos_listing(line, "/").unwrap();
 
         assert_eq!(entry.name, "Projects");
         assert!(entry.is_dir);

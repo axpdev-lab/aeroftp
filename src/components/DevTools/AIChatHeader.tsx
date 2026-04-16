@@ -71,7 +71,8 @@ const MODE_CONFIG: Record<AgentMode, {
     },
 };
 
-const MODES: AgentMode[] = ['safe', 'normal', 'expert', 'extreme'];
+const BASE_MODES: AgentMode[] = ['safe', 'normal', 'expert'];
+const ALL_MODES: AgentMode[] = ['safe', 'normal', 'expert', 'extreme'];
 
 export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
     showHistory, onToggleHistory, onNewChat,
@@ -174,16 +175,15 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
                     </button>
                     {showModeMenu && (
                         <div className={`absolute right-0 top-full mt-1 ${styles.dropdown} border rounded-lg z-30 py-1 min-w-[240px]`}>
-                            {MODES.map(mode => {
+                            {(appTheme === 'cyber' ? ALL_MODES : BASE_MODES).map(mode => {
                                 const cfg = MODE_CONFIG[mode];
                                 const Icon = cfg.icon;
                                 const isActive = mode === agentMode;
-                                const isLocked = mode === 'extreme' && appTheme !== 'cyber';
                                 return (
                                     <button
                                         key={mode}
                                         onClick={() => selectMode(mode)}
-                                        className={`w-full px-3 py-2.5 text-left text-xs ${styles.dropdownItem} flex items-start gap-2.5 transition-colors ${isActive ? cfg.bg : ''} ${isLocked ? 'opacity-50' : ''}`}
+                                        className={`w-full px-3 py-2.5 text-left text-xs ${styles.dropdownItem} flex items-start gap-2.5 transition-colors ${isActive ? cfg.bg : ''}`}
                                     >
                                         <div className={`mt-0.5 p-1 rounded ${isActive ? cfg.bg : ''}`}>
                                             <Icon size={13} className={isActive ? cfg.text : styles.dropdownItemText} />

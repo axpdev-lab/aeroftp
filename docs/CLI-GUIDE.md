@@ -442,7 +442,19 @@ aeroftp-cli dedupe --profile "server" /data --mode skip
 aeroftp-cli dedupe --profile "server" /data --dry-run --json
 ```
 
-Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest).
+Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest), `rename` (rename duplicates with numeric suffix), `interactive` (prompt per group), `list` (list without action).
+
+### cleanup -- Remove Orphaned Temp Files
+
+```bash
+# Dry-run: list orphaned .aerotmp files without deleting
+aeroftp-cli cleanup --profile "server" /remote/path/ --json
+
+# Delete orphaned temp files
+aeroftp-cli cleanup --profile "server" /remote/path/ --force
+```
+
+Scans a remote directory recursively for `.aerotmp` files left behind by interrupted downloads. Dry-run by default. Use `--force` to delete. JSON output includes `orphans`, `bytes`, and `bytes_freed`.
 
 ### sync — Synchronize Directories
 
@@ -494,6 +506,9 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode newer
 # Other modes: older, larger, smaller, skip
 aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode skip --dry-run
 
+# Rename mode: keep both versions (local uploaded as .conflict-{timestamp})
+aeroftp-cli sync --profile "server" ./local/ /remote/ --conflict-mode rename
+
 # Force full resync (ignore previous snapshot)
 aeroftp-cli sync --profile "server" ./local/ /remote/ --resync
 
@@ -502,6 +517,52 @@ aeroftp-cli sync --profile "server" ./local/ /remote/ --delete --backup-dir /tmp
 ```
 
 Bisync saves a `.aeroftp-bisync.json` snapshot after each successful sync. This enables delta detection: files deleted on one side are propagated to the other with `--delete`.
+
+#### Continuous Sync (Watch Mode)
+
+Watch a local directory for changes and re-sync automatically. Runs in the foreground, stopped with Ctrl+C.
+
+```bash
+# Watch and sync on changes (default: native watcher, 15s cooldown, 5min rescan)
+aeroftp-cli sync --profile "server" ./local/ /remote/ --watch
+
+# Upload-only watch
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --watch
+
+# Poll mode for network filesystems (NFS, SMB)
+aeroftp-cli sync sftp://user@host ./local/ /remote/ --watch --watch-mode poll
+
+# Custom cooldown and rescan interval
+aeroftp-cli sync --profile "server" ./local/ /remote/ --watch --watch-cooldown 30 --watch-rescan 600
+
+# Skip initial sync, only react to changes
+aeroftp-cli sync --profile "server" ./local/ /remote/ --watch --watch-no-initial
+
+# NDJSON output for monitoring pipelines
+aeroftp-cli sync --profile "server" ./local/ /remote/ --watch --json
+```
+
+Watch options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--watch` | false | Enable continuous sync |
+| `--watch-mode` | auto | Watcher backend: `auto`, `native`, `poll` |
+| `--watch-debounce-ms` | 1500 | Debounce window for filesystem events |
+| `--watch-cooldown` | 15 | Minimum seconds between consecutive syncs |
+| `--watch-rescan` | 300 | Full rescan interval in seconds (0 to disable) |
+| `--watch-no-initial` | false | Skip initial full sync on startup |
+
+Output per cycle (text mode on stderr):
+```
+[14:32:01] Sync #1 (initial) -- 12 up, 0 down, 0 del (3.2s)
+[14:35:18] Sync #2 (watcher: 2 paths) -- 2 up, 1 down, 0 del (0.8s)
+[14:37:01] Sync #3 (rescan) -- no changes (0.2s)
+```
+
+With `--json`, each cycle emits one NDJSON object on stdout with `cycle`, `trigger`, `uploaded`, `downloaded`, `deleted`, `skipped`, `errors`, `elapsed_secs`, and `timestamp` fields.
+
+Anti-loop protection: events are suppressed during active syncs and within the cooldown window. Editor temp files (`.swp`, `.tmp`, `~`, `.aerotmp`) are automatically filtered.
 
 ### transfer — Cross-Profile Transfer
 
@@ -770,6 +831,16 @@ Prints structured JSON describing safe/modify/destructive command groups, creden
 | `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried |
 | `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
+| `--files-from <file>` | Transfer only files listed in file (one per line, `#` comments). Works with get -r, put -r, sync |
+| `--files-from-raw <file>` | Like `--files-from` but preserves whitespace and empty lines |
+| `--immutable` | Never overwrite existing files on destination (append-only mode) |
+| `--no-check-dest` | Skip remote directory listing during sync (assume destination is empty) |
+| `--max-depth <n>` | Maximum recursion depth for ls -R, find, sync, get -r, put -r |
+| `--default-time <ts>` | Fallback mtime when backend returns None. Accepts ISO 8601, RFC 3339, or `now` |
+| `--fast-list` | S3 only: recursive listing in a single API call (fewer API calls for large buckets) |
+| `--inplace` | Write downloads directly to final path (no .aerotmp temp file) |
+| `--chunk-size <size>` | Override upload chunk size (e.g., `64M`). Min 5M for S3 multipart |
+| `--buffer-size <size>` | Override download buffer size (e.g., `256K`, `1M`) |
 | `--dump <kinds>` | Debug: `headers`, `bodies`, `auth` (comma-separated). Prints to stderr |
 
 ---
@@ -884,6 +955,9 @@ aeroftp-cli ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
 | 6 | Authentication failed |
 | 7 | Not supported |
 | 8 | Timeout |
+| 9 | Already exists / directory not empty (--immutable, --no-clobber) |
+| 10 | Server error / parse error |
+| 11 | I/O error |
 | 99 | Unknown error |
 
 ```bash

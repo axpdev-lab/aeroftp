@@ -1614,7 +1614,7 @@
       "password": "Master password",
       "processing": "Processing...",
       "setupDescription": "Protect your saved credentials",
-      "setupInfo": "Your credentials are already encrypted. The master password adds an extra layer of protection — you'll need to enter it when the app starts or after inactivity.",
+      "setupInfo": "Your credentials are already encrypted. The master password adds an extra layer of protection - you'll need to enter it when the app starts or after inactivity.",
       "setupTitle": "Set Master Password",
       "setupTooltip": "Set Master Password",
       "tooShort": "Password must be at least 8 characters",
@@ -1649,7 +1649,17 @@
       "checkForUpdates": "Check for Updates",
       "providers": "Providers",
       "website": "Website",
-      "documentation": "Documentation"
+      "documentation": "Documentation",
+      "mcp": "MCP Server..."
+    },
+    "mcp": {
+      "title": "MCP Server",
+      "description": "Connect AI assistants to your servers via the Model Context Protocol. Install the VS Code extension or configure manually.",
+      "stepExtension": "Install VS Code Extension",
+      "stepConfigure": "Run from Command Palette",
+      "manualConfig": "Manual Configuration",
+      "configPaths": "Config File Locations",
+      "docs": "Documentation"
     },
     "migration": {
       "checking": "Checking security status...",

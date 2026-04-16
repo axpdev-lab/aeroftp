@@ -8,23 +8,45 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+/// Global flag: when true, skip .aerotmp and write directly to the final path.
+/// Set via `set_inplace_mode(true)` from the CLI when --inplace is passed.
+static INPLACE_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable inplace mode (skip .aerotmp temp files).
+pub fn set_inplace_mode(enabled: bool) {
+    INPLACE_MODE.store(enabled, Ordering::Relaxed);
+}
+
+fn inplace_active() -> bool {
+    INPLACE_MODE.load(Ordering::Relaxed)
+}
+
 /// A guard that writes to a temp file and renames on commit.
 /// If dropped without calling `commit()`, the temp file is deleted.
+/// In inplace mode, writes directly to the final path (no temp, no rename).
 pub struct AtomicFile {
     temp_path: PathBuf,
     final_path: PathBuf,
     file: tokio::fs::File,
     committed: bool,
+    inplace: bool,
 }
 
 impl AtomicFile {
     /// Create a new atomic file writer. The temp file is created immediately.
+    /// In inplace mode, writes directly to the final path.
     pub async fn new(final_path: &str) -> Result<Self, std::io::Error> {
         let final_path = PathBuf::from(final_path);
-        let temp_path = Self::temp_path_for(&final_path);
+        let inplace = inplace_active();
+        let temp_path = if inplace {
+            final_path.clone()
+        } else {
+            Self::temp_path_for(&final_path)
+        };
 
         // Ensure parent directory exists
         if let Some(parent) = final_path.parent() {
@@ -38,6 +60,7 @@ impl AtomicFile {
             final_path,
             file,
             committed: false,
+            inplace,
         })
     }
 
@@ -52,14 +75,15 @@ impl AtomicFile {
     }
 
     /// Flush and commit: rename temp file to final path.
-    /// This is the only way to produce the final file.
+    /// In inplace mode, no rename is needed (already writing to final path).
     pub async fn commit(mut self) -> Result<(), std::io::Error> {
         self.file.flush().await?;
         self.file.sync_all().await?;
-        // Shutdown the file to release the handle before rename
         self.file.shutdown().await?;
 
-        fs::rename(&self.temp_path, &self.final_path).await?;
+        if !self.inplace {
+            fs::rename(&self.temp_path, &self.final_path).await?;
+        }
         self.committed = true;
         Ok(())
     }
@@ -74,10 +98,9 @@ impl AtomicFile {
 
 impl Drop for AtomicFile {
     fn drop(&mut self) {
-        if !self.committed {
-            // Best-effort cleanup of temp file
+        if !self.committed && !self.inplace {
+            // Best-effort cleanup of temp file (skip in inplace mode — file is the final path)
             let temp = self.temp_path.clone();
-            // Use std::fs since we're in Drop (not async)
             let _ = std::fs::remove_file(&temp);
         }
     }
@@ -96,19 +119,20 @@ pub struct ResumableFile {
     committed: bool,
     /// Byte offset we are resuming from (0 = fresh download).
     offset: u64,
+    inplace: bool,
 }
 
 impl ResumableFile {
     /// Open a resumable file writer.
-    ///
-    /// If a `.aerotmp` file already exists, it is opened in append mode and the
-    /// existing byte count is returned as the offset. The caller should send an
-    /// HTTP `Range: bytes=<offset>-` header and append the response body.
-    ///
-    /// If no `.aerotmp` exists, a fresh file is created (offset = 0).
+    /// In inplace mode, writes directly to the final path (no .aerotmp).
     pub async fn open(final_path: &str) -> Result<Self, std::io::Error> {
         let final_path = PathBuf::from(final_path);
-        let temp_path = AtomicFile::temp_path_for(&final_path);
+        let inplace = inplace_active();
+        let temp_path = if inplace {
+            final_path.clone()
+        } else {
+            AtomicFile::temp_path_for(&final_path)
+        };
 
         // Ensure parent directory exists
         if let Some(parent) = final_path.parent() {
@@ -116,7 +140,7 @@ impl ResumableFile {
         }
 
         let (file, offset) = if temp_path.exists() {
-            // Resume: open existing .aerotmp in append mode
+            // Resume: open existing file in append mode
             let meta = fs::metadata(&temp_path).await?;
             let offset = meta.len();
             let file = fs::OpenOptions::new()
@@ -125,7 +149,7 @@ impl ResumableFile {
                 .await?;
             (file, offset)
         } else {
-            // Fresh: create new .aerotmp
+            // Fresh: create new file
             let file = fs::File::create(&temp_path).await?;
             (file, 0)
         };
@@ -136,14 +160,19 @@ impl ResumableFile {
             file,
             committed: false,
             offset,
+            inplace,
         })
     }
 
-    /// Create a fresh resumable file, discarding any existing `.aerotmp`.
-    /// Use this when the remote file has changed and partial data is stale.
+    /// Create a fresh resumable file, discarding any existing partial data.
     pub async fn open_fresh(final_path: &str) -> Result<Self, std::io::Error> {
         let final_path_buf = PathBuf::from(final_path);
-        let temp_path = AtomicFile::temp_path_for(&final_path_buf);
+        let inplace = inplace_active();
+        let temp_path = if inplace {
+            final_path_buf.clone()
+        } else {
+            AtomicFile::temp_path_for(&final_path_buf)
+        };
 
         if let Some(parent) = final_path_buf.parent() {
             fs::create_dir_all(parent).await?;
@@ -157,6 +186,7 @@ impl ResumableFile {
             file,
             committed: false,
             offset: 0,
+            inplace,
         })
     }
 
@@ -176,21 +206,29 @@ impl ResumableFile {
     }
 
     /// Flush and commit: rename temp file to final path.
+    /// In inplace mode, no rename is needed.
     pub async fn commit(mut self) -> Result<(), std::io::Error> {
         self.file.flush().await?;
         self.file.sync_all().await?;
         self.file.shutdown().await?;
 
-        fs::rename(&self.temp_path, &self.final_path).await?;
+        if !self.inplace {
+            fs::rename(&self.temp_path, &self.final_path).await?;
+        }
         self.committed = true;
         Ok(())
     }
 
-    /// Discard partial data and remove the `.aerotmp` file.
+    /// Discard partial data and remove the temp file.
     pub async fn discard(mut self) -> Result<(), std::io::Error> {
         self.committed = true; // prevent Drop from running
         let _ = self.file.shutdown().await;
-        fs::remove_file(&self.temp_path).await
+        if !self.inplace {
+            fs::remove_file(&self.temp_path).await
+        } else {
+            // In inplace mode, the temp file IS the final file — remove it
+            fs::remove_file(&self.final_path).await
+        }
     }
 }
 

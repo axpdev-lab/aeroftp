@@ -1384,7 +1384,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'filelu', 'drime', 'jottacloud'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 

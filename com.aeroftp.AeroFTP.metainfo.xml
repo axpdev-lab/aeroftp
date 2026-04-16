@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.3" date="2026-04-16">
+      <description>
+        <p>Continuous Sync, MCP Integration and CLI Expansion. CLI sync --watch adds native filesystem watcher with continuous bidirectional sync, anti-loop protection, incremental local scan, and NDJSON output. MCP Server dialog and VS Code extension for AI assistant integration. New CLI flags: --files-from, --immutable, --no-check-dest, --max-depth, --inplace, --fast-list, --compare-dest, --copy-dest. Critical fix for FTP and WebDAV listing path construction in recursive operations. Azure Blob directory markers. 11 new unit tests.</p>
+      </description>
+    </release>
     <release version="3.5.2" date="2026-04-15">
       <description>
         <p>CLI determinism: 12 structured exit codes, idempotent mkdir -p, rm -f, put --no-clobber. Performance: configurable chunk/buffer sizes, S3 parallel multipart upload, Azure server-side copy, dynamic file-size timeout for slow connections. Security: STRIDE threat model, LLM integration guide, multi-agent audit with 6 findings fixed, unified error sanitization, path traversal prevention. UX: parent folder double-click, drag disabled during rename, grid font scaling, overwrite dialog timestamp tolerance.</p>
