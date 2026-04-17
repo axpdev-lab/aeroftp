@@ -158,6 +158,50 @@ impl SftpProvider {
         self.ssh_handle.clone()
     }
 
+    /// Build a [`DeltaTransport`](crate::delta_transport::DeltaTransport) ready to
+    /// run against this provider's SSH session, or `None` if this provider is not
+    /// currently eligible for delta sync.
+    ///
+    /// Eligibility conditions (all must hold):
+    /// - Provider is connected (shared handle present)
+    /// - SSH authentication uses a private key path on disk (Fase 1 limits itself
+    ///   to key-based auth; password auth falls back to classic transfer)
+    ///
+    /// This method is the single choke point where an `SftpProvider` becomes a
+    /// `dyn DeltaTransport`. The adapter layer (`delta_sync_rsync`) never reaches
+    /// into provider internals, preserving the forward compatibility promise for
+    /// the strada C native transport.
+    #[cfg(unix)]
+    pub fn delta_transport(
+        &self,
+    ) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
+        let handle = self.ssh_handle.clone()?;
+        let key_path_str = self.config.private_key_path.as_ref()?;
+        let key_path = std::path::PathBuf::from(Self::expand_home_path(key_path_str));
+
+        let known_hosts_path = dirs::home_dir().map(|h| h.join(".ssh").join("known_hosts"));
+
+        let rsync_config = crate::rsync_over_ssh::RsyncConfig {
+            compress: true,
+            preserve_times: true,
+            progress: true,
+            min_file_size: crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
+            ssh_key_path: Some(key_path),
+            ssh_port: Some(self.config.port),
+            ssh_user: self.config.username.clone(),
+            ssh_host: self.config.host.clone(),
+            // Classic SFTP flow already verified the host key via `SshHandler::check_server_key`;
+            // rsync's SSH transport can trust that verification for the same session.
+            strict_host_key_check: "accept-new".to_string(),
+            known_hosts_path,
+        };
+
+        Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
+            rsync_config,
+            Some(handle),
+        )))
+    }
+
     fn expand_home_path(path: &str) -> String {
         if let Some(stripped) = path.strip_prefix("~/") {
             if let Some(home) = dirs::home_dir() {

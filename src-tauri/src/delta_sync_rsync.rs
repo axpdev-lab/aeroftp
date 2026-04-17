@@ -255,6 +255,60 @@ pub async fn transfer_with_delta(
     }
 }
 
+/// One-stop entry point for the sync loop: given a connected
+/// [`StorageProvider`](crate::providers::StorageProvider), attempt a delta
+/// transfer if (and only if) the provider offers a `DeltaTransport`, otherwise
+/// return `None` so the caller proceeds with the classic path unchanged.
+///
+/// Returns:
+/// - `None` → provider is not delta-eligible (not SFTP, password auth, not
+///   connected, etc.). Caller falls through to classic download/upload.
+/// - `Some(result)` → delta path was attempted. `result.used_delta` says whether
+///   it actually saved bytes; `result.fallback_reason` is populated when false.
+///
+/// This helper is the intended integration surface for
+/// `provider_transfer_executor` and any future call site that wants delta sync
+/// as an optimization layer. It never panics, never blocks on I/O outside of
+/// the transfer itself, and downcasts using the existing `as_any_mut()` entry
+/// point on `StorageProvider` — no new trait methods are introduced.
+pub async fn try_delta_transfer(
+    provider: &mut dyn crate::providers::StorageProvider,
+    direction: SyncDirection,
+    local_path: &Path,
+    remote_path: &str,
+) -> Option<DeltaSyncResult> {
+    // Only SFTP is delta-eligible in Fase 1. Downcasting via `as_any_mut()` keeps
+    // the generic trait intact — we don't need a new `delta_transport_context()`
+    // contract on every provider implementation.
+    let sftp = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::sftp::SftpProvider>()?;
+
+    let transport = sftp.delta_transport()?;
+
+    // Session key: stable per connection (host+user). When the user reconnects
+    // with different credentials, `invalidate_session_cache()` should be called
+    // by the connection lifecycle — for now the 5-minute TTL handles staleness.
+    let handle_ptr = sftp
+        .handle_shared()
+        .as_ref()
+        .map(|h| std::sync::Arc::as_ptr(h) as usize)
+        .unwrap_or(0);
+    let session_key = format!("sftp#{:x}", handle_ptr);
+
+    let result =
+        transfer_with_delta(transport.as_ref(), direction, local_path, remote_path, &session_key)
+            .await;
+
+    match result {
+        Ok(r) => Some(r),
+        Err(reason) => {
+            tracing::warn!("delta transfer adapter error: {}", reason);
+            Some(DeltaSyncResult::fallback(format!("adapter error: {}", reason)))
+        }
+    }
+}
+
 /// Clear the probe cache. Called on disconnect or explicit user action.
 /// Not strictly required (entries expire after 5 min) but keeps memory clean.
 pub async fn clear_probe_cache() {
