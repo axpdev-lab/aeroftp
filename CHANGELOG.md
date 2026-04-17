@@ -19,12 +19,15 @@ This entry tracks infrastructure already landed on `main`. Nothing here is user-
 - **`ssh_exec.rs`**: generic exec primitive over a shared russh `Handle` with multiplexed stdout/stderr mpsc streams, oneshot exit code, and RAII cleanup of the reader task. Used for remote probing today; reusable for future AI agent tools and port-forwarding use cases
 - **`rsync_over_ssh.rs`** (Unix): orchestrator for the local `rsync` subprocess with SSH transport. Handles remote probing via `ssh_exec`, local binary probing, `ssh -e ...` argument assembly with shell-escaped key paths, subprocess spawn with stdout parsing, and typed errors for every fallback path. 9 unit tests
 - **`delta_sync_rsync.rs`** (Unix): thin adapter the sync loop will call instead of `provider.download()` / `provider.upload()`. 5-minute per-session capability cache, typed `DeltaSyncResult { used_delta, stats, fallback_reason }` so the loop can always report why delta wasn't used. 5 unit tests
+- **`delta_transport.rs`** (Unix): `DeltaTransport` trait (object-safe, async via `async_trait`) that abstracts the transport mechanism behind delta sync. Today's only implementation, `RsyncBinaryTransport`, wraps the subprocess path; the future native-rsync protocol (strada C) plugs in as a second implementation with zero churn in the adapter or the sync loop
 - **`providers::sftp::SharedSshHandle` + `handle_shared()` getter**: exposes the authenticated russh handle for `ssh_exec` reuse without reopening a second SSH connection
+- **`SftpProvider::delta_transport()` factory + `try_delta_transfer()` helper**: single choke point where a connected SFTP session becomes a `Box<dyn DeltaTransport>`, and a public entry point the executor will call from one line. Uses the existing `as_any_mut()` trait escape hatch — zero new methods on `StorageProvider`
 
 #### Added (test infrastructure)
 
 - **Docker fixture `tests/fixtures/sftp-rsync/`**: alpine + openssh + rsync on `127.0.0.1:2222`. Single-command bring-up (`setup.sh && docker compose up -d --build`). Honest security posture — `StrictModes yes` preserved via an entrypoint script that normalizes ownership and mode on the bind-mounted authorized_keys
 - **`tests/integration_delta_sync.rs`**: `#[ignore]`-gated live checks that verify the fixture has rsync and prove delta savings on a redundant upload (65 bytes sent for a 2 MiB identical file → 99.997% bandwidth reduction, validated against the local fixture)
+- **`.github/workflows/delta-sync-integration.yml`**: path-scoped GitHub Actions job that brings up the fixture, runs the unit tests for every new module, then the live integration test. Only triggers when delta-sync files change, so unrelated PRs don't pay the cost. Pinned to the same action SHAs used by `build.yml`
 
 #### Behaviour
 
