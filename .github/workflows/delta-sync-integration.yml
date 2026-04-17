@@ -1,0 +1,121 @@
+name: Delta Sync Integration
+
+# Validates the rsync-over-SSH stack end-to-end against a local docker
+# fixture. Cheap to run, scoped to paths that actually affect the feature
+# so unrelated PRs don't pay for it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/ssh_exec.rs'
+      - 'src-tauri/src/rsync_output.rs'
+      - 'src-tauri/src/rsync_over_ssh.rs'
+      - 'src-tauri/src/delta_transport.rs'
+      - 'src-tauri/src/delta_sync_rsync.rs'
+      - 'src-tauri/src/providers/sftp.rs'
+      - 'src-tauri/tests/fixtures/sftp-rsync/**'
+      - 'src-tauri/tests/integration_delta_sync.rs'
+      - '.github/workflows/delta-sync-integration.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/ssh_exec.rs'
+      - 'src-tauri/src/rsync_output.rs'
+      - 'src-tauri/src/rsync_over_ssh.rs'
+      - 'src-tauri/src/delta_transport.rs'
+      - 'src-tauri/src/delta_sync_rsync.rs'
+      - 'src-tauri/src/providers/sftp.rs'
+      - 'src-tauri/tests/fixtures/sftp-rsync/**'
+      - 'src-tauri/tests/integration_delta_sync.rs'
+      - '.github/workflows/delta-sync-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: SFTP rsync fixture + live test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # rsync + ssh client for the host side of the integration test.
+          # Webkit/GTK stack is needed because compiling the aeroftp
+          # library pulls Tauri deps even when we only run one test binary.
+          sudo apt-get install -y \
+            rsync \
+            openssh-client \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
+      - name: Generate fixture SSH key
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: bash setup.sh
+
+      - name: Build & start docker fixture
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: docker compose up -d --build
+
+      - name: Wait for fixture SSH
+        run: |
+          for i in $(seq 1 20); do
+            if ssh -i src-tauri/tests/fixtures/sftp-rsync/ssh_key \
+                   -o StrictHostKeyChecking=no \
+                   -o UserKnownHostsFile=/dev/null \
+                   -o BatchMode=yes \
+                   -o ConnectTimeout=2 \
+                   -p 2222 testuser@127.0.0.1 'true' 2>/dev/null; then
+              echo "Fixture SSH ready after $((i * 2))s"
+              exit 0
+            fi
+            echo "Waiting for fixture SSH... ($i/20)"
+            sleep 2
+          done
+          echo "Fixture did not come up within 40s; dumping logs" >&2
+          docker logs aeroftp-delta-sync-fixture >&2 || true
+          exit 1
+
+      - name: Unit tests — delta-sync modules
+        working-directory: src-tauri
+        run: |
+          cargo test --lib --no-fail-fast \
+            rsync_output:: \
+            rsync_over_ssh:: \
+            ssh_exec:: \
+            delta_transport:: \
+            delta_sync_rsync::
+
+      - name: Integration test — delta sync over SSH
+        working-directory: src-tauri
+        run: cargo test --test integration_delta_sync -- --ignored --nocapture
+
+      - name: Dump fixture logs on failure
+        if: failure()
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: |
+          docker logs aeroftp-delta-sync-fixture || true
+          docker compose ps
+
+      - name: Teardown fixture
+        if: always()
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: docker compose down -v
