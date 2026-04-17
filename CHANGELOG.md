@@ -29,6 +29,10 @@ This entry tracks infrastructure already landed on `main`. Nothing here is user-
 - **`tests/integration_delta_sync.rs`**: `#[ignore]`-gated live checks that verify the fixture has rsync and prove delta savings on a redundant upload (65 bytes sent for a 2 MiB identical file → 99.997% bandwidth reduction, validated against the local fixture)
 - **`.github/workflows/delta-sync-integration.yml`**: path-scoped GitHub Actions job that brings up the fixture, runs the unit tests for every new module, then the live integration test. Only triggers when delta-sync files change, so unrelated PRs don't pay the cost. Pinned to the same action SHAs used by `build.yml`
 
+#### Fixed
+
+- **Locale-dependent rsync parsing**: `rsync_output.rs` used to require `LC_NUMERIC=C LC_ALL=C` on the child process so it only saw en_US-formatted numbers ("1,048,576" / "1.00"); any non-POSIX locale would silently produce wrong counters. Replaced with a new `number_parsing` module whose `parse_u64_loose` / `parse_f64_loose` decide per input which of `.` or `,` is decimal vs thousands, using deterministic rules valid for every rsync locale we have observed (POSIX, en_US, it_IT, de_DE, fr_FR). Regexes widened from `[\d,]+` to `[\d.,]+`. The LC_* override was removed, so rsync inherits the caller's locale and any future translated messages stay in the user's language. Integration test validated live under `LANG=it_IT.UTF-8` and `LC_ALL=C` with identical result (65 bytes transferred on a redundant 2 MiB file)
+
 #### Behaviour
 
 - **No user-visible change yet**. The phantom toggle still does nothing; that fix lands together with the honest UI gate (tooltip "rsync not detected on server" when the probe fails)
