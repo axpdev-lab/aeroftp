@@ -387,7 +387,7 @@ aeroftp-cli agent --mcp
 
 ### Orchestration Protocol
 
-JSON-RPC 2.0 over stdin/stdout enabling external agents (Claude Code, CI pipelines) to drive AeroAgent as a sub-process. See [Orchestration Protocol Specification](dev/AeroAgent-CLI/AEROAGENT-ORCHESTRATION-PROTOCOL.md) for the full wire format.
+JSON-RPC 2.0 over stdin/stdout enabling external agents (Claude Code, CI pipelines) to drive AeroAgent as a sub-process. Run `aeroftp-cli agent --orchestrate` and pipe newline-delimited JSON requests on stdin; responses and stream notifications come back on stdout, stderr carries diagnostic logs. The current surface covers `agent/ready`, `agent/chat`, `session/status`, `session/clear`, `session/close`, and `tool/list`; use `aeroftp-cli agent --help` and `aeroftp-cli agent-info --json` for the live method catalog.
 
 ### MCP Compatibility
 

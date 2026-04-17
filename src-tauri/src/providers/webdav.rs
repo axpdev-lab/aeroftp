@@ -1561,7 +1561,12 @@ impl StorageProvider for WebDavProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
-            StatusCode::CREATED | StatusCode::OK => Ok(()),
+            // RFC 4918 §9.3.1: 201 Created on success, 405 Method Not Allowed
+            // when the collection already exists. Some servers (notably
+            // FileLu's WebDAV frontend) return 204 No Content on success, and
+            // others (Nextcloud variants) return 200 OK — treat all three as
+            // idempotent success.
+            StatusCode::CREATED | StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
             StatusCode::METHOD_NOT_ALLOWED => Err(ProviderError::AlreadyExists(path.to_string())),
             StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
                 "Parent directory does not exist".to_string(),

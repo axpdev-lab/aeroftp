@@ -166,9 +166,12 @@ struct DirectLinkResult {
     url: Option<String>,
 }
 
-/// Folder create response
+/// Folder create response. FileLu inconsistently returns `fld_id` either as a
+/// JSON number or as a string (same as `deleted_ago_sec`, `size`, etc.), so we
+/// use the same tolerant deserializer to accept both shapes.
 #[derive(Debug, Deserialize)]
 struct FolderCreateResult {
+    #[serde(default, deserialize_with = "deserialize_opt_u64")]
     fld_id: Option<u64>,
 }
 

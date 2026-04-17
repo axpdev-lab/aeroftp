@@ -964,6 +964,24 @@ impl StorageProvider for ImmichProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
+            // Immich rejects non-media files (text, archives, office docs) with
+            // a 400 whose sanitized body is often cryptic or just `{`. Detect
+            // that shape and return a self-explanatory message so users and
+            // AI agents know why the upload was refused.
+            if status == reqwest::StatusCode::BAD_REQUEST {
+                let lower = text.to_lowercase();
+                let mime_hint = lower.contains("unsupported")
+                    || lower.contains("asset type")
+                    || lower.contains("mime")
+                    || lower.contains("not allowed");
+                if mime_hint || text.trim().is_empty() || text.trim() == "{" {
+                    return Err(ProviderError::NotSupported(
+                        "Immich accepts only media files (JPG, PNG, HEIC, MP4, MOV). \
+                         Non-media files (text, archive, office documents) are rejected."
+                            .to_string(),
+                    ));
+                }
+            }
             return Err(Self::map_api_error(status, &text, "Upload asset"));
         }
 

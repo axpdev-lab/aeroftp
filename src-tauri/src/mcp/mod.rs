@@ -65,10 +65,45 @@ impl McpServer {
     /// Blocks until stdin is closed (EOF) or a fatal error occurs.
     /// Returns exit code (0 = clean shutdown).
     pub async fn run(self) -> i32 {
+        // Prime the credential-store cache. Without this step the cache is
+        // empty for a freshly-spawned MCP subprocess and every tool call that
+        // needs vault credentials returns "Vault not open" — even when the
+        // user is in auto-unlock keyring mode. If a master password is
+        // required and no AEROFTP_MASTER_PASSWORD is set, we fall through
+        // with a descriptive vault_error so tools can still report the right
+        // reason to the AI client.
+        let init_error = match CredentialStore::init() {
+            Ok(status) if status == "OK" => None,
+            Ok(status) if status == "MASTER_PASSWORD_REQUIRED" => {
+                if let Ok(master) = std::env::var("AEROFTP_MASTER_PASSWORD") {
+                    match CredentialStore::unlock_with_master(&master) {
+                        Ok(()) => None,
+                        Err(e) => Some(format!("Failed to unlock vault with AEROFTP_MASTER_PASSWORD: {}", e)),
+                    }
+                } else {
+                    Some(
+                        "Vault requires master password but AEROFTP_MASTER_PASSWORD env var \
+                         is not set. MCP tool calls that need credentials will fail."
+                            .to_string(),
+                    )
+                }
+            }
+            Ok(other) => Some(format!("Unexpected vault init status: {}", other)),
+            Err(e) => Some(format!("Vault init failed: {}", e)),
+        };
+
         // Load vault profiles once at startup
         let (profiles, vault_error) = match load_safe_profiles() {
-            Ok(p) => (p, None),
-            Err(e) => (vec![], Some(e)),
+            Ok(p) => (p, init_error),
+            Err(e) => {
+                // If init itself failed, surface that reason instead of the
+                // generic "vault not open" message.
+                let combined = match init_error {
+                    Some(reason) => reason,
+                    None => e,
+                };
+                (vec![], Some(combined))
+            }
         };
 
         let pool = pool::ConnectionPool::new(

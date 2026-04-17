@@ -413,12 +413,21 @@ impl DrimeCloudProvider {
         Ok(current_id)
     }
 
-    /// Find a file by name in a given folder, returns (file_id, is_dir, hash)
+    /// Find a file by name in a given folder, returns (file_id, is_dir, hash).
+    ///
+    /// Drime's API is asynchronously indexed: folders freshly created via
+    /// `mkdir` may return 4xx on list-by-parentId for a few hundred milliseconds
+    /// before they become visible. We retry transient HTTP errors with
+    /// exponential backoff so `put_file` following `mkdir` does not fail
+    /// spuriously.
     async fn find_file_in_folder(
         &self,
         folder_id: &str,
         filename: &str,
     ) -> Result<Option<(String, bool, Option<String>)>, ProviderError> {
+        const MAX_ATTEMPTS: u32 = 4;
+        const RETRY_DELAYS_MS: [u64; 3] = [200, 500, 2000];
+
         let mut page = 1u32;
 
         loop {
@@ -437,25 +446,46 @@ impl DrimeCloudProvider {
                 )
             };
 
-            let resp = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header()?)
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Find file failed: {}", e)))?;
+            let mut attempt = 0u32;
+            let list_resp: DrimeListResponse = loop {
+                let resp = self
+                    .client
+                    .get(&url)
+                    .header(AUTHORIZATION, self.auth_header()?)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!("Find file failed: {}", e))
+                    })?;
 
-            if !resp.status().is_success() {
+                let status = resp.status();
+                if status.is_success() {
+                    break resp.json::<DrimeListResponse>().await.map_err(|e| {
+                        ProviderError::ServerError(format!("Parse find response failed: {}", e))
+                    })?;
+                }
+
                 let body = resp.text().await.unwrap_or_default();
+                let retryable = status.is_server_error()
+                    || matches!(status.as_u16(), 404 | 408 | 425 | 429);
+                attempt += 1;
+                if retryable && attempt < MAX_ATTEMPTS {
+                    let delay = RETRY_DELAYS_MS[(attempt - 1) as usize];
+                    drime_log(&format!(
+                        "Find file transient {} (attempt {}/{}), retrying in {}ms",
+                        status, attempt, MAX_ATTEMPTS, delay
+                    ));
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+
                 return Err(ProviderError::ServerError(format!(
-                    "Find file failed: {}",
+                    "Drime list folder '{}' failed ({}): {}",
+                    folder_id,
+                    status,
                     sanitize_api_error(&body)
                 )));
-            }
-
-            let list_resp: DrimeListResponse = resp.json().await.map_err(|e| {
-                ProviderError::ServerError(format!("Parse find response failed: {}", e))
-            })?;
+            };
 
             let files = list_resp.data.unwrap_or_default();
             let last_page = list_resp.last_page.unwrap_or(1);

@@ -1875,15 +1875,21 @@ impl StorageProvider for FilenProvider {
             .to_string(),
         };
 
-        // Filen password hashing: Argon2id v3 (client-side, zero-knowledge)
-        let (password_raw, password_hashed, salt_hex) = if let Some(ref pw) = options.password {
-            let salt_bytes: [u8; 128] = {
-                let mut buf = [0u8; 128];
-                use rand::RngCore;
-                rand::thread_rng().fill_bytes(&mut buf);
-                buf
-            };
-            let salt_hex_str: String = salt_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+        // Filen password hashing: Argon2id v3 (client-side, zero-knowledge).
+        //
+        // The v3 API requires a 128-byte hex salt regardless of whether the
+        // link is password-protected. Sending `""` as salt for a passwordless
+        // link triggers an "Invalid salt" server-side validation error, so we
+        // always generate a random salt even when no password is set.
+        let salt_bytes: [u8; 128] = {
+            let mut buf = [0u8; 128];
+            use rand::RngCore;
+            rand::thread_rng().fill_bytes(&mut buf);
+            buf
+        };
+        let salt_hex: String = salt_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+
+        let (password_raw, password_hashed) = if let Some(ref pw) = options.password {
             let params = argon2::Params::new(65536, 3, 4, Some(64))
                 .map_err(|e| ProviderError::Other(format!("Argon2 params: {}", e)))?;
             let argon2 =
@@ -1893,9 +1899,9 @@ impl StorageProvider for FilenProvider {
                 .hash_password_into(pw.as_bytes(), &salt_bytes, &mut hash_out)
                 .map_err(|e| ProviderError::Other(format!("Argon2 hash: {}", e)))?;
             let hash_hex: String = hash_out.iter().map(|b| format!("{:02x}", b)).collect();
-            (pw.clone(), hash_hex, salt_hex_str)
+            (pw.clone(), hash_hex)
         } else {
-            ("empty".to_string(), "empty".to_string(), String::new())
+            ("empty".to_string(), "empty".to_string())
         };
 
         let mut link_body = serde_json::json!({

@@ -10,9 +10,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::mcp::pool::ConnectionPool;
@@ -23,6 +25,13 @@ use crate::mcp::{prompts, resources, tools};
 /// Interval for pool idle eviction (60 seconds).
 const EVICTION_INTERVAL_SECS: u64 = 60;
 
+/// Maximum time to wait for in-flight tool calls to complete on shutdown.
+const SHUTDOWN_DRAIN_SECS: u64 = 10;
+
+/// Key used for per-profile serialization when a tool call does not name a
+/// specific server (non-mutating or cross-server operations).
+const GLOBAL_SERIALIZATION_KEY: &str = "__aeroftp_global__";
+
 /// Core MCP server that processes JSON-RPC messages.
 pub struct McpServerCore {
     profiles: Arc<Vec<Value>>,
@@ -30,6 +39,14 @@ pub struct McpServerCore {
     pool: Arc<ConnectionPool>,
     rate_limiter: Arc<RateLimiter>,
     in_flight: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Per-profile serialization mutexes. Each profile has its own mutex so
+    /// that concurrent tool calls against the same server are linearized
+    /// (prevents e.g. upload racing a preceding `mkdir` on slow NAS targets),
+    /// while different servers continue to run in parallel.
+    profile_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// JoinSet of currently dispatched tool-call tasks. Used to drain pending
+    /// work on shutdown so responses are not dropped when stdin closes.
+    pending_tasks: Arc<Mutex<JoinSet<()>>>,
 }
 
 impl McpServerCore {
@@ -45,7 +62,20 @@ impl McpServerCore {
             pool: Arc::new(pool),
             rate_limiter: Arc::new(rate_limiter),
             in_flight: Arc::new(Mutex::new(HashMap::new())),
+            profile_locks: Arc::new(Mutex::new(HashMap::new())),
+            pending_tasks: Arc::new(Mutex::new(JoinSet::new())),
         }
+    }
+
+    /// Acquire the per-profile serialization mutex. Tool calls against the
+    /// same `profile_key` wait for each other, so e.g. a PUT cannot race a
+    /// preceding MKDIR on the same server.
+    async fn profile_mutex(&self, profile_key: &str) -> Arc<Mutex<()>> {
+        let mut locks = self.profile_locks.lock().await;
+        locks
+            .entry(profile_key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 
     /// Run the server main loop. Returns exit code (0 = clean shutdown).
@@ -62,7 +92,8 @@ impl McpServerCore {
                 maybe_line = reader.next_line() => {
                     match maybe_line {
                         None => {
-                            eprintln!("[mcp] stdin closed, shutting down");
+                            eprintln!("[mcp] stdin closed, draining in-flight tasks");
+                            self.drain_pending(Duration::from_secs(SHUTDOWN_DRAIN_SECS)).await;
                             return 0;
                         }
                         Some(Err(e)) => {
@@ -88,6 +119,18 @@ impl McpServerCore {
                 }
             }
         }
+    }
+
+    /// Wait for all spawned tool-call tasks to finish, up to `timeout`.
+    /// Called on shutdown so in-flight responses are not dropped when stdin
+    /// closes. Tasks that exceed the timeout are abandoned.
+    async fn drain_pending(&self, timeout: Duration) {
+        let tasks = Arc::clone(&self.pending_tasks);
+        let drain = async move {
+            let mut set = tasks.lock().await;
+            while set.join_next().await.is_some() {}
+        };
+        let _ = tokio::time::timeout(timeout, drain).await;
     }
 
     /// Parse and route a single JSON-RPC message.
@@ -161,13 +204,29 @@ impl McpServerCore {
             .await
             .insert(request_id.clone(), token.clone());
 
+        // Pick a serialization key so that tool calls against the same server
+        // run one at a time. Non-server operations use a shared global bucket
+        // that does not block cross-server parallelism.
+        let serialization_key = if method == "tools/call" {
+            extract_tool_call_server(&req).unwrap_or_else(|| GLOBAL_SERIALIZATION_KEY.to_string())
+        } else {
+            GLOBAL_SERIALIZATION_KEY.to_string()
+        };
+        let profile_mutex = self.profile_mutex(&serialization_key).await;
+
         let profiles = Arc::clone(&self.profiles);
         let vault_error = self.vault_error.clone();
         let pool = Arc::clone(&self.pool);
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let in_flight = Arc::clone(&self.in_flight);
 
-        tokio::spawn(async move {
+        let mut tasks = self.pending_tasks.lock().await;
+        tasks.spawn(async move {
+            // Serialize tool calls per-server. The global lock is effectively
+            // a single-slot path shared by operations that do not name a
+            // specific server (tools/list, resources/*, etc.).
+            let _permit = profile_mutex.lock().await;
+
             let response_future = process_request(req, profiles, vault_error, pool, rate_limiter);
             tokio::pin!(response_future);
 
@@ -182,6 +241,56 @@ impl McpServerCore {
 
             in_flight.lock().await.remove(&request_id);
         });
+    }
+}
+
+/// Extract the `server` argument from a tools/call request so that calls
+/// against the same profile can be serialized. Returns `None` for tool calls
+/// without a server argument (e.g. `aeroftp_list_servers`).
+fn extract_tool_call_server(req: &Value) -> Option<String> {
+    let params = req.get("params")?;
+    let args = params.get("arguments")?;
+    let server = args.get("server").and_then(|v| v.as_str())?;
+    if server.is_empty() {
+        None
+    } else {
+        Some(format!("server:{}", server.to_lowercase()))
+    }
+}
+
+/// Validate that the arguments satisfy the tool's `required` field list.
+/// Returns `Ok(())` if all required fields are present and non-null, otherwise
+/// returns a descriptive error message suitable for the `-32602 Invalid params`
+/// JSON-RPC error.
+fn validate_required_fields(tool_name: &str, args: &Value, schema: &Value) -> Result<(), String> {
+    let required = schema.get("required").and_then(|v| v.as_array());
+    let Some(required) = required else {
+        return Ok(());
+    };
+    let mut missing = Vec::new();
+    for field in required {
+        let Some(key) = field.as_str() else { continue };
+        let present = args
+            .get(key)
+            .map(|v| !(v.is_null() || v.as_str() == Some("")))
+            .unwrap_or(false);
+        if !present {
+            missing.push(key);
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Invalid params for '{}': missing required field{} {}",
+            tool_name,
+            if missing.len() == 1 { "" } else { "s" },
+            missing
+                .iter()
+                .map(|k| format!("'{}'", k))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 }
 
@@ -250,17 +359,32 @@ async fn process_request(
             let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
-            let tool_exists = tools::tool_definitions()
-                .iter()
-                .any(|t| t.name == tool_name);
+            let tool_def = tools::tool_definitions()
+                .into_iter()
+                .find(|t| t.name == tool_name);
 
-            if !tool_exists {
+            let Some(tool_def) = tool_def else {
                 return Some(json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "error": {
                         "code": -32601,
                         "message": format!("Unknown tool: {}", tool_name)
+                    }
+                }));
+            };
+
+            // Validate required arguments against the tool's declared schema
+            // BEFORE dispatching. Without this, missing fields reach the
+            // provider and surface as misleading errors like "bucket required"
+            // (the provider checks its own config, not the caller's intent).
+            if let Err(msg) = validate_required_fields(tool_name, &args, &tool_def.input_schema) {
+                return Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32602,
+                        "message": msg,
                     }
                 }));
             }

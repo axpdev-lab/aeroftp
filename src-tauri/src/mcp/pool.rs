@@ -11,6 +11,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::credential_store::CredentialStore;
+use crate::profile_loader::{apply_profile_options, apply_s3_profile_defaults};
 use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -242,40 +243,50 @@ fn create_provider_from_vault(
         .and_then(|v| v.as_str())
         .unwrap_or("/");
 
-    let password = store
+    // Load the credential blob. The GUI stores either a raw password string or a
+    // JSON object with {username, password, access_token, ...}. The S3 bucket
+    // and provider-specific options live in the profile's `options` field, not
+    // in the credential blob.
+    let raw_cred = store
         .get(&format!("server_{}", profile_id))
         .unwrap_or_default();
 
-    // Parse extra options from vault (exclude sensitive keys)
-    let mut extra = std::collections::HashMap::new();
-    if let Ok(creds_json) = store.get(&format!("server_{}", profile_id)) {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&creds_json) {
-            const SENSITIVE: &[&str] = &[
-                "password",
-                "access_token",
-                "refresh_token",
-                "api_key",
-                "secret",
-                "token",
-                "server",
-                "username",
-            ];
-            if let Some(obj) = val.as_object() {
-                for (k, v) in obj {
-                    if SENSITIVE.iter().any(|s| k.to_lowercase() == *s) {
-                        continue;
-                    }
-                    if let Some(s) = v.as_str() {
-                        extra.insert(k.clone(), s.to_string());
-                    } else if let Some(b) = v.as_bool() {
-                        extra.insert(k.clone(), b.to_string());
-                    } else if let Some(n) = v.as_i64() {
-                        extra.insert(k.clone(), n.to_string());
-                    }
-                }
+    let (resolved_username, password) =
+        if let Ok(cred_val) = serde_json::from_str::<serde_json::Value>(&raw_cred) {
+            if let Some(obj) = cred_val.as_object() {
+                let u = obj
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let p = obj
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| obj.get("access_token").and_then(|v| v.as_str()))
+                    .or_else(|| obj.get("api_key").and_then(|v| v.as_str()))
+                    .unwrap_or("")
+                    .to_string();
+                (
+                    if u.is_empty() { username.to_string() } else { u },
+                    p,
+                )
+            } else {
+                (
+                    username.to_string(),
+                    raw_cred.trim_matches('"').to_string(),
+                )
             }
-        }
-    }
+        } else {
+            (username.to_string(), raw_cred)
+        };
+
+    let username: &str = &resolved_username;
+
+    // Build extra options from the profile (bucket, region, endpoint, etc.).
+    // This mirrors how the CLI resolves S3 profile defaults — the vault copy
+    // alone does not carry bucket/region because they live in `profile.options`.
+    let mut extra: HashMap<String, String> = HashMap::new();
+    apply_profile_options(&mut extra, matched);
 
     let provider_type = match protocol.to_uppercase().as_str() {
         "FTP" => ProviderType::Ftp,
@@ -328,10 +339,35 @@ fn create_provider_from_vault(
         ));
     }
 
+    // Azure: GUI stores container as "bucket" in options; map to "container".
+    if provider_type == ProviderType::Azure && !extra.contains_key("container") {
+        if let Some(bucket) = extra.remove("bucket") {
+            extra.insert("container".to_string(), bucket);
+        }
+    }
+
+    // S3: resolve preset defaults (region, path_style, endpoint) so that
+    // providers like Storj/Cloudflare R2/Wasabi receive a valid config even
+    // when the profile only stores the bucket name + provider id.
+    let mut resolved_host = host.to_string();
+    if provider_type == ProviderType::S3 {
+        let provider_id = matched.get("providerId").and_then(|v| v.as_str());
+        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id) {
+            if resolved_host.trim().is_empty() {
+                resolved_host = resolved_endpoint;
+            }
+        }
+    }
+
+    // Mega: default to native protocol.
+    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
+        extra.insert("mega_mode".to_string(), "native".to_string());
+    }
+
     let config = ProviderConfig {
         name: profile_name.to_string(),
         provider_type,
-        host: host.to_string(),
+        host: resolved_host,
         port: if port > 0 { Some(port) } else { None },
         username: if username.is_empty() {
             None

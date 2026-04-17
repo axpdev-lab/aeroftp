@@ -15,7 +15,7 @@
 //!   aeroftp head <url> <path> [-n 20]         Print first N lines
 //!   aeroftp tail <url> <path> [-n 20]         Print last N lines
 //!   aeroftp touch <url> <path>                Create empty file or update timestamp
-//!   aeroftp hashsum <algo> <url> <path>       Compute file hash (md5/sha1/sha256/sha512/blake3)
+//!   aeroftp hashsum <url> <path> [-a sha256]  Compute file hash (md5/sha1/sha256/sha512/blake3)
 //!   aeroftp check <url> <local> <remote>      Verify local/remote directories match
 //!   aeroftp stat <url> <path>                 File metadata
 //!   aeroftp find <url> <path> <pattern>       Search files
@@ -63,6 +63,10 @@ use axum::{
 };
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use ftp_client_gui_lib::profile_loader::{
+    apply_profile_options, apply_s3_profile_defaults, S3_ENDPOINT_SOURCE_META_KEY,
+    S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY, S3_REGION_SOURCE_META_KEY,
+};
 use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, ShareLinkOptions,
     StorageProvider, MAX_DOWNLOAD_TO_BYTES,
@@ -514,8 +518,10 @@ enum Commands {
     },
     /// Compute hash of remote file(s)
     Hashsum {
-        /// Hash algorithm
-        #[arg(value_enum)]
+        /// Hash algorithm (md5/sha1/sha256/sha512/blake3). Defaults to sha256.
+        /// Accepts `-a sha256` or `--algorithm sha256`. Omitting the flag
+        /// yields a sha256 checksum.
+        #[arg(value_enum, short = 'a', long = "algorithm", default_value = "sha256")]
         algorithm: HashAlgorithm,
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_")]
@@ -604,8 +610,8 @@ enum Commands {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_")]
         url: String,
-        /// Test file size (e.g. 1M, 8M, 64M)
-        #[arg(long, default_value = "8M")]
+        /// Test file size (e.g. 1M, 8M, 64M). Also accepts --size / -s.
+        #[arg(long = "test-size", visible_alias = "size", short = 's', default_value = "8M")]
         test_size: String,
         /// Number of upload/download iterations
         #[arg(long, default_value = "1")]
@@ -751,9 +757,12 @@ enum Commands {
         /// Remote path (default: /)
         #[arg(default_value = "/")]
         path: String,
-        /// Maximum depth (default: 3)
-        #[arg(short = 'd', long, default_value = "3")]
-        max_depth: usize,
+        /// Maximum depth (default: 3). The field is named `depth` (not
+        /// `max_depth`) to avoid colliding with the root-level `--max-depth`
+        /// global flag, which clap's derive otherwise reports as a runtime
+        /// TypeId mismatch.
+        #[arg(short = 'd', long = "depth", default_value = "3")]
+        depth: usize,
     },
     /// Interactive disk usage explorer (ncdu-style TUI)
     Ncdu {
@@ -763,9 +772,10 @@ enum Commands {
         /// Remote path to scan (default: /)
         #[arg(default_value = "/")]
         path: String,
-        /// Maximum scan depth (default: 50)
-        #[arg(short = 'd', long, default_value = "50")]
-        max_depth: usize,
+        /// Maximum scan depth (default: 50). See `Tree::depth` note — the
+        /// field name must differ from the global `--max-depth` flag.
+        #[arg(short = 'd', long = "depth", default_value = "50")]
+        depth: usize,
         /// Export scan results to JSON file instead of interactive TUI
         #[arg(long)]
         export: Option<String>,
@@ -905,6 +915,12 @@ enum Commands {
         #[arg(long)]
         system: Option<String>,
     },
+    /// Start the Model Context Protocol server (JSON-RPC 2.0 over stdio)
+    ///
+    /// Equivalent to `aeroftp agent --mcp`. Exposed as a top-level subcommand so
+    /// that MCP clients (Claude Code, Cursor, Windsurf, VS Code extensions) can
+    /// invoke it with minimal configuration.
+    Mcp,
     /// Generate shell completions (bash, zsh, fish, elvish, powershell)
     Completions {
         /// Shell to generate completions for
@@ -4043,196 +4059,6 @@ fn resolve_url_or_profile(
     }
 }
 
-fn normalize_profile_option_key(key: &str) -> &str {
-    match key {
-        "tlsMode" => "tls_mode",
-        "verifyCert" => "verify_cert",
-        "pathStyle" => "path_style",
-        "accountName" => "account_name",
-        "accessKey" => "access_key",
-        "sasToken" => "sas_token",
-        "pcloudRegion" => "region",
-        other => other,
-    }
-}
-
-fn insert_profile_option(
-    extra: &mut HashMap<String, String>,
-    key: &str,
-    value: &serde_json::Value,
-) {
-    let normalized_key = normalize_profile_option_key(key).to_string();
-
-    if let Some(string_value) = value.as_str() {
-        extra.insert(normalized_key, string_value.to_string());
-    } else if let Some(bool_value) = value.as_bool() {
-        extra.insert(normalized_key, bool_value.to_string());
-    } else if let Some(number_value) = value.as_i64() {
-        extra.insert(normalized_key, number_value.to_string());
-    } else if let Some(number_value) = value.as_u64() {
-        extra.insert(normalized_key, number_value.to_string());
-    } else if let Some(number_value) = value.as_f64() {
-        extra.insert(normalized_key, number_value.to_string());
-    }
-}
-
-fn s3_profile_default_region(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "backblaze" => Some("auto"),
-        "cloudflare-r2" => Some("auto"),
-        "google-cloud-storage" => Some("auto"),
-        "idrive-e2" => Some("auto"),
-        "storj" => Some("global"),
-        "filelu-s3" => Some("global"),
-        "yandex-storage" => Some("ru-central1"),
-        "oracle-cloud" => Some("us-east-1"),
-        "minio" => Some("us-east-1"),
-        "quotaless-s3" => Some("us-east-1"),
-        _ => None,
-    }
-}
-
-fn s3_profile_default_path_style(provider_id: &str) -> Option<bool> {
-    match provider_id {
-        "custom-s3" => Some(false),
-        "backblaze" => Some(true),
-        "mega-s4" => Some(false),
-        "cloudflare-r2" => Some(true),
-        "google-cloud-storage" => Some(true),
-        "idrive-e2" => Some(true),
-        "wasabi" => Some(false),
-        "storj" => Some(true),
-        "alibaba-oss" => Some(false),
-        "tencent-cos" => Some(false),
-        "filelu-s3" => Some(true),
-        "yandex-storage" => Some(false),
-        "digitalocean-spaces" => Some(false),
-        "oracle-cloud" => Some(true),
-        "minio" => Some(true),
-        "quotaless-s3" => Some(true),
-        _ => None,
-    }
-}
-
-fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "filelu-s3" => Some("s5lu.com"),
-        "yandex-storage" => Some("https://storage.yandexcloud.net"),
-        "quotaless-s3" => Some("https://io.quotaless.cloud:8000"),
-        _ => None,
-    }
-}
-
-const S3_PROVIDER_ID_META_KEY: &str = "_aeroftp_s3_provider_id";
-const S3_ENDPOINT_SOURCE_META_KEY: &str = "_aeroftp_s3_endpoint_source";
-const S3_REGION_SOURCE_META_KEY: &str = "_aeroftp_s3_region_source";
-const S3_PATH_STYLE_SOURCE_META_KEY: &str = "_aeroftp_s3_path_style_source";
-
-fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "mega-s4" => Some("s3.{region}.s4.mega.io"),
-        "cloudflare-r2" => Some("{accountId}.r2.cloudflarestorage.com"),
-        "google-cloud-storage" => Some("https://storage.googleapis.com"),
-        "wasabi" => Some("https://s3.{region}.wasabisys.com"),
-        "alibaba-oss" => Some("https://oss-{region}.aliyuncs.com"),
-        "tencent-cos" => Some("https://cos.{region}.myqcloud.com"),
-        "digitalocean-spaces" => Some("https://{region}.digitaloceanspaces.com"),
-        _ => None,
-    }
-}
-
-fn apply_s3_profile_defaults(
-    extra: &mut HashMap<String, String>,
-    provider_id: Option<&str>,
-) -> Option<String> {
-    let provider_id = provider_id?;
-    extra.insert(S3_PROVIDER_ID_META_KEY.to_string(), provider_id.to_string());
-
-    let region_from_profile = extra.contains_key("region");
-    if !region_from_profile {
-        if let Some(default_region) = s3_profile_default_region(provider_id) {
-            extra.insert("region".to_string(), default_region.to_string());
-        }
-    }
-    extra.insert(
-        S3_REGION_SOURCE_META_KEY.to_string(),
-        if region_from_profile { "profile" } else { "preset" }.to_string(),
-    );
-
-    let path_style_from_profile = extra.contains_key("path_style");
-    if !path_style_from_profile {
-        if let Some(path_style) = s3_profile_default_path_style(provider_id) {
-            extra.insert("path_style".to_string(), path_style.to_string());
-        }
-    }
-    extra.insert(
-        S3_PATH_STYLE_SOURCE_META_KEY.to_string(),
-        if path_style_from_profile {
-            "profile"
-        } else {
-            "preset"
-        }
-        .to_string(),
-    );
-
-    let endpoint_from_profile = extra
-        .get("endpoint")
-        .map(|endpoint| endpoint.trim())
-        .filter(|endpoint| !endpoint.is_empty())
-        .is_some();
-
-    if let Some(existing_endpoint) = extra
-        .get("endpoint")
-        .map(|endpoint| endpoint.trim())
-        .filter(|endpoint| !endpoint.is_empty())
-        .map(str::to_string)
-    {
-        extra.insert(
-            S3_ENDPOINT_SOURCE_META_KEY.to_string(),
-            "profile".to_string(),
-        );
-        return Some(existing_endpoint);
-    }
-
-    let resolved_endpoint = if let Some(endpoint) = s3_profile_static_endpoint(provider_id) {
-        Some(endpoint.to_string())
-    } else {
-        let template = s3_profile_endpoint_template(provider_id)?;
-        let mut endpoint = template.to_string();
-
-        if endpoint.contains("{region}") {
-            let region = extra.get("region").map(String::as_str)?;
-            endpoint = endpoint.replace("{region}", region);
-        }
-
-        if endpoint.contains("{accountId}") {
-            let account_id = extra
-                .get("accountId")
-                .or_else(|| extra.get("account_id"))
-                .map(String::as_str)?;
-            endpoint = endpoint.replace("{accountId}", account_id);
-        }
-
-        if endpoint.contains('{') {
-            None
-        } else {
-            Some(endpoint)
-        }
-    }?;
-
-    extra.insert("endpoint".to_string(), resolved_endpoint.clone());
-    extra.insert(
-        S3_ENDPOINT_SOURCE_META_KEY.to_string(),
-        if endpoint_from_profile {
-            "profile"
-        } else {
-            "preset"
-        }
-        .to_string(),
-    );
-    Some(resolved_endpoint)
-}
-
 fn push_s3_doctor_checks(
     checks: &mut Vec<serde_json::Value>,
     risks: &mut Vec<String>,
@@ -4521,11 +4347,7 @@ fn profile_to_provider_config(
     let mut extra = HashMap::new();
 
     // Load provider-specific options from profile
-    if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
-        for (k, v) in opts {
-            insert_profile_option(&mut extra, k, v);
-        }
-    }
+    apply_profile_options(&mut extra, profile);
 
     // CLI overrides take precedence
     if let Some(ref key) = cli.key {
@@ -22028,22 +21850,18 @@ async fn main() {
             cmd_find(u, p, pat, &cli, format).await
         }
         Commands::Df { url } => cmd_df(url, &cli, format).await,
-        Commands::Tree {
-            url,
-            path,
-            max_depth,
-        } => {
+        Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_tree(u, p, *max_depth, &cli, format).await
+            cmd_tree(u, p, *depth, &cli, format).await
         }
         Commands::Ncdu {
             url,
             path,
-            max_depth,
+            depth,
             export,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -22051,7 +21869,7 @@ async fn main() {
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_ncdu(u, p, *max_depth, export.as_deref(), &cli, format).await
+            cmd_ncdu(u, p, *depth, export.as_deref(), &cli, format).await
         }
         #[allow(unused_variables)]
         Commands::Mount {
@@ -22280,6 +22098,7 @@ async fn main() {
             };
             cmd_dedupe(u, p, mode, *dry_run, &cli, format).await
         }
+        Commands::Mcp => cmd_agent_mcp("", &cli).await,
         Commands::Completions { shell } => {
             match std::panic::catch_unwind(|| {
                 let mut cmd = Cli::command();
@@ -22531,6 +22350,7 @@ fn is_retryable_exit(code: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
 
     fn test_cli() -> Cli {
