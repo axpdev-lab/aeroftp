@@ -373,6 +373,12 @@ pub async fn rsync_upload(
 /// Execute a configured rsync [`Command`], streaming stdout through the parser
 /// and collecting stats.
 async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
+    // Force POSIX locale on the rsync subprocess so thousands/decimal separators
+    // are always en_US ("1,048,576" / "1.00"). Without this, locale-aware builds
+    // (e.g. it_IT) emit "1.048.576" / "1,00" and our parser — which strips commas
+    // as thousand separators — silently fails. Tested live against a local fixture
+    // on a dev box running LANG=it_IT.UTF-8.
+    cmd.env("LANG", "C").env("LC_ALL", "C");
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let start = Instant::now();

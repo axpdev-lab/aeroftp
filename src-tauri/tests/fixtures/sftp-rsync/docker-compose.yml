@@ -1,0 +1,29 @@
+# SFTP + rsync fixture for delta-sync integration tests.
+#
+# Usage:
+#   cd src-tauri/tests/fixtures/sftp-rsync
+#   ./setup.sh                       # generates ssh_key (first run only)
+#   docker compose up -d --build     # build + start (port 2222)
+#   cargo test --package aeroftp --test integration_delta_sync -- --ignored
+#   docker compose down -v           # stop + remove volumes
+#
+# The ssh_key files are generated locally by setup.sh and are gitignored.
+
+services:
+  sftp-rsync:
+    build: .
+    container_name: aeroftp-delta-sync-fixture
+    ports:
+      - "127.0.0.1:2222:22"
+    volumes:
+      - ./ssh_key.pub:/home/testuser/.ssh/authorized_keys:ro
+      - workdir:/workdir
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "command -v rsync && pgrep sshd"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+volumes:
+  workdir:

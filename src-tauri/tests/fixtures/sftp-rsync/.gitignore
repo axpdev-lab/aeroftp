@@ -1,0 +1,6 @@
+# Fixture keypair is generated locally by setup.sh; never commit.
+ssh_key
+ssh_key.pub
+
+# Any data that ended up in the bind-mounted workdir during tests.
+workdir/
