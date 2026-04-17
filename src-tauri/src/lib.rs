@@ -47,7 +47,13 @@ mod ssh_exec;
 #[cfg(unix)]
 mod rsync_over_ssh;
 #[cfg(unix)]
+mod delta_transport;
+#[cfg(unix)]
 mod delta_sync_rsync;
+// Strada C — native rsync prototype (dev-only, gitignored, feature-gated).
+// Does not affect production builds. See `src/rsync_native_proto/README.md`.
+#[cfg(feature = "proto_native_rsync")]
+mod rsync_native_proto;
 mod file_tags;
 mod file_watcher;
 mod filesystem;

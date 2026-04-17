@@ -25,11 +25,8 @@
 // wires `transfer_with_delta` into `sync.rs` — remove this allow then.
 #![allow(dead_code)]
 
-use crate::providers::sftp::SharedSshHandle;
-use crate::rsync_over_ssh::{
-    probe_local_rsync, probe_rsync, rsync_download, rsync_upload, RsyncCapability, RsyncConfig,
-    RsyncError, RsyncStats,
-};
+use crate::delta_transport::DeltaTransport;
+use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -114,13 +111,13 @@ const CACHE_TTL: Duration = Duration::from_secs(300); // 5 min
 static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
     LazyLock::new(|| TokioMutex::new(HashMap::new()));
 
-/// Probe rsync availability on `handle`, with 5-minute per-session cache.
+/// Probe remote capability via the transport, with 5-minute per-session cache.
 ///
 /// Returns the cached result if present and fresh; otherwise runs a live probe
 /// and stores the outcome. Cache stores failures too — if rsync isn't on the
 /// remote, we don't want to re-probe every file.
 async fn probe_capability_cached(
-    handle: SharedSshHandle,
+    transport: &dyn DeltaTransport,
     session_key: &str,
 ) -> Result<RsyncCapability, String> {
     let now = Instant::now();
@@ -137,7 +134,7 @@ async fn probe_capability_cached(
         }
     }
 
-    let fresh = probe_rsync(handle).await;
+    let fresh = transport.probe_remote().await;
     let report = match &fresh {
         Ok(cap) => Ok(cap.clone()),
         Err(e) => Err(e.to_string()),
@@ -155,8 +152,11 @@ async fn probe_capability_cached(
     report
 }
 
-/// Build a per-call [`RsyncConfig`] from the stable [`DeltaSyncContext`].
-fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
+/// Build a per-session [`RsyncConfig`] from the stable [`DeltaSyncContext`].
+///
+/// This is the bridge value used to construct the concrete transport; callers
+/// who already hold a `Box<dyn DeltaTransport>` don't need to touch it.
+pub fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
     RsyncConfig {
         compress: ctx.compress,
         preserve_times: true,
@@ -179,54 +179,48 @@ fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
 /// This function never throws for expected fallback paths; it only returns `Err`
 /// on truly unexpected errors (e.g. malformed context). Missing-key, too-small,
 /// remote-not-available, and transfer failure all map to `Ok(fallback)`.
+///
+/// The transport argument is a `&dyn` trait object so the same adapter works
+/// with today's subprocess-based transport and with the future native-rsync
+/// transport (strada C) without any structural change.
 pub async fn transfer_with_delta(
-    handle_shared: Option<SharedSshHandle>,
+    transport: &dyn DeltaTransport,
     direction: SyncDirection,
     local_path: &Path,
     remote_path: &str,
-    ctx: &DeltaSyncContext,
+    session_key: &str,
 ) -> Result<DeltaSyncResult, String> {
-    // Step 1: provider must expose a shared SSH handle (SFTP post-connect).
-    let handle = match handle_shared {
-        Some(h) => h,
-        None => {
-            return Ok(DeltaSyncResult::fallback(
-                "provider did not expose a shared SSH handle (not SFTP or not connected)",
-            ));
-        }
-    };
-
-    // Step 2: probe remote rsync availability (cached).
-    let capability = match probe_capability_cached(handle, &ctx.session_key).await {
+    // Step 1: probe remote capability (cached per session, typed error path).
+    let capability = match probe_capability_cached(transport, session_key).await {
         Ok(cap) => cap,
         Err(reason) => {
             return Ok(DeltaSyncResult::fallback(format!(
-                "remote rsync unavailable: {}",
+                "remote delta unavailable: {}",
                 reason
             )));
         }
     };
 
-    // Step 3: probe local rsync (Fase 1a: binary on PATH; Fase 1b: bundled MSYS2).
-    if let Err(e) = probe_local_rsync().await {
+    // Step 2: probe local availability (no-op for native transport, binary check for subprocess).
+    if let Err(e) = transport.probe_local().await {
         return Ok(DeltaSyncResult::fallback(format!(
-            "local rsync unavailable: {}",
+            "local delta unavailable: {}",
             e
         )));
     }
 
-    // Step 4: run the transfer.
-    let cfg = build_rsync_config(ctx);
+    // Step 3: run the transfer through the trait.
     let outcome = match direction {
-        SyncDirection::Upload => rsync_upload(local_path, remote_path, &cfg).await,
-        SyncDirection::Download => rsync_download(remote_path, local_path, &cfg).await,
+        SyncDirection::Upload => transport.upload(local_path, remote_path).await,
+        SyncDirection::Download => transport.download(remote_path, local_path).await,
     };
 
     match outcome {
         Ok(stats) => {
             tracing::info!(
-                "delta sync {:?} ok: remote_rsync={}, sent={}B, received={}B, speedup={:.2}x, duration={}ms",
+                "delta sync {:?} ok: transport={}, remote_version={}, sent={}B, received={}B, speedup={:.2}x, duration={}ms",
                 direction,
+                transport.name(),
                 capability.version,
                 stats.bytes_sent,
                 stats.bytes_received,
@@ -335,24 +329,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transfer_returns_fallback_when_no_handle() {
-        let ctx = DeltaSyncContext {
+    async fn transfer_returns_fallback_when_transport_has_no_remote() {
+        // A binary transport with no handle cannot probe the remote; verify
+        // the adapter reports this as a typed fallback instead of an Err.
+        use crate::delta_transport::RsyncBinaryTransport;
+        let cfg = RsyncConfig {
             ssh_user: "u".into(),
             ssh_host: "h".into(),
-            ssh_port: None,
-            ssh_key_path: None,
-            strict_host_key_check: "accept-new".into(),
-            known_hosts_path: None,
-            min_file_size: 1024,
-            compress: true,
-            session_key: "t1".into(),
+            ssh_key_path: Some(PathBuf::from("/tmp/irrelevant")),
+            ..Default::default()
         };
+        let transport = RsyncBinaryTransport::new(cfg, None);
+        // Fresh cache for isolation (other tests may have touched it).
+        clear_probe_cache().await;
+
         let r = transfer_with_delta(
-            None,
+            &transport,
             SyncDirection::Upload,
             Path::new("/tmp/nope"),
             "/remote/nope",
-            &ctx,
+            "test-no-handle",
         )
         .await
         .expect("must succeed with fallback");
@@ -361,6 +357,6 @@ mod tests {
             .fallback_reason
             .as_deref()
             .unwrap()
-            .contains("shared SSH handle"));
+            .contains("remote delta unavailable"));
     }
 }
