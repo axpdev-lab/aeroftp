@@ -233,7 +233,7 @@ Known limitations:
 - MEGA CLI dependency for some operations (platform-specific .bat risk on Windows — documented)
 - FTP PASV IP validation deferred (requires protocol-level changes)
 - SFTP TOFU UX improvement deferred to v2.5.0
-- Resource audit P1-5/6/7 and all P2 deferred to v2.4.1/v2.5.0 (see `docs/dev/RESOURCE-ANALYSIS-v2.4.0.md`)
+- Resource audit P1-5/6/7 and all P2 deferred to v2.4.1/v2.5.0 (see `docs/dev/archive/RESOURCE-ANALYSIS-v2.4.0.md`)
 
 ---
 
@@ -292,8 +292,8 @@ Known limitations:
   - `cloud_service.rs` — Conflicts Vec cap (10K)
   - `useTransferEvents.ts` — Transfer ID Set cap (500 FIFO)
 - Audit reports:
-  - `docs/dev/providers/PROVIDERS-FINAL-AUDIT-v2.4.0.md` — 12-auditor consolidated audit (82 findings, grade A-)
-  - `docs/dev/RESOURCE-ANALYSIS-v2.4.0.md` — Resource management audit (17 findings, 8 fixed)
+  - `docs/dev/archive/providers/PROVIDERS-FINAL-AUDIT-v2.4.0.md` — 12-auditor consolidated audit (82 findings, grade A-)
+  - `docs/dev/archive/RESOURCE-ANALYSIS-v2.4.0.md` — Resource management audit (17 findings, 8 fixed)
   - Phase A: Critical + Frontend (6x Claude Opus 4.6)
   - Phase B: Security (GPT-5.3 Codex)
   - Phase C: Integration (Claude Opus 4.6)

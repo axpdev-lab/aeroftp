@@ -2,7 +2,7 @@
 
 **Date**: 2026-02-24
 **Audit sources**: 8x Claude Opus 4.6 + 1x GPT-5.3-Codex
-**Merged report**: `docs/dev/audit/v2.6.4/MERGED-FINAL-AUDIT.md`
+**Merged report**: `docs/dev/archive/audit/v2.6.4/MERGED-FINAL-AUDIT.md`
 **Codebase**: v2.6.4 (commit 38f3968)
 
 ---

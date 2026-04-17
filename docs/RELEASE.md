@@ -41,7 +41,7 @@ That's it! GitHub Actions handles everything else automatically.
 |---|------|----------------|
 | 10 | `CLAUDE.md` | `## Versione corrente: vX.Y.Z` + completed items |
 | 11 | `SECURITY.md` | Footer `*AeroFTP vX.Y.Z - DD Month YYYY*` |
-| 12 | `docs/dev/ROADMAP.md` | `Current Version: vX.Y.Z` + blockquote summary |
+| 12 | `docs/dev/roadmap/README.md` | `Current Version: vX.Y.Z` + blockquote summary |
 
 ### Pre-push Validation
 

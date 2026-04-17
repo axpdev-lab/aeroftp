@@ -12,7 +12,7 @@ This document contains all public security and quality audit reports for AeroFTP
 > **Subject**: AeroFTP Desktop File Transfer Client v2.9.4 — Full Codebase
 > **Methodology**: Parallel Independent Audit with cross-comparison (PIA Round 2)
 > **Auditors**: Claude Opus 4.6 (autonomous, 8-area, 8 parallel agents) + GPT-5.4 (autonomous, 8-area, independent)
-> **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
+> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
 > **Scope**: Full codebase — ~115,000+ lines across ~160 files (Rust backend + React/TypeScript frontend)
 > **Documentation**: 12 documents (8 area reports + README + consolidation + merge + GPT brief)
 
@@ -87,7 +87,7 @@ AeroFTP v2.9.4 underwent a second round parallel independent audit by two separa
 | GPT-5.4 counter-review | 3 incomplete fixes caught and resolved |
 
 Evidence pack: `docs/security-evidence/SECURITY-EVIDENCE-v2.9.5.md`
-Audit documents: `docs/dev/audit/CLAUDE-OPUS-4.6-v2/` + `docs/dev/audit/GPT5.4-v2/`
+Audit documents: `docs/dev/archive/audit/CLAUDE-OPUS-4.6-v2/` + `docs/dev/archive/audit/GPT5.4-v2/`
 
 ---
 
@@ -96,7 +96,7 @@ Audit documents: `docs/dev/audit/CLAUDE-OPUS-4.6-v2/` + `docs/dev/audit/GPT5.4-v
 > **Subject**: AeroFTP Desktop File Transfer Client v2.8.6 — Full Codebase
 > **Methodology**: Parallel Independent Audit with cross-comparison (PIA)
 > **Auditors**: Claude Opus 4.6 (autonomous, 8-area) + GPT-5.4 (autonomous, 8-area)
-> **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
+> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
 > **Scope**: Full codebase — ~110,000+ lines across ~150 files (Rust backend + React/TypeScript frontend)
 > **Documentation**: 22 documents total (11 per engine + schema + cross-comparison)
 
@@ -326,7 +326,7 @@ Both engines independently identified these issues, providing high confidence:
 | `npm run i18n:validate` | Pass — 47 languages at 100% |
 | Point-by-point verification | 5 independent agents verified all 91 C/H/M findings |
 
-Full merged audit report: `docs/dev/audit/v2.6.4/MERGED-FINAL-AUDIT.md`
+Full merged audit report: `docs/dev/archive/audit/v2.6.4/MERGED-FINAL-AUDIT.md`
 Evidence pack: `docs/security-evidence/SECURITY-EVIDENCE-v2.6.4.md`
 
 ---

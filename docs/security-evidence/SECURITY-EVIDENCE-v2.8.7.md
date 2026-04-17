@@ -30,7 +30,7 @@ Minimum completion criteria:
 ## 2) Audit Summary
 
 ### Audit methodology
-- **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + 1 consolidation
+- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + 1 consolidation
 - **Independence**: Claude audit conducted without reading GPT-5.4 results; comparison performed post-audit
 - **Areas**: A1 (Trust Boundaries), A2 (Vault/Keystore), A3 (Providers/Network), A4 (Filesystem), A5 (Sync), A6 (Frontend), A7 (Media/Archives), A8 (Runtime/Packaging)
 
@@ -266,17 +266,17 @@ Notes:
 ## 8) Evidence Index
 
 - Audit documents:
-  - `docs/dev/audit/CLAUDE-OPUS-4.6/01-confini-fiducia.md` through `08-runtime-packaging.md`
-  - `docs/dev/audit/CLAUDE-OPUS-4.6/09-consolidamento-priorita-fix.md`
-  - `docs/dev/audit/CLAUDE-OPUS-4.6/10-confronto-cumulativo-GPT5.4.md`
-  - `docs/dev/audit/GPT5.4/` (independent counter-audit)
+  - `docs/dev/archive/audit/CLAUDE-OPUS-4.6/01-confini-fiducia.md` through `08-runtime-packaging.md`
+  - `docs/dev/archive/audit/CLAUDE-OPUS-4.6/09-consolidamento-priorita-fix.md`
+  - `docs/dev/archive/audit/CLAUDE-OPUS-4.6/10-confronto-cumulativo-GPT5.4.md`
+  - `docs/dev/archive/audit/GPT5.4/` (independent counter-audit)
 - Diffs:
   - 33 files modified, +510/-114 lines (see `git diff 6594185d..HEAD`)
 - Build verification:
   - `cargo clippy --all-targets -- -D warnings`: PASS
   - `npm run build`: PASS (7,965 kB bundle)
 - External audits:
-  - GPT-5.4 independent audit: `docs/dev/audit/GPT5.4/`
+  - GPT-5.4 independent audit: `docs/dev/archive/audit/GPT5.4/`
   - Cumulative comparison: grade convergence at B+
 
 ---

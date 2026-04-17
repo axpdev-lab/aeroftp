@@ -28,7 +28,7 @@ Minimum completion criteria:
 ## 2) Audit Summary
 
 ### Audit methodology
-- **Schema**: `docs/dev/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + consolidation
+- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + consolidation
 - **Round**: 2 (second full-codebase audit following v2.8.7 PIA Round 1)
 - **Independence**: Claude audit (8 parallel agents) conducted without reading GPT-5.4 results; comparison performed post-audit
 - **Counter-review**: GPT-5.4 reviewed all applied fixes and identified 3 incomplete remediations — all subsequently resolved
