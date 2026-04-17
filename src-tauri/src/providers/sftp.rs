@@ -18,9 +18,21 @@ use russh_sftp::client::SftpSession;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex as TokioMutex;
 
-/// SSH Client Handler for server key verification
-struct SshHandler {
+/// Shared, lock-protected handle to the underlying russh SSH session.
+/// Used by sibling modules (e.g. rsync-over-SSH) to open additional channels
+/// (exec, direct-tcpip) without re-authenticating.
+pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
+
+/// SSH Client Handler for server key verification.
+///
+/// Exposed as `pub` because [`SharedSshHandle`] (a public type alias in the same
+/// module) names it, and clippy's `exported_private_dependencies` lint requires the
+/// visibility levels to match. Callers outside this module don't construct or
+/// manipulate it — they only hold the handle and pass it back through APIs that
+/// expect `SharedSshHandle`.
+pub struct SshHandler {
     /// The host being connected to (for known_hosts lookup)
     host: String,
     /// The port being connected to
@@ -102,8 +114,8 @@ impl Handler for SshHandler {
 /// Provides secure file transfer over SSH using the SFTP protocol.
 pub struct SftpProvider {
     config: SftpConfig,
-    /// SSH connection handle
-    ssh_handle: Option<Handle<SshHandler>>,
+    /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
+    ssh_handle: Option<SharedSshHandle>,
     /// SFTP session for file operations
     sftp: Option<SftpSession>,
     /// Current working directory
@@ -133,6 +145,17 @@ impl SftpProvider {
             compression_enabled: false,
             buffer_size: 32768,
         }
+    }
+
+    /// Return a cloneable handle to the underlying SSH session, if connected.
+    ///
+    /// Exposed to let sibling modules (rsync-over-SSH, port forwarding, ...)
+    /// open additional channels on the same authenticated session. The handle
+    /// is protected by a Tokio [`Mutex`](TokioMutex) — callers should hold the
+    /// guard for the minimal time required to send a message, since concurrent
+    /// SFTP operations go through the same inner mpsc sender.
+    pub fn handle_shared(&self) -> Option<SharedSshHandle> {
+        self.ssh_handle.clone()
     }
 
     fn expand_home_path(path: &str) -> String {
@@ -475,7 +498,7 @@ impl StorageProvider for SftpProvider {
             self.current_dir = self.home_dir.clone();
         }
 
-        self.ssh_handle = Some(handle);
+        self.ssh_handle = Some(Arc::new(TokioMutex::new(handle)));
         self.sftp = Some(sftp);
 
         tracing::info!(
@@ -494,9 +517,12 @@ impl StorageProvider for SftpProvider {
             let _ = sftp.close().await;
         }
 
-        // Close SSH handle
+        // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
+        // may still hold references; the disconnect message is sent through the shared sender,
+        // which is exactly what we want — the session is tore down once for everyone.
         if let Some(handle) = self.ssh_handle.take() {
-            let _ = handle
+            let guard = handle.lock().await;
+            let _ = guard
                 .disconnect(russh::Disconnect::ByApplication, "", "en")
                 .await;
         }

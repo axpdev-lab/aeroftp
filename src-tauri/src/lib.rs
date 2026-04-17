@@ -42,6 +42,12 @@ mod crypto;
 mod cryptomator;
 mod cyber_tools;
 mod delta_sync;
+mod rsync_output;
+mod ssh_exec;
+#[cfg(unix)]
+mod rsync_over_ssh;
+#[cfg(unix)]
+mod delta_sync_rsync;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
