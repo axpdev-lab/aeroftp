@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### In progress — Delta Sync Fase 1 (SFTP via rsync-over-SSH)
+
+First concrete step toward the v3.6.0 "SFTP delta flagship" release. The long-standing phantom `deltaSyncEnabled` toggle in `SyncPanel.tsx` (a UI switch with no backend wiring) is being replaced with a real implementation: on SFTP connections with a local rsync binary and a rsync-capable server, transfers fall through to a managed `rsync -e ssh` invocation that delivers real bandwidth savings measured against the network, not simulated.
+
+This entry tracks infrastructure already landed on `main`. Nothing here is user-visible yet; the sync loop wiring and the UI honest-gate ship together in a later commit.
+
+#### Added (foundations, not yet wired)
+
+- **`rsync_output.rs`**: locale-tolerant parser for rsync 3.x stdout (`Progress`, `FileStart`, `Summary`, `Warning`, `Error` events). 15 unit tests covering real fixtures and edge cases (clamped percentages, partial summary lines, banner-line filtering)
+- **`ssh_exec.rs`**: generic exec primitive over a shared russh `Handle` with multiplexed stdout/stderr mpsc streams, oneshot exit code, and RAII cleanup of the reader task. Used for remote probing today; reusable for future AI agent tools and port-forwarding use cases
+- **`rsync_over_ssh.rs`** (Unix): orchestrator for the local `rsync` subprocess with SSH transport. Handles remote probing via `ssh_exec`, local binary probing, `ssh -e ...` argument assembly with shell-escaped key paths, subprocess spawn with stdout parsing, and typed errors for every fallback path. 9 unit tests
+- **`delta_sync_rsync.rs`** (Unix): thin adapter the sync loop will call instead of `provider.download()` / `provider.upload()`. 5-minute per-session capability cache, typed `DeltaSyncResult { used_delta, stats, fallback_reason }` so the loop can always report why delta wasn't used. 5 unit tests
+- **`providers::sftp::SharedSshHandle` + `handle_shared()` getter**: exposes the authenticated russh handle for `ssh_exec` reuse without reopening a second SSH connection
+
+#### Added (test infrastructure)
+
+- **Docker fixture `tests/fixtures/sftp-rsync/`**: alpine + openssh + rsync on `127.0.0.1:2222`. Single-command bring-up (`setup.sh && docker compose up -d --build`). Honest security posture — `StrictModes yes` preserved via an entrypoint script that normalizes ownership and mode on the bind-mounted authorized_keys
+- **`tests/integration_delta_sync.rs`**: `#[ignore]`-gated live checks that verify the fixture has rsync and prove delta savings on a redundant upload (65 bytes sent for a 2 MiB identical file → 99.997% bandwidth reduction, validated against the local fixture)
+
+#### Behaviour
+
+- **No user-visible change yet**. The phantom toggle still does nothing; that fix lands together with the honest UI gate (tooltip "rsync not detected on server" when the probe fails)
+- Foundations carry module-level `#![allow(dead_code)]` attributes pointing at the wiring task; they are removed when the sync loop starts calling `transfer_with_delta`
+
+#### Forward-compatibility with the native rsync (strada C)
+
+The public API of `rsync_over_ssh` intentionally exposes no subprocess types (`Child`, `Command`, stdio pipes) — only `RsyncCapability`, `RsyncConfig`, `RsyncStats`, `RsyncError`, `rsync_download()`, `rsync_upload()`. When the Rust-native rsync protocol implementation (multi-month Strada C effort) is ready, the internal transport flips from `tokio::process::Command` to an in-process Rust state machine without any change to callers. `delta_sync_rsync` and `sync.rs` stay untouched.
+
 ## [3.5.4] - 2026-04-17
 
 ### MCP Hardening & Study-Driven Bug Fixes
