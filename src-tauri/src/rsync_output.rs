@@ -24,6 +24,7 @@
 // sync loop wires `delta_sync_rsync::transfer_with_delta` (T1.5 Part B).
 #![allow(dead_code)]
 
+use crate::number_parsing::{parse_f64_loose, parse_u64_loose};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -55,22 +56,28 @@ pub enum RsyncEvent {
     Error { message: String },
 }
 
+// Regexes accept both thousands separators ('.' and ',') so the parser is
+// locale-independent. The `number_parsing` helpers decide which separator is
+// decimal and which is thousands using deterministic heuristics that match
+// every sane rsync locale (POSIX, en_US, it_IT, de_DE, fr_FR, ...).
+
 static RE_PROGRESS: LazyLock<Regex> = LazyLock::new(|| {
     // Matches lines like:
     //         10,485,760 100%    5.28MB/s    0:00:01 (xfr#1, to-chk=0/1)
+    //         10.485.760 100%    5,28MB/s    0:00:01 (it_IT locale)
     // or      10485760 50%    1.20MB/s    0:00:05
-    Regex::new(r"^\s+([\d,]+)\s+(\d+)%\s+(\S+)(?:\s+(\S+))?").unwrap()
+    Regex::new(r"^\s+([\d.,]+)\s+(\d+)%\s+(\S+)(?:\s+(\S+))?").unwrap()
 });
 
 static RE_SUMMARY_BYTES: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"^sent\s+([\d,]+)\s+bytes\s+received\s+([\d,]+)\s+bytes\s+([\d,.]+)\s+bytes/sec",
+        r"^sent\s+([\d.,]+)\s+bytes\s+received\s+([\d.,]+)\s+bytes\s+([\d.,]+)\s+bytes/sec",
     )
     .unwrap()
 });
 
 static RE_SUMMARY_TOTAL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^total size is\s+([\d,]+)\s+speedup is\s+([\d.]+)").unwrap()
+    Regex::new(r"^total size is\s+([\d.,]+)\s+speedup is\s+([\d.,]+)").unwrap()
 });
 
 static RE_ERROR: LazyLock<Regex> =
@@ -116,7 +123,7 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
     }
 
     if let Some(caps) = RE_PROGRESS.captures(trimmed) {
-        let bytes = parse_comma_u64(caps.get(1)?.as_str())?;
+        let bytes = parse_u64_loose(caps.get(1)?.as_str())?;
         // Parse wide to tolerate outliers like "999%" from rsync edge cases; clamp to 100 for UI.
         let percent_wide: u16 = caps.get(2)?.as_str().parse().ok()?;
         let percent = percent_wide.min(100) as u8;
@@ -135,9 +142,9 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
     }
 
     if let Some(caps) = RE_SUMMARY_BYTES.captures(trimmed) {
-        let sent = parse_comma_u64(caps.get(1)?.as_str())?;
-        let received = parse_comma_u64(caps.get(2)?.as_str())?;
-        let bytes_per_sec = parse_comma_f64(caps.get(3)?.as_str())?;
+        let sent = parse_u64_loose(caps.get(1)?.as_str())?;
+        let received = parse_u64_loose(caps.get(2)?.as_str())?;
+        let bytes_per_sec = parse_f64_loose(caps.get(3)?.as_str())?;
         // Summary is emitted in two lines — this is partial. Caller may pair with total line.
         return Some(RsyncEvent::Summary {
             sent,
@@ -149,8 +156,8 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
     }
 
     if let Some(caps) = RE_SUMMARY_TOTAL.captures(trimmed) {
-        let total_size = parse_comma_u64(caps.get(1)?.as_str())?;
-        let speedup: f64 = caps.get(2)?.as_str().parse().ok()?;
+        let total_size = parse_u64_loose(caps.get(1)?.as_str())?;
+        let speedup = parse_f64_loose(caps.get(2)?.as_str())?;
         return Some(RsyncEvent::Summary {
             sent: 0,
             received: 0,
@@ -173,14 +180,6 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
     Some(RsyncEvent::FileStart {
         name: trimmed.to_string(),
     })
-}
-
-fn parse_comma_u64(s: &str) -> Option<u64> {
-    s.replace(',', "").parse().ok()
-}
-
-fn parse_comma_f64(s: &str) -> Option<f64> {
-    s.replace(',', "").parse().ok()
 }
 
 /// Merge a pair of [`RsyncEvent::Summary`] events (bytes line + total line) into one complete record.

@@ -156,8 +156,6 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     let remote = "testuser@127.0.0.1:/workdir/delta.bin";
 
     let first = Command::new("rsync")
-        .env("LC_NUMERIC", "C")
-        .env("LC_ALL", "C")
         .arg("-a")
         .arg("--info=progress2")
         .arg("--stats")
@@ -187,8 +185,6 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     // Second rsync: file identical, so delta traffic should be a tiny fraction
     // of the file size. This is the "delta sync works" assertion.
     let second = Command::new("rsync")
-        .env("LC_NUMERIC", "C")
-        .env("LC_ALL", "C")
         .arg("-a")
         .arg("--info=progress2")
         .arg("--stats")
@@ -227,11 +223,16 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     }
 }
 
-/// Tiny helper that pulls an u64 out of "prefix<number>suffix" — survives
-/// commas as thousand separators (LANG=C output).
+/// Tiny helper that pulls an u64 out of "prefix<number>suffix" — accepts both
+/// en_US ("1,048,576") and locale-native ("1.048.576") thousand separators by
+/// stripping every '.' ',' and whitespace from the digit run.
 fn extract_summary_u64(haystack: &str, prefix: &str, suffix: &str) -> Option<u64> {
     let start = haystack.find(prefix)? + prefix.len();
     let rest = &haystack[start..];
     let end = rest.find(suffix)?;
-    rest[..end].replace(',', "").trim().parse().ok()
+    let digits: String = rest[..end]
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
 }

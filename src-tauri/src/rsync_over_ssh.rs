@@ -373,16 +373,12 @@ pub async fn rsync_upload(
 /// Execute a configured rsync [`Command`], streaming stdout through the parser
 /// and collecting stats.
 async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
-    // Pin LC_NUMERIC to the POSIX locale so thousands/decimal separators
-    // are always en_US ("1,048,576" / "1.00"). On locale-aware builds
-    // (e.g. it_IT) rsync emits "1.048.576" / "1,00" and the parser — which
-    // strips commas as thousand separators — silently produces wrong numbers.
-    // LC_NUMERIC is the chirurgical choice: it controls only the number
-    // formatting, leaving LC_MESSAGES / LC_TIME free if rsync ever translates
-    // anything (it currently doesn't, but the narrower override is defensible).
-    // LC_ALL=C is also set as a safety net because LC_ALL trumps LC_NUMERIC
-    // if the host sets it; using both makes the intent explicit.
-    cmd.env("LC_NUMERIC", "C").env("LC_ALL", "C");
+    // The rsync output parser (`rsync_output`) uses locale-tolerant number
+    // parsing (`number_parsing`) that accepts both en_US ("1,048,576" / "1.00")
+    // and it_IT / de_DE / fr_FR ("1.048.576" / "1,00") conventions. No LC_*
+    // override is needed: the child process inherits the caller's locale and
+    // the parser adapts. Keeping locale inheritance means any future error
+    // messages from rsync stay in the user's language.
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let start = Instant::now();

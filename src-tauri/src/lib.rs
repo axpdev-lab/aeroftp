@@ -42,6 +42,7 @@ mod crypto;
 mod cryptomator;
 mod cyber_tools;
 mod delta_sync;
+mod number_parsing;
 mod rsync_output;
 mod ssh_exec;
 #[cfg(unix)]
