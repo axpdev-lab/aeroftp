@@ -156,7 +156,7 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     let remote = "testuser@127.0.0.1:/workdir/delta.bin";
 
     let first = Command::new("rsync")
-        .env("LANG", "C")
+        .env("LC_NUMERIC", "C")
         .env("LC_ALL", "C")
         .arg("-a")
         .arg("--info=progress2")
@@ -187,7 +187,7 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     // Second rsync: file identical, so delta traffic should be a tiny fraction
     // of the file size. This is the "delta sync works" assertion.
     let second = Command::new("rsync")
-        .env("LANG", "C")
+        .env("LC_NUMERIC", "C")
         .env("LC_ALL", "C")
         .arg("-a")
         .arg("--info=progress2")

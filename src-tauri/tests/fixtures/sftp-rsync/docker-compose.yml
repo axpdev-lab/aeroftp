@@ -16,7 +16,10 @@ services:
     ports:
       - "127.0.0.1:2222:22"
     volumes:
-      - ./ssh_key.pub:/home/testuser/.ssh/authorized_keys:ro
+      # Mounted at /mnt so the entrypoint can copy + chown it to the real
+      # location; sshd can then pass StrictModes yes without host uid
+      # leakage. Never bind-mount authorized_keys directly.
+      - ./ssh_key.pub:/mnt/authorized_keys:ro
       - workdir:/workdir
     restart: "no"
     healthcheck:
