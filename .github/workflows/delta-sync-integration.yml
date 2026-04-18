@@ -97,7 +97,7 @@ jobs:
       - name: Unit tests — delta-sync modules
         working-directory: src-tauri
         run: |
-          cargo test --lib --no-fail-fast \
+          cargo test --lib --no-fail-fast -- \
             rsync_output:: \
             rsync_over_ssh:: \
             ssh_exec:: \
