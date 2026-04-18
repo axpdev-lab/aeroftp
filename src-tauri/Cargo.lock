@@ -131,6 +131,7 @@ dependencies = [
  "webpki-roots 0.26.11",
  "whisper-rs",
  "windows 0.58.0",
+ "xxhash-rust",
  "xz2",
  "zeroize",
  "zip",
@@ -11236,6 +11237,12 @@ dependencies = [
  "libc",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "xz2"

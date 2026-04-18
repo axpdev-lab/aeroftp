@@ -170,6 +170,10 @@ crossterm = "0.29"                                                     # Cross-p
 # Used by `real_wire.rs` to decompress DEFLATED_DATA literals emitted by
 # rsync's sender when CPRES_ZSTD is negotiated. Off by default.
 zstd = { version = "0.13", optional = true }
+# Strada C — XXH3-128 file-level checksum trailer (S8j). Off by default.
+# Provides `xxhash_rust::xxh3::xxh3_128` used by the native driver to
+# compute the file checksum rsync verifies at the end of a delta stream.
+xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
 
 # Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
 [target.'cfg(not(target_os = "macos"))'.dependencies]
@@ -203,7 +207,7 @@ custom-protocol = ["tauri/custom-protocol"]
 # The backing module lives under `src/rsync_native_proto/` and is gitignored.
 # Enable with: `cargo check --features proto_native_rsync`
 # or `cargo test --features proto_native_rsync rsync_native_proto`.
-proto_native_rsync = ["dep:zstd"]
+proto_native_rsync = ["dep:zstd", "dep:xxhash-rust"]
 
 # Strada C — Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface

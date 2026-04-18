@@ -138,21 +138,16 @@ jobs:
 
   # ------------------------------------------------------------------
   # lane3: Docker-backed lane 3 — a real `rsync 3.2.7` server over SSH.
-  # This is the gate of Zona B go-live: the test asserts the driver
-  # can drive a real rsync through upload + finish_session. It is
-  # currently expected to fail while S8j NDX_DONE drain + xxh128
-  # wiring are pending; marked `continue-on-error: true` so it flags
-  # regressions without blocking intermediate strada-c-* PRs.
+  # The test drives the full upload + finish_session round-trip against
+  # a live rsync and surfaces any regression in the native protocol
+  # implementation immediately. S8j closed the prior NDX_DONE / xxh128
+  # gaps, so this job is now a hard gate on `strada-c-*` branches.
   # ------------------------------------------------------------------
   lane3:
     if: startsWith(github.ref, 'refs/heads/strada-c-') || startsWith(github.head_ref, 'strada-c-')
     name: Docker lane 3 (real rsync 3.2.7)
     runs-on: ubuntu-latest
     needs: [check]
-    # Gate of Zona B, not of Zona A. Will flip to hard-fail once S8j
-    # closes the tracked NDX_DONE + xxh128 gaps (see test doc comment
-    # on `driver_upload_live_lane_3_real_rsync_byte_identical`).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

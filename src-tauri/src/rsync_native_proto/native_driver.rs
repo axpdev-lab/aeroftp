@@ -56,16 +56,42 @@ use crate::rsync_native_proto::real_wire::{
     decode_sum_head, decode_summary_frame, decompress_zstd_literal_stream_boundaries,
     encode_client_preamble, encode_delta_stream, encode_file_list_entry,
     encode_file_list_terminator, encode_item_flags, encode_ndx, encode_sum_block,
-    encode_sum_head, ClientPreamble, DeltaOp, DeltaStreamReport, FileListDecodeOptions,
-    FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll, MuxStreamReader, MuxTag,
-    NdxState, RealWireError, SumBlock, SumHead, SummaryFrame, MAX_DELTA_LITERAL_LEN,
-    NDX_DONE, NDX_FLIST_EOF,
+    encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp, DeltaStreamReport,
+    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
+    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
+    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
 use crate::rsync_native_proto::transport::{
     CancelHandle, RawByteStream, RawRemoteShellTransport,
 };
-use crate::rsync_native_proto::types::{NativeRsyncError, NativeRsyncErrorKind, SessionStats};
+use crate::rsync_native_proto::types::{
+    NativeRsyncError, NativeRsyncErrorKind, SessionRole, SessionStats,
+};
+use xxhash_rust::xxh3::xxh3_128;
+
+/// Compute the 16-byte file-level strong checksum rsync verifies at the
+/// end of the delta stream when `xxh128` is the negotiated algo.
+///
+/// Byte layout — pinned by `xxh128_wire_bytes_match_SIVAL64_pair`
+/// against rsync 3.2.7 `checksum.c::hash_struct`:
+///
+/// ```text
+/// out[0..8]  = lo_u64.to_le_bytes()   // SIVAL64(buf, 0, lo)
+/// out[8..16] = hi_u64.to_le_bytes()   // SIVAL64(buf, 8, hi)
+/// ```
+///
+/// where `(hi, lo)` come from splitting the xxh3_128 `u128` at the
+/// 64-bit boundary.
+fn compute_xxh128_wire(data: &[u8]) -> Vec<u8> {
+    let hash = xxh3_128(data);
+    let lo = hash as u64;
+    let hi = (hash >> 64) as u64;
+    let mut out = Vec::with_capacity(16);
+    out.extend_from_slice(&lo.to_le_bytes());
+    out.extend_from_slice(&hi.to_le_bytes());
+    out
+}
 
 /// Chunk size used for raw-stream reads. Large enough to swallow a full
 /// preamble + file list in one go for small transfers, small enough not
@@ -97,6 +123,14 @@ const A2_2_FIRST_FILE_NDX: i32 = 1;
 /// 16 for A2.3; real xxh128 computation over `source_data` deferred to
 /// S8j when the driver is wired against a live rsync server.
 const A2_3_FILE_CHECKSUM_LEN: usize = 16;
+
+/// S8j download — exact count of `NDX_DONE` markers rsync 3.2.7 interleaves
+/// between the file-level checksum trailer and the `SummaryFrame` on the
+/// server→client app stream. Pinned by `tests.rs` against the frozen
+/// download capture (`FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT = 3`);
+/// kept as an explicit constant here so the driver's drain logic breaks
+/// loudly if rsync ever shifts the marker count.
+const PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD: usize = 3;
 
 /// State machine phase for the native driver session.
 ///
@@ -225,6 +259,20 @@ pub struct NativeRsyncDriver<T: RawRemoteShellTransport> {
     /// other fields stay at default (prototype-specific instrumentation
     /// deferred to A4 adapter).
     session_stats: SessionStats,
+
+    // S8j session-finish state.
+    /// Role this driver played for the current session; set by the
+    /// `drive_*_inner` entry points. Drives the finish-session
+    /// dispatcher (download receives summary, upload emits it).
+    session_role: Option<SessionRole>,
+    /// Cumulative MSG_DATA payload bytes the driver has read from the
+    /// remote. Mirror of `sent_data_bytes` for the inbound direction.
+    /// Updated by `next_data_frame` after each Data poll.
+    received_raw_bytes: u64,
+    /// Residual post-mux bytes left by `drain_leading_ndx_done_download`
+    /// that belong to the following `SummaryFrame`. `receive_summary_phase`
+    /// prepends them to its decode buffer.
+    summary_seed: Vec<u8>,
 }
 
 impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
@@ -255,6 +303,9 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
             sent_data_bytes: 0,
             received_summary: None,
             session_stats: SessionStats::default(),
+            session_role: None,
+            received_raw_bytes: 0,
+            summary_seed: Vec::new(),
         }
     }
 
@@ -315,6 +366,20 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
     }
     pub fn sent_data_bytes(&self) -> u64 {
         self.sent_data_bytes
+    }
+    /// S8j mirror of `sent_data_bytes` for the inbound direction —
+    /// cumulative MSG_DATA payload bytes the driver has read from the
+    /// remote. Used by `emit_summary_phase` to populate `total_read` in
+    /// upload finishes.
+    pub fn received_raw_bytes(&self) -> u64 {
+        self.received_raw_bytes
+    }
+    /// S8j role indicator: `Some(Sender)` if the driver is running an
+    /// upload, `Some(Receiver)` for a download, `None` if neither
+    /// `drive_*_inner` has been entered yet. Used by `finish_session`
+    /// to pick the right dispatch.
+    pub fn session_role(&self) -> Option<SessionRole> {
+        self.session_role
     }
     pub fn received_summary(&self) -> Option<&SummaryFrame> {
         self.received_summary.as_ref()
@@ -442,8 +507,9 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), NativeRsyncError> {
+        self.session_role = Some(SessionRole::Sender);
         self.open_raw_stream_internal(&command_spec).await?;
-        self.perform_preamble_exchange(31, "md5,xxh64", "none,zstd")
+        self.perform_preamble_exchange(31, "md5,xxh64,xxh128", "none,zstd")
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
@@ -458,8 +524,9 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), NativeRsyncError> {
+        self.session_role = Some(SessionRole::Receiver);
         self.open_raw_stream_internal(&command_spec).await?;
-        self.perform_preamble_exchange(31, "md5,xxh64", "none,zstd")
+        self.perform_preamble_exchange(31, "md5,xxh64,xxh128", "none,zstd")
             .await?;
         self.receive_file_list_single_file(bridge).await?;
         self.send_signature_phase_single_file(destination_data, adapter)
@@ -576,6 +643,10 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         self.write_data_frame(&entry_bytes).await?;
         let term_bytes = encode_file_list_terminator(&opts);
         self.write_data_frame(&term_bytes).await?;
+        // S8j — remember the entry on the sender side so
+        // `emit_summary_phase` can populate `total_size`. Parity with the
+        // receiver path, which already pushes decoded entries.
+        self.file_list.push(entry.clone());
         self.phase = NativeSessionPhase::FileListSent;
         Ok(())
     }
@@ -672,7 +743,13 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
             if let Some(res) = self.mux_reader.poll_frame() {
                 let poll = res.map_err(|e| map_realwire_error(e, "mux frame"))?;
                 match poll {
-                    MuxPoll::Data(bytes) => return Ok(bytes),
+                    MuxPoll::Data(bytes) => {
+                        // S8j: mirror of `sent_data_bytes`, used by
+                        // `emit_summary_phase` to populate `total_read`
+                        // in upload finishes.
+                        self.received_raw_bytes += bytes.len() as u64;
+                        return Ok(bytes);
+                    }
                     MuxPoll::Oob(event) => {
                         bridge.handle(event);
                         continue;
@@ -998,10 +1075,13 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
             }
         }
 
-        // File-level strong checksum placeholder. Real xxh128 over
-        // source_data is deferred to S8j when the driver runs against
-        // a live rsync server that verifies the trailer.
-        let file_checksum = vec![0u8; A2_3_FILE_CHECKSUM_LEN];
+        // S8j — real xxh128 (XXH3-128) over `source_data`. Rsync 3.2.7
+        // verifies this trailer server-side when `xxh128` is negotiated
+        // in `checksum_algos` (see `perform_preamble_exchange` call
+        // sites below). Byte layout matches `checksum.c::hash_struct`'s
+        // `SIVAL64(buf, 0, lo); SIVAL64(buf, 8, hi)` — lower 64 bits LE
+        // first, upper 64 bits LE second.
+        let file_checksum = compute_xxh128_wire(source_data);
 
         let report = DeltaStreamReport {
             ops: wire_ops.clone(),
@@ -1211,8 +1291,107 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         &mut self,
         bridge: &mut dyn EventSink,
     ) -> Result<(), NativeRsyncError> {
-        self.receive_summary_phase(bridge).await?;
+        // S8j dispatch by session role.
+        //
+        // - `Some(Receiver)` → real download against rsync 3.2.7: drain
+        //   exactly `PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD` leading
+        //   NDX_DONE markers, then decode the SummaryFrame from the
+        //   residual.
+        // - `Some(Sender)` → real upload (A7 lane 3 scope). Upload-side
+        //   finish is wired in S8j.3+; legacy receive semantics stay
+        //   here for now to keep the A2.4 mock upload tests working.
+        // - `None` → legacy mock test that drove `finish_session`
+        //   directly on a synthesised inbound buffer without entering
+        //   `drive_*_inner`. Skip the drain entirely — the mock inbound
+        //   never contains leading NDX_DONE bytes and the peek-based
+        //   heuristic of the drain would misread a varlong value of 0
+        //   as a marker.
+        match self.session_role {
+            Some(SessionRole::Receiver) => {
+                // Download against real rsync: drain the 3 leading
+                // NDX_DONE markers, decode the summary the server
+                // emitted, send our own NDX_DONE ACK, and consume the
+                // trailing marker rsync echoes back.
+                self.drain_leading_ndx_done_download(bridge).await?;
+                self.receive_summary_phase(bridge).await?;
+                self.emit_ndx_done_marker().await?;
+                self.read_trailing_ndx_done(bridge).await?;
+            }
+            Some(SessionRole::Sender) => {
+                // Upload against real rsync: we are the sender, so we
+                // emit the end-of-session NDX_DONE + SummaryFrame and
+                // then read the trailing NDX_DONE the receiver writes
+                // back in `read_final_goodbye`.
+                self.emit_summary_phase().await?;
+                self.read_trailing_ndx_done(bridge).await?;
+                // Re-snapshot `session_stats` to include the trailing
+                // byte read (and any bytes the `read_trailing` path
+                // pulled). Invariant: after `finish_session` returns Ok,
+                // `session_stats.{bytes_sent,bytes_received}` equals
+                // `driver.{sent_data_bytes,received_raw_bytes}`.
+                self.session_stats.bytes_sent = self.sent_data_bytes;
+                self.session_stats.bytes_received = self.received_raw_bytes;
+            }
+            None => {
+                // Legacy test path: `finish_session` was invoked on a
+                // driver that never entered `drive_*_inner`. Preserve
+                // the A2.4 receive-only semantics so the synthesised
+                // mock inbound still decodes correctly.
+                self.receive_summary_phase(bridge).await?;
+            }
+        }
         self.shutdown_raw_stream().await?;
+        Ok(())
+    }
+
+    // --- S8j NDX_DONE drain (download direction) -------------------------
+
+    /// Pull MSG_DATA frames until we have accumulated at least
+    /// `PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD` bytes, verify that the
+    /// first `N` of them are `0x00` (NDX_DONE markers), drop them, and
+    /// stash the remainder into `summary_seed` for
+    /// `receive_summary_phase` to prepend.
+    ///
+    /// Empty-drain policy: tests that synthesise a clean `SummaryFrame`
+    /// with NO leading markers (all A2.4 mock tests as written) MUST
+    /// keep working. We detect that case by a peek at the first byte
+    /// — if it is not `0x00`, the drain is a no-op and the summary
+    /// decoder sees the data unchanged.
+    async fn drain_leading_ndx_done_download(
+        &mut self,
+        bridge: &mut dyn EventSink,
+    ) -> Result<(), NativeRsyncError> {
+        let want = PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD;
+        let mut buf: Vec<u8> = Vec::new();
+        // Pull at least one frame to peek.
+        let first = self.next_data_frame(bridge).await?;
+        buf.extend_from_slice(&first);
+
+        // Empty-drain: if the first byte is not NDX_DONE, rsync did not
+        // emit leading markers on this profile (synthesised mocks). Pass
+        // the whole payload through to the summary decoder as-is.
+        if buf.first().copied() != Some(0x00) {
+            self.summary_seed = buf;
+            return Ok(());
+        }
+
+        // Pull more frames until we can cover `want` leading bytes AND
+        // verify they are all `0x00`.
+        while buf.len() < want {
+            let more = self.next_data_frame(bridge).await?;
+            buf.extend_from_slice(&more);
+        }
+        for (i, b) in buf.iter().take(want).enumerate() {
+            if *b != 0x00 {
+                return Err(NativeRsyncError::invalid_frame(format!(
+                    "expected {want} leading NDX_DONE markers before SummaryFrame, \
+                     found non-zero byte 0x{b:02X} at offset {i}"
+                )));
+            }
+        }
+        // Drop the drained markers, keep the residual.
+        buf.drain(..want);
+        self.summary_seed = buf;
         Ok(())
     }
 
@@ -1221,17 +1400,17 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
     /// Read the `SummaryFrame` from the data stream, populate
     /// `received_summary` + `session_stats`, and advance phase.
     ///
-    /// Scope note: real rsync interleaves 1+ `NDX_DONE` markers before
-    /// the SummaryFrame on the wire (see `send_files` final goodbye at
-    /// `main.c::read_final_goodbye`). A2.4 mock tests synthesise a clean
-    /// SummaryFrame with no leading markers; live lane-3 handling of
-    /// the NDX_DONE drain is tracked for S8j.
+    /// S8j: preloads the decode buffer from `summary_seed`, which the
+    /// `drain_leading_ndx_done_download` helper populates after
+    /// dropping the leading `NDX_DONE` markers rsync 3.2.7 interleaves
+    /// between the file-csum and the summary on the server→client
+    /// stream (see `main.c::read_final_goodbye`).
     async fn receive_summary_phase(
         &mut self,
         bridge: &mut dyn EventSink,
     ) -> Result<(), NativeRsyncError> {
         self.phase = NativeSessionPhase::SummaryReceiving;
-        let mut buf: Vec<u8> = Vec::new();
+        let mut buf: Vec<u8> = std::mem::take(&mut self.summary_seed);
         let protocol = self.protocol_version;
         loop {
             self.check_cancel("receive_summary_phase")?;
@@ -1266,6 +1445,104 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         }
         self.phase = NativeSessionPhase::Complete;
         Ok(())
+    }
+
+    // --- S8j upload finish helpers ---------------------------------------
+
+    /// Write a single `NDX_DONE` marker (1 byte `0x00`) wrapped in a
+    /// MSG_DATA mux frame. `write_data_frame` enforces the wrapping.
+    async fn emit_ndx_done_marker(&mut self) -> Result<(), NativeRsyncError> {
+        self.write_data_frame(&[0x00]).await
+    }
+
+    /// Emit the end-of-session `NDX_DONE` + `SummaryFrame` pair that
+    /// rsync 3.2.7 expects from the **sender** (client in upload mode)
+    /// after the delta stream and its file-level checksum trailer.
+    ///
+    /// Wire layout (matches `main.c::read_final_goodbye` + `handle_stats`):
+    /// ```text
+    ///   [0x00]                                  // NDX_DONE marker
+    ///   encode_summary_frame(frame, 31)        // 5 × varlong(_, _, 3)
+    /// ```
+    /// Both chunks go out in a single MSG_DATA frame for wire economy;
+    /// rsync's mux layer accepts either bundled or split.
+    ///
+    /// Field population:
+    /// - `total_read` = `self.received_raw_bytes` (bytes consumed from
+    ///   the remote via `next_data_frame`, incl. signatures).
+    /// - `total_written` = `self.sent_data_bytes` (bytes written via
+    ///   `write_data_frame`, incl. file list, signatures echo, delta).
+    /// - `total_size` = size of the first entry in `self.file_list`
+    ///   (single-file prototype scope).
+    /// - `flist_buildtime` / `flist_xfertime` = `Some(0)`. Rsync's
+    ///   `handle_stats` treats these as informational (never validated
+    ///   as `> 0`); a future S8k will wire actual `Instant` measurement
+    ///   if lane 3 telemetry shows the zeros are surprising.
+    async fn emit_summary_phase(&mut self) -> Result<(), NativeRsyncError> {
+        self.phase = NativeSessionPhase::SummaryReceiving;
+        let total_size = self
+            .file_list
+            .first()
+            .map(|e| e.size)
+            .unwrap_or(0);
+        // `SummaryFrame` snapshots the counters as of the moment the
+        // client decided to announce them — matching rsync 3.2.7's
+        // `handle_stats`, which reads `stats.total_written` before
+        // emitting the summary itself (so the reported number does NOT
+        // include the summary bytes being written).
+        let frame = SummaryFrame {
+            total_read: self.received_raw_bytes as i64,
+            total_written: self.sent_data_bytes as i64,
+            total_size,
+            flist_buildtime: Some(0),
+            flist_xfertime: Some(0),
+        };
+        let mut payload = Vec::with_capacity(1 + 9 * 5);
+        payload.push(0x00); // NDX_DONE
+        payload.extend_from_slice(&encode_summary_frame(&frame, self.protocol_version));
+        self.write_data_frame(&payload).await?;
+        // `session_stats` is a post-emit aggregate — it DOES include the
+        // summary bytes we just wrote, so downstream consumers see the
+        // actual wire-level totals for the session.
+        self.session_stats.bytes_sent = self.sent_data_bytes;
+        self.session_stats.bytes_received = self.received_raw_bytes;
+        self.received_summary = Some(frame);
+        self.phase = NativeSessionPhase::SummaryReceived;
+        Ok(())
+    }
+
+    /// Read the final `NDX_DONE` (1 byte `0x00`) the rsync receiver
+    /// writes back in `read_final_goodbye` line 887 after consuming
+    /// the sender's `NDX_DONE + SummaryFrame`. Tolerates clean EOF
+    /// (some rsync builds close the channel before the byte flushes).
+    async fn read_trailing_ndx_done(
+        &mut self,
+        bridge: &mut dyn EventSink,
+    ) -> Result<(), NativeRsyncError> {
+        // Best-effort read: if the stream is already closed, or the
+        // next frame is empty, treat as clean completion.
+        match self.next_data_frame(bridge).await {
+            Ok(bytes) => {
+                if let Some(&b) = bytes.first() {
+                    if b != 0x00 {
+                        return Err(NativeRsyncError::invalid_frame(format!(
+                            "expected trailing NDX_DONE (0x00), got 0x{b:02X}"
+                        )));
+                    }
+                }
+                // bytes.is_empty() is valid too — nothing to check.
+                Ok(())
+            }
+            Err(e) if e.kind == NativeRsyncErrorKind::TransportFailure => {
+                // EOF is an acceptable end of a clean rsync session.
+                tracing::debug!(
+                    "read_trailing_ndx_done: remote closed before trailing marker ({})",
+                    e.detail
+                );
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn check_cancel(&self, op: &'static str) -> Result<(), NativeRsyncError> {
@@ -1702,7 +1979,12 @@ mod tests {
 
         let expected_client = encode_client_preamble(&ClientPreamble {
             protocol_version: 31,
-            checksum_algos: "md5,xxh64".to_string(),
+            // S8j: the driver now offers xxh128 as the preferred
+            // file-level checksum algo so rsync 3.2.7 picks it during
+            // negotiation. The mock's canonical server preamble still
+            // echoes the pre-S8j "md5,xxh64" set — this test only pins
+            // the CLIENT's outbound offer.
+            checksum_algos: "md5,xxh64,xxh128".to_string(),
             compression_algos: "none,zstd".to_string(),
             consumed: 0,
         });
@@ -1990,16 +2272,14 @@ mod tests {
     /// Local developers who cloned the repo do not need Docker to run the
     /// default test suite; CI on the `strada-c-*` branch sets the flag.
     ///
-    /// # Known deferred gaps
+    /// # S8j closure
     ///
-    /// The real rsync server interleaves one or more `NDX_DONE` markers
-    /// before the `SummaryFrame` (see `receive_summary_phase` doc — this
-    /// drain is S8j scope). Additionally, the file-level `xxh128` trailer
-    /// is currently a 16-byte zero placeholder (A2.3 accepted risk). Both
-    /// mean this test is expected to **fail** until S8j lands — the
-    /// failure is the tracked gate for Zona B go-live, not a regression
-    /// of Zona A. The CI workflow marks the lane 3 job with
-    /// `continue-on-error` until S8j closes the gap.
+    /// S8j closed the prior gaps: xxh128 real checksum trailer, NDX_DONE
+    /// drain before `SummaryFrame` on the download direction, and the
+    /// full upload-side finish (client emits `NDX_DONE + SummaryFrame`
+    /// and reads the trailing NDX_DONE from the server). With those in
+    /// place the lane 3 CI job runs without `continue-on-error` and any
+    /// regression against real rsync 3.2.7 surfaces immediately.
     #[cfg(ci_lane3)]
     #[tokio::test]
     async fn driver_upload_live_lane_3_real_rsync_byte_identical() {
@@ -2082,7 +2362,7 @@ mod tests {
         let finish_res = driver.finish_session(&mut sink).await;
         assert!(
             finish_res.is_ok(),
-            "finish_session failed (NDX_DONE drain gap? xxh128 placeholder?): {finish_res:?}"
+            "finish_session failed against real rsync: {finish_res:?}"
         );
         assert_eq!(driver.phase(), NativeSessionPhase::Complete);
         let stats = driver.session_stats();
@@ -2463,16 +2743,26 @@ mod tests {
             .count();
         assert_eq!(literal_count, 2);
 
-        // The outbound capture must contain the 16-byte file checksum
-        // trailer (zero-filled placeholder in A2.3).
+        // S8j: the outbound capture must contain the REAL xxh128 trailer
+        // computed over `source_data` — not the 16-zero placeholder the
+        // A2.3 prototype emitted. Verify by recomputing the expected
+        // 16 bytes via `compute_xxh128_wire` and scanning the outbound
+        // window. This pins both the encoder and the driver's wiring of
+        // `source_data` into the hash function.
+        let expected_trailer = compute_xxh128_wire(b"hello\0\0\0world");
+        assert_eq!(expected_trailer.len(), 16);
+        assert!(
+            !expected_trailer.iter().all(|&b| b == 0),
+            "xxh128 of a non-empty payload must not be all-zero"
+        );
         let guard = last_raw_outbound.lock().unwrap();
         let outbound_arc = guard.as_ref().expect("raw stream must have opened");
         let outbound = outbound_arc.lock().unwrap().clone();
-        // The last 16 bytes before any shutdown should be zeros; at
-        // minimum the outbound must contain 16 consecutive zero bytes.
         assert!(
-            outbound.windows(16).any(|w| w.iter().all(|&b| b == 0)),
-            "16-byte zero file_checksum must appear in outbound"
+            outbound
+                .windows(16)
+                .any(|w| w == expected_trailer.as_slice()),
+            "real xxh128 trailer must appear in outbound bytes"
         );
         assert!(d.sent_data_bytes() > 0);
     }
@@ -2812,9 +3102,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn driver_finish_session_drains_summary_frame_and_completes() {
-        // Upload inbound: server preamble + sig phase + summary frame
-        // (no delta → server has no work, client emits empty delta).
+    async fn driver_finish_session_upload_emits_summary_frame_and_completes() {
+        // S8j: upload finish = the CLIENT emits NDX_DONE + SummaryFrame
+        // and reads ONE trailing NDX_DONE byte from the server. No more
+        // inbound summary bytes — the summary is derived from the
+        // driver's own counters.
         let head = SumHead {
             count: 1,
             block_length: 1024,
@@ -2823,12 +3115,13 @@ mod tests {
         };
         let blocks = vec![make_sig_block(0x11, 0x22, 2)];
         let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &blocks);
-        let summary_bytes = build_summary_frame_bytes(31);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
-        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &summary_bytes));
+        // Trailing NDX_DONE (single 0x00 byte in MSG_DATA) from server.
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00]));
         let transport = mock_transport_with_raw_inbound(inbound);
         let last_raw_shutdown = transport.last_raw_shutdown.clone();
+        let last_raw_outbound = transport.last_raw_outbound.clone();
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
 
@@ -2837,17 +3130,61 @@ mod tests {
 
         d.finish_session(&mut sink)
             .await
-            .expect("finish_session happy path");
+            .expect("finish_session upload happy path");
         assert_eq!(d.phase(), NativeSessionPhase::Complete);
-        assert!(d.received_summary().is_some());
-        let summary = d.received_summary().unwrap();
-        assert_eq!(summary.total_read, 12345);
-        assert_eq!(summary.total_written, 67890);
-        assert_eq!(summary.total_size, 4096);
-        assert_eq!(d.session_stats().bytes_received, 12345);
-        assert_eq!(d.session_stats().bytes_sent, 67890);
+        assert_eq!(d.session_role(), Some(SessionRole::Sender));
 
-        // Shutdown flag must be flipped by the driver.
+        // `received_summary()` now holds the LOCALLY emitted summary,
+        // populated from the driver's counters as of the pre-emit
+        // snapshot (matches rsync's `handle_stats` semantics).
+        let summary = d.received_summary().expect("emitted summary cached");
+        assert_eq!(summary.total_size, 4096, "from sample_file_list_entry");
+        assert!(
+            summary.total_written > 0,
+            "total_written must be positive (pre-emit delta bytes)"
+        );
+        // Post-emit wire totals must be >= the pre-emit snapshot, since
+        // the summary bytes themselves contribute to sent_data_bytes.
+        assert!(
+            (summary.total_written as u64) <= d.sent_data_bytes(),
+            "summary.total_written ({}) must be <= post-finish sent_data_bytes ({})",
+            summary.total_written,
+            d.sent_data_bytes()
+        );
+        // `total_read` is snapshotted pre-emit; `read_trailing_ndx_done`
+        // may pull one more byte after that. Invariant: summary value
+        // is at most one byte behind the final driver counter.
+        assert!(
+            summary.total_read as u64 <= d.received_raw_bytes(),
+            "summary.total_read ({}) must be <= final received_raw_bytes ({})",
+            summary.total_read,
+            d.received_raw_bytes()
+        );
+        assert!(
+            d.received_raw_bytes() - summary.total_read as u64 <= 1,
+            "trailing NDX_DONE read must add at most 1 byte after snapshot"
+        );
+
+        // Verify the outbound wire carries a MSG_DATA whose payload
+        // starts with 0x00 (NDX_DONE) followed by the encoded summary.
+        let expected_suffix = {
+            let mut v = vec![0x00];
+            v.extend_from_slice(&encode_summary_frame(summary, 31));
+            v
+        };
+        let guard = last_raw_outbound.lock().unwrap();
+        let outbound_arc = guard
+            .as_ref()
+            .expect("raw stream must have been opened");
+        let outbound = outbound_arc.lock().unwrap().clone();
+        assert!(
+            outbound
+                .windows(expected_suffix.len())
+                .any(|w| w == expected_suffix.as_slice()),
+            "outbound must contain NDX_DONE + encoded summary as a single MSG_DATA payload"
+        );
+
+        // Shutdown flag must still be flipped by the driver.
         let shutdown_arc_guard = last_raw_shutdown.lock().unwrap();
         let shutdown_arc = shutdown_arc_guard
             .as_ref()
@@ -2859,7 +3196,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn driver_finish_session_populates_session_stats_from_wire() {
+    async fn driver_finish_session_upload_populates_session_stats_from_counters() {
         let head = SumHead {
             count: 1,
             block_length: 1024,
@@ -2868,10 +3205,9 @@ mod tests {
         };
         let blocks = vec![make_sig_block(0x11, 0x22, 2)];
         let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &blocks);
-        let summary_bytes = build_summary_frame_bytes(31);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
-        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &summary_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00]));
         let transport = mock_transport_with_raw_inbound(inbound);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
@@ -2879,9 +3215,13 @@ mod tests {
         drive_upload_to_stub(&mut d, &mut sink).await;
         d.finish_session(&mut sink).await.unwrap();
 
+        let sent = d.sent_data_bytes();
+        let recv = d.received_raw_bytes();
         let stats = d.session_stats();
-        assert_eq!(stats.bytes_received, 12345);
-        assert_eq!(stats.bytes_sent, 67890);
+        assert!(sent > 0, "some data must have been written in upload");
+        assert!(recv > 0, "some data must have been read for sig phase");
+        assert_eq!(stats.bytes_sent, sent);
+        assert_eq!(stats.bytes_received, recv);
         // Other SessionStats fields remain at their default — A4 populates
         // files_seen / files_delta / literal_bytes / matched_bytes from
         // its own instrumentation layer.
@@ -2889,9 +3229,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn driver_finish_session_aborts_on_terminal_oob() {
-        // Sig + terminal Error instead of summary → bail with RemoteError,
-        // phase=Failed. committed stays true (upload crossed delta).
+    async fn driver_finish_session_upload_aborts_on_terminal_oob_in_trailing_slot() {
+        // S8j: the sender emits the summary first, then reads the trailing
+        // NDX_DONE. If the server sends an OOB Error in that slot, the
+        // finish must bail with RemoteError and phase=Failed.
         let head = SumHead {
             count: 1,
             block_length: 1024,
@@ -2902,7 +3243,8 @@ mod tests {
         let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &blocks);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
-        inbound.extend_from_slice(&mux_frame(MuxTag::Error, b"summary phase crash"));
+        // Terminal Error occupies the trailing NDX_DONE slot.
+        inbound.extend_from_slice(&mux_frame(MuxTag::Error, b"trailing phase crash"));
         let transport = mock_transport_with_raw_inbound(inbound);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
@@ -2910,9 +3252,8 @@ mod tests {
         drive_upload_to_stub(&mut d, &mut sink).await;
         let err = d.finish_session(&mut sink).await.unwrap_err();
         assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
-        assert!(err.detail.contains("summary phase crash"));
+        assert!(err.detail.contains("trailing phase crash"));
         assert_eq!(d.phase(), NativeSessionPhase::Failed);
-        assert!(d.received_summary().is_none());
     }
 
     #[tokio::test]
@@ -2964,10 +3305,16 @@ mod tests {
             encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let summary_bytes = build_summary_frame_bytes(31);
+        // S8j: real rsync 3.2.7 emits exactly 3 leading NDX_DONE
+        // markers between the delta stream's file-csum trailer and the
+        // SummaryFrame. `finish_session` on a Receiver-role driver now
+        // drains them before decoding — replicate that shape here.
+        let ndx_done_leading: Vec<u8> = vec![0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD];
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &ndx_done_leading));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &summary_bytes));
 
         let transport = mock_transport_with_raw_inbound(inbound);
@@ -2990,6 +3337,226 @@ mod tests {
         assert!(!d.committed(), "download A2.4 stays PreCommit; A4 owns the flip");
         assert!(d.reconstructed().is_some());
         assert!(d.received_summary().is_some());
+    }
+
+    // ---- S8j tests (xxh128 wire layout) ----------------------------------
+
+    #[test]
+    fn xxh128_wire_produces_16_bytes_split_lo_le_hi_le() {
+        // Layout invariant pin: `compute_xxh128_wire` must produce exactly
+        // 16 bytes whose first half is the lower 64 bits of the hash in
+        // little-endian, and whose second half is the upper 64 bits also
+        // in little-endian. This mirrors rsync 3.2.7 `checksum.c`:
+        //   SIVAL64(buf, 0, lo);
+        //   SIVAL64(buf, 8, hi);
+        // — `SIVAL64` is the LE 64-bit writer. A future rsync version
+        // that switched byte order would surface here before reaching
+        // lane 3.
+        let payload = b"aeroftp strada-c s8j xxh128 pin";
+        let wire = compute_xxh128_wire(payload);
+        assert_eq!(wire.len(), 16, "xxh128 wire must be exactly 16 bytes");
+
+        let hash = xxh3_128(payload);
+        let lo = hash as u64;
+        let hi = (hash >> 64) as u64;
+        assert_eq!(
+            &wire[0..8],
+            &lo.to_le_bytes(),
+            "first 8 bytes must be lower u64 little-endian (SIVAL64(buf,0,lo))"
+        );
+        assert_eq!(
+            &wire[8..16],
+            &hi.to_le_bytes(),
+            "next 8 bytes must be upper u64 little-endian (SIVAL64(buf,8,hi))"
+        );
+    }
+
+    #[test]
+    fn xxh128_wire_is_deterministic_across_calls() {
+        // Purity pin: the same payload MUST produce the same 16 bytes
+        // every time. Guards against an accidental seed drift if xxhash
+        // library grows a "with_seed" helper default.
+        let payload = b"determinism check";
+        let a = compute_xxh128_wire(payload);
+        let b = compute_xxh128_wire(payload);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn xxh128_wire_differs_for_single_bit_flip() {
+        // Avalanche sanity: flipping one bit of the payload must change
+        // the wire output. Guards against a silent all-zero implementation.
+        let a = compute_xxh128_wire(b"payload-A");
+        let b = compute_xxh128_wire(b"payload-B");
+        assert_ne!(a, b);
+    }
+
+    // ---- S8j tests (upload summary emit byte-level) ----------------------
+
+    #[tokio::test]
+    async fn emit_summary_phase_byte_level_layout() {
+        // Byte-level pin: emitted payload is exactly
+        //   [0x00] ++ encode_summary_frame(SummaryFrame{...}, protocol)
+        // wrapped in a single MSG_DATA mux frame. This guards the
+        // sender-side finish semantics against accidental reordering or
+        // split framing in a future refactor.
+        let head = SumHead {
+            count: 1,
+            block_length: 1024,
+            checksum_length: 2,
+            remainder_length: 0,
+        };
+        let blocks = vec![make_sig_block(0x11, 0x22, 2)];
+        let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &blocks);
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00])); // trailing
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        drive_upload_to_stub(&mut d, &mut sink).await;
+        d.finish_session(&mut sink).await.unwrap();
+
+        let emitted = d
+            .received_summary()
+            .cloned()
+            .expect("summary cached on emit");
+        let expected_payload = {
+            let mut v = Vec::with_capacity(1 + 9 * 5);
+            v.push(0x00);
+            v.extend_from_slice(&encode_summary_frame(&emitted, 31));
+            v
+        };
+        let expected_mux_frame = mux_frame(MuxTag::Data, &expected_payload);
+        let guard = last_raw_outbound.lock().unwrap();
+        let arc = guard.as_ref().unwrap();
+        let outbound = arc.lock().unwrap().clone();
+        assert!(
+            outbound
+                .windows(expected_mux_frame.len())
+                .any(|w| w == expected_mux_frame.as_slice()),
+            "outbound must contain the exact MSG_DATA frame for NDX_DONE + summary"
+        );
+    }
+
+    // ---- S8j tests (NDX_DONE drain download direction) -------------------
+
+    #[tokio::test]
+    async fn download_drain_absorbs_three_leading_ndx_done_in_one_frame() {
+        // A single MSG_DATA carries `[0x00, 0x00, 0x00, summary_bytes…]`.
+        // The drain must strip exactly 3 leading zeros and leave the
+        // summary bytes as seed for `receive_summary_phase`.
+        let wire_ops = vec![DeltaOp::CopyRun {
+            start_token_index: 0,
+            run_length: 1,
+        }];
+        let delta_bytes = encode_delta_stream(&DeltaStreamReport {
+            ops: wire_ops,
+            file_checksum: vec![0u8; A2_3_FILE_CHECKSUM_LEN],
+        });
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            previous_name: None,
+        };
+        let entry_bytes =
+            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+        let summary_bytes = build_summary_frame_bytes(31);
+
+        // Combine 3 NDX_DONE + summary into a single MSG_DATA frame.
+        let mut combined = Vec::with_capacity(3 + summary_bytes.len());
+        combined.extend_from_slice(&[0x00, 0x00, 0x00]);
+        combined.extend_from_slice(&summary_bytes);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &combined));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
+        );
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        let _ = d
+            .drive_download(
+                RemoteCommandSpec::download("/remote/x"),
+                b"BLK0",
+                &adapter,
+                &mut sink,
+            )
+            .await;
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), NativeSessionPhase::Complete);
+        assert!(d.received_summary().is_some());
+        assert_eq!(d.session_role(), Some(SessionRole::Receiver));
+    }
+
+    #[tokio::test]
+    async fn download_drain_rejects_non_zero_in_marker_slot() {
+        // If the 3-byte window where rsync MUST emit NDX_DONEs carries
+        // anything other than zero, the drain surfaces InvalidFrame
+        // instead of silently accepting a drifted summary offset.
+        let wire_ops = vec![DeltaOp::CopyRun {
+            start_token_index: 0,
+            run_length: 1,
+        }];
+        let delta_bytes = encode_delta_stream(&DeltaStreamReport {
+            ops: wire_ops,
+            file_checksum: vec![0u8; A2_3_FILE_CHECKSUM_LEN],
+        });
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: false,
+            csum_len: 16,
+            preserve_uid: false,
+            preserve_gid: false,
+            previous_name: None,
+        };
+        let entry_bytes =
+            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+
+        // First byte is NDX_DONE (drain enters the strict path), second
+        // byte is garbage — the drain must refuse.
+        let poisoned = vec![0x00, 0xAB, 0xCD, 0xEF, 0xFE];
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &poisoned));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
+        );
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        let _ = d
+            .drive_download(
+                RemoteCommandSpec::download("/remote/x"),
+                b"BLK0",
+                &adapter,
+                &mut sink,
+            )
+            .await;
+        let err = d
+            .finish_session(&mut sink)
+            .await
+            .expect_err("drain must reject non-zero in marker slot");
+        assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+        assert!(err.detail.contains("NDX_DONE"), "detail: {}", err.detail);
     }
 
     // ---- A4 tests (drive_*_through_delta entry points) -------------------
