@@ -85,6 +85,7 @@ mod speech;
 mod ssh_shell;
 pub mod sync;
 mod sync_badge;
+pub mod sync_core;
 mod sync_ignore;
 mod sync_scheduler;
 mod sync_versioning;

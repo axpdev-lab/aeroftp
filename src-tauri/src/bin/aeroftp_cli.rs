@@ -16776,7 +16776,6 @@ async fn cmd_check(
     };
     let remote_path = &resolve_cli_remote_path(&initial_path, remote_path);
 
-    // Scan local files
     let local_dir = Path::new(local_path);
     if !local_dir.is_dir() {
         print_error(
@@ -16787,116 +16786,50 @@ async fn cmd_check(
         let _ = provider.disconnect().await;
         return 5;
     }
-    let mut local_files: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    for entry in walkdir::WalkDir::new(local_dir)
-        .max_depth(MAX_SCAN_DEPTH)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.file_type().is_file() {
-            if let Ok(rel) = entry.path().strip_prefix(local_dir) {
-                let rel_str = rel.to_string_lossy().replace('\\', "/");
-                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                let hash = if checksum {
-                    use sha2::Digest;
-                    match std::fs::read(entry.path()) {
-                        Ok(data) => Some(format!("{:x}", sha2::Sha256::digest(&data))),
-                        Err(_) => None,
-                    }
-                } else {
-                    None
-                };
-                local_files.insert(rel_str, (size, hash));
-            }
-        }
-    }
 
-    // C1/C2 finding: provider-returned `entry.path` values are not
-    // consistent across backends. SFTP and S3 return absolute paths
-    // (`/home/user/dir/file`), FTP and WebDAV return paths relative
-    // to the CWD. `strip_prefix(remote_prefix)` silently succeeds on
-    // the wrong part of the string when the absolute path does not
-    // start with `remote_prefix`, producing unstrippable rel keys that
-    // never match the local-file map. The comparison then reports all
-    // files as missing on both sides.
-    //
-    // Robust approach: track the relative-from-root path as part of
-    // the scan state using `entry.name` (always the basename). The
-    // provider's absolute `entry.path` is only used as the listing
-    // cursor for recursion.
-    let mut remote_files: HashMap<String, u64> = HashMap::new();
-    let mut dirs_to_scan: Vec<(String, String)> =
-        vec![(remote_path.to_string(), String::new())];
-    while let Some((abs_dir, rel_prefix)) = dirs_to_scan.pop() {
-        match provider.list(&abs_dir).await {
-            Ok(entries) => {
-                for entry in entries {
-                    let entry_rel = if rel_prefix.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{}/{}", rel_prefix, entry.name)
-                    };
-                    if entry.is_dir {
-                        dirs_to_scan.push((entry.path.clone(), entry_rel));
-                    } else {
-                        remote_files.insert(entry_rel, entry.size);
-                    }
-                }
-            }
-            Err(e) => {
-                if !matches!(format, OutputFormat::Json) {
-                    eprintln!("Warning: failed to scan {}: {}", abs_dir, e);
-                }
-            }
-        }
-    }
+    // Delegate scan + comparison to sync_core. Both CLI and MCP now share
+    // the same implementation, so a fix in one propagates to the other.
+    use ftp_client_gui_lib::sync_core::{
+        compare_trees, scan_local_tree, scan_remote_tree, ScanOptions,
+    };
+    let scan_opts = ScanOptions {
+        compute_checksum: checksum,
+        max_depth: Some(MAX_SCAN_DEPTH),
+        ..Default::default()
+    };
+    let locals = scan_local_tree(local_path, &scan_opts);
+    let remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    let diff = compare_trees(&locals, &remotes, one_way);
 
-    // Compare
-    let mut match_count: u32 = 0;
-    let mut differ_count: u32 = 0;
-    let mut missing_local: u32 = 0;
-    let mut missing_remote: u32 = 0;
+    let match_count = diff.match_count() as u32;
+    let differ_count = diff.differ_count() as u32;
+    let missing_local = diff.missing_local_count() as u32;
+    let missing_remote = diff.missing_remote_count() as u32;
+
     let mut details: Vec<CliCheckEntry> = Vec::new();
-
-    for (rel, (local_size, _local_hash)) in &local_files {
-        match remote_files.get(rel) {
-            Some(&remote_size) => {
-                if *local_size == remote_size {
-                    match_count += 1;
-                } else {
-                    differ_count += 1;
-                    details.push(CliCheckEntry {
-                        path: rel.clone(),
-                        status: "differ".to_string(),
-                        local_size: Some(*local_size),
-                        remote_size: Some(remote_size),
-                    });
-                }
-            }
-            None => {
-                missing_remote += 1;
-                details.push(CliCheckEntry {
-                    path: rel.clone(),
-                    status: "missing_remote".to_string(),
-                    local_size: Some(*local_size),
-                    remote_size: None,
-                });
-            }
-        }
+    for entry in &diff.differ {
+        details.push(CliCheckEntry {
+            path: entry.rel_path.clone(),
+            status: "differ".to_string(),
+            local_size: entry.local_size,
+            remote_size: entry.remote_size,
+        });
     }
-
-    if !one_way {
-        for (rel, &remote_size) in &remote_files {
-            if !local_files.contains_key(rel) {
-                missing_local += 1;
-                details.push(CliCheckEntry {
-                    path: rel.clone(),
-                    status: "missing_local".to_string(),
-                    local_size: None,
-                    remote_size: Some(remote_size),
-                });
-            }
-        }
+    for entry in &diff.missing_remote {
+        details.push(CliCheckEntry {
+            path: entry.rel_path.clone(),
+            status: "missing_remote".to_string(),
+            local_size: entry.local_size,
+            remote_size: None,
+        });
+    }
+    for entry in &diff.missing_local {
+        details.push(CliCheckEntry {
+            path: entry.rel_path.clone(),
+            status: "missing_local".to_string(),
+            local_size: None,
+            remote_size: entry.remote_size,
+        });
     }
 
     let elapsed = start.elapsed().as_secs_f64();
@@ -16980,7 +16913,8 @@ async fn cmd_reconcile(
         return 5;
     }
 
-    // Pre-compile exclude matchers (merge per-command + global)
+    // Merge per-command excludes with global `--exclude-global` and any
+    // patterns loaded from `--exclude-from` file.
     let mut all_exclude = exclude.to_vec();
     all_exclude.extend(cli.exclude_global.clone());
     if let Some(ref path) = cli.exclude_from {
@@ -16988,122 +16922,62 @@ async fn cmd_reconcile(
             all_exclude.extend(patterns);
         }
     }
-    let exclude_matchers: Vec<globset::GlobMatcher> = all_exclude
+
+    use ftp_client_gui_lib::sync_core::{
+        compare_trees, scan_local_tree, scan_remote_tree, ScanOptions,
+    };
+    let scan_opts = ScanOptions {
+        exclude_patterns: all_exclude,
+        compute_checksum: checksum,
+        max_depth: Some(MAX_SCAN_DEPTH),
+        ..Default::default()
+    };
+    let locals = scan_local_tree(local_path, &scan_opts);
+    let remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    let diff = compare_trees(&locals, &remotes, one_way);
+
+    let matches_group: Vec<serde_json::Value> = diff
+        .matches
         .iter()
-        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .map(|e| {
+            serde_json::json!({
+                "path": e.rel_path,
+                "local_size": e.local_size,
+                "remote_size": e.remote_size,
+            })
+        })
         .collect();
-
-    let mut local_files: HashMap<String, (u64, Option<String>)> = HashMap::new();
-    for entry in walkdir::WalkDir::new(local_dir)
-        .max_depth(MAX_SCAN_DEPTH)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        if entry.file_type().is_file() {
-            if let Ok(rel) = entry.path().strip_prefix(local_dir) {
-                let rel_str = rel.to_string_lossy().replace('\\', "/");
-                // Apply exclude patterns
-                let fname: &str = &entry.file_name().to_string_lossy();
-                if !exclude_matchers.is_empty()
-                    && exclude_matchers
-                        .iter()
-                        .any(|m| m.is_match(&rel_str) || m.is_match(fname))
-                {
-                    continue;
-                }
-                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                let hash = if checksum {
-                    use sha2::Digest;
-                    match std::fs::read(entry.path()) {
-                        Ok(data) => Some(format!("{:x}", sha2::Sha256::digest(&data))),
-                        Err(_) => None,
-                    }
-                } else {
-                    None
-                };
-                local_files.insert(rel_str, (size, hash));
-            }
-        }
-    }
-
-    // C1/C2 canonicalization: track rel path via queue state, use
-    // `entry.name` (basename) instead of trying to strip `remote_prefix`
-    // from the provider-returned absolute path.
-    let mut remote_files: HashMap<String, u64> = HashMap::new();
-    let mut dirs_to_scan: Vec<(String, String)> =
-        vec![(remote_path.to_string(), String::new())];
-    while let Some((abs_dir, rel_prefix)) = dirs_to_scan.pop() {
-        match provider.list(&abs_dir).await {
-            Ok(entries) => {
-                for entry in entries {
-                    let entry_rel = if rel_prefix.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{}/{}", rel_prefix, entry.name)
-                    };
-                    if entry.is_dir {
-                        dirs_to_scan.push((entry.path.clone(), entry_rel));
-                    } else {
-                        // Apply exclude patterns to remote entries
-                        if !exclude_matchers.is_empty()
-                            && exclude_matchers
-                                .iter()
-                                .any(|m| m.is_match(&entry_rel) || m.is_match(&entry.name))
-                        {
-                            continue;
-                        }
-                        remote_files.insert(entry_rel, entry.size);
-                    }
-                }
-            }
-            Err(e) => {
-                // Always surface listing errors — silencing in JSON mode
-                // caused BUG-1 where empty results hid the real failure.
-                eprintln!("Warning: failed to scan {}: {}", abs_dir, e);
-            }
-        }
-    }
-
-    let mut matches_group: Vec<serde_json::Value> = Vec::new();
-    let mut differ_group: Vec<serde_json::Value> = Vec::new();
-    let mut missing_remote_group: Vec<serde_json::Value> = Vec::new();
-    let mut missing_local_group: Vec<serde_json::Value> = Vec::new();
-
-    for (rel, (local_size, _local_hash)) in &local_files {
-        match remote_files.get(rel) {
-            Some(&remote_size) if *local_size == remote_size => {
-                matches_group.push(serde_json::json!({
-                    "path": rel,
-                    "local_size": local_size,
-                    "remote_size": remote_size,
-                }));
-            }
-            Some(&remote_size) => {
-                differ_group.push(serde_json::json!({
-                    "path": rel,
-                    "local_size": local_size,
-                    "remote_size": remote_size,
-                }));
-            }
-            None => {
-                missing_remote_group.push(serde_json::json!({
-                    "path": rel,
-                    "local_size": local_size,
-                }));
-            }
-        }
-    }
-
-    if !one_way {
-        for (rel, &remote_size) in &remote_files {
-            if !local_files.contains_key(rel) {
-                missing_local_group.push(serde_json::json!({
-                    "path": rel,
-                    "remote_size": remote_size,
-                }));
-            }
-        }
-    }
+    let differ_group: Vec<serde_json::Value> = diff
+        .differ
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "path": e.rel_path,
+                "local_size": e.local_size,
+                "remote_size": e.remote_size,
+            })
+        })
+        .collect();
+    let missing_remote_group: Vec<serde_json::Value> = diff
+        .missing_remote
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "path": e.rel_path,
+                "local_size": e.local_size,
+            })
+        })
+        .collect();
+    let missing_local_group: Vec<serde_json::Value> = diff
+        .missing_local
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "path": e.rel_path,
+                "remote_size": e.remote_size,
+            })
+        })
+        .collect();
 
     let elapsed = start.elapsed().as_secs_f64();
     let suggested_next_command = format!(
