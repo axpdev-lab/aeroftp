@@ -111,6 +111,8 @@ pub async fn read_resource(
         let text = serde_json::to_string_pretty(&json!({
             "connections": conns,
             "count": conns.len(),
+            "max_pool_size": pool.max_size(),
+            "idle_timeout_secs": pool.idle_timeout().as_secs(),
         }))
         .unwrap_or_default();
         return Some((mime, text));

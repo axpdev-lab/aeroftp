@@ -1,17 +1,22 @@
 //! MCP tool definitions and dispatch
 //!
-//! 16 curated tools (12 core + 4 extended) that provide unique value -
-//! remote file operations that MCP clients don't have natively.
+//! Curated tool catalog that provides unique value — remote file and sync
+//! operations that MCP clients don't have natively — plus pool introspection
+//! tools (`aeroftp_close_connection`) and composite tree operations
+//! (`aeroftp_sync_tree`, `aeroftp_check_tree`).
 //!
 //! Excludes local tools (local_list, shell_execute, etc.) that clients already have.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::mcp::notifier::{format_transfer_message, McpNotifier};
 use crate::mcp::pool::ConnectionPool;
 use crate::mcp::security::{self, RateCategory};
 use crate::providers::ShareLinkOptions;
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Hard cap for in-memory read previews.
@@ -191,6 +196,61 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
             }, "required": ["server", "path"] }),
             category: RateCategory::ReadOnly,
         },
+        McpToolDef {
+            name: "aeroftp_close_connection",
+            description: "Close a pooled server connection explicitly. Useful when the agent wants to free resources or force a fresh authentication handshake on the next call.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID to disconnect" }
+            }, "required": ["server"] }),
+            category: RateCategory::Mutative,
+        },
+        McpToolDef {
+            name: "aeroftp_check_tree",
+            description: "Compare a local directory against a remote directory and report differences (match, differ, missing_local, missing_remote). Supports glob excludes and one-way mode.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID" },
+                "local_dir": { "type": "string", "description": "Local directory to compare" },
+                "remote_dir": { "type": "string", "description": "Remote directory to compare" },
+                "one_way": { "type": "boolean", "description": "Skip remote-only entries (default: false)" },
+                "checksum": { "type": "boolean", "description": "Compute SHA-256 on local files (default: false)" },
+                "exclude": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Glob patterns to exclude (e.g. '*.tmp', 'node_modules/**')"
+                },
+                "max_depth": { "type": "integer", "description": "Max recursion depth (default: 100)" },
+                "max_entries_reported": { "type": "integer", "description": "Cap per-group entries returned (default: 200)" }
+            }, "required": ["server", "local_dir", "remote_dir"] }),
+            category: RateCategory::ReadOnly,
+        },
+        McpToolDef {
+            name: "aeroftp_sync_tree",
+            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), and glob excludes. Emits progress notifications when the caller supplies a progressToken.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID" },
+                "local_dir": { "type": "string", "description": "Local root directory" },
+                "remote_dir": { "type": "string", "description": "Remote root directory" },
+                "direction": {
+                    "type": "string",
+                    "enum": ["upload", "download", "both"],
+                    "description": "Direction of the sync operation"
+                },
+                "dry_run": { "type": "boolean", "description": "Plan only, no writes (default: false)" },
+                "delete_orphans": { "type": "boolean", "description": "Delete files on the destination that no longer exist on the source. Requires direction=upload or direction=download." },
+                "conflict_mode": {
+                    "type": "string",
+                    "enum": ["larger", "newer", "skip"],
+                    "description": "How to resolve same-path size conflicts (default: larger)"
+                },
+                "exclude": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Glob patterns to exclude"
+                },
+                "max_depth": { "type": "integer", "description": "Max recursion depth (default: 100)" }
+            }, "required": ["server", "local_dir", "remote_dir", "direction"] }),
+            category: RateCategory::Mutative,
+        },
     ]
 }
 
@@ -270,12 +330,57 @@ fn finish(
 
 // ─── Execute ─────────────────────────────────────────────────────────
 
+/// Build a transfer progress callback that forwards bytes sent / total to the
+/// MCP notifier. The callback is sync (invoked from inside provider I/O) while
+/// the notifier is async, so we schedule notifications on the Tokio runtime
+/// via `tokio::spawn`. Throttling (100 ms) is applied by the notifier itself.
+fn build_progress_callback(
+    notifier: Option<&McpNotifier>,
+    label: &'static str,
+) -> Option<Box<dyn Fn(u64, u64) + Send>> {
+    let notifier = notifier?.clone();
+    if !notifier.is_active() {
+        return None;
+    }
+    let start = Arc::new(Instant::now());
+    let last_sent = Arc::new(AtomicU64::new(0));
+    let last_elapsed_ms = Arc::new(AtomicU64::new(0));
+    Some(Box::new(move |sent: u64, total: u64| {
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+        let delta_ms = elapsed_ms.saturating_sub(last_elapsed_ms.load(Ordering::Relaxed));
+        let delta_bytes = sent.saturating_sub(last_sent.load(Ordering::Relaxed));
+        let bps = if delta_ms > 0 {
+            delta_bytes.saturating_mul(1000) / delta_ms.max(1)
+        } else {
+            0
+        };
+        last_sent.store(sent, Ordering::Relaxed);
+        last_elapsed_ms.store(elapsed_ms, Ordering::Relaxed);
+        let pct = if total > 0 {
+            ((sent as f64 / total as f64) * 100.0).min(100.0) as u64
+        } else {
+            0
+        };
+        let message = Some(format!(
+            "{}: {}",
+            label,
+            format_transfer_message(pct, sent, total, bps)
+        ));
+        let notifier = notifier.clone();
+        let total_opt = if total > 0 { Some(total) } else { None };
+        tokio::spawn(async move {
+            notifier.send_progress(sent, total_opt, message).await;
+        });
+    }))
+}
+
 /// Execute a tool call. Returns `(result_json, is_error)`.
 pub async fn execute_tool(
     tool_name: &str,
     args: &Value,
     pool: &ConnectionPool,
     rate_limiter: &security::RateLimiter,
+    notifier: Option<&McpNotifier>,
 ) -> (Value, bool) {
     let start = Instant::now();
 
@@ -489,10 +594,21 @@ pub async fn execute_tool(
                     let mut p = arc.lock().await;
                     if let Some(ref local) = local_path {
                         let bytes = std::fs::metadata(local).map(|m| m.len()).unwrap_or(0);
-                        match p.upload(local, &remote_path, None).await {
-                            Ok(()) => ok(
-                                json!({ "remote_path": remote_path, "uploaded": true, "bytes": bytes }),
-                            ),
+                        let cb = build_progress_callback(notifier, "upload");
+                        match p.upload(local, &remote_path, cb).await {
+                            Ok(()) => {
+                                if let Some(n) = notifier {
+                                    n.send_progress_final(
+                                        bytes,
+                                        Some(bytes),
+                                        Some(format!("upload complete: {} bytes", bytes)),
+                                    )
+                                    .await;
+                                }
+                                ok(
+                                    json!({ "remote_path": remote_path, "uploaded": true, "bytes": bytes }),
+                                )
+                            }
                             Err(e) => err(sanitize_error(e)),
                         }
                     } else {
@@ -558,10 +674,24 @@ pub async fn execute_tool(
                 Err(e) => err(e),
                 Ok(arc) => {
                     let mut p = arc.lock().await;
-                    match p.download(&remote_path, &local_path, None).await {
-                        Ok(()) => ok(
-                            json!({ "remote_path": remote_path, "local_path": local_path, "downloaded": true }),
-                        ),
+                    let cb = build_progress_callback(notifier, "download");
+                    match p.download(&remote_path, &local_path, cb).await {
+                        Ok(()) => {
+                            if let Some(n) = notifier {
+                                let bytes = std::fs::metadata(&local_path)
+                                    .map(|m| m.len())
+                                    .unwrap_or(0);
+                                n.send_progress_final(
+                                    bytes,
+                                    Some(bytes.max(1)),
+                                    Some(format!("download complete: {} bytes", bytes)),
+                                )
+                                .await;
+                            }
+                            ok(
+                                json!({ "remote_path": remote_path, "local_path": local_path, "downloaded": true }),
+                            )
+                        }
                         Err(e) => err(sanitize_error(e)),
                     }
                 }
@@ -878,6 +1008,291 @@ pub async fn execute_tool(
             finish(tool_name, Some(&server), Some(&path), result, start)
         }
 
+        "aeroftp_close_connection" => {
+            let server = match get_str(args, "server") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, None, None, err(e), start),
+            };
+            if let Err(e) = security::validate_server_query(&server) {
+                return finish(tool_name, Some(&server), None, err(e), start);
+            }
+            let result = match pool.close_one(&server).await {
+                Some(name) => ok(json!({
+                    "server": server,
+                    "closed": true,
+                    "name": name,
+                })),
+                None => ok(json!({
+                    "server": server,
+                    "closed": false,
+                    "reason": "no active pooled connection matched the query",
+                })),
+            };
+            finish(tool_name, Some(&server), None, result, start)
+        }
+
+        "aeroftp_check_tree" => {
+            use crate::sync_core::{compare_trees, scan_local_tree, scan_remote_tree, ScanOptions};
+
+            let server = match get_str(args, "server") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, None, None, err(e), start),
+            };
+            let local_dir = match get_str(args, "local_dir") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
+            };
+            let remote_dir = match get_str(args, "remote_dir") {
+                Ok(s) => s,
+                Err(e) => {
+                    return finish(tool_name, Some(&server), Some(&local_dir), err(e), start);
+                }
+            };
+            if let Err(e) = validate_sp(&server, Some(&remote_dir)) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
+            if let Err(e) = security::validate_local_path(&local_dir) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
+            let one_way = get_bool_opt(args, "one_way").unwrap_or(false);
+            let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
+            let exclude = args
+                .get("exclude")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let max_depth = args
+                .get("max_depth")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let cap = args
+                .get("max_entries_reported")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200) as usize;
+
+            if !std::path::Path::new(&local_dir).is_dir() {
+                return finish(
+                    tool_name,
+                    Some(&server),
+                    Some(&remote_dir),
+                    err(format!("Local path is not a directory: {}", local_dir)),
+                    start,
+                );
+            }
+
+            let opts = ScanOptions {
+                max_depth,
+                exclude_patterns: exclude,
+                compute_checksum: checksum,
+                ..Default::default()
+            };
+
+            let result = match pool.get_provider(&server).await {
+                Err(e) => err(e),
+                Ok(arc) => {
+                    let mut p = arc.lock().await;
+                    let locals = scan_local_tree(&local_dir, &opts);
+                    let remotes = scan_remote_tree(&mut p, &remote_dir, &opts).await;
+                    let diff = compare_trees(&locals, &remotes, one_way);
+                    let entries_to_json = |entries: &[crate::sync_core::DiffEntry]| -> Vec<Value> {
+                        entries
+                            .iter()
+                            .take(cap)
+                            .map(|e| {
+                                json!({
+                                    "path": e.rel_path,
+                                    "local_size": e.local_size,
+                                    "remote_size": e.remote_size,
+                                })
+                            })
+                            .collect()
+                    };
+                    ok(json!({
+                        "server": server,
+                        "local_dir": local_dir,
+                        "remote_dir": remote_dir,
+                        "summary": {
+                            "match": diff.match_count(),
+                            "differ": diff.differ_count(),
+                            "missing_local": diff.missing_local_count(),
+                            "missing_remote": diff.missing_remote_count(),
+                        },
+                        "groups": {
+                            "differ": entries_to_json(&diff.differ),
+                            "missing_local": entries_to_json(&diff.missing_local),
+                            "missing_remote": entries_to_json(&diff.missing_remote),
+                        },
+                        "has_differences": diff.has_differences(),
+                        "truncated": diff.differ_count() > cap
+                            || diff.missing_local_count() > cap
+                            || diff.missing_remote_count() > cap,
+                    }))
+                }
+            };
+            finish(tool_name, Some(&server), Some(&remote_dir), result, start)
+        }
+
+        "aeroftp_sync_tree" => {
+            use crate::sync_core::{
+                sync_tree_core, ConflictMode, ScanOptions, SyncDirection, SyncOptions,
+            };
+
+            let server = match get_str(args, "server") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, None, None, err(e), start),
+            };
+            let local_dir = match get_str(args, "local_dir") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
+            };
+            let remote_dir = match get_str(args, "remote_dir") {
+                Ok(s) => s,
+                Err(e) => {
+                    return finish(tool_name, Some(&server), Some(&local_dir), err(e), start);
+                }
+            };
+            let direction_raw = match get_str(args, "direction") {
+                Ok(s) => s,
+                Err(e) => {
+                    return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+                }
+            };
+            let direction = match SyncDirection::parse(&direction_raw) {
+                Some(d) => d,
+                None => {
+                    return finish(
+                        tool_name,
+                        Some(&server),
+                        Some(&remote_dir),
+                        err(format!(
+                            "Invalid direction '{}': expected upload, download, or both",
+                            direction_raw
+                        )),
+                        start,
+                    );
+                }
+            };
+            if let Err(e) = validate_sp(&server, Some(&remote_dir)) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
+            if let Err(e) = security::validate_local_path(&local_dir) {
+                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
+            }
+            let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
+            let delete_orphans = get_bool_opt(args, "delete_orphans").unwrap_or(false);
+            if delete_orphans && matches!(direction, SyncDirection::Both) {
+                return finish(
+                    tool_name,
+                    Some(&server),
+                    Some(&remote_dir),
+                    err(
+                        "delete_orphans is only supported with direction=upload or direction=download".into(),
+                    ),
+                    start,
+                );
+            }
+            let conflict_raw = get_str_opt(args, "conflict_mode").unwrap_or_default();
+            let conflict_mode = if conflict_raw.is_empty() {
+                ConflictMode::Larger
+            } else {
+                match ConflictMode::parse(&conflict_raw) {
+                    Some(c) => c,
+                    None => {
+                        return finish(
+                            tool_name,
+                            Some(&server),
+                            Some(&remote_dir),
+                            err(format!(
+                                "Invalid conflict_mode '{}': expected larger, newer, or skip",
+                                conflict_raw
+                            )),
+                            start,
+                        );
+                    }
+                }
+            };
+            let exclude = args
+                .get("exclude")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let max_depth = args
+                .get("max_depth")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            if !std::path::Path::new(&local_dir).is_dir() {
+                return finish(
+                    tool_name,
+                    Some(&server),
+                    Some(&remote_dir),
+                    err(format!("Local path is not a directory: {}", local_dir)),
+                    start,
+                );
+            }
+
+            let opts = SyncOptions {
+                direction,
+                dry_run,
+                delete_orphans,
+                conflict_mode,
+                scan: ScanOptions {
+                    exclude_patterns: exclude,
+                    max_depth,
+                    ..Default::default()
+                },
+            };
+
+            let result = match pool.get_provider(&server).await {
+                Err(e) => err(e),
+                Ok(arc) => {
+                    let mut p = arc.lock().await;
+                    let mut sink = NotifierSyncSink::new(notifier);
+                    sink.emit_started(&direction_raw, dry_run).await;
+                    let report = sync_tree_core(&mut p, &local_dir, &remote_dir, &opts, &mut sink)
+                        .await;
+                    sink.emit_finished(&report).await;
+                    let errors: Vec<Value> = report
+                        .errors
+                        .iter()
+                        .take(50)
+                        .map(|e| {
+                            json!({
+                                "path": e.rel_path,
+                                "operation": e.operation,
+                                "error": e.message,
+                            })
+                        })
+                        .collect();
+                    ok(json!({
+                        "server": server,
+                        "local_dir": local_dir,
+                        "remote_dir": remote_dir,
+                        "direction": direction_raw,
+                        "dry_run": report.dry_run,
+                        "summary": {
+                            "uploaded": report.uploaded,
+                            "downloaded": report.downloaded,
+                            "deleted": report.deleted,
+                            "skipped": report.skipped,
+                            "errors": report.error_count(),
+                            "elapsed_secs": report.elapsed_secs,
+                        },
+                        "errors": errors,
+                        "errors_truncated": report.error_count() > 50,
+                    }))
+                }
+            };
+            finish(tool_name, Some(&server), Some(&remote_dir), result, start)
+        }
+
         _ => finish(
             tool_name,
             None,
@@ -885,6 +1300,121 @@ pub async fn execute_tool(
             err(format!("Unknown tool: {}", tool_name)),
             start,
         ),
+    }
+}
+
+/// Progress sink for `aeroftp_sync_tree` that translates `SyncProgressSink`
+/// events into MCP `notifications/progress` messages.
+///
+/// The sink keeps a running `processed` counter and a single synthetic `total`
+/// of 100 so that clients that render a determinate progress bar still get
+/// coherent output even when per-file byte progress is not available.
+struct NotifierSyncSink<'a> {
+    notifier: Option<&'a McpNotifier>,
+    processed: u32,
+    failures: u32,
+}
+
+impl<'a> NotifierSyncSink<'a> {
+    fn new(notifier: Option<&'a McpNotifier>) -> Self {
+        Self {
+            notifier,
+            processed: 0,
+            failures: 0,
+        }
+    }
+
+    async fn emit_started(&self, direction: &str, dry_run: bool) {
+        if let Some(n) = self.notifier {
+            let msg = format!(
+                "sync {} started{}",
+                direction,
+                if dry_run { " (dry run)" } else { "" }
+            );
+            n.send_progress(0, Some(100), Some(msg)).await;
+        }
+    }
+
+    async fn emit_finished(&self, report: &crate::sync_core::SyncReport) {
+        if let Some(n) = self.notifier {
+            let msg = format!(
+                "sync done: {} up, {} down, {} del, {} skip, {} err ({:.1}s)",
+                report.uploaded,
+                report.downloaded,
+                report.deleted,
+                report.skipped,
+                report.error_count(),
+                report.elapsed_secs,
+            );
+            n.send_progress_final(100, Some(100), Some(msg)).await;
+        }
+    }
+}
+
+impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
+    fn on_phase(&mut self, phase: crate::sync_core::SyncPhase) {
+        if let Some(n) = self.notifier {
+            let label = match phase {
+                crate::sync_core::SyncPhase::Scanning => "scanning",
+                crate::sync_core::SyncPhase::Planning => "planning",
+                crate::sync_core::SyncPhase::Executing => "executing",
+                crate::sync_core::SyncPhase::Done => "done",
+            };
+            let notifier = n.clone();
+            let label = label.to_string();
+            tokio::spawn(async move {
+                notifier
+                    .send_progress(0, Some(100), Some(format!("phase: {}", label)))
+                    .await;
+            });
+        }
+    }
+
+    fn on_file_start(&mut self, rel: &str, _total: u64, op: &'static str) {
+        if let Some(n) = self.notifier {
+            let notifier = n.clone();
+            let msg = format!("{}: {}", op, rel);
+            let processed = self.processed;
+            tokio::spawn(async move {
+                notifier.send_progress(processed.into(), None, Some(msg)).await;
+            });
+        }
+    }
+
+    fn on_file_progress(&mut self, _rel: &str, _sent: u64, _total: u64) {
+        // The sync orchestration does not (yet) propagate per-byte progress
+        // from the provider callbacks. When it does, this hook is ready.
+    }
+
+    fn on_file_done(&mut self, rel: &str, outcome: &crate::sync_core::FileOutcome) {
+        self.processed = self.processed.saturating_add(1);
+        if matches!(outcome, crate::sync_core::FileOutcome::Failed { .. }) {
+            self.failures = self.failures.saturating_add(1);
+        }
+        if let Some(n) = self.notifier {
+            let notifier = n.clone();
+            let processed = self.processed;
+            let failures = self.failures;
+            let msg = match outcome {
+                crate::sync_core::FileOutcome::Uploaded { bytes } => {
+                    format!("uploaded {} ({} bytes)", rel, bytes)
+                }
+                crate::sync_core::FileOutcome::Downloaded { bytes } => {
+                    format!("downloaded {} ({} bytes)", rel, bytes)
+                }
+                crate::sync_core::FileOutcome::Deleted => format!("deleted {}", rel),
+                crate::sync_core::FileOutcome::Skipped { reason } => {
+                    format!("skipped {}: {}", rel, reason)
+                }
+                crate::sync_core::FileOutcome::Failed { error } => {
+                    format!("failed {}: {}", rel, error)
+                }
+            };
+            let full_msg = format!("{} (ok={}, err={})", msg, processed.saturating_sub(failures), failures);
+            tokio::spawn(async move {
+                notifier.send_progress(processed.into(), None, Some(full_msg)).await;
+            });
+        }
     }
 }
 
@@ -933,5 +1463,40 @@ mod tests {
             .and_then(|props| props.get("recursive"));
 
         assert!(recursive.is_some());
+    }
+
+    #[test]
+    fn registry_exposes_parity_tools() {
+        let tools = tool_definitions();
+        let names: Vec<&str> = tools.iter().map(|t| t.name).collect();
+        for required in [
+            "aeroftp_close_connection",
+            "aeroftp_check_tree",
+            "aeroftp_sync_tree",
+        ] {
+            assert!(
+                names.contains(&required),
+                "missing tool {} from registry",
+                required
+            );
+        }
+    }
+
+    #[test]
+    fn sync_tree_schema_declares_direction_enum() {
+        let sync = tool_definitions()
+            .into_iter()
+            .find(|t| t.name == "aeroftp_sync_tree")
+            .expect("sync_tree tool");
+        let direction = sync
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.get("direction"))
+            .expect("direction property");
+        let en = direction.get("enum").and_then(|v| v.as_array()).expect("enum array");
+        let variants: Vec<&str> = en.iter().filter_map(|v| v.as_str()).collect();
+        assert!(variants.contains(&"upload"));
+        assert!(variants.contains(&"download"));
+        assert!(variants.contains(&"both"));
     }
 }

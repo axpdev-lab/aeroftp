@@ -13,16 +13,21 @@
 use crate::credential_store::CredentialStore;
 use crate::profile_loader::{apply_profile_options, apply_s3_profile_defaults};
 use crate::providers::{ProviderConfig, ProviderFactory, ProviderType, StorageProvider};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-/// A pooled connection with last-used timestamp.
+/// A pooled connection with last-used timestamp and usage counters.
 struct PooledConnection {
     provider: Arc<Mutex<Box<dyn StorageProvider>>>,
     last_used: Mutex<Instant>,
     profile_name: String,
+    protocol: String,
+    connected_at: DateTime<Utc>,
+    requests_served: AtomicU64,
 }
 
 /// Connection pool keyed by profile ID.
@@ -41,6 +46,16 @@ impl ConnectionPool {
         }
     }
 
+    /// Maximum number of simultaneous pooled connections.
+    pub fn max_size(&self) -> usize {
+        self.max_connections
+    }
+
+    /// Idle timeout applied to each pooled connection.
+    pub fn idle_timeout(&self) -> Duration {
+        self.idle_timeout
+    }
+
     /// Get a cloned Arc to the provider Mutex for the given server.
     /// Reuses a pooled connection if available, otherwise creates a new one.
     /// The returned Arc can be locked independently of the pool's connections lock.
@@ -55,12 +70,13 @@ impl ConnectionPool {
             let conns = self.connections.lock().await;
             if let Some(entry) = conns.get(&profile_id) {
                 *entry.last_used.lock().await = Instant::now();
+                entry.requests_served.fetch_add(1, Ordering::Relaxed);
                 return Ok(Arc::clone(&entry.provider));
             }
         }
 
         // Create new connection
-        let (provider, name) = create_provider_from_vault(server_query)?;
+        let (provider, name, protocol) = create_provider_from_vault(server_query)?;
         let mut connected = provider;
         connected.connect().await.map_err(|e| {
             // Sanitize connection errors to prevent credential leakage to AI clients
@@ -74,6 +90,9 @@ impl ConnectionPool {
             provider: Arc::clone(&arc),
             last_used: Mutex::new(Instant::now()),
             profile_name: name,
+            protocol,
+            connected_at: Utc::now(),
+            requests_served: AtomicU64::new(1),
         };
 
         let mut conns = self.connections.lock().await;
@@ -86,6 +105,28 @@ impl ConnectionPool {
         conns.insert(profile_id, entry);
 
         Ok(arc)
+    }
+
+    /// Explicitly close a single pooled connection. Returns the profile name
+    /// that was evicted, or `None` if no connection matched.
+    ///
+    /// Accepts either the profile id or the profile name (case-insensitive).
+    pub async fn close_one(&self, server_query: &str) -> Option<String> {
+        let query_lower = server_query.to_lowercase();
+        let mut conns = self.connections.lock().await;
+        let matched_id: Option<String> = conns
+            .iter()
+            .find(|(id, entry)| {
+                id.as_str() == server_query
+                    || entry.profile_name.to_lowercase() == query_lower
+                    || entry.profile_name.to_lowercase().contains(&query_lower)
+            })
+            .map(|(id, _)| id.clone());
+        let id = matched_id?;
+        let entry = conns.remove(&id)?;
+        let mut provider = entry.provider.lock().await;
+        let _ = provider.disconnect().await;
+        Some(entry.profile_name)
     }
 
     /// Remove idle connections older than the timeout.
@@ -109,16 +150,27 @@ impl ConnectionPool {
     }
 
     /// Get pool status for the `aeroftp://connections` resource.
+    ///
+    /// Exposes the pooled connection set with full metadata: profile id,
+    /// name, protocol, idle time, connected_at timestamp, and the running
+    /// request counter. Agents can use this to plan cache-friendly call
+    /// orderings and decide when to issue `aeroftp_close_connection`.
     pub async fn status(&self) -> Vec<serde_json::Value> {
         let conns = self.connections.lock().await;
         let mut result = Vec::new();
         for (id, entry) in conns.iter() {
             let last = *entry.last_used.lock().await;
             let idle_secs = Instant::now().duration_since(last).as_secs();
+            let requests_served = entry.requests_served.load(Ordering::Relaxed);
+            let state = if idle_secs == 0 { "busy" } else { "idle" };
             result.push(serde_json::json!({
                 "profile_id": id,
                 "name": entry.profile_name,
+                "protocol": entry.protocol,
+                "state": state,
                 "idle_secs": idle_secs,
+                "connected_at": entry.connected_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                "requests_served": requests_served,
             }));
         }
         result
@@ -188,9 +240,12 @@ fn resolve_profile_id(server_query: &str) -> Result<String, String> {
 
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
 /// plus OAuth2 providers when valid tokens exist in the vault.
+///
+/// Returns the provider, the profile name and the profile's protocol label
+/// (upper-case) so the pool can surface it via `aeroftp://connections`.
 fn create_provider_from_vault(
     server_query: &str,
-) -> Result<(Box<dyn StorageProvider>, String), String> {
+) -> Result<(Box<dyn StorageProvider>, String, String), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
     let profiles_json = store
@@ -386,5 +441,9 @@ fn create_provider_from_vault(
     let provider = ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
 
-    Ok((provider, profile_name.to_string()))
+    Ok((
+        provider,
+        profile_name.to_string(),
+        protocol.to_uppercase(),
+    ))
 }

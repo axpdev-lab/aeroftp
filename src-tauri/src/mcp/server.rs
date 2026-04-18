@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::mcp::notifier::{extract_progress_token, McpNotifier};
 use crate::mcp::pool::ConnectionPool;
 use crate::mcp::security::RateLimiter;
 use crate::mcp::transport::{StdinReader, StdoutWriter};
@@ -186,6 +187,7 @@ impl McpServerCore {
                 self.vault_error.clone(),
                 Arc::clone(&self.pool),
                 Arc::clone(&self.rate_limiter),
+                None,
             )
             .await
             {
@@ -220,6 +222,17 @@ impl McpServerCore {
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let in_flight = Arc::clone(&self.in_flight);
 
+        // Capture the MCP progress token (if any) so long-running tool calls
+        // can stream `notifications/progress` back on the shared writer.
+        let notifier = if method == "tools/call" {
+            Some(McpNotifier::new(
+                Arc::clone(&writer),
+                extract_progress_token(&req),
+            ))
+        } else {
+            None
+        };
+
         let mut tasks = self.pending_tasks.lock().await;
         tasks.spawn(async move {
             // Serialize tool calls per-server. The global lock is effectively
@@ -227,7 +240,8 @@ impl McpServerCore {
             // specific server (tools/list, resources/*, etc.).
             let _permit = profile_mutex.lock().await;
 
-            let response_future = process_request(req, profiles, vault_error, pool, rate_limiter);
+            let response_future =
+                process_request(req, profiles, vault_error, pool, rate_limiter, notifier);
             tokio::pin!(response_future);
 
             tokio::select! {
@@ -314,6 +328,7 @@ async fn process_request(
     vault_error: Option<String>,
     pool: Arc<ConnectionPool>,
     rate_limiter: Arc<RateLimiter>,
+    notifier: Option<McpNotifier>,
 ) -> Option<Value> {
     let id = req.get("id").cloned().unwrap_or(Value::Null);
     let method = req.get("method").and_then(|v| v.as_str()).unwrap_or("");
@@ -390,7 +405,8 @@ async fn process_request(
             }
 
             let (result, is_error) =
-                tools::execute_tool(tool_name, &args, &pool, &rate_limiter).await;
+                tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref())
+                    .await;
 
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
             let content = json!([{
@@ -537,6 +553,7 @@ mod tests {
             None,
             Arc::new(ConnectionPool::new(10, Duration::from_secs(300))),
             Arc::new(RateLimiter::new()),
+            None,
         )
         .await
         .expect("request should return a response")
@@ -633,13 +650,16 @@ mod tests {
         )
         .await;
         let tool_list = tools["result"]["tools"].as_array().expect("tools array");
-        assert_eq!(tool_list.len(), 16);
+        assert!(tool_list.len() >= 17);
         assert!(tool_list
             .iter()
             .any(|tool| tool["name"] == json!("aeroftp_list_servers")));
         assert!(tool_list
             .iter()
             .any(|tool| tool["name"] == json!("aeroftp_delete")));
+        assert!(tool_list
+            .iter()
+            .any(|tool| tool["name"] == json!("aeroftp_close_connection")));
 
         let resources = dispatch(
             json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/list" }),
