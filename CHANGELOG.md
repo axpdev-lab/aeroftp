@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (MCP parity Sprint 1, 2026-04-19)
+
+- **MCP progress notifications**: `aeroftp_upload_file`, `aeroftp_download_file` and `aeroftp_sync_tree` now emit `notifications/progress` when the caller supplies a `progressToken` via `_meta.progressToken`. Throttled to ~10 Hz with a guaranteed final flush. New `mcp/notifier.rs` module.
+- **MCP `aeroftp_sync_tree` tool**: synchronise a local tree with a remote tree. Supports direction (upload/download/both), dry_run, delete_orphans (upload/download), conflict modes (larger/newer/skip), glob excludes, max_depth.
+- **MCP `aeroftp_check_tree` tool**: compare a local tree with a remote tree and report `match` / `differ` / `missing_local` / `missing_remote` groups. Supports one_way, SHA-256 checksums, glob excludes.
+- **MCP `aeroftp_close_connection` tool**: explicitly close a pooled connection by server name or id. Useful to free resources or force a fresh handshake.
+- **MCP pool introspection**: `aeroftp://connections` resource now returns full pool metadata per connection (`profile_id`, `name`, `protocol`, `state`, `idle_secs`, `connected_at`, `requests_served`) plus `max_pool_size` and `idle_timeout_secs` on the envelope.
+- **Shared `sync_core` module** (`src-tauri/src/sync_core/`): new `scan_local_tree`, `scan_remote_tree`, `compare_trees`, and `sync_tree_core` helpers. `cmd_check` and `cmd_reconcile` in the CLI now delegate to this core, so the CLI and MCP front-ends share a single scan/compare implementation (15 unit tests in `scan.rs` + `compare.rs` + `sync.rs`).
+- **CLI benchmark vs MCP**: on warm calls MCP pool reuse delivers a measured ~14x speedup over CLI cold-start on Docker SFTP (`ls /` in 13-14 ms via MCP vs ~194 ms via CLI). See `docs/dev/test-workspace/runs/2026-04-19-mcp-parity-sprint-1/REPORT.md`.
+
+Net MCP parity coverage moves from ~40% of CLI capabilities to ~70%; the killer feature (progress notifications) is now live.
+
 ### Added (Strada C scaffolding — experimental, dormant)
 
 - **Native rsync delta transport (scaffolding only)**: built-in Rust implementation of rsync protocol 31 wired into the `DeltaTransport` trait. Compiled only when the `proto_native_rsync` Cargo feature is enabled (off by default in shipped builds). The runtime toggle lives at Settings > Advanced Sync > "Enable native rsync for SFTP delta sync" and renders only on Unix feature-on builds. **Not yet routed by the sync executor**: `provider_transfer_executor` still calls `provider.download`/`upload` directly; wiring `delta_sync_rsync::try_delta_transfer` into the executor is a follow-up sinergia. Enabling the toggle persists the opt-in but does not change transfer behaviour today.

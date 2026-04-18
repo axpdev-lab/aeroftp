@@ -290,6 +290,8 @@ aeroftp-cli daemon start                                   # Background job queu
 
 **Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp` batch scripts, `serve http/webdav/ftp/sftp`, MCP server mode, `cleanup`/`dedupe` commands, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
+**MCP server (19 tools, v3.5.4+)**: curated tools for agents - remote file ops, tree sync (`aeroftp_sync_tree`), tree diff (`aeroftp_check_tree`), pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection` tool), and real-time `notifications/progress` during uploads, downloads and sync. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
+
 ---
 
 ### AeroPlayer - Media Engine
