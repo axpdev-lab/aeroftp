@@ -1,0 +1,22 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        coreutils \
+        openssh-server \
+        rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash testuser \
+    && passwd -d testuser \
+    && mkdir -p /var/run/sshd /home/testuser/.ssh /workspace \
+    && chmod 700 /home/testuser/.ssh \
+    && chown -R testuser:testuser /home/testuser/.ssh /workspace
+
+COPY sshd_config /etc/ssh/sshd_config
+COPY entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

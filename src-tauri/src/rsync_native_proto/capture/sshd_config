@@ -1,0 +1,19 @@
+Port 22
+Protocol 2
+# Only Ed25519 host keys are used by the native live harness so that the
+# fingerprint extracted from /etc/ssh/ssh_host_ed25519_key.pub matches the
+# key libssh2 negotiates on the client side.
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKeyAlgorithms ssh-ed25519
+PubkeyAcceptedAlgorithms ssh-ed25519,ssh-rsa
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+X11Forwarding no
+AllowUsers testuser
+AuthorizedKeysFile .ssh/authorized_keys
+Subsystem sftp /usr/lib/openssh/sftp-server
+PidFile /var/run/sshd.pid
+LogLevel DEBUG3

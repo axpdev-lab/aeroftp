@@ -17,6 +17,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "aeroftp-cli"
 path = "src/bin/aeroftp_cli.rs"
 
+[[bin]]
+name = "rsync_proto_serve"
+path = "src/bin/rsync_proto_serve.rs"
+required-features = ["proto_native_rsync"]
+
+[[bin]]
+name = "seed_test_profiles"
+path = "src/bin/seed_test_profiles.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -157,6 +166,11 @@ unftp-core = "0.1"                                                     # FTP ser
 ratatui = "0.29"                                                       # Terminal UI framework
 crossterm = "0.29"                                                     # Cross-platform terminal control
 
+# Strada C (native rsync prototype) — optional, gated by `proto_native_rsync`.
+# Used by `real_wire.rs` to decompress DEFLATED_DATA literals emitted by
+# rsync's sender when CPRES_ZSTD is negotiated. Off by default.
+zstd = { version = "0.13", optional = true }
+
 # Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 hound = "3"
@@ -183,3 +197,20 @@ fuser = "0.16"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+# Strada C — native rsync prototype (dev-only).
+# Off by default; production builds must not enable this.
+# The backing module lives under `src/rsync_native_proto/` and is gitignored.
+# Enable with: `cargo check --features proto_native_rsync`
+# or `cargo test --features proto_native_rsync rsync_native_proto`.
+proto_native_rsync = ["dep:zstd"]
+
+# Strada C — Docker-harness lane cfg flags. Declared here so
+# `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface
+# `unexpected_cfgs` warnings under `-D warnings`. Enable on CI with
+# `RUSTFLAGS='--cfg ci_lane3'` (or `ci_lane2`); left unset otherwise.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(ci_lane2)',
+    'cfg(ci_lane3)',
+] }

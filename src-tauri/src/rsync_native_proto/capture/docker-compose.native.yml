@@ -1,0 +1,13 @@
+services:
+  rsync-sshd:
+    build:
+      context: .
+      dockerfile: Dockerfile.native-sshd
+    container_name: aeroftp-rsync-native
+    ports:
+      - "2223:22"
+    volumes:
+      - ./keys:/keys:ro
+      - ./workspace:/workspace
+      - ./bin/rsync_proto_serve:/opt/rsnp/bin/rsync_proto_serve:ro
+    restart: unless-stopped

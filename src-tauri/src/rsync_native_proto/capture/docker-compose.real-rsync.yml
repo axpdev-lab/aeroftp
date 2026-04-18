@@ -1,0 +1,12 @@
+services:
+  rsync-sshd-real:
+    build:
+      context: .
+      dockerfile: Dockerfile.real-rsync-sshd
+    container_name: aeroftp-rsync-real
+    ports:
+      - "2224:22"
+    volumes:
+      - ./keys:/keys:ro
+      - ./workspace:/workspace
+    restart: unless-stopped

@@ -66,6 +66,9 @@ snapcraft.login
 docs/dev/
 CLAUDE.md
 
+# Prototype-only native rsync architecture scaffold
+src-tauri/src/rsync_native_proto/
+
 # Local dev scripts (hardcoded paths)
 run-clean.sh
 

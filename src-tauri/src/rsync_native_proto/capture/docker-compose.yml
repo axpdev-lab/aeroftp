@@ -1,0 +1,12 @@
+services:
+  rsync-sshd:
+    build:
+      context: .
+      dockerfile: Dockerfile.rsync-sshd
+    container_name: aeroftp-rsync-capture
+    ports:
+      - "2222:22"
+    volumes:
+      - ./keys:/keys:ro
+      - ./workspace:/workspace
+    restart: unless-stopped

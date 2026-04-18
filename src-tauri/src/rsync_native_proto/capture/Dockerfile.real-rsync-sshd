@@ -1,0 +1,32 @@
+FROM debian:bookworm-slim
+# bookworm carries rsync 3.2.7 (advertising protocol 32 on recent
+# security-patch releases). trixie ships rsync 3.4.x, also protocol 32.
+# The host-side rsync we use as client speaks protocol 31 on older Ubuntu
+# LTS releases and protocol 32 on newer ones, so we pin the client
+# invocation to `--protocol=31` in `run_real_rsync_capture.sh` to obtain
+# a byte-oracle stable across dev machines. The Dockerfile itself only
+# needs a rsync that understands protocol 31, which bookworm does.
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        coreutils \
+        openssh-server \
+        python3 \
+        rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash testuser \
+    && passwd -d testuser \
+    && mkdir -p /var/run/sshd /home/testuser/.ssh /workspace /workspace/real_capture /opt/rsync-tee \
+    && chmod 700 /home/testuser/.ssh \
+    && chown -R testuser:testuser /home/testuser/.ssh /workspace
+
+COPY sshd_config_real_rsync_ed25519.conf /etc/ssh/sshd_config
+COPY rsync_server_wrapper.sh /opt/rsync-tee/rsync_server_wrapper.sh
+COPY rsync_proxy.py /opt/rsync-tee/rsync_proxy.py
+COPY entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh /opt/rsync-tee/rsync_server_wrapper.sh /opt/rsync-tee/rsync_proxy.py
+
+ENTRYPOINT ["/entrypoint.sh"]

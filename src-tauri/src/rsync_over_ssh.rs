@@ -139,6 +139,13 @@ pub enum RsyncError {
     Cancelled,
     /// Unhandled I/O error.
     Io(std::io::Error),
+    /// Native-path rejection that MUST NOT silently fall back to classic SFTP.
+    /// Reserved for failures with security implications (e.g. SSH host-key
+    /// pinning mismatch) or for protocol invariants whose re-attempt via
+    /// classic wrapper would mask a bug. `transfer_with_delta` translates this
+    /// into `DeltaSyncResult::hard_error` instead of the usual
+    /// `DeltaSyncResult::fallback`.
+    HardRejection(String),
 }
 
 impl std::fmt::Display for RsyncError {
@@ -167,6 +174,7 @@ impl std::fmt::Display for RsyncError {
             Self::MissingKey(s) => write!(f, "ssh key unusable: {}", s),
             Self::Cancelled => write!(f, "cancelled"),
             Self::Io(e) => write!(f, "io: {}", e),
+            Self::HardRejection(s) => write!(f, "native delta hard rejection: {}", s),
         }
     }
 }

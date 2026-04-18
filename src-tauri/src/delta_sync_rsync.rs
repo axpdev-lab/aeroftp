@@ -68,14 +68,25 @@ pub struct DeltaSyncContext {
 
 /// Outcome of one delta-sync attempt.
 ///
-/// `used_delta = true` means rsync was spawned and completed successfully; `stats`
-/// is `Some` with real measured values. `used_delta = false` means the caller must
-/// fall back to the classic transfer — `fallback_reason` explains why.
+/// Three mutually exclusive shapes:
+/// - `used_delta = true` + `stats = Some(_)` → rsync completed successfully;
+///   the caller should record the measured stats and proceed.
+/// - `used_delta = false` + `fallback_reason = Some(_)` → delta path declined
+///   (small file, no key, remote unavailable, transient failure). The caller
+///   must fall back to the classic download/upload transparently.
+/// - `used_delta = false` + `hard_error = Some(_)` → delta path refused for a
+///   reason that MUST NOT trigger silent classic fallback (SSH host-key
+///   mismatch, protocol invariant violation). The caller MUST surface the
+///   error to the UI without retrying via classic SFTP.
 #[derive(Debug)]
 pub struct DeltaSyncResult {
     pub used_delta: bool,
     pub stats: Option<RsyncStats>,
     pub fallback_reason: Option<String>,
+    /// When populated, the caller MUST surface this error and MUST NOT
+    /// transparently retry via the classic-SFTP path. Mutually exclusive with
+    /// `fallback_reason`.
+    pub hard_error: Option<String>,
 }
 
 impl DeltaSyncResult {
@@ -84,6 +95,7 @@ impl DeltaSyncResult {
             used_delta: true,
             stats: Some(stats),
             fallback_reason: None,
+            hard_error: None,
         }
     }
 
@@ -92,6 +104,16 @@ impl DeltaSyncResult {
             used_delta: false,
             stats: None,
             fallback_reason: Some(reason.into()),
+            hard_error: None,
+        }
+    }
+
+    fn hard_error(reason: impl Into<String>) -> Self {
+        Self {
+            used_delta: false,
+            stats: None,
+            fallback_reason: None,
+            hard_error: Some(reason.into()),
         }
     }
 }
@@ -245,6 +267,16 @@ pub async fn transfer_with_delta(
         Err(RsyncError::LocalNotAvailable) => Ok(DeltaSyncResult::fallback(
             "local rsync disappeared between probe and transfer",
         )),
+        Err(RsyncError::HardRejection(msg)) => {
+            // Native path refused for a reason that MUST NOT trigger silent
+            // classic fallback (e.g. SSH host-key pinning mismatch). The
+            // caller is responsible for surfacing the error to the UI.
+            tracing::error!(
+                "delta sync {:?} hard rejection: {} — classic fallback suppressed",
+                direction, msg
+            );
+            Ok(DeltaSyncResult::hard_error(msg))
+        }
         Err(e) => {
             // TransferFailed, SpawnFailed, Io, Cancelled, VersionTooOld, ProbeFailed →
             // all map to fallback with the error message. Caller decides whether to
@@ -346,6 +378,89 @@ mod tests {
         assert!(!r.used_delta);
         assert!(r.stats.is_none());
         assert_eq!(r.fallback_reason.as_deref(), Some("no rsync"));
+        assert!(
+            r.hard_error.is_none(),
+            "fallback and hard_error must be mutually exclusive"
+        );
+    }
+
+    #[test]
+    fn delta_sync_result_hard_error_shape() {
+        let r = DeltaSyncResult::hard_error("host key mismatch");
+        assert!(!r.used_delta);
+        assert!(r.stats.is_none());
+        assert!(
+            r.fallback_reason.is_none(),
+            "hard_error and fallback_reason must be mutually exclusive"
+        );
+        assert_eq!(r.hard_error.as_deref(), Some("host key mismatch"));
+    }
+
+    #[tokio::test]
+    async fn transfer_with_delta_maps_hard_rejection_to_hard_error() {
+        // Pin: RsyncError::HardRejection from a DeltaTransport MUST land in
+        // DeltaSyncResult.hard_error, never in fallback_reason. This is the
+        // invariant that prevents silent classic fallback after a native
+        // path refusal (e.g. SSH host-key pinning mismatch).
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+
+        struct HardRejectingTransport;
+
+        #[async_trait]
+        impl DeltaTransport for HardRejectingTransport {
+            fn name(&self) -> &'static str {
+                "hard-rejecting-test-transport"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Ok(RsyncCapability {
+                    version: "test".into(),
+                    protocol: 31,
+                })
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::HardRejection(
+                    "host key mismatch (test)".into(),
+                ))
+            }
+            async fn upload(
+                &self,
+                _local: &Path,
+                _remote: &str,
+            ) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::HardRejection(
+                    "host key mismatch (test)".into(),
+                ))
+            }
+        }
+
+        clear_probe_cache().await;
+        let transport = HardRejectingTransport;
+        let r = transfer_with_delta(
+            &transport,
+            SyncDirection::Upload,
+            Path::new("/tmp/nope"),
+            "/remote/nope",
+            "test-hard-rejection",
+        )
+        .await
+        .expect("must succeed — hard rejection is a typed result, not an Err");
+        assert!(!r.used_delta);
+        assert!(
+            r.fallback_reason.is_none(),
+            "hard rejection must NOT produce a fallback_reason"
+        );
+        assert!(
+            r.hard_error.as_deref().unwrap().contains("host key mismatch"),
+            "hard rejection must surface in hard_error with the original message"
+        );
     }
 
     #[test]
