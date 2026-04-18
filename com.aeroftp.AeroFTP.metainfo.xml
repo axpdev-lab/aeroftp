@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.5" date="2026-04-19">
+      <description>
+        <p>MCP Agent Parity. The AeroFTP MCP server gains three new tools so Claude Code, Claude Desktop, Cursor, and Windsurf no longer need to fall back to Bash for sync-class operations: aeroftp_sync_tree (direction, dry-run, delete-orphans, conflict modes, glob excludes, progress notifications), aeroftp_check_tree (match/differ/missing groups, one-way mode, optional SHA-256), and aeroftp_close_connection (explicit pool eviction). Progress notifications now stream on every transfer so agents see byte-level feedback instead of hanging for minutes. The aeroftp://connections resource exposes full pool metadata (protocol, state, idle_secs, connected_at, requests_served, max_pool_size, idle_timeout_secs). A new shared sync_core module is now the single engine behind cmd_check, cmd_reconcile, and the new MCP tools. Live benchmark vs CLI cold-start measured ~14x speedup on warm calls. This release also commits the seed_test_profiles helper that was previously missing from git and breaking CI across all Linux/macOS/Windows builds since v3.5.4.</p>
+      </description>
+    </release>
     <release version="3.5.4" date="2026-04-17">
       <description>
         <p>MCP hardening and study-driven bug fixes. Adds `aeroftp mcp` top-level subcommand for VS Code Marketplace extension compatibility. MCP server now auto-initializes the credential vault, extracts S3 bucket/region/endpoint from profile options (unified profile_loader module shared with CLI), serializes tool calls per-profile to prevent mkdir/upload races on slow NAS targets, validates JSON-RPC arguments against tool schemas before dispatch, and drains in-flight tasks on stdin EOF. CLI tree panic fixed (--max-depth clap collision), hashsum accepts --algorithm flag with sha256 default, speed accepts --size alias. Provider fixes: Drime retries transient 5xx with exponential backoff and surfaces HTTP status in error messages; Filen passwordless share links always include a valid salt; FileLu native mkdir tolerates string-encoded fld_id; WebDAV MKCOL accepts 204 as success; Immich returns a clear message when refusing non-media uploads.</p>

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.5] - 2026-04-19
+
+### MCP Agent Parity
+
+Sprint 1 of the MCP vs CLI parity plan. The AeroFTP MCP server gains three new tools so Claude Code, Claude Desktop, Cursor, and Windsurf clients no longer need to fall back to Bash for sync-class operations, and every long-running transfer now streams real-time `notifications/progress`. Warm-call latency drops ~14x vs CLI cold-start thanks to pool reuse (13-14 ms via MCP vs ~194 ms via CLI on a local SFTP target).
+
+This release also unbreaks the main branch CI by committing the `seed_test_profiles` helper that v3.5.4 referenced in `Cargo.toml` but forgot to stage.
+
 ### Added (MCP parity Sprint 1, 2026-04-19)
 
 - **MCP progress notifications**: `aeroftp_upload_file`, `aeroftp_download_file` and `aeroftp_sync_tree` now emit `notifications/progress` when the caller supplies a `progressToken` via `_meta.progressToken`. Throttled to ~10 Hz with a guaranteed final flush. New `mcp/notifier.rs` module.
@@ -18,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI benchmark vs MCP**: on warm calls MCP pool reuse delivers a measured ~14x speedup over CLI cold-start on Docker SFTP (`ls /` in 13-14 ms via MCP vs ~194 ms via CLI). See `docs/dev/test-workspace/runs/2026-04-19-mcp-parity-sprint-1/REPORT.md`.
 
 Net MCP parity coverage moves from ~40% of CLI capabilities to ~70%; the killer feature (progress notifications) is now live.
+
+### Fixed
+
+- **CI main branch unbroken**: commit `763b3253` ships the `seed_test_profiles` source file that v3.5.4 referenced in `src-tauri/Cargo.toml` but forgot to stage. Every Build AeroFTP / Strada C Prototype / Delta Sync Integration run on main from 2026-04-18 to 2026-04-19 failed during cargo target resolution with `can't find bin 'seed_test_profiles'`. The file is a local test helper that seeds six Docker-harness profiles (FTP, FTPS, SFTP ed25519/RSA, WebDAV, MinIO) into the encrypted vault for reproducible live-battery runs. All passwords are test literals; zero production credentials. Run with `cargo run --bin seed_test_profiles` after opening the vault.
 
 ### Added (Strada C scaffolding — experimental, dormant)
 
