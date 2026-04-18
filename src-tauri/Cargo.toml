@@ -20,7 +20,10 @@ path = "src/bin/aeroftp_cli.rs"
 [[bin]]
 name = "rsync_proto_serve"
 path = "src/bin/rsync_proto_serve.rs"
-required-features = ["proto_native_rsync"]
+# The real server body is gated behind `proto_native_rsync`. When the feature
+# is OFF this binary compiles to a stub that prints a message and exits with
+# code 1, so the Tauri bundler can still copy the expected artifact on macOS
+# and Windows without failing the release build.
 
 [[bin]]
 name = "seed_test_profiles"
