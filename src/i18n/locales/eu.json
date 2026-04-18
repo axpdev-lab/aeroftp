@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Zerbitzariak FileZilla sitemanager.xml formatuan esportatuko dira. Pasahitzak base64 formatuan daude bateragarritasunerako.",
             "filezillaExportCredHint": "Pasahitzak base64 formatuan kodetuko dira FileZilla-ren formatu estandarra erabiliz",
             "filezillaExportButton": "FileZilla-ra esportatu ({count})",
-            "filezillaExportSuccess": "{count} zerbitzari esportatu sitemanager.xml-era"
+            "filezillaExportSuccess": "{count} zerbitzari esportatu sitemanager.xml-era",
+            "nativeRsync": {
+                "title": "Rsync natiboa (esperimentala)",
+                "description": "Erabili AeroFTP-k barneratutako rsync protokoloaren inplementazioa sistemako rsync bitarra abiarazi beharrean. Prozesuen gainkostua murrizten du; muturreko kasuetan gutxiago probatua egon daiteke.",
+                "enableToggle": "Gaitu rsync natiboa SFTP bidezko delta sinkronizaziorako",
+                "experimental": "Esperimentala: errore ez-kritikoen aurrean automatikoki rsync klasikora itzultzen da. Ostalari-gakoaren desadostasunak errore blokeatzaile gisa agertzen dira, isilpeko ordezkorik gabe."
+            }
         },
         "devtools": {
             "title": "AeroTools",

@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Servrar exporteras i FileZilla sitemanager.xml-format. Lösenord är base64-kodade för kompatibilitet.",
             "filezillaExportCredHint": "Lösenord kodas med base64 med FileZillas standardformat",
             "filezillaExportButton": "Exportera till FileZilla ({count})",
-            "filezillaExportSuccess": "{count} servrar exporterades till sitemanager.xml"
+            "filezillaExportSuccess": "{count} servrar exporterades till sitemanager.xml",
+            "nativeRsync": {
+                "title": "Inbyggd rsync (experimentell)",
+                "description": "Anvand AeroFTP:s inbyggda implementation av rsync-protokollet istallet for att starta systemets rsync-binar. Minskar processoverhead; kan vara mindre beprovad i gransfall.",
+                "enableToggle": "Aktivera inbyggd rsync for delta-synk over SFTP",
+                "experimental": "Experimentell: faller automatiskt tillbaka till klassisk rsync vid fel. Avvikelser i host-nyckel visas som kritiska fel utan tyst fallback."
+            }
         },
         "devtools": {
             "title": "AeroTools",

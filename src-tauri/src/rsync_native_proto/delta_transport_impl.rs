@@ -57,7 +57,9 @@ use crate::rsync_native_proto::rsync_event_bridge::RsyncEventBridge;
 use crate::rsync_native_proto::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::rsync_native_proto::transport::{CancelHandle, RemoteExecRequest};
+use crate::rsync_native_proto::transport::{
+    CancelHandle, RemoteExecRequest, RemoteShellTransport,
+};
 use crate::rsync_native_proto::types::{NativeRsyncError, SessionStats};
 use crate::rsync_output::RsyncEvent;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
@@ -72,6 +74,19 @@ const ATOMIC_WRITE_CHUNK_SIZE: usize = 64 * 1024;
 /// Suffix appended to the destination path while the write is in
 /// progress. The rename onto the final path is the atomic commit.
 const TEMP_SUFFIX: &str = ".aerotmp";
+
+/// Hard ceiling on in-memory load for both upload (source) and download
+/// (baseline + reconstructed). Single-file prototype scope (R2/R3):
+/// classic `RsyncBinaryTransport` streams via subprocess stdio and is
+/// unaffected, so we gate by size to avoid OOM-ing the Tauri main
+/// process on multi-GB transfers. Streaming upgrade tracked in S8k.
+const NATIVE_MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Counter used to salt the per-instance temp suffix so two concurrent
+/// AeroFTP processes (or two threads in the same app) downloading to the
+/// same path do not contend on the same `.aerotmp` filename.
+static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 /// `DeltaTransport` impl driven by the prototype native rsync driver.
 ///
@@ -136,15 +151,30 @@ impl DeltaTransport for NativeRsyncDeltaTransport {
     }
 
     async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
-        // R7 accepted: a real exec-probe would open a second SSH session
-        // solely to check that `rsync_proto_serve` is installed. In
-        // practice the first `upload`/`download` discovers absence (via
-        // `open_raw_stream` TransportFailure) and the fallback policy
-        // routes to classic. S8j will revisit if stats show the hardcode
-        // hides frequent configuration errors.
+        // U-04: real exec probe. Opens a one-shot SSH exec channel and
+        // runs `rsync_proto_serve --probe`. A non-zero exit or a
+        // transport failure propagates as `RsyncError::RemoteNotAvailable`
+        // so the adapter's probe cache (`PROBE_CACHE`, 5-minute TTL)
+        // memoises a typed "unavailable" verdict — without this, every
+        // file in a multi-file sync would enter the native path, pay a
+        // fresh SSH setup, fail at `open_raw_stream`, and only then
+        // fall back to classic.
+        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
+        let probe = match transport.probe().await {
+            Ok(p) => p,
+            Err(error) => {
+                tracing::warn!(
+                    "native rsync probe failed for {}:{}: {} — marking remote unavailable",
+                    self.ssh_config.host,
+                    self.ssh_config.port,
+                    error
+                );
+                return Err(RsyncError::RemoteNotAvailable);
+            }
+        };
         Ok(RsyncCapability {
-            version: "native-rsync-prototype".into(),
-            protocol: 31,
+            version: probe.remote_banner,
+            protocol: probe.protocol.0,
         })
     }
 
@@ -186,9 +216,27 @@ impl NativeRsyncDeltaTransport {
                 threshold: self.min_file_size,
             });
         }
-        // R2: buffered in-memory source. Accepted for prototype.
+        // U-08 guard: native prototype is in-memory only (R2/R3). Above
+        // the cap, surface a classic-fallback signal rather than OOM the
+        // process. Classic `RsyncBinaryTransport` streams via subprocess
+        // stdio and handles large files safely.
+        if file_size > NATIVE_MAX_IN_MEMORY_BYTES {
+            return Err(RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: upload source {} bytes exceeds in-memory cap {} bytes",
+                    file_size, NATIVE_MAX_IN_MEMORY_BYTES
+                ),
+            });
+        }
+        // R2: buffered in-memory source. Accepted for prototype scope
+        // (bounded above by `NATIVE_MAX_IN_MEMORY_BYTES`).
         let source_data = fs::read(local_path).await.map_err(RsyncError::Io)?;
-        let source_entry = build_source_entry(local_path, file_size);
+        // U-07: preserve the source mtime on the wire. Classic rsync
+        // preserves mtime by default and `RsyncConfig::preserve_times` is
+        // already on for the SFTP path; hardcoding `mtime: 0` was a
+        // silent regression for mtime-aware sync consumers.
+        let source_entry = build_source_entry(local_path, file_size, &metadata);
 
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
@@ -228,10 +276,50 @@ impl NativeRsyncDeltaTransport {
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
         let start = Instant::now();
-        // R3: read existing local file as delta baseline. `unwrap_or_default`
-        // handles the "file does not exist yet" case with an empty baseline
-        // (classic full download behaviour).
-        let destination_data = fs::read(local_path).await.unwrap_or_default();
+        // U-03: distinguish `NotFound` (legitimate empty baseline) from
+        // every other `io::Error`. Before the fix, `unwrap_or_default()`
+        // silently masked `PermissionDenied`, `EIO`, symlink loops, etc.
+        // into "empty baseline", degrading the delta path to a full
+        // download while hiding the underlying error from the user.
+        let (destination_data, baseline_mode) = match fs::read(local_path).await {
+            Ok(data) => {
+                if data.len() as u64 > NATIVE_MAX_IN_MEMORY_BYTES {
+                    return Err(RsyncError::TransferFailed {
+                        exit: -1,
+                        stderr: format!(
+                            "native fallback: download baseline {} bytes exceeds in-memory cap {} bytes",
+                            data.len(),
+                            NATIVE_MAX_IN_MEMORY_BYTES
+                        ),
+                    });
+                }
+                // U-09: capture the pre-existing mode so we can restore it on
+                // the temp file before the atomic rename, preserving
+                // perms / setuid / readonly across the in-place update.
+                let mode = existing_mode_if_any(local_path).await;
+                (data, mode)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // Legitimate empty baseline: target file does not exist
+                // yet. Classic full-download semantics via the native
+                // delta pipeline.
+                (Vec::new(), None)
+            }
+            Err(error) => {
+                // Any other read failure must surface, not silently
+                // degrade to full-size delta. Pre-commit classification
+                // routes this through classic fallback with a visible
+                // reason in the stderr string.
+                return Err(RsyncError::TransferFailed {
+                    exit: -1,
+                    stderr: format!(
+                        "native fallback: cannot read local baseline {}: {}",
+                        local_path.display(),
+                        error
+                    ),
+                });
+            }
+        };
 
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
@@ -254,18 +342,34 @@ impl NativeRsyncDeltaTransport {
         let reconstructed = driver
             .reconstructed()
             .ok_or_else(|| {
-                RsyncError::HardRejection(
-                    "native driver finished without reconstructed bytes".into(),
-                )
+                // U-11: include enough diagnostic context to distinguish
+                // a driver invariant violation from a genuine empty-file
+                // result.
+                RsyncError::HardRejection(format!(
+                    "native driver finished without reconstructed bytes (remote={}, local={}, baseline={} B)",
+                    remote_path,
+                    local_path.display(),
+                    destination_data.len()
+                ))
             })?
             .to_vec();
         let file_size = reconstructed.len() as u64;
+        if file_size > NATIVE_MAX_IN_MEMORY_BYTES {
+            return Err(RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: reconstructed output {} bytes exceeds in-memory cap {} bytes",
+                    file_size, NATIVE_MAX_IN_MEMORY_BYTES
+                ),
+            });
+        }
 
         write_atomic_chunked(
             local_path,
             &reconstructed,
             ATOMIC_WRITE_CHUNK_SIZE,
             None,
+            baseline_mode,
         )
         .await
         .map_err(map_write_atomic_error)?;
@@ -286,8 +390,13 @@ impl NativeRsyncDeltaTransport {
 /// Build the single-file `FileListEntry` for the upload path. Flags
 /// mirror the A2.x `sample_file_list_entry` baseline so the server sees
 /// a shape that exercises the same encoder we pinned against the frozen
-/// oracle.
-fn build_source_entry(local_path: &Path, size: u64) -> FileListEntry {
+/// oracle. `mtime` + `mode` are lifted from the source metadata so the
+/// native path preserves them same as classic rsync (U-07).
+fn build_source_entry(
+    local_path: &Path,
+    size: u64,
+    metadata: &std::fs::Metadata,
+) -> FileListEntry {
     // Flag values match `rsync 3.2.7 flist.c`: XMIT_LONG_NAME (0x0040),
     // XMIT_SAME_MODE (0x0002), XMIT_SAME_UID (0x0008), XMIT_SAME_GID
     // (0x0010), XMIT_SAME_TIME (0x0080). Cumulative = 0x00DA.
@@ -297,18 +406,73 @@ fn build_source_entry(local_path: &Path, size: u64) -> FileListEntry {
         .and_then(|n| n.to_str())
         .unwrap_or("source.bin")
         .to_string();
+    let (mtime_secs, mtime_nsec) = file_mtime_components(metadata);
     FileListEntry {
         flags: BASELINE_FLAGS,
         path: name,
         size: size as i64,
-        mtime: 0,
-        mtime_nsec: None,
-        mode: 0,
+        mtime: mtime_secs,
+        mtime_nsec,
+        mode: file_mode_from_metadata(metadata),
         uid: None,
         uid_name: None,
         gid: None,
         gid_name: None,
         checksum: Vec::new(),
+    }
+}
+
+/// Extract `(mtime_seconds_since_epoch, optional_nanoseconds)` from a
+/// filesystem metadata entry. Falls back to `(0, None)` when `modified`
+/// is not exposed (network filesystems, esoteric platforms). The wire
+/// format uses an `i64` for seconds, matching the rsync 3.x file list
+/// entry layout.
+fn file_mtime_components(metadata: &std::fs::Metadata) -> (i64, Option<i32>) {
+    match metadata.modified() {
+        Ok(system_time) => match system_time.duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => (d.as_secs() as i64, Some(d.subsec_nanos() as i32)),
+            Err(before) => (-(before.duration().as_secs() as i64), None),
+        },
+        Err(_) => (0, None),
+    }
+}
+
+/// Pull the mode bits (`st_mode` on Unix, synthesised default on other
+/// platforms) out of metadata. `FileListEntry::mode` is a `u32`.
+fn file_mode_from_metadata(metadata: &std::fs::Metadata) -> u32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode()
+    }
+    #[cfg(not(unix))]
+    {
+        // Conservative default for non-unix prototype builds. The
+        // native path is `#[cfg(unix)]` at the call site today
+        // (U-05), so this branch is unreachable in production but
+        // keeps the helper testable across platforms.
+        let _ = metadata;
+        0o644
+    }
+}
+
+/// Read the existing target file's Unix mode if the file is present and
+/// readable. Used on download to restore mode + readonly semantics on
+/// the temp file *before* the atomic rename, so in-place updates do not
+/// silently drop perms (U-09).
+async fn existing_mode_if_any(local_path: &Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        match fs::metadata(local_path).await {
+            Ok(meta) => Some(meta.permissions().mode()),
+            Err(_) => None,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = local_path;
+        None
     }
 }
 
@@ -397,9 +561,25 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
         // Pre-open: nothing touched on disk yet → treat as Io, the
         // wrapper degrades to classic fallback for free.
         WriteAtomicError::PreOpen(io) => RsyncError::Io(io),
-        // Post-open: the temp file may have partial contents. Retrying
-        // via classic-SFTP on the same destination path is unsafe
-        // without explicit user acknowledgement → HardRejection.
+        // U-13 post-open split:
+        //   * write / flush / sync_all / chmod → `local_path` is
+        //     guaranteed untouched (rename has not happened yet) and the
+        //     classic SFTP path writes to `local_path` directly without
+        //     touching `.aerotmp`. Safe to degrade via the classic
+        //     fallback envelope.
+        //   * rename → the observable commit point; if this fails the
+        //     user may see the old contents AND a leftover `.aerotmp`.
+        //     Keep as `HardRejection` so classic does not silently
+        //     attempt the same overwrite without acknowledgement.
+        WriteAtomicError::PostOpen { stage, source } if stage != "rename" => {
+            RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: atomic write failed at {} (target untouched): {}",
+                    stage, source
+                ),
+            }
+        }
         WriteAtomicError::PostOpen { stage, source } => RsyncError::HardRejection(format!(
             "atomic write failed at {}: {}",
             stage, source
@@ -407,16 +587,27 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
     }
 }
 
+/// Build a per-invocation temp path. U-14: the suffix carries the
+/// process id, a monotonic counter, and the hi-res clock so two
+/// concurrent transfers to the same `local_path` do not race on the
+/// same `.aerotmp` filename. The shape is still human-readable and
+/// collision-recovery friendly for the stale-temp path below.
 fn temp_path_for(local: &Path) -> PathBuf {
+    let counter = TEMP_SUFFIX_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or_default();
+    let suffix = format!("{}.{}.{}.{}", TEMP_SUFFIX, std::process::id(), counter, nanos);
     let mut os = local.as_os_str().to_os_string();
-    os.push(TEMP_SUFFIX);
+    os.push(suffix);
     PathBuf::from(os)
 }
 
 /// Error type for `write_atomic_chunked`. Splits "temp file never
 /// opened" from "temp file partially written" so the caller can pick
 /// the right `RsyncError` variant (the former still allows classic
-/// fallback; the latter MUST NOT).
+/// fallback; the latter MUST NOT at the rename stage).
 #[derive(Debug)]
 pub enum WriteAtomicError {
     /// Failed before the temp file was successfully opened — includes
@@ -424,10 +615,10 @@ pub enum WriteAtomicError {
     /// removed and re-opened, and initial metadata errors. No disk state
     /// changed on `local_path`.
     PreOpen(std::io::Error),
-    /// Failed after the temp file was opened. The temp may or may not
-    /// still exist on disk; `local_path` is guaranteed untouched because
-    /// the rename is the last operation. Retrying via classic SFTP on
-    /// the same destination is unsafe.
+    /// Failed after the temp file was opened. `stage` distinguishes
+    /// pre-rename failures (target untouched → classic fallback safe,
+    /// U-13) from rename failures (user-visible cutover boundary →
+    /// hard rejection).
     PostOpen {
         stage: &'static str,
         source: std::io::Error,
@@ -436,26 +627,31 @@ pub enum WriteAtomicError {
 
 /// Atomic-ish write of `data` to `local_path`:
 ///
-/// 1. Open `<local_path>.aerotmp` with `create_new`. If it already
-///    exists (stale from a prior crash), remove it once and retry.
+/// 1. Open `<local_path>.aerotmp.<pid>.<counter>.<nanos>` with
+///    `create_new` (U-14 uniqueness). If it already exists (stale from
+///    a prior crash), remove it once and retry.
 /// 2. Write `data` in chunks of `chunk_size` bytes; optionally sleep
 ///    `inter_chunk_delay` between chunks (test-only knob used to
-///    produce a stable kill-9 simulation window).
+///    reproduce a stable mid-write drop window).
 /// 3. `sync_all()` the temp file — durability commit on the temp before
 ///    the rename that makes the new data visible under `local_path`.
-/// 4. `rename` onto `local_path`. Atomic within the same filesystem; an
+/// 4. If `preserve_mode` is provided, apply it to the temp before
+///    rename (U-09) so the final inode keeps the caller-specified
+///    perms. Skipped silently on non-unix.
+/// 5. `rename` onto `local_path`. Atomic within the same filesystem; an
 ///    `EXDEV` error surfaces as `PostOpen { stage: "rename" }`.
 ///
 /// On any post-open failure the function best-effort `remove_file`s the
 /// temp to avoid leaking it. If the caller's future is dropped mid-write
-/// (kill-9 simulation), the temp may survive on disk but `local_path` is
-/// guaranteed to still hold either the original contents or the new
-/// contents complete — never half-written bytes.
+/// the temp may survive on disk but `local_path` is guaranteed to still
+/// hold either the original contents or the new contents complete —
+/// never half-written bytes (rename-last invariant).
 pub async fn write_atomic_chunked(
     local_path: &Path,
     data: &[u8],
     chunk_size: usize,
     inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
 ) -> Result<(), WriteAtomicError> {
     if chunk_size == 0 {
         return Err(WriteAtomicError::PreOpen(std::io::Error::new(
@@ -525,6 +721,22 @@ pub async fn write_atomic_chunked(
         // pending-for-rename target behind a still-open write handle can
         // exhibit cache-coherency oddities. Cheap to drop explicitly.
         drop(file);
+        // U-09: restore the caller-supplied mode onto the temp file
+        // before the rename cutover. Post-rename chmod would be a race;
+        // pre-rename chmod is fully atomic with the final inode.
+        #[cfg(unix)]
+        if let Some(mode) = preserve_mode {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(mode);
+            fs::set_permissions(&tmp_path, perms).await.map_err(|e| {
+                WriteAtomicError::PostOpen {
+                    stage: "chmod",
+                    source: e,
+                }
+            })?;
+        }
+        #[cfg(not(unix))]
+        let _ = preserve_mode;
         fs::rename(&tmp_path, local_path)
             .await
             .map_err(|e| WriteAtomicError::PostOpen {
@@ -662,13 +874,31 @@ mod tests {
 
     // -- build_source_entry -------------------------------------------------
 
+    /// Helper: produce a real `std::fs::Metadata` by briefly writing an
+    /// empty file. Keeps the tests close to production shape (they used
+    /// to pass no metadata at all, which masked the mtime regression).
+    fn metadata_for(path: &Path) -> std::fs::Metadata {
+        if !path.exists() {
+            std::fs::File::create(path).expect("create test file");
+        }
+        std::fs::metadata(path).expect("metadata on freshly created file")
+    }
+
     #[test]
     fn build_source_entry_extracts_basename_and_sets_size() {
-        let path = Path::new("/tmp/some/deep/path/payload.bin");
-        let entry = build_source_entry(path, 1_234_567);
+        let dir = fresh_tempdir();
+        let path = dir.path().join("payload.bin");
+        let meta = metadata_for(&path);
+        let entry = build_source_entry(&path, 1_234_567, &meta);
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
-        assert_eq!(entry.mtime, 0);
+        // U-07 regression pin: mtime MUST be populated from metadata;
+        // hardcoding zero was the original bug.
+        assert!(
+            entry.mtime > 0,
+            "mtime must reflect the source file (got {})",
+            entry.mtime
+        );
         assert!(entry.uid.is_none());
         assert!(entry.gid.is_none());
         assert!(entry.checksum.is_empty());
@@ -679,8 +909,29 @@ mod tests {
 
     #[test]
     fn build_source_entry_fallback_name_when_no_file_name() {
-        let entry = build_source_entry(Path::new("/"), 0);
+        // `/` has no file_name component; use any directory metadata as
+        // a source (a directory is fine for the fallback check).
+        let dir = fresh_tempdir();
+        let meta = std::fs::metadata(dir.path()).unwrap();
+        let entry = build_source_entry(Path::new("/"), 0, &meta);
         assert_eq!(entry.path, "source.bin");
+    }
+
+    #[test]
+    fn build_source_entry_preserves_unix_mode() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = fresh_tempdir();
+            let path = dir.path().join("perm.bin");
+            std::fs::File::create(&path).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+            let meta = std::fs::metadata(&path).unwrap();
+            let entry = build_source_entry(&path, 0, &meta);
+            // `mode` is the raw `st_mode` value; the low 12 bits carry
+            // the permission bits we just set.
+            assert_eq!((entry.mode as u32) & 0o7777, 0o640);
+        }
     }
 
     // -- build_stats --------------------------------------------------------
@@ -721,17 +972,12 @@ mod tests {
             .write_all(b"OLD")
             .unwrap();
 
-        write_atomic_chunked(&target, b"NEW_CONTENTS", 4096, None)
+        write_atomic_chunked(&target, b"NEW_CONTENTS", 4096, None, None)
             .await
             .expect("atomic write must succeed");
 
         let actual = fs::read(&target).await.unwrap();
         assert_eq!(actual, b"NEW_CONTENTS");
-        let tmp = temp_path_for(&target);
-        assert!(
-            !tmp.exists(),
-            "temp file must be removed by rename on success: {tmp:?}"
-        );
     }
 
     #[tokio::test]
@@ -739,7 +985,7 @@ mod tests {
         let dir = fresh_tempdir();
         let target = dir.path().join("fresh.bin");
         assert!(!target.exists());
-        write_atomic_chunked(&target, b"NEW", 4096, None)
+        write_atomic_chunked(&target, b"NEW", 4096, None, None)
             .await
             .unwrap();
         assert_eq!(fs::read(&target).await.unwrap(), b"NEW");
@@ -749,44 +995,75 @@ mod tests {
     async fn write_atomic_rejects_zero_chunk_size_pre_open() {
         let dir = fresh_tempdir();
         let target = dir.path().join("x.bin");
-        let err = write_atomic_chunked(&target, b"DATA", 0, None)
+        let err = write_atomic_chunked(&target, b"DATA", 0, None, None)
             .await
             .expect_err("zero chunk must be rejected");
         assert!(matches!(err, WriteAtomicError::PreOpen(_)));
-        // Pre-open rejection must never leave a temp file on disk.
-        assert!(!temp_path_for(&target).exists());
-    }
-
-    #[tokio::test]
-    async fn write_atomic_recovers_from_stale_temp_once() {
-        let dir = fresh_tempdir();
-        let target = dir.path().join("stale.bin");
-        // Simulate a stale temp from a prior crashed run.
-        let tmp = temp_path_for(&target);
-        std::fs::File::create(&tmp)
+        // Pre-open rejection must not leave arbitrary temps lying around
+        // for this target: with the U-14 unique suffix we cannot assert
+        // on a deterministic tmp path (it is per-invocation), but we can
+        // assert that no files with the `.aerotmp.` prefix appear in the
+        // tempdir — because zero chunk fails before any open attempt.
+        let entries = std::fs::read_dir(dir.path())
             .unwrap()
-            .write_all(b"STALE_LEFTOVER")
-            .unwrap();
-        // Still expected to succeed after one remove+retry.
-        write_atomic_chunked(&target, b"FRESH", 4096, None)
-            .await
-            .expect("stale temp must be cleaned and retry must succeed");
-        assert_eq!(fs::read(&target).await.unwrap(), b"FRESH");
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains(".aerotmp.")
+            })
+            .count();
+        assert_eq!(entries, 0, "zero-chunk rejection must not open a temp");
     }
 
-    // -- write_atomic_chunked kill-9 invariant pin -------------------------
+    #[tokio::test]
+    async fn write_atomic_happy_path_cleans_its_own_temp() {
+        // Complement to the stale-temp scenario now that the suffix is
+        // per-invocation: on success the rename consumes the temp.
+        let dir = fresh_tempdir();
+        let target = dir.path().join("fresh.bin");
+        write_atomic_chunked(&target, b"DATA", 4096, None, None)
+            .await
+            .unwrap();
+        let leftovers = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".aerotmp."))
+            .count();
+        assert_eq!(leftovers, 0, "atomic rename must not leave any .aerotmp.*");
+    }
 
     #[tokio::test]
-    async fn write_atomic_preserves_old_on_future_drop_mid_write_kill9_simulation() {
-        // The gate of merge for Zona B: if this test ever goes red, the
-        // atomicity contract A0 is broken and Zona B cannot land.
-        //
-        // Setup: a 1 MiB payload split into 128 B chunks with a 1 ms
-        // inter-chunk sleep → ~8 seconds of nominal wall time. Wrap the
-        // write future in `tokio::time::timeout` with a short budget
-        // (5–50 ms). The timeout wins, the future is dropped mid-write,
-        // and the invariant under test is that `local_path` still holds
-        // the exact OLD contents — never a partial mix.
+    async fn write_atomic_preserves_mode_when_requested() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = fresh_tempdir();
+            let target = dir.path().join("mode.bin");
+            std::fs::File::create(&target).unwrap();
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+            let original_mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+            assert_eq!(original_mode, 0o640);
+
+            write_atomic_chunked(&target, b"NEW", 4096, None, Some(0o640))
+                .await
+                .unwrap();
+
+            let after_mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+            assert_eq!(after_mode, 0o640, "U-09: mode must be preserved across rename");
+        }
+    }
+
+    // -- write_atomic_chunked mid-write drop invariant pin ----------------
+
+    #[tokio::test]
+    async fn write_atomic_preserves_old_on_future_drop_mid_write() {
+        // U-12 renamed: this is a `timeout + drop` simulation, not a
+        // real SIGKILL. The invariant tested is the rename-last atomicity
+        // contract: after a mid-write future drop, `local_path` holds
+        // either the OLD contents OR the NEW contents complete — never
+        // a torn mix. Real SIGKILL preserves the same invariant because
+        // the temp file is always a separate inode until rename.
         let dir = fresh_tempdir();
         let target = dir.path().join("large.bin");
         let old = {
@@ -803,12 +1080,7 @@ mod tests {
 
         let new_data = vec![0xFFu8; 1024 * 1024];
 
-        // Run the invariant pin five times at different interruption
-        // points so we cover the full window (early / mid / late).
         for interrupt_ms in [5u64, 12, 20, 35, 50] {
-            // Restore the OLD file before each iteration in case a prior
-            // iteration's temp was left orphan in the directory (which
-            // is OK per contract) — we only check `target` integrity.
             std::fs::File::create(&target)
                 .unwrap()
                 .write_all(&old)
@@ -821,13 +1093,11 @@ mod tests {
                     &new_data,
                     128,
                     Some(Duration::from_millis(1)),
+                    None,
                 ),
             )
             .await;
 
-            // The timeout must have fired — the nominal duration is ~8 s,
-            // far above every budget we chose. If it completed, the
-            // test's chunking tuning is off (flakiness guardrail).
             assert!(
                 res.is_err(),
                 "iteration {interrupt_ms}ms: write completed before timeout — chunking tuning off"
@@ -839,5 +1109,43 @@ mod tests {
                 "iteration {interrupt_ms}ms: target MUST hold OLD contents intact after mid-write drop"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn write_atomic_post_open_pre_rename_is_classic_fallback() {
+        // U-13 regression pin: a PostOpen failure at the `write` /
+        // `flush` / `sync_all` / `chmod` stage must map to
+        // `RsyncError::TransferFailed` (classic-fallback envelope),
+        // because the target file is still untouched. Only a
+        // `rename`-stage failure may escalate to HardRejection.
+        let ioe = std::io::Error::other("simulated");
+        let tf = map_write_atomic_error(WriteAtomicError::PostOpen {
+            stage: "write",
+            source: ioe,
+        });
+        match tf {
+            RsyncError::TransferFailed { exit, stderr } => {
+                assert_eq!(exit, -1);
+                assert!(stderr.contains("write"));
+                assert!(stderr.contains("target untouched"));
+            }
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+        let ioe2 = std::io::Error::other("rename EXDEV");
+        let hr = map_write_atomic_error(WriteAtomicError::PostOpen {
+            stage: "rename",
+            source: ioe2,
+        });
+        assert!(matches!(hr, RsyncError::HardRejection(_)));
+    }
+
+    #[tokio::test]
+    async fn temp_path_for_is_unique_per_invocation() {
+        // U-14 regression pin: two calls with the same target produce
+        // distinct temp paths so concurrent writers do not race.
+        let target = Path::new("/tmp/does-not-exist.bin");
+        let a = temp_path_for(target);
+        let b = temp_path_for(target);
+        assert_ne!(a, b, "concurrent writers must get distinct temp paths");
     }
 }

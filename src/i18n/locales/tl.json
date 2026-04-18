@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Ang mga server ay ie-export sa FileZilla sitemanager.xml format. Ang mga password ay base64-encoded para sa compatibility.",
             "filezillaExportCredHint": "Ang mga password ay magiging base64-encoded gamit ang standard na format ng FileZilla",
             "filezillaExportButton": "Mag-export sa FileZilla ({count})",
-            "filezillaExportSuccess": "{count} na server ang na-export sa sitemanager.xml"
+            "filezillaExportSuccess": "{count} na server ang na-export sa sitemanager.xml",
+            "nativeRsync": {
+                "title": "Katutubong rsync (pang-eksperimento)",
+                "description": "Gamitin ang built-in na pagpapatupad ng protocol ng rsync ng AeroFTP sa halip na ilunsad ang rsync binary ng sistema. Binabawasan ang overhead ng proseso; maaaring hindi pa gaanong nasubok sa mga extreme na kaso.",
+                "enableToggle": "Paganahin ang katutubong rsync para sa delta sync sa SFTP",
+                "experimental": "Pang-eksperimento: awtomatikong babalik sa klasikong rsync kapag may error. Lumilitaw ang mga hindi pagtugma ng host key bilang mga kritikal na error na walang tahimik na fallback."
+            }
         },
         "devtools": {
             "title": "AeroTools",

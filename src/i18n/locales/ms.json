@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Pelayan akan dieksport dalam format sitemanager.xml FileZilla. Kata laluan dikodkan base64 untuk keserasian.",
             "filezillaExportCredHint": "Kata laluan akan dikodkan base64 menggunakan format standard FileZilla",
             "filezillaExportButton": "Eksport ke FileZilla ({count})",
-            "filezillaExportSuccess": "{count} pelayan dieksport ke sitemanager.xml"
+            "filezillaExportSuccess": "{count} pelayan dieksport ke sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync asli (eksperimental)",
+                "description": "Gunakan pelaksanaan protokol rsync terbina dalam AeroFTP berbanding menjalankan binari rsync sistem. Mengurangkan overhed proses; mungkin kurang teruji dalam kes-kes tepi.",
+                "enableToggle": "Dayakan rsync asli untuk penyegerakan delta SFTP",
+                "experimental": "Eksperimental: kembali secara automatik kepada rsync klasik untuk ralat bukan kritikal. Ketidakpadanan kunci hos muncul sebagai ralat keras, tanpa sandaran senyap."
+            }
         },
         "devtools": {
             "title": "AeroTools",

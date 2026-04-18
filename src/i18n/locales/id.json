@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Server akan diekspor dalam format sitemanager.xml FileZilla. Kata sandi dikodekan base64 untuk kompatibilitas.",
             "filezillaExportCredHint": "Kata sandi akan dikodekan base64 menggunakan format standar FileZilla",
             "filezillaExportButton": "Ekspor ke FileZilla ({count})",
-            "filezillaExportSuccess": "{count} server diekspor ke sitemanager.xml"
+            "filezillaExportSuccess": "{count} server diekspor ke sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync native (eksperimental)",
+                "description": "Gunakan implementasi protokol rsync bawaan AeroFTP alih-alih menjalankan biner rsync sistem. Mengurangi overhead proses; mungkin kurang teruji dalam kasus tepi.",
+                "enableToggle": "Aktifkan rsync native untuk sinkronisasi delta SFTP",
+                "experimental": "Eksperimental: otomatis kembali ke rsync klasik pada kesalahan non-kritis. Ketidakcocokan kunci host muncul sebagai kesalahan fatal, tanpa fallback diam-diam."
+            }
         },
         "devtools": {
             "title": "AeroTools",

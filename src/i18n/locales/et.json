@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Serverid eksporditakse FileZilla sitemanager.xml-vormingus. Paroolid on ühilduvuse tagamiseks base64-kodeeritud.",
             "filezillaExportCredHint": "Paroolid kodeeritakse base64-ga FileZilla standardvormingut kasutades",
             "filezillaExportButton": "Ekspordi FileZillasse ({count})",
-            "filezillaExportSuccess": "Eksporditi {count} serverit sitemanager.xml-i"
+            "filezillaExportSuccess": "Eksporditi {count} serverit sitemanager.xml-i",
+            "nativeRsync": {
+                "title": "Natiivne rsync (eksperimentaalne)",
+                "description": "Kasutab AeroFTP sisseehitatud rsync-protokolli rakendust süsteemi rsync-binaari käivitamise asemel. Vähendab protsesside üldkulusid; võib olla piirjuhtudel vähem läbi katsetatud.",
+                "enableToggle": "Luba natiivne rsync SFTP delta-sünkroonimiseks",
+                "experimental": "Eksperimentaalne: mittekriitiliste vigade korral langeb automaatselt klassikalisele rsync-ile tagasi. Hosti võtme mittevastavused ilmnevad blokeerivate vigadena, ilma vaikse varumehhanismita."
+            }
         },
         "devtools": {
             "title": "AeroTools",

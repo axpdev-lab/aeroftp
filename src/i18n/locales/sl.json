@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Strežniki bodo izvoženi v formatu sitemanager.xml FileZilla. Gesla so base64 kodirana za združljivost.",
             "filezillaExportCredHint": "Gesla bodo base64 kodirana z uporabo standardnega formata FileZilla",
             "filezillaExportButton": "Izvozi v FileZilla ({count})",
-            "filezillaExportSuccess": "{count} strežnikov izvoženih v sitemanager.xml"
+            "filezillaExportSuccess": "{count} strežnikov izvoženih v sitemanager.xml",
+            "nativeRsync": {
+                "title": "Izvorni rsync (eksperimentalno)",
+                "description": "Uporabite vgrajeno izvedbo protokola rsync v AeroFTP namesto zaganjanja sistemske binarne datoteke rsync. Zmanjsa rezije procesov; je lahko manj preizkusena v robnih primerih.",
+                "enableToggle": "Omogoci izvorni rsync za delta sinhronizacijo prek SFTP",
+                "experimental": "Eksperimentalno: ob napaki samodejno preklopi na klasicni rsync. Neujemanja kljuca gostitelja se pojavijo kot kriticne napake brez tihega preklopa."
+            }
         },
         "devtools": {
             "title": "AeroTools",

@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Seva zitatumwa katika muundo wa sitemanager.xml wa FileZilla. Nywila zimesimbwa kwa base64 kwa utangamano.",
             "filezillaExportCredHint": "Nywila zitasimbwa kwa base64 kwa kutumia muundo wa kawaida wa FileZilla",
             "filezillaExportButton": "Tuma kwenda FileZilla ({count})",
-            "filezillaExportSuccess": "Seva {count} zimetumwa kwenda sitemanager.xml"
+            "filezillaExportSuccess": "Seva {count} zimetumwa kwenda sitemanager.xml",
+            "nativeRsync": {
+                "title": "rsync asili (ya majaribio)",
+                "description": "Tumia utekelezaji wa protokoli ya rsync uliojengwa ndani ya AeroFTP badala ya kuendesha faili ya mfumo ya rsync. Hupunguza mzigo wa mchakato; inaweza kuwa haijajaribiwa sana katika hali za pembeni.",
+                "enableToggle": "Washa rsync asili kwa usawazishaji wa delta kupitia SFTP",
+                "experimental": "Ya majaribio: inarejea kiotomatiki kwa rsync ya kawaida inapotokea hitilafu. Kutolingana kwa ufunguo wa mwenyeji kunaonekana kama hitilafu kuu bila kurejea kimya."
+            }
         },
         "devtools": {
             "title": "AeroTools",

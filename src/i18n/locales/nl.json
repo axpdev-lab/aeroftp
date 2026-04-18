@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Servers worden geexporteerd in het FileZilla sitemanager.xml-formaat. Wachtwoorden zijn base64-gecodeerd voor compatibiliteit.",
             "filezillaExportCredHint": "Wachtwoorden worden base64-gecodeerd met het standaardformaat van FileZilla",
             "filezillaExportButton": "Exporteren naar FileZilla ({count})",
-            "filezillaExportSuccess": "{count} servers geexporteerd naar sitemanager.xml"
+            "filezillaExportSuccess": "{count} servers geexporteerd naar sitemanager.xml",
+            "nativeRsync": {
+                "title": "Native rsync (experimenteel)",
+                "description": "Gebruik de ingebouwde rsync-protocolimplementatie van AeroFTP in plaats van het systeem-rsync-programma te starten. Vermindert de procesoverhead; mogelijk minder beproefd in randgevallen.",
+                "enableToggle": "Native rsync inschakelen voor delta-synchronisatie via SFTP",
+                "experimental": "Experimenteel: valt bij niet-kritieke fouten automatisch terug op klassiek rsync. Mismatches van hostsleutels verschijnen als blokkerende fouten, zonder stille fallback."
+            }
         },
         "devtools": {
             "title": "AeroTools",

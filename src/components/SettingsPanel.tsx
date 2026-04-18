@@ -328,6 +328,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [showEditPassword, setShowEditPassword] = useState(false);
     const [showExportImport, setShowExportImport] = useState(false);
     const [credentialsMasked, setCredentialsMasked] = useState(true);
+    const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
+    const [nativeRsyncEnabled, setNativeRsyncEnabled] = useState(false);
 
     // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
     // Resolve S3 endpoint and accountId when editing a server
@@ -377,6 +379,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         }
     }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    useEffect(() => {
+        invoke<boolean>('native_rsync_feature_compiled')
+            .then(setNativeRsyncCompiled)
+            .catch(error => {
+                logger.error('Failed to probe native rsync feature:', error);
+                setNativeRsyncCompiled(false);
+            });
+    }, []);
+
     // Load password from vault when editing an existing server
     useEffect(() => {
         if (!editingServer) return;
@@ -394,6 +405,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             }
         })();
     }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!isOpen || nativeRsyncCompiled !== true) {
+            return;
+        }
+
+        invoke<boolean>('native_rsync_enabled_get')
+            .then(setNativeRsyncEnabled)
+            .catch(error => {
+                logger.error('Failed to load native rsync setting:', error);
+            });
+    }, [isOpen, nativeRsyncCompiled]);
+
     const [hasChanges, setHasChanges] = useState(false);
     const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
@@ -1452,7 +1476,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         inputMode="numeric"
                                                                     />
                                                                 </div>
-                                                                <p className="text-xs text-gray-400">{t('connection.kdriveTokenHelp')}</p>
+                                                                <p className="text-xs text-gray-400 select-text">{t('connection.kdriveTokenHelp')}</p>
                                                             </>
                                                         )}
 
@@ -2110,6 +2134,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 ))}
                                             </select>
                                         </div>
+
+                                        {nativeRsyncCompiled && (
+                                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                                                <h4 className="font-medium">{t('settings.nativeRsync.title')}</h4>
+                                                <p className="text-sm text-gray-500 mt-1">{t('settings.nativeRsync.description')}</p>
+                                                <label className="flex items-center gap-2 mt-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="accent-blue-600"
+                                                        checked={nativeRsyncEnabled}
+                                                        onChange={async (e) => {
+                                                            const enabled = e.target.checked;
+                                                            try {
+                                                                await invoke('native_rsync_enabled_set', { enabled });
+                                                                setNativeRsyncEnabled(enabled);
+                                                                flashSaved();
+                                                            } catch (error) {
+                                                                logger.error('Failed to update native rsync setting:', error);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="text-sm">{t('settings.nativeRsync.enableToggle')}</span>
+                                                </label>
+                                                <p className="text-xs text-amber-600 mt-2">
+                                                    {t('settings.nativeRsync.experimental')}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

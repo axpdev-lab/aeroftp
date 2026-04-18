@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Bydd gweinyddion yn cael eu hallforio yn fformat sitemanager.xml FileZilla. Mae cyfrineiriau wedi'u hamgodio yn base64 ar gyfer cydnawsedd.",
             "filezillaExportCredHint": "Bydd cyfrineiriau'n cael eu hamgodio yn base64 gan ddefnyddio fformat safonol FileZilla",
             "filezillaExportButton": "Allforio i FileZilla ({count})",
-            "filezillaExportSuccess": "Allforiwyd {count} gweinydd i sitemanager.xml"
+            "filezillaExportSuccess": "Allforiwyd {count} gweinydd i sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync brodorol (arbrofol)",
+                "description": "Defnyddio gweithrediad protocol rsync cynhenid AeroFTP yn lle rhedeg y ffeil ddeuaidd rsync system. Yn lleihau gorbenion prosesau; gall fod yn llai profedig mewn achosion ymylol.",
+                "enableToggle": "Galluogi rsync brodorol ar gyfer cydamseriad delta SFTP",
+                "experimental": "Arbrofol: yn syrthio'n ôl yn awtomatig i rsync clasurol ar gyfer gwallau nad ydynt yn feirniadol. Mae anghydweddiadau allwedd gwesteiwr yn ymddangos fel gwallau rhwystrol, heb unrhyw fecanwaith wrth gefn tawel."
+            }
         },
         "devtools": {
             "title": "AeroTools",

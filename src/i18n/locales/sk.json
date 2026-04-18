@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Servery budú exportované vo formáte sitemanager.xml aplikácie FileZilla. Heslá sú kódované base64 pre kompatibilitu.",
             "filezillaExportCredHint": "Heslá budú kódované base64 pomocou štandardného formátu FileZilla",
             "filezillaExportButton": "Exportovať do FileZilla ({count})",
-            "filezillaExportSuccess": "Exportovaných {count} serverov do sitemanager.xml"
+            "filezillaExportSuccess": "Exportovaných {count} serverov do sitemanager.xml",
+            "nativeRsync": {
+                "title": "Natívny rsync (experimentálny)",
+                "description": "Pouzite zabudovanu implementaciu protokolu rsync v AeroFTP namiesto spustania systemoveho binarneho rsync. Znizuje rezie procesov; moze byt menej overena v hranicnych pripadoch.",
+                "enableToggle": "Povolit natívny rsync pre delta synchronizaciu cez SFTP",
+                "experimental": "Experimentalne: pri chybe sa automaticky vrati na klasicky rsync. Nezhody host kluca sa objavia ako kriticke chyby bez tichej zalohy."
+            }
         },
         "devtools": {
             "title": "AeroTools",

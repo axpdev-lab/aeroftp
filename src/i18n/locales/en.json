@@ -1075,7 +1075,7 @@
       "kdriveDriveId": "Drive ID",
       "kdriveTokenPlaceholder": "Paste your API token here",
       "kdriveDriveIdPlaceholder": "Your kDrive ID (numeric)",
-      "kdriveTokenHelp": "Generate a token at manager.infomaniak.com → Developer → API Tokens",
+      "kdriveTokenHelp": "Generate a token in Infomaniak Manager → User Profile → Developer → API Tokens",
       "immichServerUrl": "Server URL",
       "immichApiKeyPlaceholder": "Paste your API key here",
       "immichApiKeyHelp": "Generate an API key in Immich → User Settings → API Keys",
@@ -2638,6 +2638,12 @@
       "transferModeLabel": "Transfer Mode",
       "transfers": "Transfers",
       "transferSettings": "Transfer Settings",
+      "nativeRsync": {
+        "title": "Native rsync (experimental)",
+        "description": "Use AeroFTP's built-in rsync protocol implementation instead of spawning the system rsync binary. Reduces process overhead; may be less battle-tested.",
+        "enableToggle": "Enable native rsync for SFTP delta sync",
+        "experimental": "Experimental: falls back to classic rsync automatically on any error. Host-key mismatches surface as hard errors with no silent fallback."
+      },
       "uninstallBadges": "Uninstall",
       "updateAvailable": "Update Available!",
       "updateAvailableAlert": "Update Available!\n\nAeroFTP v{version} (.{format})\n\nDownload: {url}",

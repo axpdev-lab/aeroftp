@@ -907,7 +907,13 @@
             "filezillaExportNotice": "서버가 FileZilla sitemanager.xml 형식으로 내보내집니다. 호환성을 위해 비밀번호는 base64로 인코딩됩니다.",
             "filezillaExportCredHint": "비밀번호는 FileZilla의 표준 형식을 사용하여 base64로 인코딩됩니다",
             "filezillaExportButton": "FileZilla로 내보내기 ({count})",
-            "filezillaExportSuccess": "{count}개 서버가 sitemanager.xml로 내보내졌습니다"
+            "filezillaExportSuccess": "{count}개 서버가 sitemanager.xml로 내보내졌습니다",
+            "nativeRsync": {
+                "title": "네이티브 rsync (실험적)",
+                "description": "시스템 rsync 바이너리를 실행하는 대신 AeroFTP에 내장된 rsync 프로토콜 구현을 사용합니다. 프로세스 오버헤드를 줄이지만, 엣지 케이스에서의 검증은 다소 부족할 수 있습니다.",
+                "enableToggle": "SFTP 델타 동기화에 네이티브 rsync 사용",
+                "experimental": "실험적: 치명적이지 않은 오류 발생 시 자동으로 기존 rsync로 폴백됩니다. 호스트 키 불일치는 조용한 폴백 없이 하드 오류로 나타납니다."
+            }
         },
         "devtools": {
             "title": "AeroTools",

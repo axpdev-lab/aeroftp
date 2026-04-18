@@ -907,7 +907,13 @@
             "filezillaExportNotice": "সার্ভারগুলি FileZilla sitemanager.xml ফরম্যাটে রপ্তানি করা হবে। সামঞ্জস্যের জন্য পাসওয়ার্ডগুলি base64-এনকোড করা হয়েছে।",
             "filezillaExportCredHint": "পাসওয়ার্ডগুলি FileZilla-এর মানক ফরম্যাট ব্যবহার করে base64-এনকোড করা হবে",
             "filezillaExportButton": "FileZilla-এ রপ্তানি করুন ({count})",
-            "filezillaExportSuccess": "{count}টি সার্ভার sitemanager.xml-এ রপ্তানি করা হয়েছে"
+            "filezillaExportSuccess": "{count}টি সার্ভার sitemanager.xml-এ রপ্তানি করা হয়েছে",
+            "nativeRsync": {
+                "title": "নেটিভ rsync (পরীক্ষামূলক)",
+                "description": "সিস্টেমের rsync বাইনারি চালানোর পরিবর্তে AeroFTP-এর অন্তর্নির্মিত rsync প্রোটোকল বাস্তবায়ন ব্যবহার করুন। প্রক্রিয়ার ওভারহেড কমায়; প্রান্তিক ক্ষেত্রে কম পরীক্ষিত হতে পারে।",
+                "enableToggle": "SFTP ডেল্টা সিঙ্কের জন্য নেটিভ rsync সক্ষম করুন",
+                "experimental": "পরীক্ষামূলক: অ-গুরুতর ত্রুটির ক্ষেত্রে স্বয়ংক্রিয়ভাবে ক্লাসিক rsync-এ ফিরে যায়। হোস্ট-কী অমিল নীরব ফলব্যাক ছাড়াই ব্লকিং ত্রুটি হিসাবে প্রদর্শিত হয়।"
+            }
         },
         "devtools": {
             "title": "AeroTools",

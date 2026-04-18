@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Les serveurs seront exportés au format sitemanager.xml de FileZilla. Les mots de passe sont encodés en base64 pour la compatibilité.",
             "filezillaExportCredHint": "Les mots de passe seront encodés en base64 selon le format standard de FileZilla",
             "filezillaExportButton": "Exporter vers FileZilla ({count})",
-            "filezillaExportSuccess": "{count} serveurs exportés vers sitemanager.xml"
+            "filezillaExportSuccess": "{count} serveurs exportés vers sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync natif (expérimental)",
+                "description": "Utilise l'implémentation intégrée du protocole rsync d'AeroFTP au lieu de lancer le binaire rsync du système. Réduit la surcharge de processus ; peut être moins éprouvée dans les cas limites.",
+                "enableToggle": "Activer le rsync natif pour la synchronisation delta via SFTP",
+                "experimental": "Expérimental : revient automatiquement au rsync classique en cas d'erreurs non critiques. Les incohérences de clé d'hôte apparaissent comme des erreurs bloquantes, sans repli silencieux."
+            }
         },
         "devtools": {
             "title": "AeroTools",

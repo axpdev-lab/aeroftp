@@ -1307,9 +1307,15 @@ impl StorageProvider for S3Provider {
                         .await
                         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                    // Debug: Log raw XML response (truncated for readability)
+                    // Debug: Log raw XML response (truncated for readability).
+                    // Must NOT use `&xml[..2000]` — a byte slice that lands
+                    // inside a multi-byte UTF-8 codepoint (emoji in an
+                    // object key, non-ASCII bucket/prefix) panics with
+                    // "end byte index is not a char boundary". Iterate on
+                    // chars + head cap instead.
                     let xml_preview = if xml.len() > 2000 {
-                        format!("{}... [truncated, total {} bytes]", &xml[..2000], xml.len())
+                        let head: String = xml.chars().take(2000).collect();
+                        format!("{head}... [truncated, total {} bytes]", xml.len())
                     } else {
                         xml.clone()
                     };

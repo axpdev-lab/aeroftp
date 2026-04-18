@@ -907,7 +907,13 @@
             "filezillaExportNotice": "სერვერები ექსპორტირდება FileZilla sitemanager.xml ფორმატში. პაროლები base64-კოდირებულია თავსებადობისთვის.",
             "filezillaExportCredHint": "პაროლები base64-კოდირდება FileZilla-ის სტანდარტული ფორმატის გამოყენებით",
             "filezillaExportButton": "FileZilla-ში ექსპორტი ({count})",
-            "filezillaExportSuccess": "{count} სერვერი ექსპორტირდა sitemanager.xml-ში"
+            "filezillaExportSuccess": "{count} სერვერი ექსპორტირდა sitemanager.xml-ში",
+            "nativeRsync": {
+                "title": "მშობლიური rsync (ექსპერიმენტული)",
+                "description": "გამოიყენეთ AeroFTP-ის ჩაშენებული rsync პროტოკოლის იმპლემენტაცია სისტემის rsync ბინარის გაშვების ნაცვლად. ამცირებს პროცესის დატვირთვას; შეიძლება ნაკლებად შემოწმებული იყოს განსაკუთრებულ შემთხვევებში.",
+                "enableToggle": "მშობლიური rsync-ის ჩართვა SFTP-ის დელტა სინქრონიზაციისთვის",
+                "experimental": "ექსპერიმენტული: არაკრიტიკული შეცდომების შემთხვევაში ავტომატურად უბრუნდება კლასიკურ rsync-ს. ჰოსტის გასაღების შეუსაბამობები გამოჩნდება როგორც მყარი შეცდომები, ჩუმი ფოლბექის გარეშე."
+            }
         },
         "devtools": {
             "title": "AeroTools",

@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Сервери будуть експортовані у форматі sitemanager.xml FileZilla. Паролі закодовані в base64 для сумісності.",
             "filezillaExportCredHint": "Паролі будуть закодовані в base64 із використанням стандартного формату FileZilla",
             "filezillaExportButton": "Експортувати в FileZilla ({count})",
-            "filezillaExportSuccess": "{count} серверів експортовано в sitemanager.xml"
+            "filezillaExportSuccess": "{count} серверів експортовано в sitemanager.xml",
+            "nativeRsync": {
+                "title": "Вбудований rsync (експериментально)",
+                "description": "Використовуйте вбудовану в AeroFTP реалізацію протоколу rsync замість запуску системного бінарного файлу rsync. Зменшує накладні витрати процесів; може бути менш перевіреною у нестандартних випадках.",
+                "enableToggle": "Увімкнути вбудований rsync для дельта-синхронізації через SFTP",
+                "experimental": "Експериментально: у разі помилки автоматично повертається до класичного rsync. Невідповідності ключа хоста з’являються як критичні помилки без тихого відкату."
+            }
         },
         "devtools": {
             "title": "AeroTools",

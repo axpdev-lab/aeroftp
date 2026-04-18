@@ -423,15 +423,32 @@ impl S3Config {
                 .filter(|s| !s.is_empty())
         };
         tracing::debug!(
-            "S3Config: host={:?}, extra_endpoint={:?}",
+            "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
             config.host,
+            config.port,
             config.extra.get("endpoint")
         );
+        // U4 finding: the CLI parses `s3://k:s@host:9000` and drops the
+        // port, because only `config.host` made it through. We now
+        // assemble the endpoint using host, optional explicit port, and
+        // a scheme that matches the port (80 → http, 443 → https, MinIO
+        // 9xxx → http, otherwise https). Existing endpoints with an
+        // explicit scheme are preserved verbatim.
         let endpoint = endpoint_raw.map(|host| {
             if host.starts_with("http://") || host.starts_with("https://") {
-                host
-            } else {
-                format!("https://{}", host)
+                return host;
+            }
+            let has_explicit_port = host.contains(':');
+            let port = config.port;
+            let scheme = match port {
+                Some(443) => "https",
+                Some(80) => "http",
+                Some(9000) | Some(9001) | Some(9002) => "http",
+                _ => "https",
+            };
+            match (has_explicit_port, port) {
+                (true, _) | (false, None) => format!("{scheme}://{host}"),
+                (false, Some(p)) => format!("{scheme}://{host}:{p}"),
             }
         });
 

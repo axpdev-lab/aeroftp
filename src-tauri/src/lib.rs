@@ -54,7 +54,7 @@ mod delta_sync_rsync;
 // Strada C — native rsync prototype (dev-only, gitignored, feature-gated).
 // Does not affect production builds. See `src/rsync_native_proto/README.md`.
 #[cfg(feature = "proto_native_rsync")]
-mod rsync_native_proto;
+pub mod rsync_native_proto;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
@@ -147,6 +147,7 @@ mod speech {
 mod cloud_filter_badge;
 mod image_edit;
 mod server_health;
+mod settings;
 mod vault_history;
 
 use filesystem::validate_path;
@@ -11213,6 +11214,11 @@ pub fn run() {
             app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
+            settings::native_rsync_feature_compiled,
+            #[cfg(feature = "proto_native_rsync")]
+            settings::native_rsync_enabled_get,
+            #[cfg(feature = "proto_native_rsync")]
+            settings::native_rsync_enabled_set,
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Strada C scaffolding — experimental, dormant)
+
+- **Native rsync delta transport (scaffolding only)**: built-in Rust implementation of rsync protocol 31 wired into the `DeltaTransport` trait. Compiled only when the `proto_native_rsync` Cargo feature is enabled (off by default in shipped builds). The runtime toggle lives at Settings > Advanced Sync > "Enable native rsync for SFTP delta sync" and renders only on Unix feature-on builds. **Not yet routed by the sync executor**: `provider_transfer_executor` still calls `provider.download`/`upload` directly; wiring `delta_sync_rsync::try_delta_transfer` into the executor is a follow-up sinergia. Enabling the toggle persists the opt-in but does not change transfer behaviour today.
+- **Native SSH host-key pinning**: when the native leg becomes reachable, it pins the SHA-256 fingerprint captured by the parent SFTP handshake (`SshHandler::check_server_key`). Sessions without a captured fingerprint refuse to open the native path (secure default, closes the MITM window that `AcceptAny` left on a fresh TCP socket).
+- **Fallback policy**: `RsyncError::HardRejection` + `DeltaSyncResult::hard_error` surface security or invariant failures to the UI with no silent classic fallback. Pre-rename atomic-write failures and environmental errors fall back transparently to classic; rename-stage or host-key failures surface as hard errors.
+
 ### In progress — Delta Sync Fase 1 (SFTP via rsync-over-SSH)
 
 First concrete step toward the v3.6.0 "SFTP delta flagship" release. The long-standing phantom `deltaSyncEnabled` toggle in `SyncPanel.tsx` (a UI switch with no backend wiring) is being replaced with a real implementation: on SFTP connections with a local rsync binary and a rsync-capable server, transfers fall through to a managed `rsync -e ssh` invocation that delivers real bandwidth savings measured against the network, not simulated.

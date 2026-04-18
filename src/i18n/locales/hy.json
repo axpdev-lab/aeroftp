@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Սերվերները կարտահանվեն FileZilla sitemanager.xml ձևաչափով. Գաղտնաբառերը base64-կոդավորված են համատեղելիության համար.",
             "filezillaExportCredHint": "Գաղտնաբառերը base64-կոդավորվելու են FileZilla-ի ստանդարտ ձևաչափով",
             "filezillaExportButton": "Արտահանել FileZilla ({count})",
-            "filezillaExportSuccess": "{count} սերվեր արտահանվել է sitemanager.xml"
+            "filezillaExportSuccess": "{count} սերվեր արտահանվել է sitemanager.xml",
+            "nativeRsync": {
+                "title": "Բնիկ rsync (փորձարկային)",
+                "description": "Օգտագործել AeroFTP-ի ներկառուցված rsync արձանագրության իրականացումը՝ համակարգի rsync գործարկելու փոխարեն: Նվազեցնում է գործընթացի ծանրաբեռնվածությունը. կարող է ավելի քիչ փորձարկված լինել եզրային իրավիճակներում:",
+                "enableToggle": "Միացնել բնիկ rsync-ը SFTP-ի դելտա համաժամեցման համար",
+                "experimental": "Փորձարկային. ոչ կրիտիկական սխալների դեպքում ավտոմատ վերադառնում է դասական rsync-ին: Հոսթի բանալիի անհամապատասխանությունները հայտնվում են որպես խափանող սխալներ՝ առանց լուռ հետդարձի:"
+            }
         },
         "devtools": {
             "title": "AeroTools",

@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Þjónar verða fluttir út á FileZilla sitemanager.xml sniði. Lykilorð eru base64-kóðuð vegna samhæfni.",
             "filezillaExportCredHint": "Lykilorð verða kóðuð með base64 með því að nota staðlaðan snið FileZilla",
             "filezillaExportButton": "Flytja út í FileZilla ({count})",
-            "filezillaExportSuccess": "{count} þjónar fluttir út í sitemanager.xml"
+            "filezillaExportSuccess": "{count} þjónar fluttir út í sitemanager.xml",
+            "nativeRsync": {
+                "title": "Innbyggt rsync (á tilraunastigi)",
+                "description": "Notaðu innbyggða útfærslu AeroFTP á rsync samskiptareglunni í stað þess að ræsa rsync forrit kerfisins. Dregur úr ferlisálagi; gæti verið minna reynt í jaðartilvikum.",
+                "enableToggle": "Virkja innbyggt rsync fyrir delta samstillingu yfir SFTP",
+                "experimental": "Á tilraunastigi: fer sjálfkrafa yfir í klassískt rsync þegar villur sem ekki eru afgerandi koma upp. Ósamræmi í lykli hýsils birtist sem stöðvandi villur, án þöguls varaleiðar."
+            }
         },
         "devtools": {
             "title": "AeroTools",

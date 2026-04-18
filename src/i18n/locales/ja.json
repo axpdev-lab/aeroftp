@@ -907,7 +907,13 @@
             "filezillaExportNotice": "サーバーは FileZilla の sitemanager.xml 形式でエクスポートされます。パスワードは互換性のために base64 エンコードされます。",
             "filezillaExportCredHint": "パスワードは FileZilla の標準形式を使用して base64 エンコードされます",
             "filezillaExportButton": "FileZilla にエクスポート ({count})",
-            "filezillaExportSuccess": "{count} 台のサーバーを sitemanager.xml にエクスポートしました"
+            "filezillaExportSuccess": "{count} 台のサーバーを sitemanager.xml にエクスポートしました",
+            "nativeRsync": {
+                "title": "ネイティブ rsync (実験的)",
+                "description": "システムの rsync バイナリを起動する代わりに、AeroFTP に組み込まれた rsync プロトコル実装を使用します。プロセスのオーバーヘッドを削減しますが、エッジケースでの実績は少ない可能性があります。",
+                "enableToggle": "SFTP のデルタ同期にネイティブ rsync を有効化",
+                "experimental": "実験的: 重大でないエラーの場合は自動的に従来の rsync にフォールバックします。ホストキーの不一致はハードエラーとして扱われ、サイレントフォールバックは行われません。"
+            }
         },
         "devtools": {
             "title": "AeroTools",

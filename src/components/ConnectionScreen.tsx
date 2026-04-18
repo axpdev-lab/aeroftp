@@ -2503,7 +2503,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 inputMode="numeric"
                                             />
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-2">
+                                        <p className="text-xs text-gray-400 mt-2 select-text">
                                             {t('connection.kdriveTokenHelp')}
                                         </p>
                                         </div>

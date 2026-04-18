@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Serverele vor fi exportate în format sitemanager.xml al FileZilla. Parolele sunt codificate base64 pentru compatibilitate.",
             "filezillaExportCredHint": "Parolele vor fi codificate base64 folosind formatul standard al FileZilla",
             "filezillaExportButton": "Exportă în FileZilla ({count})",
-            "filezillaExportSuccess": "{count} servere exportate în sitemanager.xml"
+            "filezillaExportSuccess": "{count} servere exportate în sitemanager.xml",
+            "nativeRsync": {
+                "title": "rsync nativ (experimental)",
+                "description": "Foloseste implementarea integrata a protocolului rsync din AeroFTP in locul executarii binarului rsync al sistemului. Reduce costul de proces; poate fi mai putin testata in cazuri extreme.",
+                "enableToggle": "Activeaza rsync nativ pentru sincronizarea delta prin SFTP",
+                "experimental": "Experimental: revine automat la rsync clasic in caz de eroare. Nepotrivirile cheii host apar ca erori blocante, fara fallback silentios."
+            }
         },
         "devtools": {
             "title": "AeroTools",

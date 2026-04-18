@@ -231,9 +231,14 @@ impl JottacloudProvider {
             ));
         }
         jotta_log("Refreshing access token");
-        // Jottacloud quirk: uppercase REFRESH_TOKEN
+        // RFC 6749 §6 `grant_type=refresh_token` (lowercase). The prior
+        // "Jottacloud quirk: uppercase REFRESH_TOKEN" is no longer
+        // accepted by Jotta's OIDC server — the endpoint now returns
+        // `unsupported_grant_type` for the uppercase form, which forced
+        // every second invocation to fall back to the single-use login
+        // token (J1 finding part 2).
         let form_body = format!(
-            "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
+            "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
             urlencoding::encode(self.refresh_token.expose_secret()),
         );
         let resp = self
@@ -325,12 +330,22 @@ impl JottacloudProvider {
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
         let (rt, te, un) = match Self::load_persisted_refresh_token() {
             Some(data) => data,
-            None => return Ok(false),
+            None => {
+                jotta_log("No persisted refresh token in vault — will use login token");
+                return Ok(false);
+            }
         };
-        jotta_log("Found persisted refresh token, attempting reconnection");
+        jotta_log(&format!(
+            "Found persisted refresh token ({} chars) for {}, attempting reconnection at {}",
+            rt.len(),
+            mask_credential(&un),
+            te
+        ));
 
+        // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
+        // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
         let form_body = format!(
-            "grant_type=REFRESH_TOKEN&refresh_token={}&client_id=jottacli",
+            "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
             urlencoding::encode(&rt),
         );
         let resp = self
@@ -344,8 +359,14 @@ impl JottacloudProvider {
                 ProviderError::AuthenticationFailed(format!("Refresh token exchange failed: {}", e))
             })?;
 
-        if !resp.status().is_success() {
-            jotta_log("Persisted refresh token is invalid/expired, falling back to login token");
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            jotta_log(&format!(
+                "Persisted refresh token rejected by Jotta OIDC (status={}, body={}) — falling back to login token",
+                status,
+                sanitize_api_error(&body)
+            ));
             // Clear stale persisted token
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 let _ = store.delete("jottacloud_refresh");
@@ -362,12 +383,19 @@ impl JottacloudProvider {
 
         self.username = un;
         self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+        // Jotta rotates the refresh token at every exchange. Persisting
+        // the rotated value is mandatory — if we keep the old one in the
+        // on-disk slot, the next invocation reads an already-consumed
+        // token and falls through to the (one-shot) login token, which
+        // returns "Login token expired or already used". The prior
+        // behaviour only updated the in-memory field (J1 finding).
         self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
         self.token_endpoint = te;
         let expires_in = token_resp.expires_in.unwrap_or(3600);
         self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
 
-        jotta_log("Reconnected using persisted refresh token");
+        self.persist_refresh_token();
+        jotta_log("Reconnected using persisted refresh token; rotated token saved");
         Ok(true)
     }
 

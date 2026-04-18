@@ -907,7 +907,13 @@
             "filezillaExportNotice": "A szerverek FileZilla sitemanager.xml formátumban kerülnek exportálásra. A jelszavak base64-kódoltak a kompatibilitás érdekében.",
             "filezillaExportCredHint": "A jelszavak a FileZilla szabványos formátumával base64-kódolásban lesznek",
             "filezillaExportButton": "Exportálás FileZilla-ba ({count})",
-            "filezillaExportSuccess": "{count} szerver exportálva a sitemanager.xml fájlba"
+            "filezillaExportSuccess": "{count} szerver exportálva a sitemanager.xml fájlba",
+            "nativeRsync": {
+                "title": "Natív rsync (kísérleti)",
+                "description": "Az AeroFTP beépített rsync protokoll implementációját használja a rendszer rsync bináris futtatása helyett. Csökkenti a folyamat terhelését; előfordulhat, hogy kevésbé bizonyított éles helyzetekben.",
+                "enableToggle": "Natív rsync engedélyezése SFTP delta szinkronizációhoz",
+                "experimental": "Kísérleti: nem kritikus hibák esetén automatikusan visszaáll a klasszikus rsync-re. A gazdagép kulcsának eltérése blokkoló hibaként jelenik meg, néma visszaesés nélkül."
+            }
         },
         "devtools": {
             "title": "AeroTools",

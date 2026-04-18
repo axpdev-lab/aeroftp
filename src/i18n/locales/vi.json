@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Máy chủ sẽ được xuất ở định dạng sitemanager.xml của FileZilla. Mật khẩu được mã hóa base64 để tương thích.",
             "filezillaExportCredHint": "Mật khẩu sẽ được mã hóa base64 bằng định dạng chuẩn của FileZilla",
             "filezillaExportButton": "Xuất sang FileZilla ({count})",
-            "filezillaExportSuccess": "Đã xuất {count} máy chủ sang sitemanager.xml"
+            "filezillaExportSuccess": "Đã xuất {count} máy chủ sang sitemanager.xml",
+            "nativeRsync": {
+                "title": "rsync tich hop (thu nghiem)",
+                "description": "Su dung ban trien khai giao thuc rsync tich hop san cua AeroFTP thay vi chay tep nhi phan rsync cua he thong. Giam chi phi tien trinh; co the it duoc kiem thu trong cac truong hop bien.",
+                "enableToggle": "Bat rsync tich hop cho dong bo delta qua SFTP",
+                "experimental": "Thu nghiem: tu dong quay ve rsync co dien khi co loi. Su khong khop khoa host se xuat hien duoi dang loi nghiem trong, khong co du phong am tham."
+            }
         },
         "devtools": {
             "title": "AeroTools",

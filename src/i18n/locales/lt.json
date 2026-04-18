@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Serveriai bus eksportuoti FileZilla sitemanager.xml formatu. Slaptažodžiai yra base64 koduoti suderinamumo tikslais.",
             "filezillaExportCredHint": "Slaptažodžiai bus base64 koduoti naudojant FileZilla standartinį formatą",
             "filezillaExportButton": "Eksportuoti į FileZilla ({count})",
-            "filezillaExportSuccess": "Eksportuota {count} serverių į sitemanager.xml"
+            "filezillaExportSuccess": "Eksportuota {count} serverių į sitemanager.xml",
+            "nativeRsync": {
+                "title": "Savasis rsync (eksperimentinis)",
+                "description": "Naudoti į AeroFTP integruotą rsync protokolo realizaciją vietoj sistemos rsync programos paleidimo. Sumažina proceso pridėtines sąnaudas; gali būti mažiau patikrinta kraštutiniais atvejais.",
+                "enableToggle": "Įjungti savąjį rsync delta sinchronizavimui per SFTP",
+                "experimental": "Eksperimentinis: esant nekritinėms klaidoms automatiškai grįžta prie klasikinio rsync. Serverio rakto neatitikimai pasirodo kaip blokuojančios klaidos, be tyliai veikiančios atsarginės išeities."
+            }
         },
         "devtools": {
             "title": "AeroTools",

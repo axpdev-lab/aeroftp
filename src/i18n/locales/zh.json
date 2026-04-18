@@ -907,7 +907,13 @@
             "filezillaExportNotice": "服务器将以 FileZilla sitemanager.xml 格式导出。密码已进行 base64 编码以确保兼容性。",
             "filezillaExportCredHint": "密码将使用 FileZilla 的标准格式进行 base64 编码",
             "filezillaExportButton": "导出到 FileZilla ({count})",
-            "filezillaExportSuccess": "已将 {count} 个服务器导出到 sitemanager.xml"
+            "filezillaExportSuccess": "已将 {count} 个服务器导出到 sitemanager.xml",
+            "nativeRsync": {
+                "title": "原生 rsync（实验性）",
+                "description": "使用 AeroFTP 内置的 rsync 协议实现，而非调用系统的 rsync 二进制文件。可减少进程开销；在极端情况下可能经过的验证较少。",
+                "enableToggle": "为 SFTP 增量同步启用原生 rsync",
+                "experimental": "实验性：出错时会自动回退到传统 rsync。主机密钥不匹配将作为致命错误暴露，不会静默回退。"
+            }
         },
         "devtools": {
             "title": "AeroTools",

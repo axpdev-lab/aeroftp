@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Els servidors s'exportaran en format sitemanager.xml de FileZilla. Les contrasenyes estan codificades en base64 per compatibilitat.",
             "filezillaExportCredHint": "Les contrasenyes es codificaran en base64 amb el format estàndard de FileZilla",
             "filezillaExportButton": "Exporta a FileZilla ({count})",
-            "filezillaExportSuccess": "S'han exportat {count} servidors a sitemanager.xml"
+            "filezillaExportSuccess": "S'han exportat {count} servidors a sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync natiu (experimental)",
+                "description": "Utilitza la implementació integrada del protocol rsync d'AeroFTP en lloc d'executar el binari rsync del sistema. Redueix la sobrecàrrega de processos; pot estar menys provada en casos límit.",
+                "enableToggle": "Activa el rsync natiu per a la sincronització delta per SFTP",
+                "experimental": "Experimental: recau automàticament al rsync clàssic davant errors no crítics. Les discrepàncies de clau d'amfitrió es mostren com a errors bloquejants, sense recurs silenciós."
+            }
         },
         "devtools": {
             "title": "AeroTools",

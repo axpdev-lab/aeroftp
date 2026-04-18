@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Sunucular FileZilla sitemanager.xml formatında dışa aktarılacaktır. Parolalar uyumluluk için base64 kodlamalıdır.",
             "filezillaExportCredHint": "Parolalar FileZilla'nın standart formatı kullanılarak base64 ile kodlanacaktır",
             "filezillaExportButton": "FileZilla'ya dışa aktar ({count})",
-            "filezillaExportSuccess": "{count} sunucu sitemanager.xml dosyasına dışa aktarıldı"
+            "filezillaExportSuccess": "{count} sunucu sitemanager.xml dosyasına dışa aktarıldı",
+            "nativeRsync": {
+                "title": "Yerel rsync (deneysel)",
+                "description": "Sistem rsync ikili dosyasini calistirmak yerine AeroFTP'nin dahili rsync protokolu uygulamasini kullanin. Surec yukunu azaltir; sinir durumlarda daha az test edilmis olabilir.",
+                "enableToggle": "SFTP delta senkronizasyonu icin yerel rsync'i etkinlestir",
+                "experimental": "Deneysel: hata durumunda otomatik olarak klasik rsync'e geri doner. Host anahtari uyumsuzluklari sessiz geri donus olmadan kritik hata olarak ortaya cikar."
+            }
         },
         "devtools": {
             "title": "AeroTools",

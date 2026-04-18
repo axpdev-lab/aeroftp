@@ -907,7 +907,13 @@
             "filezillaExportNotice": "เซิร์ฟเวอร์จะถูกส่งออกในรูปแบบ sitemanager.xml ของ FileZilla รหัสผ่านถูกเข้ารหัส base64 เพื่อความเข้ากันได้",
             "filezillaExportCredHint": "รหัสผ่านจะถูกเข้ารหัส base64 โดยใช้รูปแบบมาตรฐานของ FileZilla",
             "filezillaExportButton": "ส่งออกไปยัง FileZilla ({count})",
-            "filezillaExportSuccess": "ส่งออก {count} เซิร์ฟเวอร์ไปยัง sitemanager.xml แล้ว"
+            "filezillaExportSuccess": "ส่งออก {count} เซิร์ฟเวอร์ไปยัง sitemanager.xml แล้ว",
+            "nativeRsync": {
+                "title": "rsync เนทีฟ (ทดลอง)",
+                "description": "ใช้การใช้งานโปรโตคอล rsync ที่มีอยู่ภายใน AeroFTP แทนการเรียกใช้ไบนารี rsync ของระบบ ลดภาระของกระบวนการ แต่อาจผ่านการทดสอบในกรณีสุดขั้วน้อยกว่า",
+                "enableToggle": "เปิดใช้งาน rsync เนทีฟสำหรับการซิงก์แบบเดลตาผ่าน SFTP",
+                "experimental": "ทดลอง: จะย้อนกลับไปใช้ rsync แบบคลาสสิกโดยอัตโนมัติเมื่อเกิดข้อผิดพลาด ความไม่ตรงกันของกุญแจโฮสต์จะปรากฏเป็นข้อผิดพลาดร้ายแรงโดยไม่มีการย้อนกลับแบบเงียบ"
+            }
         },
         "devtools": {
             "title": "AeroTools",

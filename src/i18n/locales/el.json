@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Οι διακομιστές θα εξαχθούν σε μορφή sitemanager.xml του FileZilla. Οι κωδικοί κωδικοποιούνται σε base64 για συμβατότητα.",
             "filezillaExportCredHint": "Οι κωδικοί θα κωδικοποιηθούν σε base64 χρησιμοποιώντας την τυπική μορφή του FileZilla",
             "filezillaExportButton": "Εξαγωγή σε FileZilla ({count})",
-            "filezillaExportSuccess": "Εξήχθησαν {count} διακομιστές στο sitemanager.xml"
+            "filezillaExportSuccess": "Εξήχθησαν {count} διακομιστές στο sitemanager.xml",
+            "nativeRsync": {
+                "title": "Εγγενές rsync (πειραματικό)",
+                "description": "Χρησιμοποιεί την ενσωματωμένη υλοποίηση του πρωτοκόλλου rsync του AeroFTP αντί για την εκτέλεση του εκτελέσιμου rsync του συστήματος. Μειώνει την επιβάρυνση διεργασιών· ενδέχεται να είναι λιγότερο δοκιμασμένη σε ακραίες περιπτώσεις.",
+                "enableToggle": "Ενεργοποίηση εγγενούς rsync για συγχρονισμό δέλτα μέσω SFTP",
+                "experimental": "Πειραματικό: επανέρχεται αυτόματα στο κλασικό rsync για μη κρίσιμα σφάλματα. Οι ασυμφωνίες κλειδιού κεντρικού υπολογιστή εμφανίζονται ως αποκλειστικά σφάλματα, χωρίς σιωπηλή εφεδρική διαδρομή."
+            }
         },
         "devtools": {
             "title": "AeroTools",

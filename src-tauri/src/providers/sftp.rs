@@ -12,7 +12,7 @@ use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvide
 use async_trait::async_trait;
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler};
-use russh::keys::{self, known_hosts, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{self, known_hosts, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::Path;
@@ -39,15 +39,46 @@ pub struct SshHandler {
     port: u16,
     /// CLI mode: auto-accept unknown hosts and save to known_hosts
     trust_unknown_hosts: bool,
+    /// Shared slot populated on successful verification with the
+    /// SHA-256 hex fingerprint (lowercase, colon-free) of the server
+    /// host key's SSH-wire-encoded bytes. The native rsync path
+    /// (`providers::sftp::delta_transport`) consumes this to pin its
+    /// second SSH connection — U-02 closes the MITM hole that
+    /// `SshHostKeyPolicy::AcceptAny` left open on the native leg.
+    host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
 }
 
 impl SshHandler {
-    fn with_trust(host: &str, port: u16, trust: bool) -> Self {
+    fn with_trust_and_slot(
+        host: &str,
+        port: u16,
+        trust: bool,
+        slot: Arc<std::sync::OnceLock<String>>,
+    ) -> Self {
         Self {
             host: host.to_string(),
             port,
             trust_unknown_hosts: trust,
+            host_key_sha256_hex: slot,
         }
+    }
+
+    /// Compute the SHA-256 hex digest of the SSH-wire-encoded public
+    /// key bytes, matching the layout that libssh2's
+    /// `session.host_key()` returns on the other side of the native
+    /// rsync connection. Returns `None` if the russh key encoding fails
+    /// — in that case the native path will refuse to enable because
+    /// the slot stays empty (secure default).
+    fn compute_host_key_fingerprint_hex(key: &PublicKey) -> Option<String> {
+        use sha2::{Digest, Sha256};
+        let wire = key.to_bytes().ok()?;
+        let digest = Sha256::digest(&wire);
+        let mut hex = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            use std::fmt::Write as _;
+            let _ = write!(hex, "{byte:02x}");
+        }
+        Some(hex)
     }
 }
 
@@ -62,6 +93,11 @@ impl Handler for SshHandler {
         match known_hosts::check_known_hosts(&self.host, self.port, server_public_key) {
             Ok(true) => {
                 tracing::info!("SFTP: Host key verified for {}", self.host);
+                // U-02 slot populate: native rsync path pins against
+                // this fingerprint.
+                if let Some(hex) = Self::compute_host_key_fingerprint_hex(server_public_key) {
+                    let _ = self.host_key_sha256_hex.set(hex);
+                }
                 Ok(true)
             }
             Ok(false) => {
@@ -75,6 +111,9 @@ impl Handler for SshHandler {
                         known_hosts::learn_known_hosts(&self.host, self.port, server_public_key)
                     {
                         tracing::warn!("SFTP: Failed to save host key to known_hosts: {}", e);
+                    }
+                    if let Some(hex) = Self::compute_host_key_fingerprint_hex(server_public_key) {
+                        let _ = self.host_key_sha256_hex.set(hex);
                     }
                     Ok(true)
                 } else {
@@ -130,6 +169,12 @@ pub struct SftpProvider {
     compression_enabled: bool,
     /// Buffer size for download/upload (default: 32 KB)
     buffer_size: usize,
+    /// Shared slot populated by [`SshHandler`] during `check_server_key`
+    /// with the SHA-256 hex fingerprint of the accepted host key. The
+    /// native rsync transport reuses this fingerprint to pin its own
+    /// SSH connection (U-02) so the fresh TCP socket it opens for
+    /// `rsync_proto_serve` does not skip host-key verification.
+    host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
 }
 
 impl SftpProvider {
@@ -144,7 +189,19 @@ impl SftpProvider {
             upload_limit_bps: 0,
             compression_enabled: false,
             buffer_size: 32768,
+            host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
         }
+    }
+
+    /// Return the SHA-256 hex fingerprint of the host key that
+    /// [`SshHandler::check_server_key`] accepted during the current
+    /// SFTP session, or `None` before a successful handshake.
+    ///
+    /// Used by [`SftpProvider::delta_transport`] (U-02) to pin the
+    /// native rsync path's independent SSH connection against the same
+    /// fingerprint the classic SFTP verification already cleared.
+    pub fn accepted_host_key_sha256_hex(&self) -> Option<String> {
+        self.host_key_sha256_hex.get().cloned()
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.
@@ -195,6 +252,57 @@ impl SftpProvider {
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path,
         };
+
+        #[cfg(feature = "proto_native_rsync")]
+        {
+            // Runtime toggle - read from settings. When on, attempt
+            // NativeRsyncDeltaTransport and fall through to classic
+            // binary on any construction error.
+            //
+            // U-02 security gate: the native path opens its own SSH
+            // connection (separate TCP socket, separate libssh2 session)
+            // and must not weaken the host-key posture of the parent
+            // SFTP session. We only enable the native leg when the
+            // classic SFTP flow has already captured the accepted host
+            // key's SHA-256 fingerprint. Without a fingerprint we refuse
+            // to enable native — the fresh SSH connection would otherwise
+            // ride `AcceptAny`, which is a MITM window on a second
+            // independent socket.
+            if crate::settings::load_native_rsync_enabled() {
+                use crate::rsync_native_proto::delta_transport_impl::NativeRsyncDeltaTransport;
+                use crate::rsync_native_proto::ssh_transport::SshHostKeyPolicy;
+
+                let host_key_policy = match self.accepted_host_key_sha256_hex() {
+                    Some(hex) => SshHostKeyPolicy::pinned_hex(hex),
+                    None => {
+                        tracing::warn!(
+                            "providers::sftp: native rsync disabled for this session — parent \
+                             SFTP handshake did not capture a host key fingerprint (possible \
+                             password-only auth or early error); falling back to classic"
+                        );
+                        return Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
+                            rsync_config,
+                            Some(handle),
+                        )));
+                    }
+                };
+
+                match NativeRsyncDeltaTransport::from_rsync_config(
+                    &rsync_config,
+                    host_key_policy,
+                ) {
+                    Ok(transport) => {
+                        tracing::info!("providers::sftp: using native rsync delta transport (host key pinned)");
+                        return Some(Box::new(transport));
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            "providers::sftp: native rsync transport construction failed ({error}); falling back to classic"
+                        );
+                    }
+                }
+            }
+        }
 
         Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
             rsync_config,
@@ -309,21 +417,52 @@ impl SftpProvider {
                 ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e))
             })?;
 
-        // Wrap in PrivateKeyWithHashAlg (required by russh 0.54+)
-        let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
+        // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
+        // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
+        // disabled by default. We have to negotiate rsa-sha2-512 or
+        // rsa-sha2-256 depending on the key type. For non-RSA keys
+        // (ed25519, ecdsa) the hash is baked into the algorithm name so
+        // `None` is correct and required.
+        //
+        // Strategy: try SHA-512 first (RFC 8332 preference), fall back
+        // to SHA-256 on auth failure, then fall back to no-hash (ssh-rsa
+        // SHA-1) for ancient servers that still accept it. Non-RSA
+        // keys take the `None` path directly.
+        let key_pair = Arc::new(key_pair);
+        let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
 
-        // Authenticate
-        let auth_result = handle
-            .authenticate_publickey(&self.config.username, key_with_hash)
-            .await
-            .map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("Key authentication failed: {}", e))
-            })?;
+        let attempts: Vec<Option<HashAlg>> = if is_rsa {
+            vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+        } else {
+            vec![None]
+        };
 
-        match auth_result {
-            AuthResult::Success => Ok(true),
-            AuthResult::Failure { .. } => Ok(false),
+        let mut last_auth_error: Option<String> = None;
+        for hash in attempts {
+            let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
+            match handle
+                .authenticate_publickey(&self.config.username, key_with_hash)
+                .await
+            {
+                Ok(AuthResult::Success) => return Ok(true),
+                Ok(AuthResult::Failure { .. }) => {
+                    // Next hash algorithm; OpenSSH returns this for
+                    // "publickey accepted but signature algo rejected".
+                    continue;
+                }
+                Err(e) => {
+                    last_auth_error = Some(e.to_string());
+                    continue;
+                }
+            }
         }
+
+        if let Some(err) = last_auth_error {
+            return Err(ProviderError::AuthenticationFailed(format!(
+                "Key authentication failed after RSA SHA-512/256/1 negotiation attempts: {err}"
+            )));
+        }
+        Ok(false)
     }
 
     async fn verify_remote_upload_size(
@@ -441,10 +580,11 @@ impl StorageProvider for SftpProvider {
         let mut handle = client::connect(
             Arc::new(config),
             &addr,
-            SshHandler::with_trust(
+            SshHandler::with_trust_and_slot(
                 &self.config.host,
                 self.config.port,
                 self.config.trust_unknown_hosts,
+                self.host_key_sha256_hex.clone(),
             ),
         )
         .await

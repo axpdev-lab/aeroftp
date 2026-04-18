@@ -2761,10 +2761,24 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                 .port()
                 .map(|p| format!(":{}", p))
                 .unwrap_or_default();
+            // U2 regression: only fold the URL path into the WebDAV
+            // base URL when it is a directory (ends with `/`). A file
+            // path would otherwise produce a base URL pointing at a
+            // regular file, and every subsequent PROPFIND would 400.
+            // The caller still sees the file target via
+            // `extra["url_target"]` downstream.
             let path = url_obj.path();
+            let base_path = if path.is_empty() || path == "/" || path.ends_with('/') {
+                path.to_string()
+            } else {
+                match path.rfind('/') {
+                    Some(idx) if idx > 0 => format!("{}/", &path[..idx]),
+                    _ => "/".to_string(),
+                }
+            };
             (
                 ProviderType::WebDav,
-                format!("http://{}{}{}", host_str, port_str, path),
+                format!("http://{}{}{}", host_str, port_str, base_path),
             )
         }
         "webdavs" | "https" => {
@@ -2773,9 +2787,17 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                 .map(|p| format!(":{}", p))
                 .unwrap_or_default();
             let path = url_obj.path();
+            let base_path = if path.is_empty() || path == "/" || path.ends_with('/') {
+                path.to_string()
+            } else {
+                match path.rfind('/') {
+                    Some(idx) if idx > 0 => format!("{}/", &path[..idx]),
+                    _ => "/".to_string(),
+                }
+            };
             (
                 ProviderType::WebDav,
-                format!("https://{}{}{}", host_str, port_str, path),
+                format!("https://{}{}{}", host_str, port_str, base_path),
             )
         }
         "s3" => (ProviderType::S3, host_str.clone()),
@@ -2872,6 +2894,46 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         }
     };
 
+    // U1/U2/U3 fix: when the URL embeds a file target path (no trailing
+    // slash, last segment looks like a filename), use the PARENT
+    // directory as `initial_path` so the provider does not try to CWD
+    // into a regular file and so `resolve_cli_remote_path(initial, arg)`
+    // does not produce a double-prefix like `/dir/file/file`.
+    //
+    // Heuristic: treat the URL path as a file target when all of:
+    //  - not empty and not `/`
+    //  - does not end with `/`
+    //  - last segment is non-empty
+    //  - last segment contains a `.` OR at least one extra path segment
+    //    exists (a single leading segment like `/dir` is still ambiguous
+    //    but we keep it as-is to avoid regressing `ls ftp://host/dir`)
+    //
+    // The full URL path is stashed under `extra["url_target"]` so
+    // single-target commands can surface it when no explicit path arg
+    // was provided.
+    let (initial_path, url_target_hint) = {
+        let trimmed = url_path.trim();
+        if trimmed.is_empty() || trimmed == "/" {
+            ("/".to_string(), None)
+        } else if trimmed.ends_with('/') {
+            (trimmed.to_string(), None)
+        } else {
+            let last_segment = trimmed.rsplit('/').next().unwrap_or("");
+            let segment_count = trimmed.trim_start_matches('/').split('/').count();
+            let looks_file_like = !last_segment.is_empty()
+                && (last_segment.contains('.') || segment_count >= 2);
+            if looks_file_like {
+                let parent = match trimmed.rfind('/') {
+                    Some(idx) if idx > 0 => trimmed[..idx].to_string(),
+                    _ => "/".to_string(),
+                };
+                (parent, Some(trimmed.to_string()))
+            } else {
+                (trimmed.to_string(), None)
+            }
+        }
+    };
+
     // Build extra HashMap from CLI flags
     let mut extra = HashMap::new();
 
@@ -2931,6 +2993,12 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         extra.insert("mega_mode".to_string(), "native".to_string());
     }
 
+    // U1/U2/U3: propagate the file-target hint so single-target
+    // commands can fall back to it when no explicit path arg is given.
+    if let Some(target) = url_target_hint.as_ref() {
+        extra.insert("url_target".to_string(), target.clone());
+    }
+
     let config = ProviderConfig {
         name: format!("{} CLI", provider_type),
         provider_type,
@@ -2938,11 +3006,11 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         port,
         username: Some(username),
         password: Some(password),
-        initial_path: Some(url_path.clone()),
+        initial_path: Some(initial_path.clone()),
         extra,
     };
 
-    Ok((config, url_path))
+    Ok((config, initial_path))
 }
 
 fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
@@ -11300,11 +11368,37 @@ fn save_bisync_snapshot(
         synced_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         files,
     };
-    let path = Path::new(local_dir).join(BISYNC_SNAPSHOT_FILE);
-    if let Ok(json) = serde_json::to_string(&snapshot) {
-        if let Err(e) = std::fs::write(&path, json) {
-            eprintln!("Warning: failed to save bisync snapshot: {}", e);
+    // S1: the snapshot lives on the LOCAL side, not the remote.
+    // Ensure the local dir exists before writing — download-first runs
+    // may create the local dir on-the-fly and the snapshot save used
+    // to fire before the enclosing mkdir chain completed, producing
+    // "No such file or directory" warnings.
+    let dir_path = Path::new(local_dir);
+    if let Err(e) = std::fs::create_dir_all(dir_path) {
+        eprintln!(
+            "Warning: cannot create local dir {} for bisync snapshot: {}",
+            local_dir, e
+        );
+        return;
+    }
+    let path = dir_path.join(BISYNC_SNAPSHOT_FILE);
+    // Atomic write via tmp + rename so a crash mid-write does not leave
+    // a half-valid JSON snapshot that trips the next resync.
+    let tmp = dir_path.join(format!("{}.tmp", BISYNC_SNAPSHOT_FILE));
+    let json = match serde_json::to_string(&snapshot) {
+        Ok(j) => j,
+        Err(e) => {
+            eprintln!("Warning: bisync snapshot serialize failed: {}", e);
+            return;
         }
+    };
+    if let Err(e) = std::fs::write(&tmp, json) {
+        eprintln!("Warning: failed to write bisync snapshot tmp: {}", e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        eprintln!("Warning: failed to commit bisync snapshot: {}", e);
+        let _ = std::fs::remove_file(&tmp);
     }
 }
 
@@ -11700,17 +11794,23 @@ async fn cmd_sync(
             }
         }
 
-        // BFS fallback (also the default when --fast-list is not used)
+        // BFS fallback (also the default when --fast-list is not used).
+        // C1/C2 canonicalization: track relative-from-root via queue
+        // state so provider-returned absolute paths (SFTP/S3) do not
+        // produce unstrippable keys. `entry.name` is the basename and
+        // is always relative; the queue carries the accumulated
+        // rel_prefix from the root down.
         if !used_fast_list {
         let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-        let mut queue: Vec<(String, usize)> = vec![(remote.to_string(), 0)];
-        while let Some((dir, depth)) = queue.pop() {
+        let mut queue: Vec<(String, String, usize)> =
+            vec![(remote.to_string(), String::new(), 0)];
+        while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
             if depth >= remote_scan_depth {
                 if !quiet {
-                    eprintln!("Warning: max scan depth reached at {}", dir);
+                    eprintln!("Warning: max scan depth reached at {}", abs_dir);
                 }
                 continue;
             }
@@ -11720,18 +11820,18 @@ async fn cmd_sync(
                 }
                 break;
             }
-            match provider.list(&dir).await {
+            match provider.list(&abs_dir).await {
                 Ok(entries) => {
                     for e in entries {
-                        if e.is_dir {
-                            queue.push((e.path.clone(), depth + 1));
+                        let entry_rel = if rel_prefix.is_empty() {
+                            e.name.clone()
                         } else {
-                            let relative = e
-                                .path
-                                .strip_prefix(remote)
-                                .unwrap_or(&e.path)
-                                .trim_start_matches('/')
-                                .to_string();
+                            format!("{}/{}", rel_prefix, e.name)
+                        };
+                        if e.is_dir {
+                            queue.push((e.path.clone(), entry_rel, depth + 1));
+                        } else {
+                            let relative = entry_rel;
                             if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
                                 // Apply exclude patterns to remote entries too
                                 if exclude_matchers
@@ -11747,7 +11847,7 @@ async fn cmd_sync(
                 }
                 Err(e) => {
                     if !quiet {
-                        eprintln!("Warning: cannot scan {}: {}", dir, e);
+                        eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
                     }
                 }
             }
@@ -16711,33 +16811,41 @@ async fn cmd_check(
         }
     }
 
-    // Scan remote files (BFS)
+    // C1/C2 finding: provider-returned `entry.path` values are not
+    // consistent across backends. SFTP and S3 return absolute paths
+    // (`/home/user/dir/file`), FTP and WebDAV return paths relative
+    // to the CWD. `strip_prefix(remote_prefix)` silently succeeds on
+    // the wrong part of the string when the absolute path does not
+    // start with `remote_prefix`, producing unstrippable rel keys that
+    // never match the local-file map. The comparison then reports all
+    // files as missing on both sides.
+    //
+    // Robust approach: track the relative-from-root path as part of
+    // the scan state using `entry.name` (always the basename). The
+    // provider's absolute `entry.path` is only used as the listing
+    // cursor for recursion.
     let mut remote_files: HashMap<String, u64> = HashMap::new();
-    let mut dirs_to_scan = vec![remote_path.to_string()];
-    let remote_prefix = if remote_path.ends_with('/') {
-        remote_path.to_string()
-    } else {
-        format!("{}/", remote_path)
-    };
-    while let Some(dir) = dirs_to_scan.pop() {
-        match provider.list(&dir).await {
+    let mut dirs_to_scan: Vec<(String, String)> =
+        vec![(remote_path.to_string(), String::new())];
+    while let Some((abs_dir, rel_prefix)) = dirs_to_scan.pop() {
+        match provider.list(&abs_dir).await {
             Ok(entries) => {
                 for entry in entries {
-                    let rel = entry
-                        .path
-                        .strip_prefix(&remote_prefix)
-                        .unwrap_or(&entry.path)
-                        .to_string();
-                    if entry.is_dir {
-                        dirs_to_scan.push(entry.path.clone());
+                    let entry_rel = if rel_prefix.is_empty() {
+                        entry.name.clone()
                     } else {
-                        remote_files.insert(rel, entry.size);
+                        format!("{}/{}", rel_prefix, entry.name)
+                    };
+                    if entry.is_dir {
+                        dirs_to_scan.push((entry.path.clone(), entry_rel));
+                    } else {
+                        remote_files.insert(entry_rel, entry.size);
                     }
                 }
             }
             Err(e) => {
                 if !matches!(format, OutputFormat::Json) {
-                    eprintln!("Warning: failed to scan {}: {}", dir, e);
+                    eprintln!("Warning: failed to scan {}: {}", abs_dir, e);
                 }
             }
         }
@@ -16918,41 +17026,40 @@ async fn cmd_reconcile(
         }
     }
 
+    // C1/C2 canonicalization: track rel path via queue state, use
+    // `entry.name` (basename) instead of trying to strip `remote_prefix`
+    // from the provider-returned absolute path.
     let mut remote_files: HashMap<String, u64> = HashMap::new();
-    let mut dirs_to_scan = vec![remote_path.to_string()];
-    let remote_prefix = if remote_path.ends_with('/') {
-        remote_path.to_string()
-    } else {
-        format!("{}/", remote_path)
-    };
-    while let Some(dir) = dirs_to_scan.pop() {
-        match provider.list(&dir).await {
+    let mut dirs_to_scan: Vec<(String, String)> =
+        vec![(remote_path.to_string(), String::new())];
+    while let Some((abs_dir, rel_prefix)) = dirs_to_scan.pop() {
+        match provider.list(&abs_dir).await {
             Ok(entries) => {
                 for entry in entries {
-                    let rel = entry
-                        .path
-                        .strip_prefix(&remote_prefix)
-                        .unwrap_or(&entry.path)
-                        .to_string();
+                    let entry_rel = if rel_prefix.is_empty() {
+                        entry.name.clone()
+                    } else {
+                        format!("{}/{}", rel_prefix, entry.name)
+                    };
                     if entry.is_dir {
-                        dirs_to_scan.push(entry.path.clone());
+                        dirs_to_scan.push((entry.path.clone(), entry_rel));
                     } else {
                         // Apply exclude patterns to remote entries
                         if !exclude_matchers.is_empty()
                             && exclude_matchers
                                 .iter()
-                                .any(|m| m.is_match(&rel) || m.is_match(&entry.name))
+                                .any(|m| m.is_match(&entry_rel) || m.is_match(&entry.name))
                         {
                             continue;
                         }
-                        remote_files.insert(rel, entry.size);
+                        remote_files.insert(entry_rel, entry.size);
                     }
                 }
             }
             Err(e) => {
                 // Always surface listing errors — silencing in JSON mode
                 // caused BUG-1 where empty results hid the real failure.
-                eprintln!("Warning: failed to scan {}: {}", dir, e);
+                eprintln!("Warning: failed to scan {}: {}", abs_dir, e);
             }
         }
     }

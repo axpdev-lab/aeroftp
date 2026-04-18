@@ -249,7 +249,7 @@
             "kdriveDriveId": "Drive ID",
             "kdriveTokenPlaceholder": "Incolla qui il tuo token API",
             "kdriveDriveIdPlaceholder": "Il tuo ID kDrive (numerico)",
-            "kdriveTokenHelp": "Genera un token su manager.infomaniak.com → Developer → API Tokens",
+            "kdriveTokenHelp": "Genera un token in Infomaniak Manager → Profilo Utente → Developer → API Tokens",
             "jottacloudToken": "Login Token",
             "jottacloudTokenPlaceholder": "Incolla qui il tuo token di accesso Jottacloud",
             "jottacloudTokenHelp": "Genera su jottacloud.com → Impostazioni → Sicurezza. Il token è monouso e scade rapidamente — incollalo subito dopo averlo copiato",
@@ -1181,7 +1181,13 @@
             "filezillaExportNotice": "I server verranno esportati nel formato sitemanager.xml di FileZilla. Le password sono codificate in base64 per compatibilità.",
             "filezillaExportCredHint": "Le password verranno codificate in base64 usando il formato standard di FileZilla",
             "filezillaExportButton": "Esporta in FileZilla ({count})",
-            "filezillaExportSuccess": "{count} server esportati in sitemanager.xml"
+            "filezillaExportSuccess": "{count} server esportati in sitemanager.xml",
+            "nativeRsync": {
+                "title": "Rsync nativo (sperimentale)",
+                "description": "Usa l'implementazione interna del protocollo rsync di AeroFTP al posto del binario rsync di sistema. Riduce l'overhead di processo; puo essere meno rodata nei casi limite.",
+                "enableToggle": "Abilita rsync nativo per la sync delta su SFTP",
+                "experimental": "Sperimentale: ricade automaticamente sul rsync classico per errori non critici. I mismatch della chiave host emergono come errori bloccanti, senza fallback silenzioso."
+            }
         },
         "appearance": {
             "patternCross": "Croce",

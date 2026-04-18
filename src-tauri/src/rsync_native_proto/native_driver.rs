@@ -1333,11 +1333,17 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
                 self.session_stats.bytes_received = self.received_raw_bytes;
             }
             None => {
-                // Legacy test path: `finish_session` was invoked on a
-                // driver that never entered `drive_*_inner`. Preserve
-                // the A2.4 receive-only semantics so the synthesised
-                // mock inbound still decodes correctly.
-                self.receive_summary_phase(bridge).await?;
+                // U-10: every public `drive_*` entry point sets
+                // `session_role` before `open_raw_stream_internal`, so
+                // reaching `finish_session` with `session_role = None`
+                // means a caller skipped the drive loop entirely. Refuse
+                // the call with an explicit illegal-state error instead
+                // of silently running receive semantics — that path used
+                // to mask wrong-role bugs in mock tests.
+                return Err(NativeRsyncError::new(
+                    NativeRsyncErrorKind::IllegalStateTransition,
+                    "finish_session called without a session_role — invoke drive_upload*/drive_download* first",
+                ));
             }
         }
         self.shutdown_raw_stream().await?;

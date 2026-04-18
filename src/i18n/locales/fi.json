@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Palvelimet viedään FileZillan sitemanager.xml-muodossa. Salasanat on base64-koodattu yhteensopivuuden vuoksi.",
             "filezillaExportCredHint": "Salasanat koodataan base64-muotoon FileZillan vakiomuotoa käyttäen",
             "filezillaExportButton": "Vie FileZillaan ({count})",
-            "filezillaExportSuccess": "Vietiin {count} palvelinta sitemanager.xml-tiedostoon"
+            "filezillaExportSuccess": "Vietiin {count} palvelinta sitemanager.xml-tiedostoon",
+            "nativeRsync": {
+                "title": "Natiivi rsync (kokeellinen)",
+                "description": "Käyttää AeroFTP:n sisäänrakennettua rsync-protokollatoteutusta järjestelmän rsync-binaarin käynnistämisen sijaan. Vähentää prosessikuormaa; saattaa olla vähemmän testattu reunatapauksissa.",
+                "enableToggle": "Ota natiivi rsync käyttöön SFTP-delta-synkronoinnissa",
+                "experimental": "Kokeellinen: palaa automaattisesti klassiseen rsynciin ei-kriittisten virheiden sattuessa. Isäntäavaimen ristiriidat näkyvät estävinä virheinä, ilman hiljaista varatoimintoa."
+            }
         },
         "devtools": {
             "title": "AeroTools",

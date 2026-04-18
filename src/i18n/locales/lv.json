@@ -907,7 +907,13 @@
             "filezillaExportNotice": "Serveri tiks eksportēti FileZilla sitemanager.xml formātā. Paroles ir base64 kodētas saderības nodrošināšanai.",
             "filezillaExportCredHint": "Paroles tiks kodētas ar base64, izmantojot FileZilla standarta formātu",
             "filezillaExportButton": "Eksportēt uz FileZilla ({count})",
-            "filezillaExportSuccess": "{count} serveri eksportēti uz sitemanager.xml"
+            "filezillaExportSuccess": "{count} serveri eksportēti uz sitemanager.xml",
+            "nativeRsync": {
+                "title": "Iebūvētais rsync (eksperimentāls)",
+                "description": "Izmantot AeroFTP iebūvēto rsync protokola realizāciju sistēmas rsync bināro palaišanas vietā. Samazina procesa slodzi; var būt mazāk pārbaudīts robežgadījumos.",
+                "enableToggle": "Iespējot iebūvēto rsync SFTP delta sinhronizācijai",
+                "experimental": "Eksperimentāls: nekritisku kļūdu gadījumā automātiski atgriežas pie klasiskā rsync. Resursdatora atslēgas neatbilstības parādās kā bloķējošas kļūdas bez klusas atkāpšanās."
+            }
         },
         "devtools": {
             "title": "AeroTools",
